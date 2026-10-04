@@ -79,7 +79,9 @@ export async function syncMeta():Promise<ConnectorResult[]> {
        for(const p of raw){
          const id=text(p.id);if(!id)continue;
          const m=blankMetrics();m.likes=numberOrNull(p.like_count);m.comments=numberOrNull(p.comments_count);
-         const extra=canReadIgInsights?await optionalInsight(id,pageToken,['reach','saved','shares','views']):{};
+         // Instagram insights are authorized on the user token. A Page token can
+         // read media and engagement counts, but may return empty insight data.
+         const extra=canReadIgInsights?await optionalInsight(id,token,['reach','saved','shares','views']):{};
          m.reach=extra.reach;m.saves=extra.saved;m.shares=extra.shares;m.views=extra.views;
          instagram.push({platform:'instagram',accountId:igId,accountName:page.name,externalId:id,permalink:text(p.permalink),title:text(p.caption).slice(0,220)||'Instagram post',publishedAt:text(p.timestamp),contentType:text(p.media_type).toLowerCase()||'post',thumbnail:text(p.thumbnail_url)||text(p.media_url),metrics:m});
        }
