@@ -3,51 +3,26 @@ import { ApiError, errorMessage, request } from '../lib/api';
 import { EMPTY_DASHBOARD, normalize } from '../lib/analytics';
 import type { Alert, ApiDashboard, Dashboard, ImportResult, PlanInput, SyncResult } from '../types';
 
-const SECRET_KEY = 'social-pulse-secret';
 const POLL_MS = 60_000;
 
-function readSecret(): string {
-  try {
-    return sessionStorage.getItem(SECRET_KEY) ?? '';
-  } catch {
-    return '';
-  }
-}
-
-function writeSecret(value: string) {
-  try {
-    if (value) sessionStorage.setItem(SECRET_KEY, value);
-    else sessionStorage.removeItem(SECRET_KEY);
-  } catch {
-    /* Storage can be blocked; the secret then lives for this page load only. */
-  }
-}
-
-export type Phase = 'loading' | 'ready' | 'locked' | 'offline';
+export type Phase = 'loading' | 'ready' | 'offline';
 
 export function useDashboard(onNewAlert: (alert: Alert) => void) {
-  const [secret, setSecret] = useState(readSecret);
   const [data, setData] = useState<Dashboard>(EMPTY_DASHBOARD);
   const [phase, setPhase] = useState<Phase>('loading');
-  const [authError, setAuthError] = useState('');
   const [staleError, setStaleError] = useState('');
   const [syncing, setSyncing] = useState(false);
-  const [verifying, setVerifying] = useState(false);
 
-  const secretRef = useRef(secret);
   const phaseRef = useRef(phase);
   const loaded = useRef(false);
   const seenAlerts = useRef<Set<string> | null>(null);
   const notify = useRef(onNewAlert);
-  secretRef.current = secret;
   phaseRef.current = phase;
   notify.current = onNewAlert;
 
   const load = useCallback(async () => {
-    const used = secretRef.current;
     try {
-      const raw = await request<ApiDashboard>('/dashboard', used);
-      if (used !== secretRef.current) return;
+      const raw = await request<ApiDashboard>('/dashboard');
       const next = normalize(raw);
       const open = next.alerts.filter((alert) => !alert.dismissedAt);
       if (seenAlerts.current === null) seenAlerts.current = new Set(open.map((alert) => alert.id));
@@ -60,28 +35,20 @@ export function useDashboard(onNewAlert: (alert: Alert) => void) {
       loaded.current = true;
       setData(next);
       setStaleError('');
-      setAuthError('');
       setPhase('ready');
     } catch (error) {
-      if (used !== secretRef.current) return;
-      if (error instanceof ApiError && error.status === 401) {
-        setAuthError(used ? 'رمز الدخول غير صحيح.' : '');
-        writeSecret('');
-        setPhase('locked');
-      } else if (loaded.current) setStaleError(errorMessage(error, 'تعذّر تحديث البيانات.'));
+      if (loaded.current) setStaleError(errorMessage(error, 'تعذّر تحديث البيانات.'));
       else {
         setStaleError(errorMessage(error, 'تعذّر تحميل البيانات.'));
         setPhase('offline');
       }
-    } finally {
-      if (used === secretRef.current) setVerifying(false);
     }
   }, []);
 
   useEffect(() => {
     void load();
     const timer = setInterval(() => {
-      if (phaseRef.current !== 'locked' && document.visibilityState === 'visible') void load();
+      if (document.visibilityState === 'visible') void load();
     }, POLL_MS);
     const onVisible = () => {
       if (document.visibilityState === 'visible' && phaseRef.current === 'ready') void load();
@@ -91,34 +58,9 @@ export function useDashboard(onNewAlert: (alert: Alert) => void) {
       clearInterval(timer);
       document.removeEventListener('visibilitychange', onVisible);
     };
-  }, [secret, load]);
+  }, [load]);
 
-  /** The gate stays on screen while the new secret is checked. */
-  const unlock = useCallback(
-    (value: string) => {
-      writeSecret(value);
-      setAuthError('');
-      setVerifying(true);
-      if (value === secretRef.current) void load();
-      else setSecret(value);
-    },
-    [load],
-  );
-
-  const lock = useCallback(() => {
-    writeSecret('');
-    loaded.current = false;
-    seenAlerts.current = null;
-    setSecret('');
-    setData(EMPTY_DASHBOARD);
-    setAuthError('');
-    setPhase('locked');
-  }, []);
-
-  const call = useCallback(
-    <T,>(path: string, init?: RequestInit) => request<T>(path, secretRef.current, init),
-    [],
-  );
+  const call = useCallback(<T,>(path: string, init?: RequestInit) => request<T>(path, init), []);
 
   const sync = useCallback(async () => {
     setSyncing(true);
@@ -166,14 +108,9 @@ export function useDashboard(onNewAlert: (alert: Alert) => void) {
   return {
     data,
     phase,
-    authError,
     staleError,
     syncing,
-    verifying,
-    hasSecret: Boolean(secret),
     reload: load,
-    unlock,
-    lock,
     sync,
     savePlan,
     deletePlan,

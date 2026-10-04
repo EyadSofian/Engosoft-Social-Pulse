@@ -18,7 +18,7 @@ npm run dev
 
 ```bash
 npm run build
-HOST=0.0.0.0 DASHBOARD_ADMIN_SECRET=<strong-secret> npm start
+HOST=0.0.0.0 npm start
 ```
 
 اضبط `DATA_FILE` على مساحة تخزين دائمة (volume) قبل النشر. تشغيل عدة نسخ بخطّة SQLite محلية منفصلة سيجعل التقويم والتنبيهات غير متطابقة؛ استخدم نسخة واحدة حتى يُنقل التخزين إلى قاعدة مشتركة. لا تضع `.env` أو قاعدة البيانات في Git.
@@ -63,7 +63,7 @@ HOST=0.0.0.0 DASHBOARD_ADMIN_SECRET=<strong-secret> npm start
 
 `GET /api/dashboard`، `POST /api/plans`، `DELETE /api/plans/:id`، `POST /api/calendar/import`، `POST /api/sync`، `POST /api/alerts/check`، `POST /api/alerts/:id/dismiss`، `GET /api/health`.
 
-عند ضبط `DASHBOARD_ADMIN_SECRET` يتطلب كل مسار `/api` عدا health ترويسة `X-Admin-Secret`. التطبيق يحتفظ بالرمز في `sessionStorage` داخل المتصفح فقط. لا يسمح السيرفر بالاستماع على عنوان عام إذا لم تضبط الرمز.
+لا يوجد تسجيل دخول أو حماية على مستوى التطبيق؛ الواجهة وكل مسارات `/api` عامة. أي شخص معه الرابط يقدر يقرأ البيانات ويضيف/يحذف عناصر الكاليندر ويبدأ المزامنة.
 
 ## التحقق
 

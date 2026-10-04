@@ -1,7 +1,7 @@
 import { useCallback, useEffect, useMemo, useState, type JSX } from 'react';
 import { AnimatePresence, MotionConfig, motion } from 'motion/react';
 import { AlertsDrawer, openAlertItems } from './components/shell/AlertsDrawer';
-import { Aurora, Dock, LoadingScreen, LockScreen, NAV, OfflineScreen, StaleBanner, TopNav } from './components/shell/Shell';
+import { Aurora, Dock, LoadingScreen, NAV, OfflineScreen, StaleBanner, TopNav } from './components/shell/Shell';
 import { ToastProvider, useToast } from './components/ui/Toast';
 import { AppContext, type AppContextValue, type PlanTarget } from './context';
 import { PlanDrawer } from './features/calendar/PlanDrawer';
@@ -112,13 +112,6 @@ function Root() {
     [store, data, now, todayNum, filters, setFilters, route, go, openPlan, openAlerts, runSync],
   );
 
-  if (store.phase === 'locked')
-    return (
-      <>
-        <Aurora />
-        <LockScreen error={store.authError} busy={store.verifying} onSubmit={store.unlock} />
-      </>
-    );
   if (store.phase === 'offline')
     return (
       <>

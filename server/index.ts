@@ -11,16 +11,8 @@ import { runSync } from './sync.js';
 import type { Platform } from './types.js';
 
 const app=express();const port=Number(process.env.PORT)||4100;const host=process.env.HOST||'127.0.0.1';
-const secret=process.env.DASHBOARD_ADMIN_SECRET?.trim();
-if(host!=='127.0.0.1'&&host!=='localhost'&&!secret)throw new Error('DASHBOARD_ADMIN_SECRET must be set for a public host.');
 app.disable('x-powered-by');app.use(express.json({limit:'1mb'}));
 app.get('/api/health',(_req,res)=>res.json({ok:true}));
-app.use('/api',(req,res,next)=>{
- if(!secret)return next();
- const supplied=req.header('X-Admin-Secret')||req.header('Authorization')?.replace(/^Bearer\s+/i,'');
- if(supplied===secret)return next();
- return res.status(401).json({error:'مطلوب رمز الدخول.'});
-});
 app.get('/api/dashboard',(_req,res)=>{
  const now=new Date();const posts=getObserved();const plans=getPlans();const grace=Number(process.env.ALERT_GRACE_MINUTES)||15;
  const enriched=plans.map(plan=>({...plan,computedState:planState(plan,posts,now,grace)}));

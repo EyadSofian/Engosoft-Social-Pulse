@@ -35,13 +35,13 @@
 - تذكير قبل الموعد بساعة، وتنبيه بعد الموعد و15 دقيقة إذا لم يُؤكد النشر. إن تعطّل المصدر يظهر طلب مراجعة يدوي بدل الجزم بعدم النشر.
 - تنبيهات داخل التطبيق، وتنبيهات المتصفح عند فتحه وإعطاء الإذن. إرسال Telegram اختياري إذا ضُبط بوت وChat ID.
 - مزامنة عند بدء السيرفر وكل 30 دقيقة، مع زر تحديث يدوي. بيانات الخطة والبوستات والتوكنات المجددة مشفرة في SQLite على volume.
-- رمز دخول يحمي `/api/*` باستثناء `/api/health`. الواجهة تحفظه في `sessionStorage` لجلسة المتصفح فقط.
+- الداشبورد والـAPI عامة بلا تسجيل دخول؛ أي شخص معه الرابط يقدر يقرأ البيانات ويعدّل الكاليندر والتنبيهات ويبدأ المزامنة.
 
 التطبيق **يرصد ويخطط وينبّه**؛ لا ينشر البوستات تلقائيًا على المنصات. التقويم يبدأ فارغًا حتى يرفع الفريق الخطة.
 
 ## متغيرات Railway
 
-ضُبطت في خدمة `web` على بيئة `production`: `META_ACCESS_TOKEN`, `META_API_VERSION`, `TOKEN_ENCRYPTION_KEY`, `DASHBOARD_ADMIN_SECRET`, `HOST=0.0.0.0`, `DATA_FILE=/data/social-pulse.sqlite`, `BUSINESS_TIME_ZONE=Africa/Cairo`, `ALERT_GRACE_MINUTES=15`. توكن Meta وإصدار API مطابقان لخدمة Insights Hub المرجعية.
+ضُبطت في خدمة `web` على بيئة `production`: `META_ACCESS_TOKEN`, `META_API_VERSION`, `TOKEN_ENCRYPTION_KEY`, `HOST=0.0.0.0`, `DATA_FILE=/data/social-pulse.sqlite`, `BUSINESS_TIME_ZONE=Africa/Cairo`, `ALERT_GRACE_MINUTES=15`. توكن Meta وإصدار API مطابقان لخدمة Insights Hub المرجعية.
 
 المتغيرات المطلوبة عند إكمال الربط:
 
@@ -53,7 +53,7 @@
 | GA4 | `GA4_PROPERTY_ID`, `GOOGLE_ANALYTICS_CLIENT_ID`, `GOOGLE_ANALYTICS_CLIENT_SECRET`, `GOOGLE_ANALYTICS_REFRESH_TOKEN` |
 | Telegram | `TELEGRAM_BOT_TOKEN`, `TELEGRAM_CHAT_ID` |
 
-لا تضف أسرارًا إلى GitHub أو ملف التقويم. ملف `.env.production.local` محلي وخارج Git؛ يحتوي رمز دخول الإنتاج. يمكن لمالك المشروع قراءته محليًا أو من متغير Railway `DASHBOARD_ADMIN_SECRET`. لا ترسل الرمز في الشات أو تضعه في توثيق الفريق.
+لا تضف أسرار المنصات إلى GitHub أو ملف التقويم. ملف `.env.production.local` محلي وخارج Git.
 
 ## تشغيل وتحديث
 
@@ -67,7 +67,7 @@ git push origin main
 railway up --service web --environment production --detach
 ```
 
-رابط الصحة `/api/health` يرجع `200`، والواجهة ترجع `200`، و`/api/dashboard` يرجع `401` بلا رمز و`200` معه. تأكد بعد كل نشر أن تبويب الربط يعرض آخر مزامنة وأن الكاليندر لم يفقد بياناته. احتفظ بنسخ احتياطية من SQLite والـvolume قبل أي تغيير كبير في التخزين. شغّل نسخة واحدة فقط من الخدمة ما دام التخزين SQLite محليًا.
+رابط الصحة `/api/health` والواجهة و`/api/dashboard` عامة. تأكد بعد كل نشر أن تبويب الربط يعرض آخر مزامنة وأن الكاليندر لم يفقد بياناته. احتفظ بنسخ احتياطية من SQLite والـvolume قبل أي تغيير كبير في التخزين. شغّل نسخة واحدة فقط من الخدمة ما دام التخزين SQLite محليًا.
 
 ## فحص التسليم
 

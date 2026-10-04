@@ -1,15 +1,9 @@
-import { useState, type FormEvent, type ReactNode } from 'react';
-import { motion } from 'motion/react';
+import type { ReactNode } from 'react';
 import {
-  ArrowLeft,
   Bell,
   CalendarDays,
   ChartNoAxesColumn,
-  Eye,
-  EyeOff,
   LayoutGrid,
-  LockKeyhole,
-  LogOut,
   Moon,
   Plug,
   Plus,
@@ -102,11 +96,6 @@ export function TopNav({ attention, connectorIssue, alerts, lastSync, theme, onT
           <Bell size={18} />
           {alerts > 0 && <b className="bell__count">{alerts > 9 ? '9+' : alerts}</b>}
         </IconButton>
-        {store.hasSecret && (
-          <IconButton label="قفل اللوحة" tip="end" onClick={store.lock}>
-            <LogOut size={17} />
-          </IconButton>
-        )}
         <Button variant="primary" icon={<Plus size={17} />} className="nav__new" onClick={() => openPlan({ mode: 'new' })}>
           بوست جديد
         </Button>
@@ -121,55 +110,6 @@ export function Dock(props: Pick<NavState, 'attention' | 'connectorIssue'>) {
     <div className="dock-wrap">
       <NavLinks variant="dock" {...props} />
     </div>
-  );
-}
-
-export function LockScreen({ error, busy, onSubmit }: { error: string; busy: boolean; onSubmit: (secret: string) => void }) {
-  const [value, setValue] = useState('');
-  const [visible, setVisible] = useState(false);
-  const submit = (event: FormEvent) => {
-    event.preventDefault();
-    if (value.trim()) onSubmit(value.trim());
-  };
-  return (
-    <main className="gate">
-      <motion.form
-        className="gate__card glass glass--float"
-        onSubmit={submit}
-        initial={{ opacity: 0, y: 26, scale: 0.97 }}
-        animate={{ opacity: 1, y: 0, scale: 1 }}
-        transition={{ duration: 0.6, ease: [0.22, 1, 0.36, 1] }}
-      >
-        <Logo size={58} />
-        <h1>Social Pulse</h1>
-        <p>أدخل رمز الدخول لعرض أداء المحتوى وكاليندر النشر.</p>
-        <label className="gate__field" data-invalid={error ? true : undefined} key={error ? `error-${busy}` : 'field'}>
-          <LockKeyhole size={17} aria-hidden />
-          <input
-            type={visible ? 'text' : 'password'}
-            value={value}
-            onChange={(event) => setValue(event.target.value)}
-            placeholder="رمز الدخول"
-            aria-label="رمز الدخول"
-            autoComplete="current-password"
-            autoFocus
-            dir="ltr"
-          />
-          <button type="button" aria-label={visible ? 'إخفاء الرمز' : 'إظهار الرمز'} onClick={() => setVisible((shown) => !shown)}>
-            {visible ? <EyeOff size={17} /> : <Eye size={17} />}
-          </button>
-        </label>
-        {error && (
-          <span className="gate__error" role="alert">
-            {error}
-          </span>
-        )}
-        <Button variant="primary" type="submit" busy={busy} disabled={!value.trim()} icon={<ArrowLeft size={17} />} className="gate__submit">
-          {busy ? 'جارٍ التحقق…' : 'دخول'}
-        </Button>
-        <small>الرمز يُحفظ لهذه الجلسة فقط ويُمسح عند إغلاق المتصفح.</small>
-      </motion.form>
-    </main>
   );
 }
 

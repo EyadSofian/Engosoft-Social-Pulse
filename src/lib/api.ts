@@ -8,16 +8,8 @@ export class ApiError extends Error {
   }
 }
 
-export async function request<T>(path: string, secret: string, init: RequestInit = {}): Promise<T> {
+export async function request<T>(path: string, init: RequestInit = {}): Promise<T> {
   const headers = new Headers(init.headers);
-  if (secret) {
-    // Header values must be Latin-1; anything else can never be the configured secret.
-    try {
-      headers.set('X-Admin-Secret', secret);
-    } catch {
-      throw new ApiError('رمز الدخول غير صحيح.', 401);
-    }
-  }
   let response: Response;
   try {
     response = await fetch(`/api${path}`, { ...init, headers });
