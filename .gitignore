@@ -6,5 +6,6 @@ dist/
 data/*.sqlite*
 *.log
 .railway/
+.claude/
 .DS_Store
 outputs/*.inspect.ndjson
