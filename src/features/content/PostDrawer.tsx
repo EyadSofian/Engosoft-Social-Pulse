@@ -10,7 +10,7 @@ import { fmtDateTime, num, pct, relative } from '../../lib/format';
 import { contentTypeLabel, platformName } from '../../lib/platforms';
 import type { Metrics, Post } from '../../types';
 
-export const METRIC_LABELS: { key: keyof Metrics; label: string }[] = [
+const METRIC_LABELS: { key: keyof Metrics; label: string }[] = [
   { key: 'views', label: 'مشاهدات' },
   { key: 'reach', label: 'وصول' },
   { key: 'impressions', label: 'مرات الظهور' },
@@ -33,7 +33,16 @@ export function PostDrawer({ post, onClose }: { post: Post | null; onClose: () =
     [data.plans, shown],
   );
   if (!shown) return null;
-  const available = METRIC_LABELS.filter((item) => shown.metrics[item.key] != null).length;
+  const metricLabels = METRIC_LABELS.filter((item) => !(shown.platform === 'facebook' && item.key === 'impressions')).map((item) =>
+    shown.platform === 'facebook'
+      ? item.key === 'views'
+        ? { ...item, label: 'مرات عرض المنشور' }
+        : item.key === 'reach'
+          ? { ...item, label: 'مشاهدون فريدون' }
+          : item
+      : item,
+  );
+  const available = metricLabels.filter((item) => shown.metrics[item.key] != null).length;
 
   return (
     <Drawer
@@ -70,9 +79,9 @@ export function PostDrawer({ post, onClose }: { post: Post | null; onClose: () =
           </div>
         </dl>
 
-        <h3 className="side__label">الأرقام · {available} من {METRIC_LABELS.length} متاحة</h3>
+        <h3 className="side__label">الأرقام · {available} من {metricLabels.length} متاحة</h3>
         <div className="post__metrics">
-          {METRIC_LABELS.map((item) => (
+          {metricLabels.map((item) => (
             <div key={item.key} className="metric" data-missing={shown.metrics[item.key] == null || undefined}>
               <b>{num(shown.metrics[item.key])}</b>
               <span>{item.label}</span>

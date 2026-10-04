@@ -18,8 +18,9 @@ async function list<T>(path:string,token:string,params:Record<string,string>,max
   }
   return output;
 }
-function insightValue(data:{data?:{name:string;values?:{value:unknown}[]}[]},name:string):number|null {
-  const item=data?.data?.find(row=>row.name===name);return numberOrNull(item?.values?.[0]?.value);
+function insightValue(data:{data?:{name:string;period?:string;values?:{value:unknown}[]}[]},name:string):number|null {
+  const rows=data?.data?.filter(row=>row.name===name)||[];
+  const item=rows.find(row=>row.period==='lifetime')||rows[0];return numberOrNull(item?.values?.[0]?.value);
 }
 async function optionalInsight(id:string,token:string,metrics:string[]):Promise<Record<string,number|null>> {
  const entries=await Promise.all(metrics.map(async metric=>{
@@ -28,6 +29,14 @@ async function optionalInsight(id:string,token:string,metrics:string[]):Promise<
  }));
  const output:Record<string,number|null>={};for(const [metric,value] of entries)output[metric]=value;
  return output;
+}
+async function optionalInsights(id:string,token:string,metrics:string[]):Promise<Record<string,number|null>> {
+ try {
+   const data=await graph<{data:{name:string;period?:string;values:{value:unknown}[]}[]}>(`${id}/insights`,token,{metric:metrics.join(',')});
+   return Object.fromEntries(metrics.map(metric=>[metric,insightValue(data,metric)]));
+ } catch {
+   return Object.fromEntries(metrics.map(metric=>[metric,null]));
+ }
 }
 export async function syncMeta():Promise<ConnectorResult[]> {
  const token=process.env.META_ACCESS_TOKEN?.trim();
@@ -68,8 +77,11 @@ export async function syncMeta():Promise<ConnectorResult[]> {
          const comments=p.comments as {summary?:{total_count?:number}}|undefined;
          const shares=p.shares as {count?:number}|undefined;
          const metrics=blankMetrics();metrics.likes=numberOrNull(likes?.summary?.total_count);metrics.comments=numberOrNull(comments?.summary?.total_count);metrics.shares=numberOrNull(shares?.count);
-         // Facebook's post endpoint returns action counts, while reach/views
-         // are not available per post in the current Graph API response.
+         // Meta retired Facebook's legacy reach and impression metrics in 2026.
+         // Use the replacement Page post Media Views and unique-viewer metrics.
+         const insights=await optionalInsights(id,pageToken,['post_media_view','post_total_media_view_unique']);
+         metrics.views=insights.post_media_view;
+         metrics.reach=insights.post_total_media_view_unique;
          metrics.engagement=[metrics.likes,metrics.comments,metrics.shares].some(value=>value!=null)
            ? [metrics.likes,metrics.comments,metrics.shares].reduce<number>((sum,value)=>sum+(value??0),0)
            : null;

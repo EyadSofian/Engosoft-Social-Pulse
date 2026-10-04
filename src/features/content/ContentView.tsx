@@ -18,9 +18,9 @@ type MetricKey = 'views' | 'reach' | 'impressions' | 'likes' | 'comments' | 'sha
 
 const PAGE_SIZE = 24;
 const COLUMNS: { key: MetricKey; label: string }[] = [
-  { key: 'views', label: 'مشاهدات' },
-  { key: 'reach', label: 'وصول' },
-  { key: 'impressions', label: 'ظهور' },
+  { key: 'views', label: 'مشاهدات / مرات العرض' },
+  { key: 'reach', label: 'وصول / مشاهدون' },
+  { key: 'impressions', label: 'ظهور قديم' },
   { key: 'likes', label: 'إعجابات' },
   { key: 'comments', label: 'تعليقات' },
   { key: 'shares', label: 'مشاركات' },
