@@ -68,6 +68,11 @@ export async function syncMeta():Promise<ConnectorResult[]> {
          const comments=p.comments as {summary?:{total_count?:number}}|undefined;
          const shares=p.shares as {count?:number}|undefined;
          const metrics=blankMetrics();metrics.likes=numberOrNull(likes?.summary?.total_count);metrics.comments=numberOrNull(comments?.summary?.total_count);metrics.shares=numberOrNull(shares?.count);
+         // Facebook's post endpoint returns action counts, while reach/views
+         // are not available per post in the current Graph API response.
+         metrics.engagement=[metrics.likes,metrics.comments,metrics.shares].some(value=>value!=null)
+           ? [metrics.likes,metrics.comments,metrics.shares].reduce<number>((sum,value)=>sum+(value??0),0)
+           : null;
          facebook.push({platform:'facebook',accountId:page.id,accountName:page.name,externalId:id,permalink:text(p.permalink_url),title:text(p.message).slice(0,220)||'Facebook post',publishedAt:text(p.created_time),contentType:'post',thumbnail:text(p.full_picture),metrics});
        }
      }catch(e){fbErrors.push(`${page.name}: ${e instanceof Error?e.message:'تعذّر القراءة'}`);}
