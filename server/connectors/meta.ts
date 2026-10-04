@@ -22,11 +22,11 @@ function insightValue(data:{data?:{name:string;values?:{value:unknown}[]}[]},nam
   const item=data?.data?.find(row=>row.name===name);return numberOrNull(item?.values?.[0]?.value);
 }
 async function optionalInsight(id:string,token:string,metrics:string[]):Promise<Record<string,number|null>> {
- const output:Record<string,number|null>={};
- for(const metric of metrics){
-   try { const data=await graph<{data:{name:string;values:{value:unknown}[]}[]}>(`${id}/insights`,token,{metric});output[metric]=insightValue(data,metric); }
-   catch { output[metric]=null; }
- }
+ const entries=await Promise.all(metrics.map(async metric=>{
+   try { const data=await graph<{data:{name:string;values:{value:unknown}[]}[]}>(`${id}/insights`,token,{metric});return [metric,insightValue(data,metric)] as const; }
+   catch { return [metric,null] as const; }
+ }));
+ const output:Record<string,number|null>={};for(const [metric,value] of entries)output[metric]=value;
  return output;
 }
 export async function syncMeta():Promise<ConnectorResult[]> {
