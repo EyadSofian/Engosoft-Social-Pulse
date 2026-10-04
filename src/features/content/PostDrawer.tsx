@@ -18,6 +18,7 @@ export const METRIC_LABELS: { key: keyof Metrics; label: string }[] = [
   { key: 'comments', label: 'تعليقات' },
   { key: 'shares', label: 'مشاركات' },
   { key: 'saves', label: 'حفظ' },
+  { key: 'engagement', label: 'إجمالي التفاعلات' },
   { key: 'clicks', label: 'نقرات' },
 ];
 

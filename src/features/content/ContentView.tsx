@@ -14,7 +14,7 @@ import type { Metrics, Post } from '../../types';
 type Section = 'posts' | 'pages';
 type Layout = 'table' | 'cards';
 type SortKey = 'date' | 'interactions' | 'rate' | MetricKey;
-type MetricKey = 'views' | 'reach' | 'impressions' | 'likes' | 'comments' | 'shares' | 'saves';
+type MetricKey = 'views' | 'reach' | 'impressions' | 'likes' | 'comments' | 'shares' | 'saves' | 'engagement';
 
 const PAGE_SIZE = 24;
 const COLUMNS: { key: MetricKey; label: string }[] = [
@@ -25,6 +25,7 @@ const COLUMNS: { key: MetricKey; label: string }[] = [
   { key: 'comments', label: 'تعليقات' },
   { key: 'shares', label: 'مشاركات' },
   { key: 'saves', label: 'حفظ' },
+  { key: 'engagement', label: 'تفاعلات' },
 ];
 const SORTS: { value: SortKey; label: string }[] = [
   { value: 'date', label: 'الأحدث' },
@@ -48,7 +49,7 @@ const safeCell = (value: unknown) => {
 };
 
 function exportCsv(posts: Post[], today: string) {
-  const header = ['Platform', 'Account', 'Published At', 'Post', 'URL', 'Views', 'Reach', 'Impressions', 'Likes', 'Comments', 'Shares', 'Saves', 'Engagement Rate %'];
+  const header = ['Platform', 'Account', 'Published At', 'Post', 'URL', 'Views', 'Reach', 'Impressions', 'Likes', 'Comments', 'Shares', 'Saves', 'Total Interactions', 'Engagement Rate %'];
   const rows = posts.map((post) => [
     platformLatin[post.platform],
     post.accountName,
@@ -62,6 +63,7 @@ function exportCsv(posts: Post[], today: string) {
     post.metrics.comments,
     post.metrics.shares,
     post.metrics.saves,
+    post.metrics.engagement,
     post.engagementRate,
   ]);
   const csv = '﻿' + [header, ...rows].map((row) => row.map(safeCell).join(',')).join('\r\n');
