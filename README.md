@@ -2,6 +2,8 @@
 
 مشروع مستقل لمتابعة تقويم المحتوى وأداء البوستات العضوية على Facebook وInstagram وTikTok وSnapchat، مع مشاهدات الموقع من GA4. لا يغيّر مشروع Engosoft Insights Hub المرجعي.
 
+نسخة الإنتاج: https://web-production-d07de.up.railway.app — تفاصيل النشر وحالة كل منصة في [ملف التسليم](HANDOFF.md).
+
 ## التشغيل
 
 ```bash
