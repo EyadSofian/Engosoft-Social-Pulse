@@ -81,8 +81,9 @@ export async function syncMeta():Promise<ConnectorResult[]> {
          const m=blankMetrics();m.likes=numberOrNull(p.like_count);m.comments=numberOrNull(p.comments_count);
          // Instagram insights are authorized on the user token. A Page token can
          // read media and engagement counts, but may return empty insight data.
-         const extra=canReadIgInsights?await optionalInsight(id,token,['reach','saved','shares','views']):{};
+         const extra=canReadIgInsights?await optionalInsight(id,token,['reach','saved','shares','views','impressions','total_interactions']):{};
          m.reach=extra.reach;m.saves=extra.saved;m.shares=extra.shares;m.views=extra.views;
+         m.impressions=extra.impressions;m.engagement=extra.total_interactions;
          instagram.push({platform:'instagram',accountId:igId,accountName:page.name,externalId:id,permalink:text(p.permalink),title:text(p.caption).slice(0,220)||'Instagram post',publishedAt:text(p.timestamp),contentType:text(p.media_type).toLowerCase()||'post',thumbnail:text(p.thumbnail_url)||text(p.media_url),metrics:m});
        }
      }catch(e){const message=e instanceof Error?e.message:'تعذّر القراءة';igErrors.push(`${page.name}: ${message.includes('code 10')?'صلاحية instagram_basic/instagram_manage_insights غير متاحة لهذا التوكن.':message}`);}
