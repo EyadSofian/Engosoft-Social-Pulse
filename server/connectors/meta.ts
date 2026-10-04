@@ -56,6 +56,7 @@ export async function syncMeta():Promise<ConnectorResult[]> {
      canReadIgInsights=permissions.data?.some(item=>item.permission==='instagram_manage_insights'&&item.status==='granted')||false;
    } catch { /* Media and engagement counts can still sync without insights access. */ }
    const facebook:ObservedPost[]=[];const instagram:ObservedPost[]=[];
+   let facebookMediaViews=0;let facebookUniqueViewers=0;
    const igErrors:string[]=[];const fbErrors:string[]=[];let fbDetail='';
    for(const page of pages){
      const pageToken=page.access_token||token;
@@ -82,6 +83,8 @@ export async function syncMeta():Promise<ConnectorResult[]> {
          const insights=await optionalInsights(id,pageToken,['post_media_view','post_total_media_view_unique']);
          metrics.views=insights.post_media_view;
          metrics.reach=insights.post_total_media_view_unique;
+         if(metrics.views!=null)facebookMediaViews++;
+         if(metrics.reach!=null)facebookUniqueViewers++;
          metrics.engagement=[metrics.likes,metrics.comments,metrics.shares].some(value=>value!=null)
            ? [metrics.likes,metrics.comments,metrics.shares].reduce<number>((sum,value)=>sum+(value??0),0)
            : null;
@@ -108,7 +111,7 @@ export async function syncMeta():Promise<ConnectorResult[]> {
      }catch(e){const message=e instanceof Error?e.message:'تعذّر القراءة';igErrors.push(`${page.name}: ${message.includes('code 10')?'صلاحية instagram_basic/instagram_manage_insights غير متاحة لهذا التوكن.':message}`);}
    }
    return [
-     {platform:'facebook',status:fbErrors.length&&!facebook.length?'error':'connected',message:fbErrors.join(' ')||`تم جلب ${facebook.length} بوست. ${fbDetail} الـinsights قد تتطلب read_insights.`,posts:facebook},
+     {platform:'facebook',status:fbErrors.length&&!facebook.length?'error':'connected',message:fbErrors.join(' ')||`تم جلب ${facebook.length} بوست. مشاهدات المحتوى متاحة لـ ${facebookMediaViews} بوست، والمشاهدون الفريدون لـ ${facebookUniqueViewers} بوست. ${fbDetail}`,posts:facebook},
      {platform:'instagram',status:igErrors.length&&!instagram.length?'error':'connected',message:igErrors.join(' ')||`تم جلب ${instagram.length} بوست.${canReadIgInsights?'':' reach/views/saves تحتاج صلاحية instagram_manage_insights.'}`,posts:instagram}
    ];
  }catch(e){const message=e instanceof Error?e.message:'تعذّر الاتصال بـMeta';return [{platform:'facebook',status:'error',message,posts:[]},{platform:'instagram',status:'error',message,posts:[]}];}
