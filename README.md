@@ -1,0 +1,83 @@
+# Engosoft Social Pulse
+
+مشروع مستقل لمتابعة تقويم المحتوى وأداء البوستات العضوية على Facebook وInstagram وTikTok وSnapchat، مع مشاهدات الموقع من GA4. لا يغيّر مشروع Engosoft Insights Hub المرجعي.
+
+## التشغيل
+
+```bash
+npm install
+cp .env.example .env
+npm run dev
+```
+
+افتح `http://127.0.0.1:5173`. الواجهة تعمل بدون مفاتيح، وتظهر حالة كل موصل بوضوح. المزامنة تتم بعد تشغيل السيرفر، كل 30 دقيقة، أو بزر **تحديث البيانات**. البيانات والخطة والتنبيهات محفوظة في SQLite داخل `data/`.
+
+للإنتاج:
+
+```bash
+npm run build
+HOST=0.0.0.0 DASHBOARD_ADMIN_SECRET=<strong-secret> npm start
+```
+
+اضبط `DATA_FILE` على مساحة تخزين دائمة (volume) قبل النشر. تشغيل عدة نسخ بخطّة SQLite محلية منفصلة سيجعل التقويم والتنبيهات غير متطابقة؛ استخدم نسخة واحدة حتى يُنقل التخزين إلى قاعدة مشتركة. لا تضع `.env` أو قاعدة البيانات في Git.
+
+## كاليندر الفريق
+
+حمّل [قالب الكاليندر](outputs/engosoft-social-calendar-template.xlsx) من المشروع أو من زر **حمّل القالب** داخل التطبيق. الورقة الأساسية اسمها `Calendar`، وتبدأ رؤوس الأعمدة في الصف الأول. ورقة `Guide` تشرح الأعمدة بالعربية. الأعمدة المطلوبة: `Date`, `Time`, `Platform`, `Post Title`. الوقت يُفسّر بتوقيت `Africa/Cairo`. اكتب صفًا لكل منصة لتسهيل عمل الفريق، أو اكتب عدة منصات في خلية واحدة مفصولة بفاصلة؛ الرفع يوزّعها إلى بوست مستقل لكل منصة في `CSV` و`XLSX`. إعادة رفع الصف نفسه لا تكرره.
+
+إذا صار البوست `published`، ضع **Published URL** أو **External Post ID**. المطابقة الآلية تستخدم المعرف أو رابطًا مطابقًا بدقة؛ تشابه النص وحده لا يؤكد النشر. أي بوست معتمد أو مجدول يقترب موعده خلال ساعة يولّد تذكيرًا مرة واحدة. بعد الموعد ومدة السماح (`ALERT_GRACE_MINUTES`, الافتراضي 15 دقيقة) يولّد تنبيه «لم يتم تأكيد النشر». التنبيهات داخل التطبيق متاحة دائمًا، ويمكن إرسالها إلى Telegram عند ضبط `TELEGRAM_BOT_TOKEN` و`TELEGRAM_CHAT_ID`. إذا تعطّل موصل منصة، يطلب التنبيه مراجعة يدوية بدل الجزم بأن البوست لم يُنشر. تنبيهات المتصفح تعمل عندما يكون التطبيق مفتوحًا وقد أذن المستخدم بها.
+
+النسخة الحالية **للتخطيط والرصد والتنبيه**. لا تنشر المحتوى تلقائيًا على المنصات؛ نشره يحتاج موافقات API وتدفق أصول/وسائط مناسب لكل منصة.
+
+## إعداد المصادر
+
+| المصدر | متغيرات البيئة | ما يُقرأ |
+| --- | --- | --- |
+| Facebook | `META_ACCESS_TOKEN`, اختياريًا `META_PAGE_IDS`, `META_API_VERSION` | بوستات الصفحات ونصها وروابطها وتاريخها؛ الإعجابات/التعليقات عند توفر الصلاحيات |
+| Instagram | توكن Meta نفسه، وحساب Professional مرتبط بصفحة | منشورات الحساب وحقول media insights التي يسمح بها التوكن |
+| TikTok | `TIKTOK_DISPLAY_ACCESS_TOKEN` بصلاحية `video.list`، وللتجديد `TIKTOK_DISPLAY_REFRESH_TOKEN`, `TIKTOK_CLIENT_KEY`, `TIKTOK_CLIENT_SECRET` | فيديوهات الحساب العام، المشاهدات، الإعجابات، التعليقات، المشاركات |
+| Snapchat | `SNAP_PROFILE_ACCESS_TOKEN`, `SNAP_PROFILE_ID`، وللتجديد `SNAP_PROFILE_REFRESH_TOKEN`, `SNAP_CLIENT_ID`, `SNAP_CLIENT_SECRET` | Stories وSpotlights ومشاهداتها وreach وfavorites وshares من Public Profile API |
+| Website | `GA4_PROPERTY_ID`, `GOOGLE_ANALYTICS_CLIENT_ID`, `GOOGLE_ANALYTICS_CLIENT_SECRET`, `GOOGLE_ANALYTICS_REFRESH_TOKEN` | مشاهدات الموقع اليومية وأداء كل مسار صفحة خلال 90 يومًا |
+
+الـtokens الموجودة في Insights Hub حاليًا موجهة أساسًا للإعلانات. توكن TikTok Marketing API لا يحل محل TikTok Display API user token. إعدادات Google Ads لا تعطي `analytics.readonly` لـGA4. Snapchat Public Profile API يحتاج OAuth scope باسم `snapchat-profile-api` وقد يتطلب allowlisting. الواجهة تُظهر الخطأ أو نقص الإعدادات بدل عرض أرقام وهمية. **X مؤجّل** لحين تزويد حسابه وصلاحياته.
+
+للمزامنة المستمرة مع TikTok وSnapchat، اضبط refresh token وبيانات تطبيق OAuth و`TOKEN_ENCRYPTION_KEY` (مفتاح 32 بايت بصيغة base64؛ يمكن توليده بـ`openssl rand -base64 32`). سيُجدّد السيرفر التوكن تلقائيًا قبل انتهاء صلاحيته ويحفظ التوكن البديل مشفّرًا داخل SQLite؛ أبقِ قاعدة البيانات والمفتاح على تخزين دائم. إذا وضعت access token وحده، تعمل القراءة مؤقتًا حتى انتهاء صلاحيته. عند تغيير مفتاح التشفير مع قاعدة قائمة ستحتاج إعادة ربط OAuth؛ احتفظ بنسخة آمنة من المفتاح. لا يظهر أي توكن للواجهة.
+
+في اختبار 4 أكتوبر 2026، أمكن قراءة بوستات صفحات Facebook بالتوكن الحالي، بينما حقول likes/comments التفصيلية وInstagram media لم تكن متاحة لكل الحسابات؛ لذلك تظل تلك المقاييس `null` وتظهر كـ`—` في الواجهة. بعض مقاييس Meta القديمة مثل `post_impressions` لا تُرجع بيانات في إصدار Graph الحالي؛ لا تُستبدل بمشاهدات الفيديو أو reach على أنها impressions.
+
+## الواجهة والأرقام
+
+- **نظرة عامة:** عدد البوستات في الفترة، التفاعلات ذات التغطية المعروفة، تنبيهات التنفيذ، مشاهدات الموقع، أفضل البوستات، والملخص الشهري لآخر ستة أشهر.
+- **الكاليندر:** جدول شهري قابل للتعديل والرفع، وحالة كل بوست.
+- **تأكيد النشر:** عند فتح بوست من الخطة، تظهر المنشورات المرصودة من الحساب نفسه قرب موعده؛ يختار المسؤول المطابق ويراجع الرابط قبل الحفظ.
+- **أداء البوستات:** metrics لكل بوست، تصفية حسب الفترة والمنصة، وتصدير CSV. ويظهر جدول مستقل لصفحات الموقع من GA4.
+- **الربط والمنصات:** آخر حالة مزامنة ورسالة عملية لكل مصدر.
+
+معدل التفاعل لكل بوست = `(likes + comments + shares + saves) / reach`، ويستخدم views ثم impressions إذا لم يُرجع المصدر reach. يظهر `—` عند غياب المقام أو القيم، ولا تتحول البيانات الغائبة إلى صفر. متوسط التفاعل الشهري يحسب فقط للبوستات التي رجعت لها قيم تفاعل، ويظهر معه عدد البوستات التي شملها الحساب.
+
+تقرير صفحات الموقع يعتمد على `pagePath` من GA4: يعرض المشاهدات، ومجموع المستخدمين النشطين يوميًا، ودقائق التفاعل لكل مسار. لا يستخدم أول زيارة كتاريخ نشر للمقال، ولا يضيف صفحة الويب إلى عداد بوستات المنصات الاجتماعية. عند تجاوز 10,000 سجل يوم/مسار خلال 90 يومًا، يوضح الموصل أن التقرير جزئي.
+
+## API
+
+`GET /api/dashboard`، `POST /api/plans`، `DELETE /api/plans/:id`، `POST /api/calendar/import`، `POST /api/sync`، `POST /api/alerts/check`، `POST /api/alerts/:id/dismiss`، `GET /api/health`.
+
+عند ضبط `DASHBOARD_ADMIN_SECRET` يتطلب كل مسار `/api` عدا health ترويسة `X-Admin-Secret`. التطبيق يحتفظ بالرمز في `sessionStorage` داخل المتصفح فقط. لا يسمح السيرفر بالاستماع على عنوان عام إذا لم تضبط الرمز.
+
+## التحقق
+
+```bash
+npm test
+npm run build
+```
+
+الاختبارات تغطي مطابقة النشر الدقيقة، التنبيه بعد الموعد، الفرق بين null والصفر في معدل التفاعل، قراءة CSV بتوقيت القاهرة، قابلية قراءة قالب XLSX، تحويل تقرير GA4 اليومي إلى أداء صفحات، تجديد OAuth مع تدوير refresh token، وتحويل إحصاءات Snapchat.
+
+## مراجع API الرسمية
+
+- [TikTok Display API](https://developers.tiktok.com/docs/en/display-api-overview)
+- [TikTok video list](https://developers.tiktok.com/docs/en/tiktok-api-v2-video-list)
+- [TikTok token refresh](https://developers.tiktok.com/docs/en/oauth-user-access-token-management)
+- [Snapchat Public Profile API](https://developers.snap.com/marketing-api/Public-Profile-API/Introduction)
+- [Snapchat profile metrics](https://developers.snap.com/marketing-api/Public-Profile-API/Metrics)
+- [Snapchat token refresh](https://developers.snap.com/marketing-api/Public-Profile-API/GetStarted)
+- [GA4 Data API](https://developers.google.com/analytics/devguides/reporting/data/v1/basics)

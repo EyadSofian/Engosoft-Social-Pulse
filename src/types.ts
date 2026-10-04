@@ -1,0 +1,9 @@
+export type Platform='facebook'|'instagram'|'tiktok'|'snapchat'|'website';
+export type State='published'|'upcoming'|'due'|'missed'|'draft'|'cancelled';
+export interface Metrics{views:number|null;reach:number|null;impressions:number|null;likes:number|null;comments:number|null;shares:number|null;saves:number|null;clicks:number|null;engagement:number|null;}
+export interface Post{platform:Platform;accountId:string;accountName:string;externalId:string;permalink:string;title:string;publishedAt:string;contentType:string;thumbnail:string;metrics:Metrics;engagementRate:number|null;}
+export interface Plan{id:string;platform:Platform;accountId:string;title:string;caption:string;scheduledAt:string;status:string;permalink:string;externalId:string;owner:string;contentType:string;campaign:string;notes:string;computedState:State;}
+export interface Alert{id:string;planId:string;kind:string;message:string;createdAt:string;deliveredAt:string;dismissedAt:string;}
+export interface Connector{platform:Platform;status:'connected'|'needs_setup'|'error';message:string;checkedAt:string;}
+export interface Dashboard{generatedAt:string;timeZone:string;posts:Post[];plans:Plan[];alerts:Alert[];connectors:Connector[];website:{date:string;views:number;sessions:number;engagedSessions:number}[];websitePages:WebsitePageDay[];}
+export interface WebsitePageDay{date:string;path:string;title:string;views:number;activeUsers:number;engagementSeconds:number;}

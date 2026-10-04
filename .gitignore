@@ -1,0 +1,10 @@
+node_modules/
+dist/
+.env
+.env.local
+.env.*.local
+data/*.sqlite*
+*.log
+.railway/
+.DS_Store
+outputs/*.inspect.ndjson

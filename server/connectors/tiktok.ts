@@ -1,0 +1,24 @@
+import { blankMetrics, type ConnectorResult, type ObservedPost } from '../types.js';
+import { json, numberOrNull, text } from './http.js';
+import { providerAccessToken } from './tokens.js';
+
+export async function syncTikTok():Promise<ConnectorResult>{
+ if(!process.env.TIKTOK_DISPLAY_ACCESS_TOKEN&&!process.env.TIKTOK_DISPLAY_REFRESH_TOKEN)return {platform:'tiktok',status:'needs_setup',message:'مطلوب TikTok Display API user token بصلاحية video.list؛ توكن Marketing Ads مختلف.',posts:[]};
+ try{
+   const token=await providerAccessToken('tiktok');
+   const posts:ObservedPost[]=[];let cursor:number|undefined;
+   for(let page=0;page<5;page++){
+     const body=await json<{data?:{videos?:Record<string,unknown>[];cursor?:number;has_more?:boolean};error?:{code:string}}>('https://open.tiktokapis.com/v2/video/list/?fields=id,create_time,title,video_description,share_url,cover_image_url,like_count,comment_count,share_count,view_count',{
+       method:'POST',headers:{Authorization:`Bearer ${token}`,'Content-Type':'application/json'},body:JSON.stringify({max_count:20,...(cursor?{cursor}:{})})
+     });
+     if(body.error?.code && body.error.code!=='ok')throw new Error(`TikTok API code ${body.error.code}`);
+     for(const video of body.data?.videos||[]){
+       const id=text(video.id);if(!id)continue;
+       const metrics=blankMetrics();metrics.views=numberOrNull(video.view_count);metrics.likes=numberOrNull(video.like_count);metrics.comments=numberOrNull(video.comment_count);metrics.shares=numberOrNull(video.share_count);
+       posts.push({platform:'tiktok',accountId:'',accountName:'TikTok',externalId:id,permalink:text(video.share_url),title:text(video.title)||text(video.video_description)||'TikTok video',publishedAt:new Date(Number(video.create_time)*1000).toISOString(),contentType:'video',thumbnail:text(video.cover_image_url),metrics});
+     }
+     if(!body.data?.has_more || !body.data.cursor)break;cursor=body.data.cursor;
+   }
+   return {platform:'tiktok',status:'connected',message:`تم جلب ${posts.length} فيديو.${process.env.TIKTOK_DISPLAY_REFRESH_TOKEN?' تجديد OAuth مفعّل.':' اضبط refresh token لاستمرار المزامنة بعد انتهاء access token.'}`,posts};
+ }catch(e){return {platform:'tiktok',status:'error',message:e instanceof Error?e.message:'تعذّر الاتصال بـTikTok',posts:[]};}
+}
