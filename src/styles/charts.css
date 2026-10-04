@@ -1,0 +1,370 @@
+/* Charts: thin marks, hairline solid grid, text in ink tokens — only the marks carry the data colour. */
+
+.chart {
+  position: relative;
+  width: 100%;
+}
+
+.chart__stage {
+  position: relative;
+  width: 100%;
+  height: 100%;
+  border-radius: var(--r-sm);
+  outline-offset: 4px;
+  cursor: crosshair;
+  touch-action: pan-y;
+}
+
+.chart__grid {
+  stroke: var(--grid);
+  stroke-width: 1;
+}
+
+.chart__axis {
+  stroke: var(--axis);
+  stroke-width: 1;
+}
+
+.chart__tick,
+.chart__label,
+.chart__cap {
+  fill: var(--ink-3);
+  font-size: 11.5px;
+  font-variant-numeric: tabular-nums;
+}
+
+.chart__label {
+  direction: rtl;
+}
+
+.chart__cap {
+  fill: var(--ink-2);
+  font-size: 12.5px;
+  font-weight: 600;
+}
+
+.chart__area {
+  animation: chart-fade 0.9s 0.25s var(--ease-out) both;
+}
+
+.chart__line {
+  fill: none;
+  stroke: var(--data);
+  stroke-width: 2;
+  stroke-linecap: round;
+  stroke-linejoin: round;
+  stroke-dasharray: 1;
+  animation: chart-draw 1.15s var(--ease-out) both;
+}
+
+.chart__dot {
+  fill: var(--data);
+  stroke: var(--mark-gap);
+  stroke-width: 2;
+}
+
+.chart__dot--end {
+  animation: chart-fade 0.4s 1s var(--ease-out) both;
+}
+
+.chart__cross {
+  stroke: var(--line-strong);
+  stroke-width: 1;
+}
+
+.chart__bar {
+  fill: var(--data);
+  transform-box: fill-box;
+  transform-origin: 50% 100%;
+  animation: chart-grow 0.6s var(--ease-out) both;
+  animation-delay: calc(var(--i) * 9ms);
+  transition: opacity var(--t-fast);
+}
+
+.chart__bar[data-partial] {
+  opacity: 0.45;
+}
+
+.chart__stage:hover .chart__bar:not([data-active='true']),
+.chart__stage:focus-visible .chart__bar:not([data-active='true']) {
+  opacity: 0.38;
+}
+
+.chart__stage:hover .chart__bar[data-partial]:not([data-active='true']) {
+  opacity: 0.22;
+}
+
+.chart__bar[data-active='true'] {
+  opacity: 1;
+}
+
+@keyframes chart-draw {
+  from {
+    stroke-dashoffset: 1;
+  }
+  to {
+    stroke-dashoffset: 0;
+  }
+}
+
+@keyframes chart-fade {
+  from {
+    opacity: 0;
+  }
+}
+
+@keyframes chart-grow {
+  from {
+    transform: scaleY(0);
+  }
+}
+
+/* Tooltip: the value leads, the label follows. */
+.chart__tip {
+  position: absolute;
+  z-index: 5;
+  display: flex;
+  flex-direction: column;
+  gap: 1px;
+  min-width: 116px;
+  padding: 9px 12px 10px;
+  border-radius: 12px;
+  direction: rtl;
+  text-align: start;
+  white-space: nowrap;
+  pointer-events: none;
+  transform: translate(-50%, -100%);
+  transition:
+    left 0.12s var(--ease-out),
+    top 0.12s var(--ease-out);
+}
+
+.chart__tip[data-align='start'] {
+  transform: translate(-14px, -100%);
+}
+
+.chart__tip[data-align='end'] {
+  transform: translate(calc(-100% + 14px), -100%);
+}
+
+.chart__tip strong {
+  font-size: 17px;
+  font-weight: 700;
+  line-height: 1.3;
+}
+
+.chart__tip strong small {
+  font-size: 12px;
+  font-weight: 500;
+  color: var(--ink-3);
+}
+
+.chart__tip span {
+  display: flex;
+  align-items: center;
+  gap: 7px;
+  font-size: 12.5px;
+  color: var(--ink-2);
+}
+
+.chart__tip em {
+  font-size: 11.5px;
+  color: var(--ink-3);
+}
+
+.chart__key {
+  display: block;
+  width: 12px;
+  height: 2px;
+  border-radius: 2px;
+  background: var(--data);
+}
+
+.chart__key[data-kind='bars'] {
+  width: 8px;
+  height: 8px;
+  border-radius: 2px;
+}
+
+/* ── Sparkline ─────────────────────────────────────────────────────── */
+
+.spark {
+  width: 100%;
+  margin-top: auto;
+}
+
+.spark__line {
+  fill: none;
+  stroke: var(--ink-4);
+  stroke-width: 1.75;
+  stroke-linecap: round;
+  stroke-linejoin: round;
+}
+
+.spark__dot {
+  fill: var(--tone, var(--data));
+  stroke: var(--mark-gap);
+  stroke-width: 2;
+}
+
+/* ── Heatmap (sequential: one hue, brighter = more) ────────────────── */
+
+.heat {
+  position: relative;
+}
+
+.heat table {
+  width: 100%;
+  table-layout: fixed;
+}
+
+.heat thead td {
+  width: 62px;
+}
+
+.heat thead th {
+  height: 22px;
+  padding: 0;
+  font-size: 11px;
+  font-weight: 500;
+  color: var(--ink-3);
+  text-align: start;
+  white-space: nowrap;
+  overflow: visible;
+}
+
+.heat tbody th {
+  padding-inline-end: 10px;
+  font-size: 12.5px;
+  font-weight: 500;
+  color: var(--ink-2);
+  text-align: start;
+  white-space: nowrap;
+}
+
+.heat tbody td {
+  padding: 1.5px;
+}
+
+.heat__cell {
+  display: block;
+  width: 100%;
+  aspect-ratio: 1;
+  max-height: 30px;
+  border-radius: 5px;
+  background: color-mix(in oklab, var(--data) calc(14% + var(--v) * 86%), transparent);
+  outline-offset: 1px;
+  transition:
+    transform var(--t-fast) var(--ease-out),
+    box-shadow var(--t-fast);
+}
+
+.heat__cell[data-empty] {
+  background: var(--wash);
+}
+
+.heat__cell:hover,
+.heat__cell:focus-visible {
+  transform: scale(1.22);
+  box-shadow: 0 0 0 2px var(--ink-1);
+}
+
+.heat__cell[data-best] {
+  box-shadow: 0 0 0 1.5px var(--amber);
+}
+
+.heat__legend {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin-top: 14px;
+  font-size: 12px;
+  color: var(--ink-3);
+}
+
+.heat__ramp {
+  display: inline-flex;
+  gap: 3px;
+}
+
+.heat__ramp i {
+  display: block;
+  width: 18px;
+  height: 10px;
+  border-radius: 3px;
+  background: color-mix(in oklab, var(--data) calc(14% + var(--v) * 86%), transparent);
+}
+
+.heat__max {
+  margin-inline-start: auto;
+}
+
+@media (max-width: 640px) {
+  .heat thead td {
+    width: 46px;
+  }
+
+  .heat tbody th {
+    font-size: 11px;
+    padding-inline-end: 4px;
+  }
+
+  .heat tbody td {
+    padding: 1px;
+  }
+
+  .heat__cell {
+    border-radius: 3px;
+  }
+
+  .heat thead th span:not(.sr-only) {
+    font-size: 9.5px;
+  }
+}
+
+/* ── Bar lists (one series, one hue) ───────────────────────────────── */
+
+.bars {
+  display: flex;
+  flex-direction: column;
+  gap: 13px;
+}
+
+.bars__row {
+  display: grid;
+  grid-template-columns: 66px minmax(0, 1fr) 34px;
+  align-items: center;
+  gap: 12px;
+  font-size: 13.5px;
+  color: var(--ink-2);
+}
+
+.bars__row b {
+  font-weight: 600;
+  font-variant-numeric: tabular-nums;
+  color: var(--ink-1);
+  text-align: end;
+}
+
+.bars__track {
+  height: 8px;
+  border-radius: 4px;
+  background: var(--wash);
+  overflow: hidden;
+}
+
+.bars__track i {
+  display: block;
+  width: calc(var(--share) * 100%);
+  height: 100%;
+  border-radius: 4px;
+  background: var(--data);
+  transform-origin: right center;
+  animation: bar-in 0.8s var(--ease-out) both;
+}
+
+@keyframes bar-in {
+  from {
+    transform: scaleX(0);
+  }
+}

@@ -1,143 +1,173 @@
-import { useEffect, useMemo, useRef, useState, type ReactNode } from 'react';
-import { addMonths, endOfMonth, format, startOfMonth, startOfWeek, addDays, isSameMonth } from 'date-fns';
-import { ar } from 'date-fns/locale';
-import { DateTime } from 'luxon';
-import { Area, AreaChart, CartesianGrid, ResponsiveContainer, Tooltip, XAxis, YAxis } from 'recharts';
-import { Activity, ArrowDownToLine, ArrowLeft, ArrowUpLeft, Bell, CalendarDays, ChartNoAxesCombined, Check, ChevronLeft, ChevronRight, CircleAlert, Clock3, Download, ExternalLink, FileSpreadsheet, Filter, Globe2, Instagram, LayoutDashboard, Link2, Menu, Plus, RefreshCw, Search, Settings2, ShieldCheck, Sparkles, Trash2, Upload, X } from 'lucide-react';
-import type { Alert, Connector, Dashboard, Plan, Platform, Post, State } from './types';
+import { useCallback, useEffect, useMemo, useState, type JSX } from 'react';
+import { AnimatePresence, MotionConfig, motion } from 'motion/react';
+import { AlertsDrawer, openAlertItems } from './components/shell/AlertsDrawer';
+import { Aurora, Dock, LoadingScreen, LockScreen, NAV, OfflineScreen, StaleBanner, TopNav } from './components/shell/Shell';
+import { ToastProvider, useToast } from './components/ui/Toast';
+import { AppContext, type AppContextValue, type PlanTarget } from './context';
+import { PlanDrawer } from './features/calendar/PlanDrawer';
+import { CalendarView } from './features/calendar/CalendarView';
+import { ConnectionsView } from './features/connections/ConnectionsView';
+import { ContentView } from './features/content/ContentView';
+import { PostDrawer } from './features/content/PostDrawer';
+import { InsightsView } from './features/insights/InsightsView';
+import { OverviewView } from './features/overview/OverviewView';
+import { useDashboard } from './hooks/useDashboard';
+import { useNow, useRoute, useSpotlight, useTheme, type Route } from './hooks/ui';
+import { todayNumber, type Filters } from './lib/analytics';
+import { errorMessage } from './lib/api';
+import { num, parseTimestamp } from './lib/format';
+import { platformName } from './lib/platforms';
+import type { Alert, Platform, Post } from './types';
 
-const names:Record<Platform,string>={facebook:'Facebook',instagram:'Instagram',tiktok:'TikTok',snapchat:'Snapchat',website:'Website'};
-const initials:Record<Platform,string>={facebook:'f',instagram:'◎',tiktok:'♪',snapchat:'S',website:'◉'};
-const states:Record<State,string>={published:'تم النشر',upcoming:'قادم',due:'موعد النشر',missed:'لم يتأكد النشر',draft:'مسودة',cancelled:'ملغي'};
-const empty:Dashboard={generatedAt:'',timeZone:'Africa/Cairo',posts:[],plans:[],alerts:[],connectors:[],website:[],websitePages:[]};
-const nf=new Intl.NumberFormat('en-US');
-const compact=new Intl.NumberFormat('en',{notation:'compact',maximumFractionDigits:1});
-const cairo=(iso:string,opts:Intl.DateTimeFormatOptions={})=>iso?new Intl.DateTimeFormat('ar-EG',{timeZone:'Africa/Cairo',...opts}).format(new Date(iso)):'—';
-const plain=(n:number|null|undefined)=>n==null?'—':nf.format(n);
-const pct=(n:number|null|undefined)=>n==null?'—':`${n.toFixed(1)}%`;
-const postActions=(p:Post)=>[p.metrics.likes,p.metrics.comments,p.metrics.shares,p.metrics.saves].reduce<number>((s,v)=>s+(v??0),0);
-const toInput=(iso:string)=>DateTime.fromISO(iso).setZone('Africa/Cairo').toFormat("yyyy-LL-dd'T'HH:mm");
+const VIEWS: Record<Route, () => JSX.Element> = {
+  overview: OverviewView,
+  calendar: CalendarView,
+  content: ContentView,
+  insights: InsightsView,
+  connections: ConnectionsView,
+};
 
-function PlatformMark({platform,size='normal'}:{platform:Platform;size?:'normal'|'small'}){return <span className={`platform-mark ${platform} ${size}`} aria-label={names[platform]}>{initials[platform]}</span>}
-function StatePill({state}:{state:State}){return <span className={`state-pill ${state}`}><span className="state-dot"/>{states[state]}</span>}
-function Label({children}:{children:ReactNode}){return <span className="eyebrow">{children}</span>}
-function ShellIcon({tab}:{tab:string}){if(tab==='overview')return <LayoutDashboard size={19}/>;if(tab==='calendar')return <CalendarDays size={19}/>;if(tab==='posts')return <ChartNoAxesCombined size={19}/>;return <Link2 size={19}/>}
+/** Server alert text names platforms by id ("على facebook"); show the display name instead. */
+const readable = (message: string) =>
+  message.replace(/على (facebook|instagram|tiktok|snapchat|website)/g, (_, id: Platform) => `على ${platformName[id]}`);
 
-async function api<T>(path:string,secret:string,init:RequestInit={}):Promise<T>{
- const headers:HeadersInit={...(init.headers||{}),...(secret?{'X-Admin-Secret':secret}:{})};
- const response=await fetch(`/api${path}`,{...init,headers});
- const body=await response.json().catch(()=>({}));
- if(!response.ok)throw new Error(body.error||`HTTP ${response.status}`);
- return body as T;
+export default function App() {
+  return (
+    <MotionConfig reducedMotion="user">
+      <ToastProvider>
+        <Root />
+      </ToastProvider>
+    </MotionConfig>
+  );
 }
 
-export default function App(){
- const [tab,setTab]=useState<'overview'|'calendar'|'posts'|'integrations'>('overview');
- const [data,setData]=useState<Dashboard>(empty);const [secret,setSecret]=useState(sessionStorage.getItem('social-pulse-secret')||'');
- const [locked,setLocked]=useState(false);const [loading,setLoading]=useState(true);const [syncing,setSyncing]=useState(false);
- const [error,setError]=useState('');const [toast,setToast]=useState('');const [platform,setPlatform]=useState<Platform|'all'>('all');
- const [period,setPeriod]=useState<'7'|'30'|'90'>('30');const [month,setMonth]=useState(startOfMonth(new Date()));
- const [modal,setModal]=useState<Plan|true|null>(null);const [showAlerts,setShowAlerts]=useState(false);const [mobileNav,setMobileNav]=useState(false);
- const fileRef=useRef<HTMLInputElement>(null);const seenAlerts=useRef(new Set<string>());
+function Root() {
+  const toast = useToast();
+  const { route, go } = useRoute();
+  const { theme, toggle } = useTheme();
+  const now = useNow();
+  useSpotlight();
 
- async function load(quiet=false){
-  try{const result=await api<Dashboard>('/dashboard',secret);setData(result);setLocked(false);setError('');
-   for(const alert of result.alerts.filter(x=>!x.dismissedAt&&x.kind==='missed')){
-    if(seenAlerts.current.size&& !seenAlerts.current.has(alert.id)&&'Notification' in window&&Notification.permission==='granted')new Notification('Engosoft Social Pulse',{body:alert.message});
-    seenAlerts.current.add(alert.id);
-   }
-  }catch(e){if(e instanceof Error&&e.message.includes('رمز'))setLocked(true);else if(!quiet)setError(e instanceof Error?e.message:'تعذّر تحميل الداشبورد');}
-  finally{setLoading(false);}
- }
- useEffect(()=>{void load();const timer=setInterval(()=>void load(true),60_000);return()=>clearInterval(timer);},[secret]);
- useEffect(()=>{if(toast){const timer=setTimeout(()=>setToast(''),4500);return()=>clearTimeout(timer);}},[toast]);
- const activeAlerts=data.alerts.filter(x=>!x.dismissedAt);
- const current=useMemo(()=>{
-  const cutoff=Date.now()-Number(period)*86_400_000;
-  return data.posts.filter(p=>new Date(p.publishedAt).getTime()>=cutoff&&(platform==='all'||p.platform===platform));
- },[data.posts,period,platform]);
- const planned=useMemo(()=>data.plans.filter(p=>platform==='all'||p.platform===platform),[data.plans,platform]);
- const website=data.website.filter(day=>new Date(day.date).getTime()>=Date.now()-Number(period)*86_400_000);
- const measured=current.filter(p=>[p.metrics.likes,p.metrics.comments,p.metrics.shares,p.metrics.saves].some(x=>x!=null));
- const interactions=measured.reduce((s,p)=>s+postActions(p),0);
- const reach=current.reduce((s,p)=>s+(p.metrics.reach??0),0);
- const reachCoverage=current.filter(p=>p.metrics.reach!=null).length;
- const due=planned.filter(p=>p.computedState==='missed'||p.computedState==='due');
- const upcoming=planned.filter(p=>p.computedState==='upcoming').sort((a,b)=>a.scheduledAt.localeCompare(b.scheduledAt));
- const webViews=website.reduce((s,d)=>s+d.views,0);
- const trend=useMemo(()=>{
-  const days=Number(period),arr:{date:string;label:string;interactions:number;posts:number}[]=[];
-  for(let i=days-1;i>=0;i--){const d=new Date();d.setDate(d.getDate()-i);const key=new Intl.DateTimeFormat('en-CA',{timeZone:'Africa/Cairo',year:'numeric',month:'2-digit',day:'2-digit'}).format(d);arr.push({date:key,label:key.slice(5),interactions:0,posts:0});}
-  const byDay=new Map(arr.map((d,i)=>[d.date,i]));
-  for(const p of current){const key=new Intl.DateTimeFormat('en-CA',{timeZone:'Africa/Cairo',year:'numeric',month:'2-digit',day:'2-digit'}).format(new Date(p.publishedAt));const i=byDay.get(key);if(i!==undefined){arr[i].interactions+=postActions(p);arr[i].posts++;}}
-  return arr;
- },[current,period]);
- const top=[...measured].sort((a,b)=>postActions(b)-postActions(a)).slice(0,4);
- const monthly=useMemo(()=>{
-  const rows:{key:string;label:string;count:number;interactions:number;average:number;measured:number}[]=[];
-  for(let i=5;i>=0;i--){const date=DateTime.now().setZone('Africa/Cairo').startOf('month').minus({months:i});rows.push({key:date.toFormat('yyyy-LL'),label:date.setLocale('ar').toFormat('LLLL yyyy'),count:0,interactions:0,average:0,measured:0});}
-  const byMonth=new Map(rows.map((r,i)=>[r.key,i]));
-  for(const p of data.posts){if(platform!=='all'&&p.platform!==platform)continue;const key=DateTime.fromISO(p.publishedAt).setZone('Africa/Cairo').toFormat('yyyy-LL');const index=byMonth.get(key);if(index===undefined)continue;rows[index].count++;if([p.metrics.likes,p.metrics.comments,p.metrics.shares,p.metrics.saves].some(x=>x!=null)){rows[index].interactions+=postActions(p);rows[index].measured++;}}
-  return rows.map(r=>({...r,average:r.measured?Math.round(r.interactions/r.measured):0}));
- },[data.posts,platform]);
- const connectors=Object.entries(names).map(([key])=>data.connectors.find(c=>c.platform===key)||{platform:key as Platform,status:'needs_setup',message:'لم تتم المزامنة بعد.',checkedAt:''} as Connector);
- const websitePageTotals=useMemo(()=>{
-  const since=DateTime.now().setZone('Africa/Cairo').startOf('day').minus({days:Number(period)-1}).toFormat('yyyy-LL-dd');
-  const byPath=new Map<string,{path:string;title:string;views:number;activeUsers:number;engagementSeconds:number;days:number}>();
-  for(const page of data.websitePages){if(page.date<since)continue;const item=byPath.get(page.path)||{path:page.path,title:page.title,views:0,activeUsers:0,engagementSeconds:0,days:0};item.views+=page.views;item.activeUsers+=page.activeUsers;item.engagementSeconds+=page.engagementSeconds;item.days++;byPath.set(page.path,item);}
-  return [...byPath.values()].sort((a,b)=>b.views-a.views);
- },[data.websitePages,period]);
- const visiblePosts=[...current].sort((a,b)=>b.publishedAt.localeCompare(a.publishedAt));
+  const [filters, setFilterState] = useState<Filters>({ platform: 'all', account: 'all', period: 30 });
+  const [planTarget, setPlanTarget] = useState<PlanTarget | null>(null);
+  const [planOpenId, setPlanOpenId] = useState(0);
+  const [post, setPost] = useState<Post | null>(null);
+  const [alertsOpen, setAlertsOpen] = useState(false);
 
- async function sync(){setSyncing(true);setError('');try{await api('/sync',secret,{method:'POST'});await load(true);setToast('اكتملت المزامنة.');}catch(e){setError(e instanceof Error?e.message:'فشلت المزامنة');}finally{setSyncing(false);}}
- async function importCalendar(file:File){try{const result=await api<{imported:number;duplicates:number;errors:string[]}>('/calendar/import',secret,{method:'POST',headers:{'Content-Type':'application/octet-stream','X-Filename':file.name},body:await file.arrayBuffer()});await load(true);setTab('calendar');setToast(`تمت إضافة ${result.imported} بوست. ${result.errors.length?`${result.errors.length} صف يحتاج مراجعة.`:''}`);if(result.errors.length)setError(result.errors.slice(0,5).join(' '));}catch(e){setError(e instanceof Error?e.message:'فشل رفع الملف');}if(fileRef.current)fileRef.current.value='';}
- async function dismiss(alert:Alert){try{await api(`/alerts/${alert.id}/dismiss`,secret,{method:'POST'});await load(true);}catch(e){setError(e instanceof Error?e.message:'تعذّر إغلاق التنبيه');}}
- async function savePlanForm(plan:Partial<Plan>){try{await api('/plans',secret,{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify(plan)});setModal(null);await load(true);setToast('تم حفظ البوست في الكاليندر.');}catch(e){setError(e instanceof Error?e.message:'تعذّر الحفظ');}}
- async function removePlan(id:string){if(!confirm('حذف هذا البوست من الكاليندر؟'))return;try{await api(`/plans/${id}`,secret,{method:'DELETE'});setModal(null);await load(true);setToast('تم حذف البوست.');}catch(e){setError(e instanceof Error?e.message:'تعذّر الحذف');}}
- function exportCsv(){const rows=[['Platform','Account','Published At','Post','URL','Views','Reach','Impressions','Likes','Comments','Shares','Saves','Engagement Rate %'],...visiblePosts.map(p=>[names[p.platform],p.accountName,p.publishedAt,p.title,p.permalink,p.metrics.views,p.metrics.reach,p.metrics.impressions,p.metrics.likes,p.metrics.comments,p.metrics.shares,p.metrics.saves,p.engagementRate])];const csv='\uFEFF'+rows.map(row=>row.map(v=>`"${String(v??'').replaceAll('"','""')}"`).join(',')).join('\r\n');const link=document.createElement('a');link.href=URL.createObjectURL(new Blob([csv],{type:'text/csv;charset=utf-8'}));link.download='engosoft-social-posts.csv';link.click();URL.revokeObjectURL(link.href);}
- function enableNotifications(){if('Notification'in window)void Notification.requestPermission().then(x=>setToast(x==='granted'?'تم تفعيل تنبيهات المتصفح.':'يمكنك متابعة التنبيهات من لوحة الإشعارات.'));}
+  const onNewAlert = useCallback(
+    (alert: Alert) => {
+      const message = readable(alert.message);
+      toast.alert(alert.kind === 'missed' ? 'لم يتأكد نشر بوست' : 'بوست قريب', message, { label: 'عرض', run: () => setAlertsOpen(true) });
+      if ('Notification' in window && Notification.permission === 'granted') {
+        try {
+          new Notification('Social Pulse', { body: message, tag: alert.id, lang: 'ar', dir: 'rtl' });
+        } catch {
+          /* Some browsers only allow notifications from a service worker. */
+        }
+      }
+    },
+    [toast],
+  );
 
- if(locked)return <div className="login-screen"><div className="login-card"><div className="brand-symbol">e<span>·</span></div><Label>ENGOSOFT / SOCIAL PULSE</Label><h1>مساحة واحدة لكل محتواك.</h1><p>أدخل رمز لوحة التحكم لعرض الأداء والكاليندر.</p><form onSubmit={e=>{e.preventDefault();const val=(e.currentTarget.elements.namedItem('secret') as HTMLInputElement).value;sessionStorage.setItem('social-pulse-secret',val);setSecret(val);}}><input type="password" name="secret" placeholder="رمز الدخول" autoFocus/><button className="primary-button">دخول <ArrowLeft size={17}/></button></form></div></div>;
+  const store = useDashboard(onNewAlert);
+  const { data, sync } = store;
+  const todayNum = todayNumber(now);
 
- return <div className="app-shell">
-  <aside className={`sidebar ${mobileNav?'open':''}`}>
-   <div className="brand"><div className="brand-symbol">e<span>·</span></div><div><strong>ENGOSOFT</strong><small>SOCIAL PULSE</small></div></div>
-   <div className="workspace-label">مساحة العمل <span>01</span></div>
-   <nav className="main-nav">{([['overview','نظرة عامة'],['calendar','الكاليندر'],['posts','أداء البوستات'],['integrations','الربط والمنصات']] as const).map(([key,label])=><button key={key} className={tab===key?'active':''} onClick={()=>{setTab(key);setMobileNav(false);}}><ShellIcon tab={key}/><span>{label}</span>{key==='calendar'&&due.length>0?<em>{due.length}</em>:null}</button>)}</nav>
-   <div className="sidebar-bottom"><div className="sidebar-mini"><Sparkles size={18}/><div><b>جاهز للتخطيط</b><span>ارفع الكاليندر وابدأ المتابعة</span></div></div><span className="sidebar-foot">ENGOSOFT © 2026</span></div>
-  </aside>
-  <div className="main-wrap"><header className="topbar"><button className="mobile-menu icon-button" onClick={()=>setMobileNav(!mobileNav)}><Menu size={21}/></button><div className="breadcrumb">Engosoft <ChevronLeft size={14}/> Social Pulse <ChevronLeft size={14}/> <b>{tab==='overview'?'نظرة عامة':tab==='calendar'?'الكاليندر':tab==='posts'?'أداء البوستات':'الربط والمنصات'}</b></div><div className="top-actions"><span className="top-date">{cairo(new Date().toISOString(),{weekday:'long',day:'numeric',month:'long'})}</span><button className="icon-button notify-button" title="الإشعارات" onClick={()=>setShowAlerts(!showAlerts)}><Bell size={19}/>{activeAlerts.length>0&&<i/>}</button><span className="avatar">ES</span></div></header>
-  <main className="content">
-   {error&&<div className="error-banner"><CircleAlert size={18}/><span>{error}</span><button onClick={()=>setError('')}><X size={16}/></button></div>}
-   {loading?<div className="loading"><Activity className="spin"/> جاري تحميل البيانات...</div>:<>
-   {tab==='overview'&&<>
-    <div className="page-heading"><div><Label>CONTENT INTELLIGENCE / 2026</Label><h1>صباح الخير، فريق إنجوسوفت <span className="heading-spark">✳</span></h1><p>الأداء، خطة النشر، وما يحتاج انتباهك في مكان واحد.</p></div><div className="heading-actions"><button className="outline-button" onClick={sync} disabled={syncing}><RefreshCw size={17} className={syncing?'spin':''}/>{syncing?'جاري التحديث':'تحديث البيانات'}</button><button className="primary-button" onClick={()=>setModal(true)}><Plus size={18}/> بوست جديد</button></div></div>
-    <div className="overview-banner"><div className="banner-copy"><div className="banner-overline"><span/> لوحة التحكم المباشرة</div><h2>كل منصة تحكي قصة.<br/><em>هنا الصورة الكاملة.</em></h2><p>راقب تنفيذ الخطة، واكتشف البوستات التي تصنع التفاعل.</p><div className="banner-actions"><button onClick={()=>setTab('calendar')}>افتح الكاليندر <ArrowLeft size={18}/></button><span>{connectors.filter(c=>c.status==='connected').length} / 5 مصادر متصلة</span></div></div><div className="banner-art"><div className="art-ring ring-one"/><div className="art-ring ring-two"/><div className="art-center"><Activity size={42}/></div><span className="art-dot dot-one"/><span className="art-dot dot-two"/><span className="art-dot dot-three"/></div></div>
-    <div className="section-line"><div><Label>PERFORMANCE SNAPSHOT</Label><h2>ملخص الأداء</h2></div><div className="filters"><select aria-label="المنصة" value={platform} onChange={e=>setPlatform(e.target.value as Platform|'all')}><option value="all">كل المنصات</option>{Object.entries(names).map(([k,v])=><option key={k} value={k}>{v}</option>)}</select><select aria-label="الفترة" value={period} onChange={e=>setPeriod(e.target.value as typeof period)}><option value="7">آخر 7 أيام</option><option value="30">آخر 30 يوم</option><option value="90">آخر 90 يوم</option></select></div></div>
-    <div className="kpi-grid"><Kpi icon={<ChartNoAxesCombined/>} label="بوستات منشورة" value={plain(current.length)} foot="من المنصات المتصلة" tone="teal"/><Kpi icon={<Activity/>} label="التفاعلات المرصودة" value={measured.length?plain(interactions):'—'} foot={`${measured.length} من ${current.length} بوست لها بيانات تفاعل`} tone="blue"/><Kpi icon={<CircleAlert/>} label="تحتاج متابعة" value={plain(due.length)} foot="موعد نشر حل أو لم يتأكد" tone={due.length?'orange':'teal'}/><Kpi icon={<Globe2/>} label="مشاهدات الموقع" value={(platform==='all'||platform==='website')&&website.length?plain(webViews):'—'} foot="من Google Analytics 4" tone="purple"/></div>
-    <div className="overview-grid"><section className="panel chart-panel"><div className="panel-head"><div><Label>ENGAGEMENT TREND</Label><h3>حركة التفاعل</h3><p>إجمالي التفاعلات على البوستات التي تم رصدها</p></div><span className="panel-tag">آخر {period} يوم</span></div><div className="chart-wrap">{measured.length?<ResponsiveContainer width="100%" height={260}><AreaChart data={trend}><defs><linearGradient id="engagementFill" x1="0" x2="0" y1="0" y2="1"><stop offset="0%" stopColor="#18ad9b" stopOpacity={0.28}/><stop offset="100%" stopColor="#18ad9b" stopOpacity={0}/></linearGradient></defs><CartesianGrid vertical={false} stroke="#e9eeef"/><XAxis dataKey="label" axisLine={false} tickLine={false} tick={{fill:'#8c9a9e',fontSize:11}} interval={period==='90'?14:period==='30'?5:0}/><YAxis axisLine={false} tickLine={false} tick={{fill:'#8c9a9e',fontSize:11}}/><Tooltip contentStyle={{borderRadius:14,border:'1px solid #edf0ed',fontFamily:'Tajawal'}}/><Area type="monotone" dataKey="interactions" name="تفاعلات" stroke="#149c8b" strokeWidth={3} fill="url(#engagementFill)"/></AreaChart></ResponsiveContainer>:<div className="chart-empty"><Activity size={32}/><b>بيانات التفاعل لم تتوفر بعد</b><span>راجع صلاحيات insights والإعجابات والتعليقات في المنصات.</span></div>}</div><div className="chart-footer"><span><i/> تفاعلات البوستات</span><span>{reachCoverage?`الوصول متاح لـ ${reachCoverage} من ${current.length} بوست · ${compact.format(reach)}`:'بيانات الوصول غير متاحة حتى الآن'}</span></div></section><section className="panel attention-panel"><div className="panel-head"><div><Label>NEEDS ATTENTION</Label><h3>على رادارك</h3><p>ما يستحق المتابعة اليوم</p></div><button className="text-button" onClick={()=>setTab('calendar')}>عرض الكاليندر <ArrowLeft size={15}/></button></div><div className="attention-list">{[...due,...upcoming].slice(0,4).length?[...due,...upcoming].slice(0,4).map(p=><button className="attention-item" key={p.id} onClick={()=>setModal(p)}><PlatformMark platform={p.platform}/><div><strong>{p.title}</strong><span>{names[p.platform]} · {cairo(p.scheduledAt,{day:'numeric',month:'short',hour:'numeric',minute:'2-digit'})}</span></div><StatePill state={p.computedState}/></button>):<div className="empty-small"><ShieldCheck size={30}/><b>مافيش حاجة متأخرة</b><span>البوستات القادمة والتنبيهات هتظهر هنا.</span></div>}</div><button className="attention-add" onClick={()=>setModal(true)}><Plus size={18}/> أضف بوست للخطة</button></section></div>
-    <div className="overview-grid lower"><section className="panel"><div className="panel-head"><div><Label>TOP CONTENT</Label><h3>أفضل البوستات</h3><p>حسب التفاعلات المتاحة حاليًا فقط</p></div><button className="text-button" onClick={()=>setTab('posts')}>كل البوستات <ArrowLeft size={15}/></button></div><div className="top-posts">{top.length?top.map((p,i)=><div className="top-post" key={p.platform+p.externalId}><span className="rank">{String(i+1).padStart(2,'0')}</span><div className="post-thumb">{p.thumbnail?<img src={p.thumbnail} alt=""/>:<PlatformMark platform={p.platform}/>}</div><div className="post-info"><b>{p.title}</b><span>{names[p.platform]} · {cairo(p.publishedAt,{day:'numeric',month:'short'})}</span></div><strong>{[p.metrics.likes,p.metrics.comments,p.metrics.shares,p.metrics.saves].some(x=>x!=null)?plain(postActions(p)):'—'}<small> تفاعل</small></strong></div>):<div className="empty-small"><ChartNoAxesCombined size={29}/><b>بانتظار أول بوست</b><span>نتائج البوستات ستظهر بعد الربط.</span></div>}</div></section><section className="panel source-panel"><div className="panel-head"><div><Label>CHANNEL HEALTH</Label><h3>حالة المنصات</h3></div><button className="text-button" onClick={()=>setTab('integrations')}>إعدادات الربط <ArrowLeft size={15}/></button></div><div className="source-list">{connectors.map(c=><div key={c.platform}><PlatformMark platform={c.platform} size="small"/><span>{names[c.platform]}</span><i className={`source-status ${c.status}`}/><small>{c.status==='connected'?'متصل':c.status==='error'?'خطأ في الربط':'بانتظار الإعداد'}</small></div>)}</div></section></div>
-    <section className="panel monthly-panel"><div className="panel-head"><div><Label>MONTHLY REVIEW</Label><h3>الأداء شهريًا</h3><p>عدد البوستات ومتوسط التفاعل المرصود لكل بوست خلال آخر 6 أشهر</p></div></div><div className="monthly-list"><div className="monthly-head"><span>الشهر</span><span>البوستات</span><span>تغطية المقاييس</span><span>متوسط التفاعل / بوست</span></div>{monthly.map(row=><div className="monthly-row" key={row.key}><b>{row.label}</b><div className="monthly-bar-cell"><strong>{plain(row.count)}</strong><span className="monthly-bar"><i style={{width:`${row.count?Math.max(3,100*row.count/Math.max(1,...monthly.map(x=>x.count))):0}%`}}/></span></div><span>{row.count?`${Math.round(100*row.measured/row.count)}% (${row.measured}/${row.count})`:'—'}</span><strong>{row.measured?plain(row.average):'—'}</strong></div>)}</div><div className="monthly-note">متوسط التفاعل محسوب فقط للبوستات التي رجعت لها أرقام إعجابات أو تعليقات أو مشاركات أو حفظ. التغطية توضح عددها من إجمالي البوستات.</div></section>
-   </>}
-   {tab==='calendar'&&<><div className="page-heading"><div><Label>CONTENT OPERATIONS</Label><h1>كاليندر المحتوى</h1><p>خطّط، ارفع جدول الفريق، وتابع تأكيد النشر لكل منصة.</p></div><div className="heading-actions"><a className="outline-button" href="/calendar-template.xlsx" download><Download size={17}/> حمّل القالب</a><button className="outline-button" onClick={()=>fileRef.current?.click()}><Upload size={17}/> ارفع كاليندر</button><button className="primary-button" onClick={()=>setModal(true)}><Plus size={18}/> بوست جديد</button><input ref={fileRef} type="file" accept=".csv,.xlsx" hidden onChange={e=>{const f=e.target.files?.[0];if(f)void importCalendar(f);}}/></div></div><div className="calendar-summary"><div><CalendarDays size={20}/><b>{plain(planned.length)}</b><span>بوست في الخطة</span></div><div><Check size={20}/><b>{plain(planned.filter(p=>p.computedState==='published').length)}</b><span>نشر مؤكد</span></div><div><CircleAlert size={20}/><b>{plain(due.length)}</b><span>تحتاج مراجعة</span></div><div><Clock3 size={20}/><b>{plain(upcoming.length)}</b><span>قادمة</span></div></div><section className="panel calendar-panel"><div className="calendar-toolbar"><div><button className="icon-button" onClick={()=>setMonth(addMonths(month,-1))}><ChevronRight size={20}/></button><h2>{format(month,'MMMM yyyy',{locale:ar})}</h2><button className="icon-button" onClick={()=>setMonth(addMonths(month,1))}><ChevronLeft size={20}/></button><button className="today-button" onClick={()=>setMonth(startOfMonth(new Date()))}>اليوم</button></div><select value={platform} onChange={e=>setPlatform(e.target.value as Platform|'all')}><option value="all">كل المنصات</option>{Object.entries(names).map(([k,v])=><option key={k} value={k}>{v}</option>)}</select></div><div className="calendar-grid">{['الأحد','الاثنين','الثلاثاء','الأربعاء','الخميس','الجمعة','السبت'].map(x=><div className="calendar-weekday" key={x}>{x}</div>)}{Array.from({length:42},(_,i)=>addDays(startOfWeek(startOfMonth(month),{weekStartsOn:0}),i)).map(day=>{const key=format(day,'yyyy-MM-dd'),dayPlans=planned.filter(p=>DateTime.fromISO(p.scheduledAt).setZone('Africa/Cairo').toFormat('yyyy-LL-dd')===key);const today=format(new Date(),'yyyy-MM-dd')===key;return <div key={key} className={`calendar-day ${isSameMonth(day,month)?'':'outside'} ${today?'today':''}`}><span className="day-number">{format(day,'d')}</span><div className="day-posts">{dayPlans.slice(0,3).map(p=><button className={`calendar-post ${p.computedState}`} key={p.id} onClick={()=>setModal(p)}><PlatformMark platform={p.platform} size="small"/><span>{p.title}</span></button>)}{dayPlans.length>3&&<span className="more-count">+ {dayPlans.length-3} أخرى</span>}</div></div>})}</div></section><div className="calendar-help"><FileSpreadsheet size={20}/><div><b>ارفع خطة الفريق مرة واحدة</b><span>استخدم القالب المحدد، وأضف صفًا لكل بوست أو اكتب أكثر من منصة في نفس الصف. الوقت بتوقيت القاهرة. رفع الملف مرة ثانية لا يكرر الصفوف نفسها.</span></div><a href="/calendar-template.xlsx" download>تحميل القالب <ArrowDownToLine size={15}/></a></div></>}
-   {tab==='posts'&&<><div className="page-heading"><div><Label>POST LEVEL ANALYTICS</Label><h1>أداء البوستات</h1><p>كل بوست برقم واضح، ومصدره معروف، والقيم الغائبة تظهر كما هي.</p></div><div className="heading-actions"><button className="outline-button" onClick={exportCsv}><ArrowDownToLine size={17}/> تصدير CSV</button><button className="primary-button" onClick={sync} disabled={syncing}><RefreshCw size={17} className={syncing?'spin':''}/> تحديث الأداء</button></div></div><div className="posts-toolbar"><div className="filter-icon"><Filter size={18}/><span>تصفية النتائج</span></div><select value={platform} onChange={e=>setPlatform(e.target.value as Platform|'all')}><option value="all">كل المنصات</option>{Object.entries(names).map(([k,v])=><option key={k} value={k}>{v}</option>)}</select><select value={period} onChange={e=>setPeriod(e.target.value as typeof period)}><option value="7">آخر 7 أيام</option><option value="30">آخر 30 يوم</option><option value="90">آخر 90 يوم</option></select><span className="result-count">{visiblePosts.length} بوست{(platform==='all'||platform==='website')?` · ${websitePageTotals.length} صفحة`:null}</span></div><div className="panel table-panel"><div className="table-scroll"><table><thead><tr><th>البوست</th><th>المنصة</th><th>تاريخ النشر</th><th>مشاهدات</th><th>وصول</th><th>Impressions</th><th>إعجابات</th><th>تعليقات</th><th>مشاركات</th><th>معدل التفاعل</th><th></th></tr></thead><tbody>{visiblePosts.map(p=><tr key={p.platform+p.externalId}><td><div className="table-post"><div className="post-thumb">{p.thumbnail?<img src={p.thumbnail} alt=""/>:<PlatformMark platform={p.platform}/>}</div><div><b>{p.title}</b><span>{p.accountName||p.contentType}</span></div></div></td><td><span className="table-platform"><PlatformMark platform={p.platform} size="small"/>{names[p.platform]}</span></td><td>{cairo(p.publishedAt,{day:'numeric',month:'short',year:'numeric'})}</td><td>{plain(p.metrics.views)}</td><td>{plain(p.metrics.reach)}</td><td>{plain(p.metrics.impressions)}</td><td>{plain(p.metrics.likes)}</td><td>{plain(p.metrics.comments)}</td><td>{plain(p.metrics.shares)}</td><td><span className="rate-badge">{pct(p.engagementRate)}</span></td><td>{p.permalink&&<a href={p.permalink} target="_blank" rel="noreferrer" className="external-link" aria-label="افتح البوست"><ArrowUpLeft size={18}/></a>}</td></tr>)}</tbody></table>{!visiblePosts.length&&<div className="empty-table"><Search size={31}/><h3>لسه مافيش بوستات للفترة دي</h3><p>اختار فترة أطول أو راجع حالة ربط المنصات.</p><button className="outline-button" onClick={()=>setTab('integrations')}>حالة الربط <ArrowLeft size={16}/></button></div>}</div></div>{(platform==='all'||platform==='website')&&<section className="panel website-pages-panel"><div className="panel-head"><div><Label>WEBSITE PAGES / GA4</Label><h3>أداء صفحات الموقع</h3><p>مشاهدات كل مسار في آخر {period} يوم؛ GA4 لا يحدد تاريخ نشر الصفحة.</p></div><span className="panel-tag">{websitePageTotals.length} صفحة</span></div><div className="table-scroll"><table className="website-table"><thead><tr><th>الصفحة</th><th>المسار</th><th>المشاهدات</th><th>نشاط المستخدمين اليومي</th><th>زمن التفاعل</th></tr></thead><tbody>{websitePageTotals.slice(0,100).map(page=><tr key={page.path}><td><b>{page.title}</b></td><td dir="ltr">{page.path}</td><td>{plain(page.views)}</td><td>{plain(page.activeUsers)}</td><td>{plain(Math.round(page.engagementSeconds/60))} دقيقة</td></tr>)}</tbody></table>{!websitePageTotals.length&&<div className="empty-table"><Globe2 size={30}/><h3>بيانات صفحات الموقع لم تصل بعد</h3><p>اضبط اتصال GA4 لعرض مشاهدات كل صفحة.</p></div>}</div><div className="monthly-note">نشاط المستخدمين اليومي هو مجموع عدد المستخدمين النشطين لكل يوم، وليس عدد مستخدمين فريدين للفترة كلها. يظهر أول 100 مسار حسب المشاهدات.</div></section>}<div className="metrics-note"><CircleAlert size={17}/> الـ“—” معناها إن المنصة أو صلاحية الحساب لم ترجع الـmetric. معدل التفاعل = التفاعلات ÷ الوصول، ثم المشاهدات، ثم impressions حسب المتاح للبوست.</div></>}
-   {tab==='integrations'&&<><div className="page-heading"><div><Label>DATA CONNECTIONS</Label><h1>الربط والمنصات</h1><p>حالة كل مصدر، وما يحتاجه لعرض بيانات البوستات الحقيقية.</p></div><div className="heading-actions"><button className="primary-button" onClick={sync} disabled={syncing}><RefreshCw size={17} className={syncing?'spin':''}/>{syncing?'جاري الفحص':'فحص ومزامنة الكل'}</button></div></div><div className="integration-intro"><div className="intro-icon"><Settings2 size={25}/></div><div><b>الربط يتحقق من الصلاحيات الفعلية</b><span>وجود token للإعلانات وحده لا يضمن قراءة البوستات العضوية. الحالة أدناه مبنية على تجربة المزامنة من السيرفر.</span></div><span className="intro-count">{connectors.filter(x=>x.status==='connected').length} / 5 متصل</span></div><div className="integration-grid">{connectors.map(c=><div className="integration-card" key={c.platform}><div className="integration-head"><PlatformMark platform={c.platform}/><span className={`integration-status ${c.status}`}><i/>{c.status==='connected'?'متصل':c.status==='error'?'يحتاج مراجعة':'غير مُعد'}</span></div><h3>{names[c.platform]}</h3><p>{c.message}</p><div className="integration-footer"><span>{c.checkedAt?`آخر فحص ${cairo(c.checkedAt,{day:'numeric',month:'short',hour:'numeric',minute:'2-digit'})}`:'لم يُفحص بعد'}</span><ArrowUpLeft size={17}/></div></div>)}</div><div className="setup-note"><ShieldCheck size={22}/><div><b>المفاتيح محفوظة على السيرفر فقط</b><span>ضع إعدادات كل منصة في ملف البيئة الخاص بالمشروع. لا تُرسل مفاتيح API للمتصفح أو تضعها في الكاليندر.</span></div></div></>}
-   </>}
-  </main></div>
-  {showAlerts&&<div className="alerts-popover"><div className="popover-head"><div><Bell size={18}/><b>الإشعارات</b><span>{activeAlerts.length}</span></div><button onClick={()=>setShowAlerts(false)}><X size={18}/></button></div><div className="popover-body">{activeAlerts.length?activeAlerts.map(a=><div className="alert-row" key={a.id}><span className={a.kind==='missed'?'alert-icon missed':'alert-icon'}>{a.kind==='missed'?<CircleAlert size={18}/>:<Clock3 size={18}/>}</span><div><b>{a.kind==='missed'?'تأكيد النشر متأخر':'بوست قريب'}</b><p>{a.message}</p><small>{cairo(a.createdAt,{day:'numeric',month:'short',hour:'numeric',minute:'2-digit'})}</small></div><button onClick={()=>void dismiss(a)} title="إخفاء التنبيه"><Check size={16}/></button></div>):<div className="no-alerts"><ShieldCheck size={28}/> لا توجد تنبيهات مفتوحة</div>}</div><button className="notify-enable" onClick={enableNotifications}>فعّل تنبيهات المتصفح <Bell size={16}/></button></div>}
-  {modal&&<PlanModal plan={modal===true?undefined:modal} observed={data.posts} close={()=>setModal(null)} save={savePlanForm} remove={removePlan}/>}
-  {toast&&<div className="toast"><Check size={17}/>{toast}</div>}
- </div>;
-}
+  const setFilters = useCallback((patch: Partial<Filters>) => setFilterState((current) => ({ ...current, ...patch })), []);
+  const openPlan = useCallback((target: PlanTarget) => {
+    setPlanOpenId((id) => id + 1);
+    setPlanTarget(target);
+  }, []);
+  const openAlerts = useCallback(() => setAlertsOpen(true), []);
 
-function Kpi({icon,label,value,foot,tone}:{icon:ReactNode;label:string;value:string;foot:string;tone:string}){return <div className="kpi-card"><div className={`kpi-icon ${tone}`}>{icon}</div><span>{label}</span><strong>{value}</strong><small>{foot}</small><ArrowUpLeft className="kpi-arrow" size={18}/></div>}
+  const runSync = useCallback(async () => {
+    try {
+      const results = await sync();
+      const connected = results.filter((item) => item.status === 'connected').length;
+      const posts = results.reduce((sum, item) => sum + item.postCount, 0);
+      toast.success('اكتملت المزامنة', `${connected} من ${results.length} مصادر متصلة · ${num(posts)} بوست محدَّث`);
+    } catch (error) {
+      toast.error('فشلت المزامنة', errorMessage(error, 'تعذّر مزامنة المصادر.'));
+    }
+  }, [sync, toast]);
 
-function PlanModal({plan,observed,close,save,remove}:{plan?:Plan;observed:Post[];close:()=>void;save:(plan:Partial<Plan>)=>void;remove:(id:string)=>void}){
- const [form,setForm]=useState({platform:plan?.platform||'facebook',accountId:plan?.accountId||'',title:plan?.title||'',caption:plan?.caption||'',scheduledAt:plan?.scheduledAt?toInput(plan.scheduledAt):DateTime.now().setZone('Africa/Cairo').plus({hours:1}).toFormat("yyyy-LL-dd'T'HH:mm"),status:plan?.status||'scheduled',permalink:plan?.permalink||'',externalId:plan?.externalId||'',owner:plan?.owner||'',contentType:plan?.contentType||'post',campaign:plan?.campaign||'',notes:plan?.notes||''});
- const update=(key:string,value:string)=>setForm(x=>({...x,[key]:value}));
- const accountChoices=[...new Map(observed.filter(p=>p.platform===form.platform&&p.accountId).map(p=>[p.accountId,p.accountName])).entries()];
- const candidateTime=DateTime.fromISO(form.scheduledAt,{zone:'Africa/Cairo'}).toMillis();
- const candidates=plan&&Number.isFinite(candidateTime)?observed.filter(p=>p.platform===form.platform&&(!form.accountId||!p.accountId||p.accountId===form.accountId)&&Math.abs(new Date(p.publishedAt).getTime()-candidateTime)<=48*3600_000).sort((a,b)=>Math.abs(new Date(a.publishedAt).getTime()-candidateTime)-Math.abs(new Date(b.publishedAt).getTime()-candidateTime)).slice(0,4):[];
+  const alertItems = useMemo(() => openAlertItems(data, now), [data, now]);
+  const attention = useMemo(
+    () => data.plans.filter((plan) => plan.computedState === 'missed' || plan.computedState === 'due').length,
+    [data.plans],
+  );
+  const lastSync = useMemo(
+    () => data.connectors.reduce((latest, item) => Math.max(latest, item.checkedAt ? parseTimestamp(item.checkedAt) : 0), 0),
+    [data.connectors],
+  );
+  const connectorIssue = data.connectors.some((item) => item.status === 'error');
 
- return <div className="modal-backdrop" onMouseDown={close}><div className="modal" onMouseDown={e=>e.stopPropagation()}><div className="modal-head"><div><Label>CONTENT PLAN</Label><h2>{plan?'تعديل البوست':'بوست جديد'}</h2></div><button onClick={close}><X size={20}/></button></div><form onSubmit={e=>{e.preventDefault();const iso=DateTime.fromISO(form.scheduledAt,{zone:'Africa/Cairo'}).toUTC().toISO();if(!iso)return;save({...form,...(plan?{id:plan.id}:{}),platform:form.platform as Platform,scheduledAt:iso});}}><div className="form-grid"><label className="span-2">عنوان البوست<input required maxLength={300} value={form.title} onChange={e=>update('title',e.target.value)} placeholder="مثلاً: إعلان دفعة أكتوبر"/></label><label>المنصة<select value={form.platform} onChange={e=>update('platform',e.target.value)}>{Object.entries(names).map(([k,v])=><option key={k} value={k}>{v}</option>)}</select></label><label>موعد النشر · القاهرة<input required type="datetime-local" value={form.scheduledAt} onChange={e=>update('scheduledAt',e.target.value)}/></label><label>الحساب / Page ID<input list="observed-accounts" value={form.accountId} onChange={e=>update('accountId',e.target.value)} placeholder="اختياري"/></label><datalist id="observed-accounts">{accountChoices.map(([id,name])=><option key={id} value={id} label={name}/>)}</datalist><label>الحالة<select value={form.status} onChange={e=>update('status',e.target.value)}><option value="draft">مسودة</option><option value="approved">موافق عليه</option><option value="scheduled">مجدول</option><option value="published">تم النشر</option><option value="cancelled">ملغي</option></select></label><label className="span-2">نص البوست<textarea rows={3} value={form.caption} onChange={e=>update('caption',e.target.value)} placeholder="النص أو وصف المحتوى..."/></label><label>الحملة<input value={form.campaign} onChange={e=>update('campaign',e.target.value)}/></label><label>المسؤول<input value={form.owner} onChange={e=>update('owner',e.target.value)}/></label><label>رابط المنشور الفعلي<input value={form.permalink} onChange={e=>update('permalink',e.target.value)} placeholder="https://..."/></label><label>معرّف المنشور<input value={form.externalId} onChange={e=>update('externalId',e.target.value)}/></label><label className="span-2">ملاحظات<textarea rows={2} value={form.notes} onChange={e=>update('notes',e.target.value)}/></label></div>{candidates.length>0&&<div className="candidate-panel"><b>منشورات مرصودة قريبة من الموعد</b><p>راجع البوست واختَر المطابق فقط. الاختيار يملأ الرابط والمعرّف؛ اضغط حفظ للتأكيد.</p>{candidates.map(post=><div className="candidate-row" key={post.externalId}><div><strong>{post.title}</strong><span>{post.accountName} · {cairo(post.publishedAt,{day:'numeric',month:'short',hour:'numeric',minute:'2-digit'})}</span></div><button type="button" onClick={()=>setForm(x=>({...x,permalink:post.permalink,externalId:post.externalId,status:'published'}))}>استخدم هذا البوست</button></div>)}</div>}<div className="modal-actions">{plan&&<button type="button" className="delete-button" onClick={()=>remove(plan.id)}><Trash2 size={17}/> حذف</button>}<div/><button type="button" className="outline-button" onClick={close}>إلغاء</button><button className="primary-button" type="submit"><Check size={17}/> حفظ البوست</button></div></form></div></div>;
+  useEffect(() => {
+    window.scrollTo({ top: 0 });
+    document.title = `${NAV.find((item) => item.id === route)?.label ?? ''} · Social Pulse`;
+  }, [route]);
+
+  const context = useMemo<AppContextValue>(
+    () => ({ store, data, now, todayNum, filters, setFilters, route, go, openPlan, openPost: setPost, openAlerts, runSync }),
+    [store, data, now, todayNum, filters, setFilters, route, go, openPlan, openAlerts, runSync],
+  );
+
+  if (store.phase === 'locked')
+    return (
+      <>
+        <Aurora />
+        <LockScreen error={store.authError} busy={store.verifying} onSubmit={store.unlock} />
+      </>
+    );
+  if (store.phase === 'offline')
+    return (
+      <>
+        <Aurora />
+        <OfflineScreen message={store.staleError} onRetry={() => void store.reload()} />
+      </>
+    );
+  if (store.phase === 'loading')
+    return (
+      <>
+        <Aurora />
+        <LoadingScreen />
+      </>
+    );
+
+  const View = VIEWS[route];
+  return (
+    <AppContext.Provider value={context}>
+      <Aurora />
+      <TopNav attention={attention} connectorIssue={connectorIssue} alerts={alertItems.length} lastSync={lastSync} theme={theme} onToggleTheme={toggle} />
+      <main className="page">
+        {store.staleError && (
+          <StaleBanner
+            message={store.staleError}
+            action={
+              <button type="button" className="link" onClick={() => void store.reload()}>
+                أعد المحاولة
+              </button>
+            }
+          />
+        )}
+        <AnimatePresence mode="wait" initial={false}>
+          <motion.div
+            key={route}
+            className="view"
+            initial={{ opacity: 0, y: 12 }}
+            animate={{ opacity: 1, y: 0 }}
+            exit={{ opacity: 0, y: -8 }}
+            transition={{ duration: 0.2, ease: [0.22, 1, 0.36, 1] }}
+          >
+            <View />
+          </motion.div>
+        </AnimatePresence>
+      </main>
+      <Dock attention={attention} connectorIssue={connectorIssue} />
+
+      <PlanDrawer target={planTarget} openId={planOpenId} onClose={() => setPlanTarget(null)} />
+      <PostDrawer post={post} onClose={() => setPost(null)} />
+      <AlertsDrawer open={alertsOpen} onClose={() => setAlertsOpen(false)} items={alertItems} />
+    </AppContext.Provider>
+  );
 }

@@ -1,0 +1,41 @@
+import type { DateTime } from 'luxon';
+import { dayNumber } from './format';
+
+/** Luxon weekday of the first column (6 = Saturday, the start of the week in Egypt). */
+export const WEEK_START = 6;
+export const WEEKEND = new Set([5, 6]);
+
+export interface DayCell {
+  key: string;
+  dayNum: number;
+  date: DateTime;
+  inMonth: boolean;
+  weekend: boolean;
+}
+
+const cell = (date: DateTime, month: number): DayCell => ({
+  key: date.toISODate() ?? '',
+  dayNum: dayNumber(date.toMillis()),
+  date,
+  inMonth: date.month === month,
+  weekend: WEEKEND.has(date.weekday),
+});
+
+export const startOfWeek = (date: DateTime) => date.startOf('day').minus({ days: (date.weekday - WEEK_START + 7) % 7 });
+
+/** Whole weeks covering the month — four to six rows, never a trailing empty one. */
+export function monthCells(anchor: DateTime): DayCell[] {
+  const first = anchor.startOf('month');
+  const start = startOfWeek(first);
+  const lead = Math.round(first.diff(start, 'days').days);
+  const weeks = Math.ceil((lead + (first.daysInMonth ?? 30)) / 7);
+  return Array.from({ length: weeks * 7 }, (_, index) => cell(start.plus({ days: index }), first.month));
+}
+
+export function weekCells(anchor: DateTime): DayCell[] {
+  const start = startOfWeek(anchor);
+  return Array.from({ length: 7 }, (_, index) => {
+    const date = start.plus({ days: index });
+    return cell(date, date.month);
+  });
+}

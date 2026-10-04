@@ -1,0 +1,362 @@
+*,
+*::before,
+*::after {
+  box-sizing: border-box;
+}
+
+html {
+  -webkit-text-size-adjust: 100%;
+  scrollbar-gutter: stable;
+  scrollbar-color: var(--line-strong) transparent;
+  background: var(--canvas);
+}
+
+html.is-locked {
+  overflow: hidden;
+}
+
+body {
+  margin: 0;
+  min-width: 320px;
+  min-height: 100dvh;
+  font-family: var(--font);
+  font-size: 15px;
+  line-height: 1.65;
+  color: var(--ink-1);
+  -webkit-font-smoothing: antialiased;
+  -moz-osx-font-smoothing: grayscale;
+  font-synthesis: none;
+  text-rendering: optimizeLegibility;
+  overflow-x: hidden;
+}
+
+h1,
+h2,
+h3,
+p,
+ul,
+ol,
+dl,
+dd,
+figure,
+fieldset {
+  margin: 0;
+  padding: 0;
+}
+
+ul,
+ol {
+  list-style: none;
+}
+
+fieldset {
+  border: 0;
+  min-width: 0;
+}
+
+button,
+input,
+select,
+textarea {
+  font: inherit;
+  color: inherit;
+  letter-spacing: inherit;
+}
+
+button {
+  border: 0;
+  background: none;
+  padding: 0;
+  cursor: pointer;
+  -webkit-tap-highlight-color: transparent;
+}
+
+button:disabled {
+  cursor: not-allowed;
+}
+
+a {
+  color: inherit;
+  text-decoration: none;
+}
+
+img,
+svg {
+  display: block;
+}
+
+em {
+  font-style: normal;
+}
+
+table {
+  border-collapse: collapse;
+  border-spacing: 0;
+}
+
+:focus-visible {
+  outline: 2px solid var(--focus);
+  outline-offset: 2px;
+}
+
+::selection {
+  background: color-mix(in oklab, var(--accent) 34%, transparent);
+}
+
+::-webkit-scrollbar {
+  width: 10px;
+  height: 10px;
+}
+
+::-webkit-scrollbar-thumb {
+  background: var(--line-strong);
+  border-radius: 10px;
+  border: 3px solid transparent;
+  background-clip: padding-box;
+}
+
+/* ── Utilities ─────────────────────────────────────────────────────── */
+
+.sr-only {
+  position: absolute !important;
+  width: 1px;
+  height: 1px;
+  margin: -1px;
+  padding: 0;
+  overflow: hidden;
+  clip-path: inset(50%);
+  white-space: nowrap;
+  border: 0;
+}
+
+.num {
+  font-variant-numeric: tabular-nums;
+}
+
+.muted {
+  color: var(--ink-3);
+}
+
+.link {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  color: var(--accent-ink);
+  font-size: 13px;
+  font-weight: 600;
+  white-space: nowrap;
+  border-radius: 6px;
+  transition: gap var(--t-med) var(--ease-out), color var(--t-fast);
+}
+
+.link:hover {
+  gap: 8px;
+  color: var(--ink-1);
+}
+
+.today-tag {
+  display: inline-block;
+  margin-inline-start: 8px;
+  padding: 1px 9px;
+  border-radius: var(--r-pill);
+  background: var(--accent-soft);
+  color: var(--accent-ink);
+  font-size: 11.5px;
+  font-weight: 700;
+  vertical-align: middle;
+}
+
+/* ── Aurora canvas ─────────────────────────────────────────────────── */
+
+.aurora {
+  position: fixed;
+  inset: 0;
+  z-index: -1;
+  overflow: hidden;
+  pointer-events: none;
+  background: var(--canvas-gradient);
+}
+
+/* Soft radial gradients instead of blurred shapes: only transforms animate, so the drift stays on the compositor. */
+.aurora__orb {
+  position: absolute;
+  border-radius: 50%;
+  will-change: transform;
+}
+
+.aurora__orb--coral {
+  width: 64vmax;
+  height: 64vmax;
+  top: -30vmax;
+  right: -14vmax;
+  background: radial-gradient(closest-side, var(--orb-coral), transparent 74%);
+  animation: drift-a 36s var(--ease-in-out) infinite alternate;
+}
+
+.aurora__orb--indigo {
+  width: 74vmax;
+  height: 74vmax;
+  top: -12vmax;
+  left: -30vmax;
+  background: radial-gradient(closest-side, var(--orb-indigo), transparent 72%);
+  animation: drift-b 44s var(--ease-in-out) infinite alternate;
+}
+
+.aurora__orb--amber {
+  width: 58vmax;
+  height: 58vmax;
+  bottom: -34vmax;
+  left: 26%;
+  background: radial-gradient(closest-side, var(--orb-amber), transparent 72%);
+  animation: drift-c 52s var(--ease-in-out) infinite alternate;
+}
+
+.aurora__grain {
+  position: absolute;
+  inset: 0;
+  opacity: var(--grain);
+  mix-blend-mode: overlay;
+  background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='240' height='240'%3E%3Cfilter id='n'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='.85' numOctaves='2' stitchTiles='stitch'/%3E%3CfeColorMatrix values='0 0 0 0 1 0 0 0 0 1 0 0 0 0 1 0 0 0 .6 0'/%3E%3C/filter%3E%3Crect width='100%25' height='100%25' filter='url(%23n)'/%3E%3C/svg%3E");
+}
+
+@keyframes drift-a {
+  to {
+    transform: translate3d(-9vmax, 7vmax, 0) scale(1.14);
+  }
+}
+
+@keyframes drift-b {
+  to {
+    transform: translate3d(11vmax, 9vmax, 0) scale(0.9);
+  }
+}
+
+@keyframes drift-c {
+  to {
+    transform: translate3d(-12vmax, -8vmax, 0) scale(1.18);
+  }
+}
+
+/* ── Page frame ────────────────────────────────────────────────────── */
+
+.page {
+  width: min(var(--page), 100% - 48px);
+  margin-inline: auto;
+  padding-block: 10px 72px;
+}
+
+.view {
+  display: flex;
+  flex-direction: column;
+  gap: var(--gap);
+}
+
+.grid {
+  display: grid;
+  grid-template-columns: repeat(12, minmax(0, 1fr));
+  gap: var(--gap);
+}
+
+.grid > * {
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+}
+
+.grid > * > .glass {
+  flex: 1;
+}
+
+.col-3 {
+  grid-column: span 3;
+}
+.col-4 {
+  grid-column: span 4;
+}
+.col-5 {
+  grid-column: span 5;
+}
+.col-7 {
+  grid-column: span 7;
+}
+.col-8 {
+  grid-column: span 8;
+}
+.col-12 {
+  grid-column: span 12;
+}
+
+@media (max-width: 1180px) {
+  .col-3 {
+    grid-column: span 6;
+  }
+  .col-4,
+  .col-5,
+  .col-7,
+  .col-8 {
+    grid-column: span 12;
+  }
+}
+
+@media (max-width: 760px) {
+  :root {
+    --gap: 14px;
+  }
+  .page {
+    width: min(var(--page), 100% - 28px);
+    padding-block-end: 118px;
+  }
+}
+
+@media (max-width: 560px) {
+  .col-3 {
+    grid-column: span 12;
+  }
+}
+
+/* ── Shared motion ─────────────────────────────────────────────────── */
+
+@keyframes spin {
+  to {
+    transform: rotate(360deg);
+  }
+}
+
+@keyframes shimmer {
+  to {
+    background-position: -200% 0;
+  }
+}
+
+@keyframes pulse-ring {
+  0% {
+    box-shadow: 0 0 0 0 color-mix(in oklab, currentColor 55%, transparent);
+  }
+  70%,
+  100% {
+    box-shadow: 0 0 0 7px transparent;
+  }
+}
+
+@keyframes shake {
+  20%,
+  60% {
+    transform: translateX(-6px);
+  }
+  40%,
+  80% {
+    transform: translateX(6px);
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  *,
+  *::before,
+  *::after {
+    animation-duration: 0.01ms !important;
+    animation-iteration-count: 1 !important;
+    animation-delay: 0ms !important;
+    transition-duration: 0.01ms !important;
+    scroll-behavior: auto !important;
+  }
+}

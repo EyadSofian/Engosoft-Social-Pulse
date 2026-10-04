@@ -1,0 +1,828 @@
+.cal {
+  display: flex;
+  flex-direction: column;
+  gap: var(--gap);
+}
+
+/* ── Stats strip ───────────────────────────────────────────────────── */
+
+.cal__stats {
+  display: grid;
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+  gap: var(--gap);
+}
+
+.stat {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  padding: 13px 18px;
+  border-radius: 18px;
+  color: var(--ink-3);
+}
+
+.stat svg {
+  flex: none;
+  color: var(--tone, var(--ink-3));
+}
+
+.stat b {
+  font-size: 24px;
+  font-weight: 600;
+  line-height: 1.2;
+  color: var(--ink-1);
+}
+
+.stat span {
+  font-size: 13px;
+}
+
+.stat--ok {
+  --tone: var(--ok);
+}
+.stat--info {
+  --tone: var(--info);
+}
+.stat--crit[data-on] {
+  --tone: var(--crit);
+  box-shadow:
+    var(--glass-shadow),
+    var(--glass-inset),
+    inset 0 0 0 1px color-mix(in oklab, var(--crit) 45%, transparent);
+}
+
+/* ── Toolbar ───────────────────────────────────────────────────────── */
+
+.cal__bar {
+  display: grid;
+  grid-template-columns: auto minmax(0, 1fr);
+  align-items: center;
+  gap: 10px 16px;
+  padding: 10px 12px;
+  border-radius: 20px;
+}
+
+.cal__nav {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+}
+
+.cal__nav h2 {
+  min-width: 168px;
+  font-size: 19px;
+  font-weight: 700;
+  text-align: center;
+  white-space: nowrap;
+}
+
+.cal__nav .btn {
+  margin-inline-start: 6px;
+}
+
+.cal__tools {
+  display: flex;
+  align-items: center;
+  justify-content: flex-end;
+  flex-wrap: wrap;
+  gap: 8px 14px;
+}
+
+.cal__platforms {
+  grid-column: 1 / -1;
+  padding-top: 10px;
+  border-top: 1px solid var(--line);
+  min-width: 0;
+}
+
+/* ── Body: grid + day panel ────────────────────────────────────────── */
+
+.cal__body {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) 340px;
+  gap: var(--gap);
+  align-items: start;
+}
+
+.cal__main {
+  display: flex;
+  flex-direction: column;
+  min-width: 0;
+  padding: 8px;
+  overflow: hidden;
+}
+
+.cal__side {
+  position: sticky;
+  top: 92px;
+  display: flex;
+  flex-direction: column;
+  gap: var(--gap);
+  min-width: 0;
+  scroll-margin-top: 96px;
+}
+
+.cal__legend {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 8px;
+  padding: 12px 10px 6px;
+}
+
+.cal__legend-note {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  margin-inline-start: auto;
+  font-size: 12px;
+  color: var(--ink-3);
+}
+
+/* ── Month ─────────────────────────────────────────────────────────── */
+
+.month__head {
+  display: grid;
+  grid-template-columns: repeat(7, minmax(0, 1fr));
+  padding: 8px 0 10px;
+}
+
+.month__head span {
+  font-size: 12.5px;
+  font-weight: 600;
+  color: var(--ink-3);
+  text-align: center;
+}
+
+.month__grid {
+  display: grid;
+  grid-template-columns: repeat(7, minmax(0, 1fr));
+  gap: 6px;
+}
+
+.day {
+  position: relative;
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  min-height: 124px;
+  padding: 7px;
+  border-radius: 14px;
+  background: var(--wash);
+  box-shadow: inset 0 0 0 1px var(--line);
+  cursor: pointer;
+  transition:
+    background var(--t-fast),
+    box-shadow var(--t-med),
+    transform var(--t-med) var(--ease-out);
+}
+
+.day[data-weekend] {
+  background: color-mix(in oklab, var(--wash) 55%, transparent);
+}
+
+.day[data-outside] {
+  background: transparent;
+  box-shadow: inset 0 0 0 1px color-mix(in oklab, var(--line) 60%, transparent);
+}
+
+.day[data-outside] > * {
+  opacity: 0.45;
+}
+
+@media (hover: hover) {
+  .day:hover {
+    background: var(--wash-strong);
+  }
+
+  .day:hover .day__add {
+    opacity: 1;
+    transform: none;
+  }
+}
+
+.day[data-selected] {
+  background: color-mix(in oklab, var(--accent) 9%, var(--wash));
+  box-shadow:
+    inset 0 0 0 1.5px color-mix(in oklab, var(--accent) 75%, transparent),
+    0 14px 30px -20px var(--accent);
+}
+
+.day__head {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  min-height: 26px;
+}
+
+.day__num {
+  display: grid;
+  place-items: center;
+  flex: none;
+  min-width: 26px;
+  height: 26px;
+  padding: 0 5px;
+  border-radius: 9px;
+  font-size: 13.5px;
+  font-weight: 600;
+  font-variant-numeric: tabular-nums;
+  color: var(--ink-2);
+}
+
+.day[data-today] .day__num {
+  background: var(--brand);
+  color: var(--on-accent);
+  font-weight: 700;
+  box-shadow: var(--brand-glow);
+}
+
+.day__add {
+  display: grid;
+  place-items: center;
+  width: 22px;
+  height: 22px;
+  margin-inline-start: auto;
+  border-radius: 7px;
+  background: var(--wash-strong);
+  color: var(--ink-2);
+  opacity: 0;
+  transform: scale(0.8);
+  transition:
+    opacity var(--t-fast),
+    transform var(--t-med) var(--spring),
+    background var(--t-fast);
+}
+
+.day__add:hover,
+.day__add:focus-visible {
+  opacity: 1;
+  transform: none;
+  background: var(--accent);
+  color: var(--on-accent);
+}
+
+.day__items {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  min-width: 0;
+  container-type: inline-size;
+}
+
+/* In a narrow cell the title wins the space; the time stays in the tooltip and the day panel. */
+@container (max-width: 168px) {
+  .chip time {
+    display: none;
+  }
+}
+
+.day__more {
+  padding-inline: 6px;
+  font-size: 11.5px;
+  font-weight: 600;
+  color: var(--ink-3);
+}
+
+.day__dots {
+  display: none;
+}
+
+/* Observed posts: a small glyph + count per platform. */
+.observed {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  min-width: 0;
+  overflow: hidden;
+}
+
+.observed__mark {
+  display: inline-flex;
+  align-items: center;
+  gap: 2px;
+  font-size: 11px;
+  font-weight: 600;
+  font-variant-numeric: tabular-nums;
+  line-height: 1;
+  color: var(--ink-3);
+}
+
+.observed__mark svg {
+  color: color-mix(in oklab, var(--p), var(--p-ink-mix));
+}
+
+/* ── Plan chip ─────────────────────────────────────────────────────── */
+
+.chip {
+  position: relative;
+  display: flex;
+  align-items: center;
+  gap: 5px;
+  width: 100%;
+  min-width: 0;
+  height: 25px;
+  padding-inline: 4px 7px;
+  border-radius: 8px;
+  background: color-mix(in oklab, var(--p) 16%, transparent);
+  box-shadow: inset 0 0 0 1px color-mix(in oklab, var(--p) 30%, transparent);
+  font-size: 12px;
+  text-align: start;
+  transition:
+    transform var(--t-fast) var(--ease-out),
+    background var(--t-fast);
+}
+
+.chip:hover {
+  background: color-mix(in oklab, var(--p) 28%, transparent);
+  transform: translateX(-2px);
+}
+
+.chip__icon {
+  display: grid;
+  place-items: center;
+  flex: none;
+  width: 17px;
+  height: 17px;
+  border-radius: 5px;
+  background: color-mix(in oklab, var(--p) 30%, transparent);
+  color: color-mix(in oklab, var(--p), var(--p-ink-mix));
+}
+
+.chip time {
+  flex: none;
+  font-size: 11px;
+  font-variant-numeric: tabular-nums;
+  color: var(--ink-3);
+}
+
+/* dir="auto": a title that opens with Latin text keeps its first letters when truncated. */
+.chip__title {
+  flex: 1;
+  min-width: 0;
+  overflow: hidden;
+  font-weight: 600;
+  text-align: right;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.chip__state {
+  flex: none;
+  width: 7px;
+  height: 7px;
+  border-radius: 50%;
+  background: var(--tone, var(--info));
+  color: var(--tone, var(--info));
+}
+
+.chip[data-state='published'] {
+  --tone: var(--ok);
+}
+
+.chip[data-state='due'] {
+  --tone: var(--warn);
+}
+
+.chip[data-state='due'] .chip__state,
+.chip[data-state='missed'] .chip__state {
+  animation: pulse-ring 1.8s var(--ease-out) infinite;
+}
+
+.chip[data-state='missed'] {
+  --tone: var(--crit);
+  box-shadow: inset 0 0 0 1.5px color-mix(in oklab, var(--crit) 70%, transparent);
+}
+
+.chip[data-state='draft'] {
+  --tone: var(--mute);
+  background: transparent;
+  box-shadow: inset 0 0 0 1px var(--line-strong);
+}
+
+.chip[data-state='draft'] .chip__title {
+  color: var(--ink-2);
+  font-weight: 500;
+}
+
+.chip[data-state='cancelled'] {
+  --tone: var(--mute);
+  background: transparent;
+  box-shadow: inset 0 0 0 1px var(--line);
+  opacity: 0.6;
+}
+
+.chip[data-state='cancelled'] .chip__title {
+  text-decoration: line-through;
+}
+
+/* ── Week ──────────────────────────────────────────────────────────── */
+
+.week {
+  display: grid;
+  grid-template-columns: repeat(7, minmax(0, 1fr));
+  gap: 6px;
+  min-height: 430px;
+}
+
+.week__day {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  min-width: 0;
+  padding: 6px;
+  border-radius: 14px;
+  background: var(--wash);
+  box-shadow: inset 0 0 0 1px var(--line);
+}
+
+.week__day[data-selected] {
+  box-shadow: inset 0 0 0 1.5px color-mix(in oklab, var(--accent) 75%, transparent);
+}
+
+.week__head {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 2px;
+  padding: 8px 4px;
+  border-radius: 10px;
+  font-size: 12.5px;
+  color: var(--ink-3);
+  transition: background var(--t-fast);
+}
+
+.week__head:hover {
+  background: var(--wash-strong);
+}
+
+.week__head b {
+  display: grid;
+  place-items: center;
+  min-width: 34px;
+  height: 34px;
+  border-radius: 11px;
+  font-size: 17px;
+  font-weight: 600;
+  color: var(--ink-1);
+}
+
+.week__day[data-today] .week__head b {
+  background: var(--brand);
+  color: var(--on-accent);
+  box-shadow: var(--brand-glow);
+}
+
+.week__items {
+  display: flex;
+  flex-direction: column;
+  flex: 1;
+  gap: 6px;
+  min-width: 0;
+}
+
+.week__items .observed {
+  padding: 2px 4px;
+}
+
+.week__add {
+  display: grid;
+  place-items: center;
+  height: 30px;
+  margin-top: auto;
+  border-radius: 9px;
+  box-shadow: inset 0 0 0 1px var(--line);
+  color: var(--ink-4);
+  transition:
+    background var(--t-fast),
+    color var(--t-fast);
+}
+
+.week__add:hover {
+  background: var(--accent-soft);
+  color: var(--accent-ink);
+}
+
+.wcard {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: 6px;
+  min-width: 0;
+  padding: 9px;
+  border-radius: 11px;
+  background: color-mix(in oklab, var(--p) 14%, transparent);
+  box-shadow: inset 0 0 0 1px color-mix(in oklab, var(--p) 30%, transparent);
+  text-align: start;
+  transition:
+    transform var(--t-med) var(--ease-out),
+    background var(--t-fast);
+}
+
+.wcard:hover {
+  transform: translateY(-2px);
+  background: color-mix(in oklab, var(--p) 24%, transparent);
+}
+
+.wcard__top {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  font-size: 11.5px;
+  color: var(--ink-3);
+}
+
+.wcard b {
+  display: -webkit-box;
+  align-self: stretch;
+  text-align: right;
+  -webkit-box-orient: vertical;
+  -webkit-line-clamp: 3;
+  max-width: 100%;
+  overflow: hidden;
+  font-size: 12.5px;
+  font-weight: 600;
+  line-height: 1.5;
+  overflow-wrap: anywhere;
+}
+
+.wcard .pill {
+  max-width: 100%;
+  overflow: hidden;
+}
+
+.wcard[data-state='cancelled'] {
+  opacity: 0.6;
+}
+
+/* ── Agenda ────────────────────────────────────────────────────────── */
+
+.agenda {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  min-height: 320px;
+  padding: 8px 8px 0;
+}
+
+.agenda__filters {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  margin-bottom: 10px;
+}
+
+.agenda__day {
+  display: grid;
+  grid-template-columns: 128px minmax(0, 1fr);
+  gap: 12px;
+  padding-block: 10px;
+  border-top: 1px solid var(--line);
+}
+
+.agenda__day header {
+  display: flex;
+  align-items: flex-start;
+  gap: 10px;
+  padding-top: 8px;
+}
+
+.agenda__day header > b {
+  font-size: 26px;
+  font-weight: 600;
+  line-height: 1;
+}
+
+.agenda__day header span {
+  display: flex;
+  flex-direction: column;
+  font-size: 13px;
+  font-weight: 600;
+  line-height: 1.35;
+}
+
+.agenda__day header small {
+  font-size: 12px;
+  font-weight: 500;
+  color: var(--ink-3);
+}
+
+.agenda__day header em {
+  padding: 1px 8px;
+  border-radius: var(--r-pill);
+  background: var(--accent-soft);
+  color: var(--accent-ink);
+  font-size: 11px;
+  font-weight: 700;
+}
+
+/* ── Onboarding steps ──────────────────────────────────────────────── */
+
+.steps {
+  display: flex;
+  flex-direction: column;
+  gap: 14px;
+  counter-reset: step;
+}
+
+.steps li {
+  position: relative;
+  display: flex;
+  flex-direction: column;
+  padding-inline-start: 40px;
+  counter-increment: step;
+}
+
+.steps li::before {
+  content: counter(step);
+  position: absolute;
+  inset-inline-start: 0;
+  top: 1px;
+  display: grid;
+  place-items: center;
+  width: 28px;
+  height: 28px;
+  border-radius: 10px;
+  background: var(--accent-soft);
+  color: var(--accent-ink);
+  font-size: 13.5px;
+  font-weight: 700;
+}
+
+.steps b {
+  font-size: 14px;
+  font-weight: 700;
+}
+
+.steps span {
+  font-size: 12.5px;
+  color: var(--ink-3);
+}
+
+.steps__actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  margin-top: 16px;
+}
+
+/* ── File drop ─────────────────────────────────────────────────────── */
+
+.dropzone {
+  position: fixed;
+  inset: 0;
+  z-index: 90;
+  display: grid;
+  place-items: center;
+  padding: 24px;
+  background: var(--scrim);
+  -webkit-backdrop-filter: blur(6px);
+  backdrop-filter: blur(6px);
+  pointer-events: none;
+}
+
+.dropzone__card {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 6px;
+  padding: 44px 60px;
+  border-radius: var(--r-xl);
+  outline: 2px dashed color-mix(in oklab, var(--accent) 70%, transparent);
+  outline-offset: -12px;
+  text-align: center;
+  color: var(--accent-ink);
+}
+
+.dropzone__card b {
+  margin-top: 8px;
+  font-size: 19px;
+  font-weight: 700;
+  color: var(--ink-1);
+}
+
+.dropzone__card span {
+  font-size: 13.5px;
+  color: var(--ink-3);
+}
+
+/* ── Responsive ────────────────────────────────────────────────────── */
+
+@media (max-width: 1180px) {
+  .cal__body {
+    grid-template-columns: minmax(0, 1fr);
+  }
+
+  .cal__side {
+    position: static;
+  }
+}
+
+@media (max-width: 900px) {
+  .cal__stats {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+
+  .cal__bar {
+    grid-template-columns: minmax(0, 1fr);
+  }
+
+  .cal__nav {
+    justify-content: space-between;
+  }
+
+  .cal__nav h2 {
+    flex: 1;
+    min-width: 0;
+  }
+
+  .cal__tools {
+    justify-content: space-between;
+  }
+
+  .week {
+    grid-template-columns: minmax(0, 1fr);
+    min-height: 0;
+  }
+
+  .week__day {
+    flex-direction: row;
+    align-items: flex-start;
+  }
+
+  .week__head {
+    width: 64px;
+    flex: none;
+  }
+
+  .week__add {
+    margin-top: 0;
+  }
+}
+
+/* Phones: cells shrink to a number and state dots; the day panel carries the detail. */
+@media (max-width: 760px) {
+  .cal__main {
+    padding: 6px;
+  }
+
+  .month__grid {
+    gap: 3px;
+  }
+
+  .month__head span {
+    font-size: 11px;
+  }
+
+  .day {
+    align-items: center;
+    gap: 4px;
+    min-height: 62px;
+    padding: 5px 2px;
+    border-radius: 11px;
+  }
+
+  .day__head {
+    flex-direction: column;
+    gap: 2px;
+  }
+
+  .day__items,
+  .day__add,
+  .day .observed {
+    display: none;
+  }
+
+  .day__dots {
+    display: flex;
+    flex-wrap: wrap;
+    justify-content: center;
+    gap: 3px;
+  }
+
+  .day__dots i {
+    display: block;
+    width: 6px;
+    height: 6px;
+    border-radius: 50%;
+    background: var(--p);
+  }
+
+  .day__dots i[data-state='missed'] {
+    box-shadow: 0 0 0 1.5px var(--crit);
+  }
+
+  .day__dots i[data-state='draft'],
+  .day__dots i[data-state='cancelled'] {
+    background: transparent;
+    box-shadow: inset 0 0 0 1.5px var(--ink-3);
+  }
+
+  .agenda__day {
+    grid-template-columns: minmax(0, 1fr);
+    gap: 4px;
+  }
+
+  .cal__legend-note {
+    margin-inline-start: 0;
+  }
+}
