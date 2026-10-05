@@ -108,9 +108,9 @@ export function ConnectionsView() {
 
                 <p className="connector__message">{connector.message}</p>
 
-                {connector.platform === 'tiktok' && connector.status !== 'connected' && (
+                {connector.platform === 'tiktok' && (
                   <LinkButton variant="primary" size="sm" href="/api/oauth/tiktok/start" icon={<Link2 size={15} />}>
-                    ربط حساب TikTok
+                    {connector.status === 'connected' ? 'تغيير حساب TikTok' : 'ربط حساب TikTok'}
                   </LinkButton>
                 )}
 

@@ -26,6 +26,7 @@ export async function syncTikTok():Promise<ConnectorResult>{
      if(!body.data?.has_more || !body.data.cursor)break;cursor=body.data.cursor;
    }
    const refreshEnabled=Boolean(process.env.TIKTOK_DISPLAY_REFRESH_TOKEN||hasSavedOAuthToken('tiktok'));
-   return {platform:'tiktok',status:'connected',message:`تم جلب ${posts.length} فيديو.${refreshEnabled?' تجديد OAuth مفعّل.':' اضبط refresh token لاستمرار المزامنة بعد انتهاء access token.'}`,posts};
+   const accountName=text(user?.display_name).trim()||'TikTok';
+   return {platform:'tiktok',status:'connected',message:`الحساب المرتبط: ${accountName}. تم جلب ${posts.length} فيديو.${refreshEnabled?' تجديد OAuth مفعّل.':' اضبط refresh token لاستمرار المزامنة بعد انتهاء access token.'}`,posts};
  }catch(e){return {platform:'tiktok',status:'error',message:e instanceof Error?e.message:'تعذّر الاتصال بـTikTok',posts:[]};}
 }
