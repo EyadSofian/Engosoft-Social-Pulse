@@ -1,8 +1,8 @@
 import { useMemo, useState, type CSSProperties } from 'react';
 import { AnimatePresence, motion } from 'motion/react';
-import { ChevronDown, Copy, KeyRound, RefreshCw, ShieldCheck } from 'lucide-react';
+import { ChevronDown, Copy, KeyRound, Link2, RefreshCw, ShieldCheck } from 'lucide-react';
 import { ConnectorPill, Panel, Reveal, Ring, ViewHeader } from '../../components/ui/Bits';
-import { Button } from '../../components/ui/Button';
+import { Button, LinkButton } from '../../components/ui/Button';
 import { PlatformBadge } from '../../components/ui/Platform';
 import { useToast } from '../../components/ui/Toast';
 import { useApp } from '../../context';
@@ -107,6 +107,12 @@ export function ConnectionsView() {
                 </header>
 
                 <p className="connector__message">{connector.message}</p>
+
+                {connector.platform === 'tiktok' && connector.status !== 'connected' && (
+                  <LinkButton variant="primary" size="sm" href="/api/oauth/tiktok/start" icon={<Link2 size={15} />}>
+                    ربط حساب TikTok
+                  </LinkButton>
+                )}
 
                 <dl className="connector__facts">
                   <div>

@@ -37,7 +37,7 @@ HOST=0.0.0.0 npm start
 | --- | --- | --- |
 | Facebook | `META_ACCESS_TOKEN`, اختياريًا `META_PAGE_IDS`, `META_API_VERSION` | بوستات الصفحات ونصها وروابطها وتاريخها؛ الإعجابات/التعليقات عند توفر الصلاحيات |
 | Instagram | توكن Meta نفسه، وحساب Professional مرتبط بصفحة | منشورات الحساب وحقول media insights التي يسمح بها التوكن |
-| TikTok | `TIKTOK_DISPLAY_ACCESS_TOKEN` بصلاحية `video.list`، وللتجديد `TIKTOK_DISPLAY_REFRESH_TOKEN`, `TIKTOK_CLIENT_KEY`, `TIKTOK_CLIENT_SECRET` | فيديوهات الحساب العام، المشاهدات، الإعجابات، التعليقات، المشاركات |
+| TikTok | ربط OAuth من صفحة المنصات؛ `TIKTOK_CLIENT_KEY`, `TIKTOK_CLIENT_SECRET`, `TIKTOK_REDIRECT_URI`, `TOKEN_ENCRYPTION_KEY` | فيديوهات الحساب العام، المشاهدات، الإعجابات، التعليقات، المشاركات؛ تُخزّن refresh tokens مشفرة على السيرفر |
 | Snapchat | `SNAP_PROFILE_ACCESS_TOKEN`, `SNAP_PROFILE_ID`، وللتجديد `SNAP_PROFILE_REFRESH_TOKEN`, `SNAP_CLIENT_ID`, `SNAP_CLIENT_SECRET` | Stories وSpotlights ومشاهداتها وreach وfavorites وshares من Public Profile API |
 | Website | `GA4_PROPERTY_ID`, `GOOGLE_ANALYTICS_CLIENT_ID`, `GOOGLE_ANALYTICS_CLIENT_SECRET`, `GOOGLE_ANALYTICS_REFRESH_TOKEN` | مشاهدات الموقع اليومية وأداء كل مسار صفحة خلال 90 يومًا |
 

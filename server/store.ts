@@ -1,7 +1,7 @@
 import Database from 'better-sqlite3';
 import { mkdirSync } from 'node:fs';
 import { dirname, resolve } from 'node:path';
-import { randomUUID } from 'node:crypto';
+import { createHash, randomUUID } from 'node:crypto';
 import type { ConnectorResult, ObservedPost, Plan, Platform } from './types.js';
 
 const path = resolve(process.env.DATA_FILE || './data/social-pulse.sqlite');
@@ -27,6 +27,7 @@ CREATE TABLE IF NOT EXISTS website_daily (date TEXT PRIMARY KEY, views INTEGER N
 CREATE TABLE IF NOT EXISTS website_page_daily (date TEXT NOT NULL, path TEXT NOT NULL, title TEXT NOT NULL, views INTEGER NOT NULL, active_users INTEGER NOT NULL, engagement_seconds REAL NOT NULL, fetched_at TEXT NOT NULL, PRIMARY KEY(date,path));
 CREATE TABLE IF NOT EXISTS connector_status (platform TEXT PRIMARY KEY, status TEXT NOT NULL, message TEXT NOT NULL, checked_at TEXT NOT NULL);
 CREATE TABLE IF NOT EXISTS oauth_tokens (platform TEXT PRIMARY KEY, encrypted_json TEXT NOT NULL, updated_at TEXT NOT NULL);
+CREATE TABLE IF NOT EXISTS oauth_states (state_hash TEXT PRIMARY KEY, expires_at INTEGER NOT NULL, created_at TEXT NOT NULL);
 CREATE TABLE IF NOT EXISTS alerts (id TEXT PRIMARY KEY, plan_id TEXT NOT NULL, kind TEXT NOT NULL, message TEXT NOT NULL,
  created_at TEXT NOT NULL, delivered_at TEXT NOT NULL DEFAULT '', dismissed_at TEXT NOT NULL DEFAULT '', UNIQUE(plan_id, kind));
 `);
@@ -89,6 +90,18 @@ export function getEncryptedToken(platform:Platform):string|undefined {
 }
 export function saveEncryptedToken(platform:Platform,encrypted:string):void {
  db.prepare('INSERT INTO oauth_tokens(platform,encrypted_json,updated_at) VALUES(?,?,?) ON CONFLICT(platform) DO UPDATE SET encrypted_json=excluded.encrypted_json,updated_at=excluded.updated_at').run(platform,encrypted,new Date().toISOString());
+}
+export function saveOAuthState(state:string,expiresAt:number):void {
+ db.prepare('DELETE FROM oauth_states WHERE expires_at < ?').run(Date.now());
+ db.prepare('INSERT INTO oauth_states(state_hash,expires_at,created_at) VALUES(?,?,?)').run(createHash('sha256').update(state).digest('hex'),expiresAt,new Date().toISOString());
+}
+export function consumeOAuthState(state:string,now=Date.now()):boolean {
+ const hash=createHash('sha256').update(state).digest('hex');
+ return db.transaction(()=>{
+  const row=db.prepare('SELECT expires_at FROM oauth_states WHERE state_hash=?').get(hash) as {expires_at:number}|undefined;
+  db.prepare('DELETE FROM oauth_states WHERE state_hash=?').run(hash);
+  return Boolean(row&&row.expires_at>=now);
+ })();
 }
 export interface Alert { id:string; planId:string; kind:string; message:string; createdAt:string; deliveredAt:string; dismissedAt:string; }
 export function getAlerts(): Alert[] { return db.prepare('SELECT id,plan_id AS planId,kind,message,created_at AS createdAt,delivered_at AS deliveredAt,dismissed_at AS dismissedAt FROM alerts ORDER BY created_at DESC LIMIT 100').all() as Alert[]; }

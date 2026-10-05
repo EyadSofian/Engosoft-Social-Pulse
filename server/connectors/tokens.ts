@@ -35,6 +35,15 @@ export function providerAccessToken(platform:Provider):Promise<string> {
  const promise=resolveAccessToken(configs[platform]).finally(()=>inFlight.delete(platform));
  inFlight.set(platform,promise);return promise;
 }
+export function hasSavedOAuthToken(platform:Provider):boolean {
+ return Boolean(getEncryptedToken(platform));
+}
+export function saveOAuthAccessToken(platform:Provider,value:TokenRecord):void {
+ const secret=key();
+ if(!secret)throw new Error('TOKEN_ENCRYPTION_KEY غير مضبوط؛ تعذّر حفظ التوكن بأمان.');
+ if(!value.accessToken||!value.refreshToken)throw new Error('TikTok لم يُرجع access token وrefresh token معًا.');
+ saveEncryptedToken(platform,encrypt(platform,value,secret));
+}
 async function resolveAccessToken(config:Config):Promise<string>{
  const fallback=process.env[config.accessEnv]?.trim()||'';
  const secret=key();
