@@ -2,9 +2,13 @@ import { createContext, useContext } from 'react';
 import type { DashboardStore } from './hooks/useDashboard';
 import type { Route } from './hooks/ui';
 import type { Filters } from './lib/analytics';
-import type { Dashboard, Plan, Post } from './types';
+import type { Dashboard, Plan, PlanInput, PlanStatus, Post } from './types';
 
-export type PlanTarget = { mode: 'new'; day?: string } | { mode: 'edit'; plan: Plan };
+export type PlanTarget =
+  /** `time` is HH:mm in the business timezone; `template` pre-fills a duplicate or an occasion post. */
+  | { mode: 'new'; day?: string; time?: string; template?: Partial<PlanInput> }
+  /** `status` pre-selects a new status, e.g. a board card dropped on "published" that still needs proof. */
+  | { mode: 'edit'; plan: Plan; status?: PlanStatus };
 
 export interface AppContextValue {
   store: DashboardStore;

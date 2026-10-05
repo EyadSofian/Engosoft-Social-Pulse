@@ -109,6 +109,9 @@ export interface ImportResult {
 
 export type PlanInput = Omit<ApiPlan, 'id' | 'computedState'> & { id?: string };
 
+/** Fields a calendar drag or a board move can change without reopening the form. */
+export type PlanPatch = Partial<Pick<ApiPlan, 'scheduledAt' | 'status' | 'permalink' | 'externalId'>>;
+
 /* ── View models: API rows with their business-timezone fields precomputed ── */
 
 export interface Post extends ApiPost {

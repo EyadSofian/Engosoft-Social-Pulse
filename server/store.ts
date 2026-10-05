@@ -35,6 +35,10 @@ CREATE TABLE IF NOT EXISTS alerts (id TEXT PRIMARY KEY, plan_id TEXT NOT NULL, k
 const toPlan = (r: Record<string, unknown>): Plan => ({
   id:String(r.id), platform:r.platform as Platform, accountId:String(r.account_id), title:String(r.title), caption:String(r.caption), scheduledAt:String(r.scheduled_at), status:r.status as Plan['status'], permalink:String(r.permalink), externalId:String(r.external_id), owner:String(r.owner), contentType:String(r.content_type), campaign:String(r.campaign), notes:String(r.notes), sourceKey:String(r.source_key), createdAt:String(r.created_at), updatedAt:String(r.updated_at)
 });
+export const getPlan = (id: string): Plan | undefined => {
+  const row = db.prepare('SELECT * FROM plans WHERE id=?').get(id) as Record<string, unknown> | undefined;
+  return row ? toPlan(row) : undefined;
+};
 export const getPlans = (): Plan[] => (db.prepare('SELECT * FROM plans ORDER BY scheduled_at ASC').all() as Record<string,unknown>[]).map(toPlan);
 export function savePlan(plan: Plan): Plan {
   const previous=db.prepare('SELECT scheduled_at,status,permalink,external_id FROM plans WHERE id=?').get(plan.id) as {scheduled_at:string;status:string;permalink:string;external_id:string}|undefined;

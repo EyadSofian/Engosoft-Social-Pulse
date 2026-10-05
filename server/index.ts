@@ -5,8 +5,8 @@ import { resolve } from 'node:path';
 import { z } from 'zod';
 import { checkAlerts } from './alerts.js';
 import { parseCalendar } from './calendar.js';
-import { newPlan, isPlatform, planState, engagementRate } from './domain.js';
-import { deletePlan, dismissAlert, getAlerts, getConnectorStatuses, getObserved, getPlans, getWebsiteDaily, getWebsitePages, saveImportedPlan, savePlan } from './store.js';
+import { applyPlanPatch, newPlan, isPlatform, missingPublishProof, planState, engagementRate } from './domain.js';
+import { deletePlan, dismissAlert, getAlerts, getConnectorStatuses, getObserved, getPlan, getPlans, getWebsiteDaily, getWebsitePages, saveImportedPlan, savePlan } from './store.js';
 import { runSync } from './sync.js';
 import { consumeOAuthState, saveOAuthState, saveConnectorResult } from './store.js';
 import { saveOAuthAccessToken } from './connectors/tokens.js';
@@ -66,14 +66,26 @@ app.get('/api/dashboard',(_req,res)=>{
  res.setHeader('Cache-Control','no-store');
  res.json({generatedAt:now.toISOString(),timeZone:process.env.BUSINESS_TIME_ZONE||'Africa/Cairo',posts:enrichedPosts,plans:enriched,alerts:getAlerts(),connectors:getConnectorStatuses(),website:getWebsiteDaily(),websitePages:getWebsitePages()});
 });
+const planStatus=z.enum(['draft','approved','scheduled','published','cancelled']);
 const planSchema=z.object({
- id:z.string().uuid().optional(),platform:z.string().refine(isPlatform),accountId:z.string().max(120).default(''),title:z.string().trim().min(1).max(300),caption:z.string().max(5000).default(''),scheduledAt:z.iso.datetime(),status:z.enum(['draft','approved','scheduled','published','cancelled']).default('scheduled'),permalink:z.string().max(1000).default(''),externalId:z.string().max(200).default(''),owner:z.string().max(120).default(''),contentType:z.string().max(60).default('post'),campaign:z.string().max(120).default(''),notes:z.string().max(1000).default('')
+ id:z.string().uuid().optional(),platform:z.string().refine(isPlatform),accountId:z.string().max(120).default(''),title:z.string().trim().min(1).max(300),caption:z.string().max(5000).default(''),scheduledAt:z.iso.datetime(),status:planStatus.default('scheduled'),permalink:z.string().max(1000).default(''),externalId:z.string().max(200).default(''),owner:z.string().max(120).default(''),contentType:z.string().max(60).default('post'),campaign:z.string().max(120).default(''),notes:z.string().max(1000).default('')
 });
+const planPatchSchema=z.object({scheduledAt:z.iso.datetime().optional(),status:planStatus.optional(),permalink:z.string().max(1000).optional(),externalId:z.string().max(200).optional()}).strict();
+const PROOF_REQUIRED='أضف رابط المنشور أو معرّفه لتأكيد النشر.';
 app.post('/api/plans',async(req,res)=>{
  const parsed=planSchema.safeParse(req.body);if(!parsed.success)return res.status(400).json({error:'بيانات البوست غير صالحة.',issues:parsed.error.issues});
- if(parsed.data.status==='published'&&!parsed.data.permalink&&!parsed.data.externalId)return res.status(400).json({error:'أضف رابط المنشور أو معرّفه لتأكيد النشر.'});
- const old=getPlans().find(x=>x.id===parsed.data.id);
+ if(missingPublishProof(parsed.data))return res.status(400).json({error:PROOF_REQUIRED});
+ const old=parsed.data.id?getPlan(parsed.data.id):undefined;
  const plan=newPlan({...old,...parsed.data,platform:parsed.data.platform as Platform,createdAt:old?.createdAt,sourceKey:old?.sourceKey});
+ const saved=savePlan(plan);
+ await checkAlerts();
+ res.json(saved);
+});
+app.patch('/api/plans/:id',async(req,res)=>{
+ const parsed=planPatchSchema.safeParse(req.body);if(!parsed.success)return res.status(400).json({error:'تعديل غير صالح.',issues:parsed.error.issues});
+ const old=getPlan(String(req.params.id));if(!old)return res.status(404).json({error:'البوست غير موجود؛ ربما حُذف.'});
+ const plan=applyPlanPatch(old,parsed.data);
+ if(missingPublishProof(plan))return res.status(400).json({error:PROOF_REQUIRED,code:'proof_required'});
  const saved=savePlan(plan);
  await checkAlerts();
  res.json(saved);
@@ -92,6 +104,7 @@ app.post('/api/calendar/import',express.raw({type:'application/octet-stream',lim
 app.post('/api/sync',async(_req,res)=>{try{res.json({results:await runSync()});}catch{res.status(502).json({error:'تعذّر مزامنة المصادر.'});}});
 app.post('/api/alerts/check',async(_req,res)=>res.json({created:await checkAlerts()}));
 app.post('/api/alerts/:id/dismiss',(req,res)=>res.json({dismissed:dismissAlert(String(req.params.id))}));
+app.use('/api',(_req,res)=>res.status(404).json({error:'المسار غير موجود.'}));
 const dist=resolve('dist');if(existsSync(dist)){
  app.use(express.static(dist));
  app.get('/{*path}',(_req,res)=>res.sendFile(resolve(dist,'index.html')));

@@ -1,10 +1,11 @@
 /*
- * Design tokens — Engosoft brand (navy / coral / amber) on a glass surface system.
- * Dark is the default theme; light redefines the same roles.
+ * Design tokens — "creator studio": violet → magenta → sunset-orange on soft, airy surfaces.
+ * Light and dark redefine the same roles; dark is a warm plum night, not a trading-floor navy.
+ * Surface variable names (--glass*) are kept for the components; their values are now near-solid cards.
  */
 
 :root {
-  --font: 'Outfit', 'Cairo', system-ui, -apple-system, 'Segoe UI', sans-serif;
+  --font: 'Readex Pro', 'Cairo', system-ui, -apple-system, 'Segoe UI', sans-serif;
 
   --r-xs: 8px;
   --r-sm: 12px;
@@ -14,7 +15,7 @@
   --r-pill: 999px;
 
   --gap: 18px;
-  --page: 1380px;
+  --page: 1440px;
 
   --ease-out: cubic-bezier(0.22, 1, 0.36, 1);
   --ease-in-out: cubic-bezier(0.65, 0, 0.35, 1);
@@ -33,144 +34,75 @@
   }
 }
 
+/* ── Light (default) ───────────────────────────────────────────────── */
+
 :root,
-:root[data-theme='dark'] {
-  color-scheme: dark;
-
-  /* Canvas */
-  --canvas: #090a15;
-  --canvas-gradient: radial-gradient(130% 90% at 50% -10%, #191b43 0%, #0c0d1e 46%, #07080f 100%);
-  --orb-coral: rgba(233, 69, 96, 0.36);
-  --orb-indigo: rgba(92, 105, 246, 0.3);
-  --orb-amber: rgba(245, 166, 35, 0.16);
-  --grain: 0.07;
-
-  /* Ink */
-  --ink-1: #f6f6fb;
-  --ink-2: #c5c7d8;
-  --ink-3: #9a9cb3;
-  --ink-4: #62647d;
-  --on-accent: #ffffff;
-
-  /* Glass */
-  --glass: linear-gradient(150deg, rgba(255, 255, 255, 0.09) 0%, rgba(255, 255, 255, 0.042) 46%, rgba(255, 255, 255, 0.03) 100%);
-  --glass-raised: linear-gradient(150deg, rgba(255, 255, 255, 0.13), rgba(255, 255, 255, 0.06));
-  --glass-float: rgba(20, 22, 46, 0.72);
-  --glass-edge: linear-gradient(
-    150deg,
-    rgba(255, 255, 255, 0.38) 0%,
-    rgba(255, 255, 255, 0.08) 28%,
-    rgba(255, 255, 255, 0.03) 62%,
-    rgba(255, 255, 255, 0.2) 100%
-  );
-  --glass-shadow: 0 32px 70px -36px rgba(0, 0, 0, 0.8), 0 10px 26px -18px rgba(0, 0, 0, 0.5);
-  --glass-inset: inset 0 1px 0 rgba(255, 255, 255, 0.07);
-  --float-shadow: 0 40px 90px -30px rgba(0, 0, 0, 0.85), 0 12px 30px -16px rgba(0, 0, 0, 0.6);
-  --blur: 26px;
-  --spot: rgba(255, 255, 255, 0.075);
-
-  --line: rgba(255, 255, 255, 0.075);
-  --line-strong: rgba(255, 255, 255, 0.14);
-  --wash: rgba(255, 255, 255, 0.055);
-  --wash-strong: rgba(255, 255, 255, 0.1);
-  --field: rgba(7, 8, 20, 0.44);
-  --field-border: rgba(255, 255, 255, 0.11);
-  --scrim: rgba(4, 5, 12, 0.6);
-  --thumb: rgba(255, 255, 255, 0.13);
-
-  /* Brand */
-  --accent: #f0506b;
-  --accent-ink: #ff8ea1;
-  --accent-soft: rgba(240, 80, 107, 0.16);
-  --amber: #f5a623;
-  --amber-ink: #f7b84b;
-  --amber-soft: rgba(245, 166, 35, 0.15);
-  --brand: linear-gradient(135deg, #ef4f6b 0%, #de3956 52%, #ee8436 135%);
-  --brand-glow: 0 16px 34px -16px rgba(233, 69, 96, 0.8);
-  --focus: #ffc266;
-
-  /* Data ink: one hue for single-series charts; opacity steps make the sequential ramp. */
-  --data: #f0607a;
-  --grid: rgba(255, 255, 255, 0.07);
-  --axis: rgba(255, 255, 255, 0.17);
-  --mark-gap: #15172d;
-
-  /* Status — always paired with an icon and a label */
-  --ok: #3ddc97;
-  --ok-soft: rgba(61, 220, 151, 0.13);
-  --info: #8fb4ff;
-  --info-soft: rgba(143, 180, 255, 0.13);
-  --warn: #f7b84b;
-  --warn-soft: rgba(247, 184, 75, 0.14);
-  --crit: #ff7a6b;
-  --crit-soft: rgba(255, 122, 107, 0.14);
-  --mute: #9a9cb3;
-  --mute-soft: rgba(255, 255, 255, 0.07);
-
-  /* Platforms — validated as a categorical set in this display order */
-  --p-facebook: #3987e5;
-  --p-instagram: #c4407a;
-  --p-tiktok: #1aa5aa;
-  --p-snapchat: #c98500;
-  --p-website: #a070e8;
-  --p-ink-mix: white 46%;
-}
-
 :root[data-theme='light'] {
   color-scheme: light;
 
-  --canvas: #eeedf6;
-  --canvas-gradient: radial-gradient(130% 90% at 50% -10%, #fdfcff 0%, #f0eef9 48%, #e6e4f2 100%);
-  --orb-coral: rgba(233, 69, 96, 0.24);
-  --orb-indigo: rgba(92, 105, 246, 0.2);
-  --orb-amber: rgba(245, 166, 35, 0.24);
-  --grain: 0.05;
+  /* Canvas: a pastel wash that reads "social", with slow blobs of the brand hues. */
+  --canvas: #f7f5fc;
+  --canvas-gradient:
+    radial-gradient(90% 70% at 100% 0%, #fdeef7 0%, transparent 62%),
+    radial-gradient(80% 70% at 0% 8%, #efeafe 0%, transparent 60%),
+    linear-gradient(180deg, #fbfaff 0%, #f5f2fb 100%);
+  --orb-1: rgba(236, 72, 153, 0.15);
+  --orb-2: rgba(139, 92, 246, 0.17);
+  --orb-3: rgba(251, 146, 60, 0.15);
+  --grain: 0;
 
-  --ink-1: #1a1a2e;
-  --ink-2: #44465f;
-  --ink-3: #65677f;
-  --ink-4: #a4a5ba;
+  /* Ink: deep plum instead of neutral navy. */
+  --ink-1: #1f1633;
+  --ink-2: #4a4160;
+  --ink-3: #6b6383;
+  --ink-4: #a49db7;
   --on-accent: #ffffff;
 
-  --glass: linear-gradient(150deg, rgba(255, 255, 255, 0.86), rgba(255, 255, 255, 0.6));
-  --glass-raised: linear-gradient(150deg, rgba(255, 255, 255, 0.98), rgba(255, 255, 255, 0.8));
-  --glass-float: rgba(250, 249, 255, 0.8);
-  --glass-edge: linear-gradient(
-    150deg,
-    rgba(255, 255, 255, 1) 0%,
-    rgba(255, 255, 255, 0.6) 34%,
-    rgba(26, 26, 46, 0.06) 70%,
-    rgba(255, 255, 255, 0.95) 100%
-  );
-  --glass-shadow: 0 30px 60px -38px rgba(42, 40, 96, 0.42), 0 8px 22px -16px rgba(42, 40, 96, 0.2);
-  --glass-inset: inset 0 1px 0 rgba(255, 255, 255, 0.95);
-  --float-shadow: 0 40px 80px -34px rgba(42, 40, 96, 0.5), 0 12px 30px -18px rgba(42, 40, 96, 0.3);
-  --spot: rgba(255, 255, 255, 0.8);
+  /* Surfaces */
+  --glass: #ffffff;
+  --glass-raised: #ffffff;
+  --glass-float: rgba(255, 255, 255, 0.88);
+  --glass-edge: rgba(31, 22, 51, 0.075);
+  --glass-shadow: 0 1px 2px rgba(31, 22, 51, 0.04), 0 14px 34px -20px rgba(76, 29, 149, 0.2);
+  --glass-inset: inset 0 1px 0 rgba(255, 255, 255, 0.9);
+  --float-shadow: 0 26px 60px -26px rgba(76, 29, 149, 0.3), 0 8px 20px -12px rgba(31, 22, 51, 0.14);
+  --blur: 22px;
+  --spot: rgba(139, 92, 246, 0.07);
 
-  --line: rgba(26, 26, 46, 0.085);
-  --line-strong: rgba(26, 26, 46, 0.16);
-  --wash: rgba(26, 26, 46, 0.045);
-  --wash-strong: rgba(26, 26, 46, 0.085);
-  --field: rgba(255, 255, 255, 0.76);
-  --field-border: rgba(26, 26, 46, 0.15);
-  --scrim: rgba(26, 26, 54, 0.36);
+  --line: rgba(31, 22, 51, 0.08);
+  --line-strong: rgba(31, 22, 51, 0.15);
+  --wash: rgba(91, 33, 182, 0.035);
+  --wash-strong: rgba(91, 33, 182, 0.075);
+  --field: #ffffff;
+  --field-border: rgba(31, 22, 51, 0.14);
+  --scrim: rgba(31, 18, 54, 0.32);
   --thumb: #ffffff;
 
-  --accent: #dc3552;
-  --accent-ink: #c22545;
-  --accent-soft: rgba(220, 53, 82, 0.1);
-  --amber: #c98200;
-  --amber-ink: #9a6400;
-  --amber-soft: rgba(201, 130, 0, 0.13);
-  --brand: linear-gradient(135deg, #e23e5b 0%, #c9294a 55%, #d9661f 140%);
-  --brand-glow: 0 16px 30px -16px rgba(220, 53, 82, 0.6);
-  --focus: #c22545;
+  /* Brand */
+  --accent: #7c3aed;
+  --accent-ink: #6d28d9;
+  --accent-soft: rgba(124, 58, 237, 0.1);
+  --pink: #db2777;
+  --pink-ink: #be185d;
+  --pink-soft: rgba(219, 39, 119, 0.1);
+  --amber: #c27a00;
+  --amber-ink: #915c00;
+  --amber-soft: rgba(194, 122, 0, 0.12);
+  --brand: linear-gradient(120deg, #7c3aed 0%, #c026d3 46%, #e5397f 78%, #f2683a 112%);
+  --brand-soft: linear-gradient(120deg, rgba(124, 58, 237, 0.1), rgba(229, 57, 127, 0.1) 70%, rgba(242, 104, 58, 0.1));
+  --brand-glow: 0 14px 30px -14px rgba(192, 38, 211, 0.55);
+  --brand-glow-strong: 0 20px 38px -14px rgba(192, 38, 211, 0.7);
+  /* The story ring: today's date and live items wear it. */
+  --ring-gradient: linear-gradient(45deg, #f7b03c, #f3693a 30%, #e2337f 60%, #9b3bdb 85%, #6a4be6);
+  --focus: #7c3aed;
 
-  --data: #d9304f;
-  --grid: rgba(26, 26, 46, 0.08);
-  --axis: rgba(26, 26, 46, 0.22);
-  --mark-gap: #f8f7fc;
+  /* Data ink: one hue for single-series charts; opacity steps make the sequential ramp. */
+  --data: #7c3aed;
+  --grid: rgba(31, 22, 51, 0.07);
+  --axis: rgba(31, 22, 51, 0.2);
+  --mark-gap: #ffffff;
 
+  /* Status — always paired with an icon and a label */
   --ok: #0b7a4a;
   --ok-soft: rgba(11, 122, 74, 0.1);
   --info: #2f62c9;
@@ -179,13 +111,93 @@
   --warn-soft: rgba(201, 130, 0, 0.14);
   --crit: #c8322b;
   --crit-soft: rgba(200, 50, 43, 0.1);
-  --mute: #65677f;
-  --mute-soft: rgba(26, 26, 46, 0.06);
+  --mute: #6b6383;
+  --mute-soft: rgba(31, 22, 51, 0.06);
 
+  /* Platforms — validated as a categorical set in this display order (adjacent pairs, CVD-safe) */
   --p-facebook: #2a78d6;
-  --p-instagram: #b82a66;
-  --p-tiktok: #0b9aa2;
-  --p-snapchat: #a87800;
-  --p-website: #4a3aa7;
+  --p-instagram: #c2266d;
+  --p-tiktok: #0aa5a0;
+  --p-snapchat: #b58400;
+  --p-website: #7c4ddb;
   --p-ink-mix: black 12%;
+}
+
+/* ── Dark ──────────────────────────────────────────────────────────── */
+
+:root[data-theme='dark'] {
+  color-scheme: dark;
+
+  --canvas: #120e1a;
+  --canvas-gradient:
+    radial-gradient(90% 70% at 100% -6%, #2c1838 0%, transparent 58%),
+    radial-gradient(80% 70% at 0% 4%, #22183a 0%, transparent 60%),
+    linear-gradient(180deg, #15101f 0%, #0f0b16 100%);
+  --orb-1: rgba(236, 72, 153, 0.18);
+  --orb-2: rgba(139, 92, 246, 0.22);
+  --orb-3: rgba(249, 115, 22, 0.1);
+  --grain: 0;
+
+  --ink-1: #f7f3fc;
+  --ink-2: #d0c7df;
+  --ink-3: #a097b5;
+  --ink-4: #6a617f;
+  --on-accent: #ffffff;
+
+  --glass: linear-gradient(180deg, rgba(42, 33, 58, 0.82) 0%, rgba(32, 25, 45, 0.82) 100%);
+  --glass-raised: rgba(56, 45, 76, 0.95);
+  --glass-float: rgba(29, 22, 41, 0.84);
+  --glass-edge: linear-gradient(180deg, rgba(255, 255, 255, 0.13) 0%, rgba(255, 255, 255, 0.05) 40%, rgba(255, 255, 255, 0.04) 100%);
+  --glass-shadow: 0 24px 54px -34px rgba(0, 0, 0, 0.75), 0 6px 18px -12px rgba(0, 0, 0, 0.45);
+  --glass-inset: inset 0 1px 0 rgba(255, 255, 255, 0.04);
+  --float-shadow: 0 34px 80px -30px rgba(0, 0, 0, 0.8), 0 10px 26px -16px rgba(0, 0, 0, 0.55);
+  --spot: rgba(167, 139, 250, 0.09);
+
+  --line: rgba(255, 255, 255, 0.075);
+  --line-strong: rgba(255, 255, 255, 0.14);
+  --wash: rgba(255, 255, 255, 0.045);
+  --wash-strong: rgba(255, 255, 255, 0.09);
+  --field: rgba(12, 8, 19, 0.5);
+  --field-border: rgba(255, 255, 255, 0.11);
+  --scrim: rgba(8, 5, 14, 0.62);
+  --thumb: rgba(255, 255, 255, 0.13);
+
+  --accent: #a78bfa;
+  --accent-ink: #c4b5fd;
+  --accent-soft: rgba(167, 139, 250, 0.16);
+  --pink: #f472b6;
+  --pink-ink: #f9a8d4;
+  --pink-soft: rgba(244, 114, 182, 0.15);
+  --amber: #f5a623;
+  --amber-ink: #f7b84b;
+  --amber-soft: rgba(245, 166, 35, 0.15);
+  --brand: linear-gradient(120deg, #8b5cf6 0%, #c43be6 46%, #ec4899 78%, #fb7a45 112%);
+  --brand-soft: linear-gradient(120deg, rgba(139, 92, 246, 0.18), rgba(236, 72, 153, 0.16) 70%, rgba(251, 122, 69, 0.14));
+  --brand-glow: 0 14px 32px -14px rgba(217, 70, 239, 0.6);
+  --brand-glow-strong: 0 20px 40px -14px rgba(217, 70, 239, 0.78);
+  --ring-gradient: linear-gradient(45deg, #fbbf4a, #f97342 30%, #ec4899 60%, #b15cf2 85%, #7c6cf5);
+  --focus: #c4b5fd;
+
+  --data: #a78bfa;
+  --grid: rgba(255, 255, 255, 0.07);
+  --axis: rgba(255, 255, 255, 0.17);
+  --mark-gap: #1d1628;
+
+  --ok: #3ddc97;
+  --ok-soft: rgba(61, 220, 151, 0.13);
+  --info: #8fb4ff;
+  --info-soft: rgba(143, 180, 255, 0.13);
+  --warn: #f7b84b;
+  --warn-soft: rgba(247, 184, 75, 0.14);
+  --crit: #ff7a7f;
+  --crit-soft: rgba(255, 122, 127, 0.14);
+  --mute: #a097b5;
+  --mute-soft: rgba(255, 255, 255, 0.07);
+
+  --p-facebook: #3987e5;
+  --p-instagram: #c4407a;
+  --p-tiktok: #1aa5aa;
+  --p-snapchat: #c98500;
+  --p-website: #a070e8;
+  --p-ink-mix: white 46%;
 }

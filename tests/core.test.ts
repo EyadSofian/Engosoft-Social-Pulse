@@ -2,7 +2,7 @@ import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import { readFile } from 'node:fs/promises';
 import { parseCalendar } from '../server/calendar.js';
-import { matchingPost, newPlan, planState, engagementRate } from '../server/domain.js';
+import { applyPlanPatch, matchingPost, missingPublishProof, newPlan, planState, engagementRate } from '../server/domain.js';
 import { blankMetrics, type ObservedPost } from '../server/types.js';
 
 test('late planned post stays unconfirmed until exact post URL or ID matches',()=>{
@@ -38,4 +38,15 @@ test('downloadable XLSX template has a parser-compatible Calendar sheet',async()
  const parsed=await parseCalendar(await readFile(path),'calendar.xlsx');
  assert.equal(parsed.plans.length,0);
  assert.equal(parsed.errors.length,0);
+});
+
+test('calendar move keeps every other plan field and publishing still needs proof',()=>{
+ const plan=newPlan({platform:'instagram',title:'Reel',caption:'Copy',owner:'Sara',campaign:'October',scheduledAt:'2026-10-06T11:30:00.000Z',status:'approved'});
+ const moved=applyPlanPatch(plan,{scheduledAt:'2026-10-08T15:00:00.000Z'},new Date('2026-10-05T10:00:00.000Z'));
+ assert.equal(moved.scheduledAt,'2026-10-08T15:00:00.000Z');
+ assert.deepEqual({...moved,scheduledAt:plan.scheduledAt,updatedAt:plan.updatedAt},plan);
+ assert.equal(moved.updatedAt,'2026-10-05T10:00:00.000Z');
+ assert.equal(applyPlanPatch(plan,{scheduledAt:undefined}).scheduledAt,plan.scheduledAt);
+ assert.equal(missingPublishProof(applyPlanPatch(plan,{status:'published'})),true);
+ assert.equal(missingPublishProof(applyPlanPatch(plan,{status:'published',externalId:'1789'})),false);
 });

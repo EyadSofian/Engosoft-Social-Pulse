@@ -3,6 +3,7 @@ import type {
   Connector,
   Dashboard,
   Plan,
+  PlanPatch,
   PlanState,
   Platform,
   Post,
@@ -375,6 +376,74 @@ export function radar(plans: Plan[], limit: number): Plan[] {
       return a.computedState === 'upcoming' ? a.ts - b.ts : b.ts - a.ts;
     })
     .slice(0, limit);
+}
+
+/**
+ * Applies a calendar move or status change locally so the grid updates before the server answers.
+ * The next dashboard load replaces it with the server's computed state.
+ */
+export function patchPlanLocally(plan: Plan, patch: PlanPatch, now: number, graceMinutes = 15): Plan {
+  const next = { ...plan, ...patch };
+  const ts = parseTimestamp(next.scheduledAt);
+  const dayNum = dayNumber(ts);
+  let state: PlanState;
+  if (next.status === 'cancelled') state = 'cancelled';
+  else if (next.status === 'published' || (plan.computedState === 'published' && next.status !== 'draft')) state = 'published';
+  else if (next.status === 'draft') state = 'draft';
+  else if (now < ts) state = 'upcoming';
+  else state = now < ts + graceMinutes * 60_000 ? 'due' : 'missed';
+  return { ...next, ts, dayNum, day: dayKeyOf(dayNum), computedState: state };
+}
+
+/* ── Best time to post ─────────────────────────────────────────────── */
+
+export interface Slot {
+  /** Luxon weekday, or 0 when the slot is an hour of any day. */
+  weekday: number;
+  hour: number;
+  posts: number;
+  /** Interactions per measured post in this slot. */
+  average: number;
+}
+
+const SLOT_MINIMUM = 2;
+
+function rankSlots(posts: Post[], keyOf: (post: Post) => number, weekdayOf: (post: Post) => number): Slot[] {
+  const buckets = new Map<number, Slot>();
+  for (const post of posts) {
+    const key = keyOf(post);
+    const hit = buckets.get(key);
+    if (hit) {
+      hit.average += post.interactions;
+      hit.posts++;
+    } else buckets.set(key, { weekday: weekdayOf(post), hour: post.hour, posts: 1, average: post.interactions });
+  }
+  return [...buckets.values()]
+    .filter((slot) => slot.posts >= SLOT_MINIMUM)
+    .map((slot) => ({ ...slot, average: slot.average / slot.posts }))
+    .sort((a, b) => b.average - a.average || b.posts - a.posts);
+}
+
+/**
+ * Slots ranked by average interactions on measured posts from the last year.
+ * A slot needs at least two posts; when no weekday/hour slot has that many, hours of any day are ranked instead.
+ */
+export function bestSlots(posts: Post[], todayNum: number): Slot[] {
+  const recent = posts.filter((post) => post.ts && post.measured && todayNum - post.dayNum <= 365);
+  const byWeekday = rankSlots(recent, (post) => post.weekday * 24 + post.hour, (post) => post.weekday);
+  return byWeekday.length ? byWeekday : rankSlots(recent, (post) => post.hour, () => 0);
+}
+
+export const slotDay = (slot: Slot) => (slot.weekday ? WEEKDAY_NAMES[slot.weekday] : 'أي يوم');
+
+/** The strongest hour for each weekday, from `bestSlots`. */
+export function bestHourByWeekday(slots: Slot[]): Map<number, Slot> {
+  const map = new Map<number, Slot>();
+  for (const slot of slots) {
+    if (slot.average <= 0) continue;
+    for (const weekday of slot.weekday ? [slot.weekday] : [1, 2, 3, 4, 5, 6, 7]) if (!map.has(weekday)) map.set(weekday, slot);
+  }
+  return map;
 }
 
 /* ── Website (GA4) ─────────────────────────────────────────────────── */

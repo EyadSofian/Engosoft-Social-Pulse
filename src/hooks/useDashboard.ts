@@ -1,7 +1,7 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
 import { ApiError, errorMessage, request } from '../lib/api';
-import { EMPTY_DASHBOARD, normalize } from '../lib/analytics';
-import type { Alert, ApiDashboard, Dashboard, ImportResult, PlanInput, SyncResult } from '../types';
+import { EMPTY_DASHBOARD, normalize, patchPlanLocally } from '../lib/analytics';
+import type { Alert, ApiDashboard, Dashboard, ImportResult, PlanInput, PlanPatch, SyncResult } from '../types';
 
 const POLL_MS = 60_000;
 
@@ -79,6 +79,22 @@ export function useDashboard(onNewAlert: (alert: Alert) => void) {
     [call],
   );
 
+  /** Optimistic: the calendar moves the post at once; the reload settles the server's state either way. */
+  const patchPlan = useCallback(
+    async (id: string, patch: PlanPatch) => {
+      setData((current) => ({
+        ...current,
+        plans: current.plans.map((plan) => (plan.id === id ? patchPlanLocally(plan, patch, Date.now()) : plan)),
+      }));
+      try {
+        await call<unknown>(`/plans/${id}`, { method: 'PATCH', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(patch) });
+      } finally {
+        void load();
+      }
+    },
+    [call, load],
+  );
+
   const deletePlan = useCallback((id: string) => call<{ deleted: boolean }>(`/plans/${id}`, { method: 'DELETE' }), [call]);
 
   const dismissAlert = useCallback(
@@ -113,6 +129,7 @@ export function useDashboard(onNewAlert: (alert: Alert) => void) {
     reload: load,
     sync,
     savePlan,
+    patchPlan,
     deletePlan,
     dismissAlert,
     importCalendar,

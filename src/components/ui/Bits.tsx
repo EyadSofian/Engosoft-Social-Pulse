@@ -24,8 +24,9 @@ export function Logo({ size = 38 }: { size?: number }) {
       <svg viewBox="0 0 64 64" width={size} height={size}>
         <defs>
           <linearGradient id="logo-fill" x1="0" y1="0" x2="1" y2="1">
-            <stop offset="0" stopColor="#f0506b" />
-            <stop offset="1" stopColor="#f5a623" />
+            <stop offset="0" stopColor="#7c3aed" />
+            <stop offset="0.55" stopColor="#e23a85" />
+            <stop offset="1" stopColor="#f7913f" />
           </linearGradient>
         </defs>
         <rect width="64" height="64" rx="19" fill="url(#logo-fill)" />

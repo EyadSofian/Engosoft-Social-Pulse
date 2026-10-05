@@ -27,20 +27,28 @@ export function useRoute() {
 
 export type Theme = 'dark' | 'light';
 const THEME_KEY = 'social-pulse-theme';
-const THEME_COLOR: Record<Theme, string> = { dark: '#0b0c18', light: '#eeedf6' };
+const THEME_COLOR: Record<Theme, string> = { dark: '#120e1a', light: '#f7f5fc' };
 
 export function useTheme() {
-  const [theme, setTheme] = useState<Theme>(() => (document.documentElement.dataset.theme === 'light' ? 'light' : 'dark'));
+  const [theme, setTheme] = useState<Theme>(() => (document.documentElement.dataset.theme === 'dark' ? 'dark' : 'light'));
   useEffect(() => {
     document.documentElement.dataset.theme = theme;
     document.querySelector('meta[name="theme-color"]')?.setAttribute('content', THEME_COLOR[theme]);
-    try {
-      localStorage.setItem(THEME_KEY, theme);
-    } catch {
-      /* The choice simply won't persist. */
-    }
   }, [theme]);
-  const toggle = useCallback(() => setTheme((current) => (current === 'dark' ? 'light' : 'dark')), []);
+  // Only an explicit choice is remembered; until then the page follows the system setting.
+  const toggle = useCallback(
+    () =>
+      setTheme((current) => {
+        const next = current === 'dark' ? 'light' : 'dark';
+        try {
+          localStorage.setItem(THEME_KEY, next);
+        } catch {
+          /* The choice simply won't persist. */
+        }
+        return next;
+      }),
+    [],
+  );
   return { theme, toggle };
 }
 

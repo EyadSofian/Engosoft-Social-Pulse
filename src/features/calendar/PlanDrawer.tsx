@@ -1,5 +1,5 @@
 import { useMemo, useRef, useState, type CSSProperties, type FormEvent } from 'react';
-import { CalendarClock, Check, Link2, PencilLine, Trash2, Undo2 } from 'lucide-react';
+import { CalendarClock, Check, Copy, Flame, Hash, Link2, PencilLine, Trash2, Undo2 } from 'lucide-react';
 import { StatePill, Thumb } from '../../components/ui/Bits';
 import { Button } from '../../components/ui/Button';
 import { Field, Select } from '../../components/ui/Controls';
@@ -7,15 +7,29 @@ import { Drawer } from '../../components/ui/Overlay';
 import { PlatformIcon } from '../../components/ui/Platform';
 import { useToast } from '../../components/ui/Toast';
 import { useApp, type PlanTarget } from '../../context';
-import { accountsOf } from '../../lib/analytics';
+import { accountsOf, bestSlots, slotDay, type Slot } from '../../lib/analytics';
 import { errorMessage } from '../../lib/api';
-import { dateFromKey, fmtDateTime, fromInputValue, parseTimestamp, toInputValue, zoneNow } from '../../lib/format';
+import { compact, dateFromKey, fmtDateTime, fromInputValue, hourLabel, num, parseTimestamp, toInputValue, zoneNow } from '../../lib/format';
 import { contentTypes, PLATFORMS, platformColor, platformName, statusLabel } from '../../lib/platforms';
 import type { PlanStatus, Platform, Post } from '../../types';
 
 const FORM_ID = 'plan-form';
 const MATCH_WINDOW_MS = 48 * 3_600_000;
 const STATUSES: PlanStatus[] = ['draft', 'approved', 'scheduled', 'published', 'cancelled'];
+/** Published platform caps; the counter warns against the strictest selected platform. */
+const CAPTION_LIMITS: Partial<Record<Platform, number>> = { instagram: 2200 };
+const HASHTAG_LIMIT = 30;
+const INPUT_FORMAT = "yyyy-LL-dd'T'HH:mm";
+
+/** The next time this weekday/hour comes round, starting from now. */
+function nextOccurrence(slot: Slot, now: number) {
+  const start = zoneNow(now);
+  for (let ahead = 0; ahead <= 7; ahead++) {
+    const candidate = start.plus({ days: ahead }).set({ hour: slot.hour, minute: 0, second: 0, millisecond: 0 });
+    if ((!slot.weekday || candidate.weekday === slot.weekday) && candidate.toMillis() > now) return candidate;
+  }
+  return start;
+}
 
 interface FormState {
   platforms: Platform[];
@@ -41,7 +55,7 @@ function initialState(target: PlanTarget, now: number): FormState {
       title: plan.title,
       caption: plan.caption,
       scheduledAt: toInputValue(plan.scheduledAt),
-      status: plan.status,
+      status: target.status ?? plan.status,
       permalink: plan.permalink,
       externalId: plan.externalId,
       owner: plan.owner,
@@ -51,20 +65,27 @@ function initialState(target: PlanTarget, now: number): FormState {
     };
   }
   const nextHour = zoneNow(now).plus({ hours: 1 }).startOf('hour');
-  const base = target.day && target.day !== nextHour.toISODate() ? dateFromKey(target.day).set({ hour: 12 }) : nextHour;
+  let base = nextHour;
+  if (target.day) {
+    const day = dateFromKey(target.day);
+    const [hour, minute] = (target.time ?? '').split(':').map(Number);
+    if (Number.isFinite(hour) && Number.isFinite(minute)) base = day.set({ hour, minute });
+    else if (target.day !== nextHour.toISODate()) base = day.set({ hour: 12 });
+  }
+  const template = target.template ?? {};
   return {
-    platforms: ['facebook'],
-    accountId: '',
-    title: '',
-    caption: '',
-    scheduledAt: base.toFormat("yyyy-LL-dd'T'HH:mm"),
-    status: 'scheduled',
-    permalink: '',
-    externalId: '',
-    owner: '',
-    contentType: 'post',
-    campaign: '',
-    notes: '',
+    platforms: [template.platform ?? 'facebook'],
+    accountId: template.accountId ?? '',
+    title: template.title ?? '',
+    caption: template.caption ?? '',
+    scheduledAt: base.toFormat(INPUT_FORMAT),
+    status: template.status ?? 'scheduled',
+    permalink: template.permalink ?? '',
+    externalId: template.externalId ?? '',
+    owner: template.owner ?? '',
+    contentType: template.contentType ?? 'post',
+    campaign: template.campaign ?? '',
+    notes: template.notes ?? '',
   };
 }
 
@@ -78,11 +99,12 @@ export function PlanDrawer({ target, openId, onClose }: { target: PlanTarget | n
 }
 
 function PlanSheet({ target, open, onClose }: { target: PlanTarget; open: boolean; onClose: () => void }) {
-  const { data, now, store } = useApp();
+  const { data, now, todayNum, store, openPlan } = useApp();
   const toast = useToast();
   const editing = target.mode === 'edit' ? target.plan : null;
   const [form, setForm] = useState<FormState>(() => initialState(target, now));
-  const [touched, setTouched] = useState(false);
+  // A board card dropped on "published" opens with its missing proof already flagged.
+  const [touched, setTouched] = useState(target.mode === 'edit' && target.status === 'published');
   const [saving, setSaving] = useState(false);
   const [confirmDelete, setConfirmDelete] = useState(false);
 
@@ -115,6 +137,33 @@ function PlanSheet({ target, open, onClose }: { target: PlanTarget; open: boolea
       .sort((a, b) => Math.abs(a.ts - scheduledMs) - Math.abs(b.ts - scheduledMs))
       .slice(0, 4);
   }, [data.posts, platform, single, form.accountId, scheduledMs]);
+
+  const suggestions = useMemo(() => bestSlots(data.posts, todayNum).slice(0, 3), [data.posts, todayNum]);
+  const captionLimit = Math.min(...form.platforms.map((item) => CAPTION_LIMITS[item] ?? Infinity));
+  const hashtags = (form.caption.match(/(^|\s)#[^\s#]+/gu) ?? []).length;
+  const captionLong = Number.isFinite(captionLimit) && form.caption.length > captionLimit;
+  const tooManyTags = form.platforms.includes('instagram') && hashtags > HASHTAG_LIMIT;
+
+  const duplicate = () => {
+    if (!editing) return;
+    const local = toInputValue(editing.scheduledAt);
+    openPlan({
+      mode: 'new',
+      day: local.slice(0, 10),
+      time: local.slice(11, 16),
+      template: {
+        platform: editing.platform,
+        accountId: editing.accountId,
+        title: editing.title,
+        caption: editing.caption,
+        status: editing.status === 'published' || editing.status === 'cancelled' ? 'scheduled' : editing.status,
+        owner: editing.owner,
+        contentType: editing.contentType,
+        campaign: editing.campaign,
+        notes: editing.notes,
+      },
+    });
+  };
 
   const errors = {
     title: form.title.trim() ? '' : 'اكتب عنوانًا للبوست.',
@@ -212,6 +261,11 @@ function PlanSheet({ target, open, onClose }: { target: PlanTarget; open: boolea
                 حذف
               </Button>
             )}
+            {editing && (
+              <Button variant="ghost" icon={<Copy size={15} />} onClick={duplicate}>
+                تكرار
+              </Button>
+            )}
             <Button variant="glass" onClick={onClose}>
               إلغاء
             </Button>
@@ -298,8 +352,45 @@ function PlanSheet({ target, open, onClose }: { target: PlanTarget; open: boolea
           </Field>
         )}
 
+        {suggestions.length > 0 && (
+          <div className="suggest field--wide" role="group" aria-label="أفضل أوقات النشر">
+            <span className="suggest__label">
+              <Flame size={14} /> أفضل أوقات من أدائكم
+            </span>
+            {suggestions.map((slot) => {
+              const next = nextOccurrence(slot, now);
+              const active = form.scheduledAt === next.toFormat(INPUT_FORMAT);
+              return (
+                <button
+                  key={`${slot.weekday}-${slot.hour}`}
+                  type="button"
+                  className="suggest__item"
+                  data-active={active}
+                  aria-pressed={active}
+                  title={`متوسط ${compact(Math.round(slot.average))} تفاعل من ${num(slot.posts)} بوست`}
+                  onClick={() => set('scheduledAt', next.toFormat(INPUT_FORMAT))}
+                >
+                  {slotDay(slot)} · {hourLabel(slot.hour)}
+                </button>
+              );
+            })}
+          </div>
+        )}
+
         <Field label="نص البوست" wide hint="اختياري">
-          <textarea className="input" rows={3} value={form.caption} maxLength={5000} placeholder="النص أو وصف التصميم…" onChange={(event) => set('caption', event.target.value)} />
+          <textarea className="input" rows={4} value={form.caption} maxLength={5000} placeholder="النص أو وصف التصميم… #هاشتاج" onChange={(event) => set('caption', event.target.value)} />
+          <span className="caption-meta" data-warn={captionLong || tooManyTags || undefined}>
+            <span>
+              {num(form.caption.length)}
+              {Number.isFinite(captionLimit) && ` / ${num(captionLimit)}`} حرف
+            </span>
+            <span>
+              <Hash size={12} /> {num(hashtags)}
+              {form.platforms.includes('instagram') && ` / ${HASHTAG_LIMIT}`} هاشتاج
+            </span>
+            {captionLong && <b>أطول من حد إنستجرام</b>}
+            {!captionLong && tooManyTags && <b>إنستجرام يقبل 30 هاشتاج كحد أقصى</b>}
+          </span>
         </Field>
 
         <Field label="الحملة" hint="اختياري">

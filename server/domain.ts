@@ -24,6 +24,12 @@ export function newPlan(raw:Partial<Plan>):Plan {
  const now=new Date().toISOString();
  return {id:raw.id||randomUUID(),platform:raw.platform||'facebook',accountId:raw.accountId||'',title:raw.title||'',caption:raw.caption||'',scheduledAt:raw.scheduledAt||now,status:raw.status||'scheduled',permalink:raw.permalink||'',externalId:raw.externalId||'',owner:raw.owner||'',contentType:raw.contentType||'post',campaign:raw.campaign||'',notes:raw.notes||'',sourceKey:raw.sourceKey||'',createdAt:raw.createdAt||now,updatedAt:now};
 }
+export type PlanPatch=Partial<Pick<Plan,'scheduledAt'|'status'|'permalink'|'externalId'>>;
+/** Calendar moves and status changes touch a few fields; everything else is kept from the stored plan. */
+export function applyPlanPatch(plan:Plan,patch:PlanPatch,now=new Date()):Plan {
+ return {...plan,...Object.fromEntries(Object.entries(patch).filter(([,value])=>value!==undefined)),updatedAt:now.toISOString()};
+}
+export const missingPublishProof=(plan:Pick<Plan,'status'|'permalink'|'externalId'>)=>plan.status==='published'&&!plan.permalink.trim()&&!plan.externalId.trim();
 export function importKey(row:Partial<Plan>):string {
  return createHash('sha256').update([row.platform,row.accountId,row.scheduledAt,row.title].join('|').toLowerCase()).digest('hex');
 }

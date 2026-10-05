@@ -49,7 +49,7 @@ export function PlanRow({ plan, showDay, onOpen }: { plan: Plan; showDay?: boole
     <button type="button" className="row row--plan" data-state={plan.computedState} onClick={() => onOpen(plan)}>
       <PlatformBadge platform={plan.platform} size="sm" />
       <span className="row__text">
-        <b>{plan.title}</b>
+        <b dir="auto">{plan.title}</b>
         <small>
           {showDay && `${fmtDayShort(plan.ts)} · `}
           {fmtTime(plan.ts)}

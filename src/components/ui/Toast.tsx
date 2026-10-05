@@ -14,7 +14,7 @@ interface ToastItem {
 }
 
 interface ToastApi {
-  success: (title: string, text?: string) => void;
+  success: (title: string, text?: string, action?: ToastItem['action']) => void;
   error: (title: string, text?: string) => void;
   info: (title: string, text?: string) => void;
   alert: (title: string, text: string, action?: ToastItem['action']) => void;
@@ -38,14 +38,15 @@ export function ToastProvider({ children }: { children: ReactNode }) {
     (item: Omit<ToastItem, 'id'>) => {
       const id = nextId.current++;
       setItems((list) => [...list.slice(-3), { ...item, id }]);
-      window.setTimeout(() => dismiss(id), LIFETIME[item.kind]);
+      // An undo button needs time to be reached.
+      window.setTimeout(() => dismiss(id), item.action ? Math.max(LIFETIME[item.kind], 8000) : LIFETIME[item.kind]);
     },
     [dismiss],
   );
 
   const api = useMemo<ToastApi>(
     () => ({
-      success: (title, text) => push({ kind: 'success', title, text }),
+      success: (title, text, action) => push({ kind: 'success', title, text, action }),
       error: (title, text) => push({ kind: 'error', title, text }),
       info: (title, text) => push({ kind: 'info', title, text }),
       alert: (title, text, action) => push({ kind: 'alert', title, text, action }),
