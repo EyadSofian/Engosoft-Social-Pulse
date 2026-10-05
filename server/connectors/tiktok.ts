@@ -6,7 +6,7 @@ export async function syncTikTok():Promise<ConnectorResult>{
  if(!process.env.TIKTOK_DISPLAY_ACCESS_TOKEN&&!process.env.TIKTOK_DISPLAY_REFRESH_TOKEN&&!hasSavedOAuthToken('tiktok'))return {platform:'tiktok',status:'needs_setup',message:'اربط حساب TikTok من صفحة المنصات بصلاحيتَي user.info.basic وvideo.list.',posts:[]};
  try{
    const token=await providerAccessToken('tiktok');
-   const profile=await json<{data?:{user?:{open_id?:string;display_name?:string;username?:string}};error?:{code?:string}}>('https://open.tiktokapis.com/v2/user/info/?fields=open_id,display_name,username',{headers:{Authorization:`Bearer ${token}`}});
+   const profile=await json<{data?:{user?:{open_id?:string;display_name?:string}};error?:{code?:string}}>('https://open.tiktokapis.com/v2/user/info/?fields=open_id,display_name',{headers:{Authorization:`Bearer ${token}`}});
    if(profile.error?.code&&profile.error.code!=='ok')throw new Error(`TikTok profile API code ${profile.error.code}`);
    const user=profile.data?.user;
    const posts:ObservedPost[]=[];let cursor:number|undefined;
@@ -21,7 +21,7 @@ export async function syncTikTok():Promise<ConnectorResult>{
        metrics.engagement=[metrics.likes,metrics.comments,metrics.shares].some(value=>value!=null)
          ? [metrics.likes,metrics.comments,metrics.shares].reduce<number>((sum,value)=>sum+(value??0),0)
          : null;
-       posts.push({platform:'tiktok',accountId:text(user?.open_id),accountName:text(user?.username)||text(user?.display_name)||'TikTok',externalId:id,permalink:text(video.share_url),title:text(video.title)||text(video.video_description)||'TikTok video',publishedAt:new Date(Number(video.create_time)*1000).toISOString(),contentType:'video',thumbnail:text(video.cover_image_url),metrics});
+       posts.push({platform:'tiktok',accountId:text(user?.open_id),accountName:text(user?.display_name)||'TikTok',externalId:id,permalink:text(video.share_url),title:text(video.title)||text(video.video_description)||'TikTok video',publishedAt:new Date(Number(video.create_time)*1000).toISOString(),contentType:'video',thumbnail:text(video.cover_image_url),metrics});
      }
      if(!body.data?.has_more || !body.data.cursor)break;cursor=body.data.cursor;
    }
