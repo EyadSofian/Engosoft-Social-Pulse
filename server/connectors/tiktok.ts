@@ -9,11 +9,28 @@ export async function syncTikTok():Promise<ConnectorResult>{
    const profile=await json<{data?:{user?:{open_id?:string;display_name?:string}};error?:{code?:string}}>('https://open.tiktokapis.com/v2/user/info/?fields=open_id,display_name',{headers:{Authorization:`Bearer ${token}`}});
    if(profile.error?.code&&profile.error.code!=='ok')throw new Error(`TikTok profile API code ${profile.error.code}`);
    const user=profile.data?.user;
-   const posts:ObservedPost[]=[];let cursor:number|undefined;let hasMore=false;
+   const posts:ObservedPost[]=[];let cursor:number|undefined;let hasMore=false;let pageError=false;
    for(let page=0;page<100;page++){
-     const body=await json<{data?:{videos?:Record<string,unknown>[];cursor?:number;has_more?:boolean};error?:{code:string}}>('https://open.tiktokapis.com/v2/video/list/?fields=id,create_time,title,video_description,share_url,cover_image_url,like_count,comment_count,share_count,view_count',{
-       method:'POST',headers:{Authorization:`Bearer ${token}`,'Content-Type':'application/json'},body:JSON.stringify({max_count:20,...(cursor?{cursor}:{})})
-     });
+     let body:{data?:{videos?:Record<string,unknown>[];cursor?:number;has_more?:boolean};error?:{code:string}}|undefined;
+     try{
+       for(let attempt=0;attempt<3;attempt++){
+         try{
+           body=await json('https://open.tiktokapis.com/v2/video/list/?fields=id,create_time,title,video_description,share_url,cover_image_url,like_count,comment_count,share_count,view_count',{
+             method:'POST',headers:{Authorization:`Bearer ${token}`,'Content-Type':'application/json'},body:JSON.stringify({max_count:20,...(cursor?{cursor}:{})})
+           });
+           break;
+         }catch(error){
+           if(attempt===2)throw error;
+           await new Promise(resolve=>setTimeout(resolve,500*(attempt+1)));
+         }
+       }
+     }catch(error){
+       if(!posts.length)throw error;
+       console.warn(`TikTok pagination stopped after ${posts.length} videos:`,error instanceof Error?error.message:'unknown error');
+       pageError=true;
+       break;
+     }
+     if(!body)break;
      if(body.error?.code && body.error.code!=='ok')throw new Error(`TikTok API code ${body.error.code}`);
      for(const video of body.data?.videos||[]){
        const id=text(video.id);if(!id)continue;
@@ -29,6 +46,6 @@ export async function syncTikTok():Promise<ConnectorResult>{
    }
    const refreshEnabled=Boolean(process.env.TIKTOK_DISPLAY_REFRESH_TOKEN||hasSavedOAuthToken('tiktok'));
    const accountName=text(user?.display_name).trim()||'TikTok';
-   return {platform:'tiktok',status:'connected',message:`الحساب المرتبط: ${accountName}. تم جلب ${posts.length} فيديو.${hasMore?' وصلنا حد المزامنة؛ توجد فيديوهات أقدم لم تُجلب بعد.':''}${refreshEnabled?' تجديد OAuth مفعّل.':' اضبط refresh token لاستمرار المزامنة بعد انتهاء access token.'}`,posts};
+   return {platform:'tiktok',status:'connected',message:`الحساب المرتبط: ${accountName}. تم جلب ${posts.length} فيديو.${pageError?' تعذّر جلب الفيديوهات الأقدم مؤقتًا؛ سنحاول في المزامنة التالية.':hasMore?' وصلنا حد المزامنة؛ توجد فيديوهات أقدم لم تُجلب بعد.':''}${refreshEnabled?' تجديد OAuth مفعّل.':' اضبط refresh token لاستمرار المزامنة بعد انتهاء access token.'}`,posts};
  }catch(e){return {platform:'tiktok',status:'error',message:e instanceof Error?e.message:'تعذّر الاتصال بـTikTok',posts:[]};}
 }
