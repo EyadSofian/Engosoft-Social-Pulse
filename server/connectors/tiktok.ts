@@ -1,6 +1,7 @@
 import { blankMetrics, type ConnectorResult, type ObservedPost } from '../types.js';
 import { json, numberOrNull, text } from './http.js';
 import { hasSavedOAuthToken, providerAccessToken } from './tokens.js';
+import { getOldestObservedPublishedAt } from '../store.js';
 
 export async function syncTikTok():Promise<ConnectorResult>{
  if(!process.env.TIKTOK_DISPLAY_ACCESS_TOKEN&&!process.env.TIKTOK_DISPLAY_REFRESH_TOKEN&&!hasSavedOAuthToken('tiktok'))return {platform:'tiktok',status:'needs_setup',message:'اربط حساب TikTok من صفحة المنصات بصلاحيتَي user.info.basic وvideo.list.',posts:[]};
@@ -10,7 +11,12 @@ export async function syncTikTok():Promise<ConnectorResult>{
    if(profile.error?.code&&profile.error.code!=='ok')throw new Error(`TikTok profile API code ${profile.error.code}`);
    const user=profile.data?.user;
    const posts:ObservedPost[]=[];let cursor:number|undefined;let hasMore=false;let pageError=false;
-   for(let page=0;page<100;page++){
+   const oldestSaved=getOldestObservedPublishedAt('tiktok',text(user?.open_id));
+   for(let page=0;page<25;page++){
+     if(page===5&&oldestSaved){
+       const oldestCursor=Date.parse(oldestSaved)-1;
+       if(Number.isFinite(oldestCursor)&&(!cursor||oldestCursor<cursor))cursor=oldestCursor;
+     }
      let body:{data?:{videos?:Record<string,unknown>[];cursor?:number;has_more?:boolean};error?:{code:string}}|undefined;
      try{
        for(let attempt=0;attempt<3;attempt++){
@@ -46,6 +52,6 @@ export async function syncTikTok():Promise<ConnectorResult>{
    }
    const refreshEnabled=Boolean(process.env.TIKTOK_DISPLAY_REFRESH_TOKEN||hasSavedOAuthToken('tiktok'));
    const accountName=text(user?.display_name).trim()||'TikTok';
-   return {platform:'tiktok',status:'connected',message:`الحساب المرتبط: ${accountName}. تم جلب ${posts.length} فيديو.${pageError?' تعذّر جلب الفيديوهات الأقدم مؤقتًا؛ سنحاول في المزامنة التالية.':hasMore?' وصلنا حد المزامنة؛ توجد فيديوهات أقدم لم تُجلب بعد.':''}${refreshEnabled?' تجديد OAuth مفعّل.':' اضبط refresh token لاستمرار المزامنة بعد انتهاء access token.'}`,posts};
+   return {platform:'tiktok',status:'connected',message:`الحساب المرتبط: ${accountName}. تم تحديث ${posts.length} فيديو.${pageError?' تعذّر جلب بعض الفيديوهات الأقدم مؤقتًا؛ سنحاول في المزامنة التالية.':hasMore?' سيُستكمل جلب الفيديوهات الأقدم في المزامنة التالية.':''}${refreshEnabled?' تجديد OAuth مفعّل.':' اضبط refresh token لاستمرار المزامنة بعد انتهاء access token.'}`,posts};
  }catch(e){return {platform:'tiktok',status:'error',message:e instanceof Error?e.message:'تعذّر الاتصال بـTikTok',posts:[]};}
 }

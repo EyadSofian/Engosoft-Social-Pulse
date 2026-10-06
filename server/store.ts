@@ -68,6 +68,9 @@ const toObserved = (r: Record<string,unknown>): ObservedPost => ({
  platform:r.platform as Platform, accountId:String(r.account_id), accountName:String(r.account_name), externalId:String(r.external_id), permalink:String(r.permalink), title:String(r.title), publishedAt:String(r.published_at), contentType:String(r.content_type), thumbnail:String(r.thumbnail), metrics:JSON.parse(String(r.metrics_json))
 });
 export const getObserved = (): ObservedPost[] => (db.prepare('SELECT * FROM observed_posts ORDER BY published_at DESC').all() as Record<string,unknown>[]).map(toObserved);
+export function getOldestObservedPublishedAt(platform:Platform,accountId:string):string|undefined {
+ return (db.prepare('SELECT MIN(published_at) AS oldest FROM observed_posts WHERE platform=? AND account_id=?').get(platform,accountId) as {oldest:string|null}).oldest||undefined;
+}
 export function saveConnectorResult(result: ConnectorResult) {
  const now = new Date().toISOString();
  const insert = db.prepare(`INSERT INTO observed_posts (platform,account_id,account_name,external_id,permalink,title,published_at,content_type,thumbnail,metrics_json,fetched_at)
