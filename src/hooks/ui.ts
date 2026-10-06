@@ -6,7 +6,7 @@ export const ROUTE_IDS = ['overview', 'calendar', 'content', 'insights', 'connec
 export type Route = (typeof ROUTE_IDS)[number];
 
 const readRoute = (): Route => {
-  const id = window.location.hash.replace(/^#\/?/, '');
+  const id = window.location.hash.replace(/^#\/?/, '').split('?')[0];
   return (ROUTE_IDS as readonly string[]).includes(id) ? (id as Route) : 'overview';
 };
 
