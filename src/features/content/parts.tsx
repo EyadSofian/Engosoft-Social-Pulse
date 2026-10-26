@@ -280,7 +280,7 @@ function TransitionForm({ pending, onDone }: { pending: PendingMove; onDone: () 
             {(id, describedBy) => <Input id={id} aria-describedby={describedBy} type="datetime-local" data-autofocus value={publishAt} onChange={(event) => setPublishAt(event.target.value)} required />}
           </Field>
           <BestTime channels={item.channels} now={now} onUse={(iso) => setPublishAt(toLocalInput(iso))} compact />
-          <p className="u-xs u-muted">{t('Scheduling records the slot. Social Pulse does not post automatically; the publisher posts and then records the link.', 'الجدولة تسجل الموعد فقط. Social Pulse لا ينشر تلقائيًا؛ مسؤول النشر ينشر ثم يسجل الرابط.')}</p>
+          <p className="u-xs u-muted">{t('Scheduling records the slot. Mobde3 does not post automatically; the publisher posts and then records the link.', 'الجدولة تسجل الموعد فقط. مبدع لا ينشر تلقائيًا؛ مسؤول النشر ينشر ثم يسجل الرابط.')}</p>
         </>
       )}
       {move?.needs === 'publish_proof' && (

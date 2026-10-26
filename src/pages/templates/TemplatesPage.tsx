@@ -75,7 +75,7 @@ export function TemplatesPage() {
           ))}
         </ul>
       )}
-      {can('templates.manage') && <p className="u-xs u-muted">{t('Editing templates arrives with the templates API; today they ship with Social Pulse.', 'تعديل القوالب يأتي مع واجهة القوالب؛ حاليًا هي مضمّنة في Social Pulse.')}</p>}
+      {can('templates.manage') && <p className="u-xs u-muted">{t('Editing templates arrives with the templates API; today they ship with Mobde3.', 'تعديل القوالب يأتي مع واجهة القوالب؛ حاليًا هي مضمّنة في مبدع.')}</p>}
     </div>
   );
 }

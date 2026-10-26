@@ -68,7 +68,7 @@ export function usePageMeta(title: string, crumbs: Crumb[]) {
   const key = JSON.stringify(crumbs);
   useEffect(() => {
     setCrumbs(crumbs);
-    document.title = `${title} · Social Pulse`;
+    document.title = `${title} · ${document.documentElement.lang === 'en' ? 'Mobde3' : 'مبدع'}`;
     // `key` captures the crumb contents; the array identity changes every render.
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [title, key, setCrumbs]);

@@ -195,7 +195,7 @@ const dist=resolve('dist');if(existsSync(dist)){
  app.use(express.static(dist));
  app.get('/{*path}',(_req,res)=>res.sendFile(resolve(dist,'index.html')));
 }
-app.listen(port,host,()=>console.log(`Social Pulse listening on http://${host}:${port}`));
+app.listen(port,host,()=>console.log(`Mobde3 listening on http://${host}:${port}`));
 setTimeout(()=>{void runSync().catch(()=>{});},1500);
 setInterval(()=>{void checkAlerts().catch(()=>{});},60_000).unref();
 setInterval(()=>{void runSync().catch(()=>{});},30*60_000).unref();

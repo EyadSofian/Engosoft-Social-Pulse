@@ -311,7 +311,7 @@ export function OpportunitiesCard({ now, departments, limit = 4 }: { now: number
           ))}
         </ul>
       )}
-      <p className="ui-source ui-source--demo">{t('Occasions come from the curated catalog shipped with Social Pulse and events your team entered. No AI is involved yet.', 'المناسبات من القائمة المعدّة مسبقًا في Social Pulse ومن فعاليات أدخلها فريقك. لا يوجد ذكاء اصطناعي هنا بعد.')}</p>
+      <p className="ui-source ui-source--demo">{t('Occasions come from the curated catalog shipped with Mobde3 and events your team entered. No AI is involved yet.', 'المناسبات من القائمة المعدّة مسبقًا في مبدع ومن فعاليات أدخلها فريقك. لا يوجد ذكاء اصطناعي هنا بعد.')}</p>
     </Card>
   );
 }
@@ -323,7 +323,7 @@ export function LiveGate({ children, needs }: { children: ReactNode; needs?: 'po
   const { t } = useI18n();
   const { store } = useLiveData();
   if (store.phase === 'loading') return <SkeletonRows rows={3} />;
-  if (store.phase === 'offline') return <DataNotice status="error" message={store.staleError || t('The Social Pulse API did not respond.', 'واجهة Social Pulse لم تستجب.')} onRetry={() => void store.reload()} />;
+  if (store.phase === 'offline') return <DataNotice status="error" message={store.staleError || t('The Mobde3 API did not respond.', 'واجهة مبدع لم تستجب.')} onRetry={() => void store.reload()} />;
   if (needs === 'posts' && !store.data.posts.length) {
     const connected = store.data.connectors.some((connector) => connector.status === 'connected');
     return connected ? (

@@ -17,7 +17,7 @@ export const CHANNELS: Channel[] = ['facebook', 'instagram', 'whatsapp', 'linked
 export type Priority = 'low' | 'normal' | 'high' | 'urgent';
 
 /**
- * Where a record came from. `live` rows are read from the Social Pulse API
+ * Where a record came from. `live` rows are read from the Mobde3 API
  * (SQLite + connectors); `demo` rows come from the seeded workspace until the
  * matching backend tables exist.
  */

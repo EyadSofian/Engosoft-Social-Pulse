@@ -33,7 +33,7 @@ export function LiveDataProvider({ children }: { children: ReactNode }) {
       toast.alert(alert.kind === 'missed' ? t('Publishing not confirmed', 'نشر غير مؤكد') : t('Post due soon', 'منشور قريب'), message);
       if ('Notification' in window && Notification.permission === 'granted') {
         try {
-          new Notification('Social Pulse', { body: message, tag: alert.id, lang: 'ar', dir: 'rtl' });
+          new Notification('Mobde3', { body: message, tag: alert.id, lang: 'ar', dir: 'rtl' });
         } catch {
           /* Some browsers only allow notifications from a service worker. */
         }

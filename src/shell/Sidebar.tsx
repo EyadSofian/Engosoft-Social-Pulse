@@ -48,11 +48,11 @@ export function Sidebar({ drawer }: { drawer?: boolean }) {
 
   return (
     <div className="shell-sidebar" data-collapsed={collapsed || undefined}>
-      <Link to="/" className="shell-brand" title={collapsed ? 'Engosoft Social Pulse' : undefined} onClick={() => setMobileNavOpen(false)}>
+      <Link to="/" className="shell-brand" title={collapsed ? 'Engosoft Mobde3' : undefined} onClick={() => setMobileNavOpen(false)}>
         <BrandMark />
         {!collapsed && (
           <span className="shell-brand__text">
-            <b>Social Pulse</b>
+            <b>{t('Mobde3', 'مبدع')}</b>
             <small>Engosoft · {t('Content Operations', 'عمليات المحتوى')}</small>
           </span>
         )}

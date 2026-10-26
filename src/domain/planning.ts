@@ -43,7 +43,7 @@ export interface ContentEvent {
   departments: DepartmentId[];
   suggestion: Text;
   suggestedType: ContentType;
-  /** `catalog` = the curated occasions list shipped with Social Pulse; `company` = entered by the team. */
+  /** `catalog` = the curated occasions list shipped with Mobde3; `company` = entered by the team. */
   source: 'catalog' | 'company';
   approximate?: boolean;
 }

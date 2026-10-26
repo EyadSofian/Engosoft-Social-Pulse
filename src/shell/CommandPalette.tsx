@@ -137,7 +137,7 @@ function Palette({ onClose }: { onClose: () => void }) {
         data-overlay
         role="dialog"
         aria-modal="true"
-        aria-label={t('Search Social Pulse', 'ابحث في Social Pulse')}
+        aria-label={t('Search Mobde3', 'ابحث في مبدع')}
         tabIndex={-1}
         className="palette"
         initial={{ opacity: 0, y: -8, scale: 0.99 }}

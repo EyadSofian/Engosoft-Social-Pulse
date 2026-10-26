@@ -73,7 +73,7 @@ export function HomePage() {
 
   return (
     <div className="u-stack u-stack--lg">
-      <div className="home-hero"><PageHeader meta={`Social Pulse · ${date(now, 'month')}`} title={`${greeting}${t(', ', '، ')}${first}`} description={t(...DESCRIPTION[profile])} actions={<HomeActions profile={profile} />} /></div>
+      <div className="home-hero"><PageHeader meta={`Mobde3 · ${date(now, 'month')}`} title={`${greeting}${t(', ', '، ')}${first}`} description={t(...DESCRIPTION[profile])} actions={<HomeActions profile={profile} />} /></div>
       <HomeBody profile={profile} now={now} />
     </div>
   );

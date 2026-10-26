@@ -75,10 +75,10 @@ export function plansToIcs(plans: Plan[], now = Date.now()): string {
   const lines = [
     'BEGIN:VCALENDAR',
     'VERSION:2.0',
-    'PRODID:-//Engosoft//Social Pulse//AR',
+    'PRODID:-//Engosoft//Mobde3//AR',
     'CALSCALE:GREGORIAN',
     'METHOD:PUBLISH',
-    'X-WR-CALNAME:Social Pulse — خطة المحتوى',
+    'X-WR-CALNAME:مبدع — خطة المحتوى',
   ];
   for (const plan of plans) {
     if (!Number.isFinite(plan.ts)) continue;

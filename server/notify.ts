@@ -44,11 +44,11 @@ async function sendEmail(to: string[], subject: string, text: string, link: stri
   if (!transporter || !to.length) return { sent: false, reason: transporter ? 'no recipients' : 'SMTP is not configured' };
   const url = `${appUrl()}${link}`;
   await transporter.sendMail({
-    from: process.env.MAIL_FROM?.trim() || `Social Pulse <${process.env.SMTP_USER!.trim()}>`,
+    from: process.env.MAIL_FROM?.trim() || `Mobde3 <${process.env.SMTP_USER!.trim()}>`,
     to: to.join(', '),
     subject,
     text: `${text}\n\n${url}`,
-    html: `<div dir="rtl" style="font-family:Tahoma,Arial,sans-serif;line-height:1.8;color:#17191c"><h2 style="color:#0046ff;margin:0 0 8px">${escape(subject)}</h2><p>${escape(text)}</p><p><a href="${url}" style="display:inline-block;padding:10px 18px;border-radius:10px;background:#0046ff;color:#fff;text-decoration:none;font-weight:bold">افتح المنشور</a></p><p style="color:#8a94a6;font-size:12px">Engosoft · Social Pulse</p></div>`,
+    html: `<div dir="rtl" style="font-family:Tahoma,Arial,sans-serif;line-height:1.8;color:#17191c"><h2 style="color:#0046ff;margin:0 0 8px">${escape(subject)}</h2><p>${escape(text)}</p><p><a href="${url}" style="display:inline-block;padding:10px 18px;border-radius:10px;background:#0046ff;color:#fff;text-decoration:none;font-weight:bold">افتح المنشور</a></p><p style="color:#8a94a6;font-size:12px">Engosoft · مبدع</p></div>`,
   });
   return { sent: true };
 }
@@ -123,7 +123,7 @@ export function registerNotifyRoutes(app: express.Express) {
     const settings = getNotifySettings();
     notifyUsers([req.user!.id, ...settings.userIds], 'test', 'إشعار تجريبي', 'إذا ظهرت لك هذه الرسالة فالإشعارات تعمل.', '/settings');
     try {
-      const result = await sendEmail(settings.emails, 'إشعار تجريبي من Social Pulse', 'إذا وصلك هذا البريد فإشعارات المنشورات الجديدة تعمل.', '/content');
+      const result = await sendEmail(settings.emails, 'إشعار تجريبي من مبدع', 'إذا وصلك هذا البريد فإشعارات المنشورات الجديدة تعمل.', '/content');
       res.json({ inApp: true, email: result });
     } catch (error) {
       res.status(502).json({ inApp: true, error: `أُرسل الإشعار داخل التطبيق، لكن تعذّر إرسال البريد: ${error instanceof Error ? error.message : 'SMTP error'}` });

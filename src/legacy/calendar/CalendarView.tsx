@@ -865,7 +865,7 @@ export function CalendarView() {
             <div className="dropzone__card glass glass--float">
               <FileSpreadsheet size={34} />
               <b>أفلت ملف التقويم هنا</b>
-              <span>XLSX أو CSV على قالب Social Pulse</span>
+              <span>XLSX أو CSV على قالب مبدع</span>
             </div>
           </motion.div>
         )}
