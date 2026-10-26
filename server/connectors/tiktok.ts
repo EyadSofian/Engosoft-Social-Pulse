@@ -4,14 +4,14 @@ import { hasSavedOAuthToken, providerAccessToken } from './tokens.js';
 import { getOldestObservedPublishedAt } from '../store.js';
 
 export async function syncTikTok():Promise<ConnectorResult>{
- if(!process.env.TIKTOK_DISPLAY_ACCESS_TOKEN&&!process.env.TIKTOK_DISPLAY_REFRESH_TOKEN&&!hasSavedOAuthToken('tiktok'))return {platform:'tiktok',status:'needs_setup',message:'اربط حساب TikTok من صفحة المنصات بصلاحيتَي user.info.basic وvideo.list.',posts:[]};
+ if(!process.env.TIKTOK_DISPLAY_ACCESS_TOKEN&&!process.env.TIKTOK_DISPLAY_REFRESH_TOKEN&&!(await hasSavedOAuthToken('tiktok')))return {platform:'tiktok',status:'needs_setup',message:'اربط حساب TikTok من صفحة المنصات بصلاحيتَي user.info.basic وvideo.list.',posts:[]};
  try{
    const token=await providerAccessToken('tiktok');
    const profile=await json<{data?:{user?:{open_id?:string;display_name?:string}};error?:{code?:string}}>('https://open.tiktokapis.com/v2/user/info/?fields=open_id,display_name',{headers:{Authorization:`Bearer ${token}`}});
    if(profile.error?.code&&profile.error.code!=='ok')throw new Error(`TikTok profile API code ${profile.error.code}`);
    const user=profile.data?.user;
    const posts:ObservedPost[]=[];let cursor:number|undefined;let hasMore=false;let pageError=false;
-   const oldestSaved=getOldestObservedPublishedAt('tiktok',text(user?.open_id));
+   const oldestSaved=await getOldestObservedPublishedAt('tiktok',text(user?.open_id));
    for(let page=0;page<25;page++){
      if(page===5&&oldestSaved){
        const oldestCursor=Date.parse(oldestSaved)-1;
@@ -50,7 +50,7 @@ export async function syncTikTok():Promise<ConnectorResult>{
      if(!hasMore || !body.data?.cursor)break;
      cursor=body.data.cursor;
    }
-   const refreshEnabled=Boolean(process.env.TIKTOK_DISPLAY_REFRESH_TOKEN||hasSavedOAuthToken('tiktok'));
+   const refreshEnabled=Boolean(process.env.TIKTOK_DISPLAY_REFRESH_TOKEN||(await hasSavedOAuthToken('tiktok')));
    const accountName=text(user?.display_name).trim()||'TikTok';
    return {platform:'tiktok',status:'connected',message:`الحساب المرتبط: ${accountName}. تم تحديث ${posts.length} فيديو.${pageError?' تعذّر جلب بعض الفيديوهات الأقدم مؤقتًا؛ سنحاول في المزامنة التالية.':hasMore?' سيُستكمل جلب الفيديوهات الأقدم في المزامنة التالية.':''}${refreshEnabled?' تجديد OAuth مفعّل.':' اضبط refresh token لاستمرار المزامنة بعد انتهاء access token.'}`,posts};
  }catch(e){return {platform:'tiktok',status:'error',message:e instanceof Error?e.message:'تعذّر الاتصال بـTikTok',posts:[]};}

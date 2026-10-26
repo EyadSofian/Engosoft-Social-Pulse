@@ -33,6 +33,7 @@ test('Snapchat maps Story and Spotlight insights including mixed API field casin
  try{
   const { syncSnapchat }=await import('../server/connectors/snapchat.js');
   const { db }=await import('../server/store.js');
+  await (await import('../server/db.js')).initDb();
   const result=await syncSnapchat();
   assert.equal(result.status,'connected');
   assert.equal(result.posts.length,2);
@@ -42,7 +43,7 @@ test('Snapchat maps Story and Spotlight insights including mixed API field casin
   assert.equal(story?.metrics.views,55);
   assert.equal(story?.metrics.likes,3);
   assert.equal(story?.metrics.clicks,2);
-  db.close();
+  await db.close();
  }finally{
   globalThis.fetch=originalFetch;
   for(const key of keys){if(previous[key]===undefined)delete process.env[key];else process.env[key]=previous[key];}

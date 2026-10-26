@@ -51,6 +51,10 @@ export interface FullCreativeRequest {
   skipOdoo?: boolean;
   /** Style direction from an AI template; the first direction follows it, the others still vary. */
   style?: string;
+  /** Chosen by the route so the browser can find the run again after leaving the page or a server restart. */
+  requestId?: string;
+  /** Who started it: only they (and approvers) can reopen the run. */
+  ownerId?: string;
 }
 export interface FullCreativeResult {
   directionId: string;
@@ -219,8 +223,8 @@ export async function produceDirection(input: {
 
 export async function generateFullCreative(request: FullCreativeRequest, env = process.env, onProgress?: ProgressFn): Promise<FullCreativeRun> {
   const format = request.format ?? 'feed';
-  const count = Math.min(3, Math.max(1, request.directions ?? 3));
-  const requestId = randomUUID();
+  const count = Math.min(2, Math.max(1, request.directions ?? 2));
+  const requestId = request.requestId && /^[0-9a-f-]{36}$/.test(request.requestId) ? request.requestId : randomUUID();
   const outputDir = mediaDir('creatives', requestId);
   mkdirSync(outputDir, { recursive: true });
   onProgress?.({ stage: 'context' });

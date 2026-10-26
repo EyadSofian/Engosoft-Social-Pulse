@@ -9,9 +9,9 @@ import type express from 'express';
 import { z } from 'zod';
 import { getUser, listUsers, requirePermission, requireUser, userCan } from './auth.js';
 import { getSetting, setSetting } from './settings.js';
-import { db } from './store.js';
+import { db, defineSchema } from './db.js';
 
-db.exec(`
+defineSchema(`
 CREATE TABLE IF NOT EXISTS ai_usage (
  id TEXT PRIMARY KEY, user_id TEXT, purpose TEXT NOT NULL DEFAULT '', kind TEXT NOT NULL, model TEXT NOT NULL,
  text_in INTEGER NOT NULL DEFAULT 0, image_in INTEGER NOT NULL DEFAULT 0, out_tokens INTEGER NOT NULL DEFAULT 0,
@@ -40,8 +40,8 @@ export const DEFAULT_PRICING: Pricing = {
     'gpt-4.1-mini': { textIn: 0.4, imageIn: 0.4, out: 1.6 },
   },
 };
-export const getPricing = (): Pricing => {
-  const saved = getSetting<Pricing>('ai.pricing', DEFAULT_PRICING);
+export const getPricing = async (): Promise<Pricing> => {
+  const saved = await getSetting<Pricing>('ai.pricing', DEFAULT_PRICING);
   return { ...saved, models: { ...DEFAULT_PRICING.models, ...saved.models } };
 };
 
@@ -72,8 +72,10 @@ export interface OpenAIUsage { input_tokens?: number; output_tokens?: number; in
 
 /** Records one OpenAI call. Never throws: a ledger failure must not fail the creative work that already happened. */
 export function recordUsage(input: { kind: 'image' | 'image_edit' | 'text'; model: string; usage?: OpenAIUsage; images?: number; size?: string; quality?: string }) {
-  try {
-    const pricing = getPricing();
+  // Read who and why now, while still inside the request's async context.
+  const current = scope.getStore();
+  const write = (async () => {
+    const pricing = await getPricing();
     const rate = rateFor(input.model, pricing);
     const details = input.usage?.input_tokens_details;
     let textIn = 0, imageIn = 0, out = 0, estimated = 0;
@@ -87,13 +89,15 @@ export function recordUsage(input: { kind: 'image' | 'image_edit' | 'text'; mode
       estimated = 1;
     }
     const cost = (textIn * rate.textIn + imageIn * rate.imageIn + out * rate.out) / 1_000_000;
-    const current = scope.getStore();
-    db.prepare('INSERT INTO ai_usage (id,user_id,purpose,kind,model,text_in,image_in,out_tokens,images,cost_usd,estimated,created_at) VALUES (?,?,?,?,?,?,?,?,?,?,?,?)')
-      .run(randomUUID(), current?.userId ?? null, current?.purpose ?? '', input.kind, input.model, textIn, imageIn, out, input.images ?? 0, cost, estimated, new Date().toISOString());
-  } catch (error) {
-    console.error('AI usage not recorded:', error instanceof Error ? error.message : error);
-  }
+    await db.run('INSERT INTO ai_usage (id,user_id,purpose,kind,model,text_in,image_in,out_tokens,images,cost_usd,estimated,created_at) VALUES (?,?,?,?,?,?,?,?,?,?,?,?)',
+      [randomUUID(), current?.userId ?? null, current?.purpose ?? '', input.kind, input.model, textIn, imageIn, out, input.images ?? 0, cost, estimated, new Date().toISOString()]);
+  })().catch((error) => console.error('AI usage not recorded:', error instanceof Error ? error.message : error));
+  pending.add(write);
+  void write.finally(() => pending.delete(write));
 }
+const pending = new Set<Promise<void>>();
+/** Resolves once every usage row recorded so far is written (tests, graceful shutdown). */
+export const flushUsage = async () => { await Promise.all([...pending]); };
 
 const monthStart = (month?: string) => `${month && /^\d{4}-\d{2}$/.test(month) ? month : new Date().toISOString().slice(0, 7)}-01T00:00:00.000Z`;
 const nextMonth = (start: string) => {
@@ -102,23 +106,22 @@ const nextMonth = (start: string) => {
   return date.toISOString();
 };
 
-export function spentThisMonth(userId: string): number {
-  const start = monthStart();
-  const row = db.prepare('SELECT COALESCE(SUM(cost_usd),0) AS total FROM ai_usage WHERE user_id=? AND created_at>=?').get(userId, start) as { total: number };
-  return row.total;
+export async function spentThisMonth(userId: string): Promise<number> {
+  const row = await db.get<{ total: number }>('SELECT COALESCE(SUM(cost_usd),0) AS total FROM ai_usage WHERE user_id=? AND created_at>=?', [userId, monthStart()]);
+  return Number(row?.total ?? 0);
 }
-export function budgetOf(userId: string): number | null {
-  const row = db.prepare('SELECT monthly_usd FROM user_budgets WHERE user_id=?').get(userId) as { monthly_usd: number | null } | undefined;
-  return row ? row.monthly_usd : getPricing().defaultMonthlyUsd;
+export async function budgetOf(userId: string): Promise<number | null> {
+  const row = await db.get<{ monthly_usd: number | null }>('SELECT monthly_usd FROM user_budgets WHERE user_id=?', [userId]);
+  return row ? row.monthly_usd : (await getPricing()).defaultMonthlyUsd;
 }
 
 /** Blocks a new AI job when the person has used up this month's budget. Admins set budgets on the Usage page. */
-export const requireAiBudget: express.RequestHandler = (req, res, next) => {
+export const requireAiBudget: express.RequestHandler = async (req, res, next) => {
   const user = req.user;
   if (!user) return res.status(401).json({ error: 'سجّل الدخول أولًا.' });
-  const budget = budgetOf(user.id);
+  const budget = await budgetOf(user.id);
   if (budget != null) {
-    const spent = spentThisMonth(user.id);
+    const spent = await spentThisMonth(user.id);
     if (spent >= budget) {
       return res.status(402).json({ error: `نفد رصيدك الشهري للذكاء الاصطناعي (استخدمت $${spent.toFixed(2)} من $${budget.toFixed(2)}). تواصل مع مسؤول النظام لزيادته.`, code: 'budget_exceeded' });
     }
@@ -138,27 +141,27 @@ const PURPOSES: [RegExp, string][] = [
 const purposeOf = (path: string) => PURPOSES.find(([pattern]) => pattern.test(path))?.[1] ?? path.replace(/^\/api\//, '');
 
 export function registerUsageRoutes(app: express.Express) {
-  app.get('/api/usage', requireUser, (req, res) => {
+  app.get('/api/usage', requireUser, async (req, res) => {
     const me = req.user!;
     const all = userCan(me, 'users.manage');
     const start = monthStart(typeof req.query.month === 'string' ? req.query.month : undefined);
     const end = nextMonth(start);
     const where = all ? 'created_at>=? AND created_at<?' : 'created_at>=? AND created_at<? AND user_id=?';
     const args = all ? [start, end] : [start, end, me.id];
-    const rows = db.prepare(`SELECT * FROM ai_usage WHERE ${where} ORDER BY created_at DESC`).all(...args) as Record<string, unknown>[];
-    const pricing = getPricing();
-    const people = all ? listUsers() : [getUser(me.id)!];
-    const byUser = people.map((user) => {
+    const rows = await db.all(`SELECT * FROM ai_usage WHERE ${where} ORDER BY created_at DESC`, args);
+    const pricing = await getPricing();
+    const people = all ? await listUsers() : [(await getUser(me.id))!];
+    const byUser = await Promise.all(people.map(async (user) => {
       const mine = rows.filter((row) => row.user_id === user.id);
       return {
         userId: user.id, name: user.name, email: user.email, departmentId: user.departmentId, status: user.status,
         spentUsd: mine.reduce((sum, row) => sum + Number(row.cost_usd), 0),
         images: mine.reduce((sum, row) => sum + Number(row.images), 0),
         calls: mine.length,
-        budgetUsd: budgetOf(user.id),
-        monthToDateUsd: spentThisMonth(user.id),
+        budgetUsd: await budgetOf(user.id),
+        monthToDateUsd: await spentThisMonth(user.id),
       };
-    });
+    }));
     const group = (key: string) => Object.entries(rows.reduce<Record<string, { usd: number; calls: number; images: number }>>((acc, row) => {
       const name = String(row[key] || 'other');
       acc[name] ??= { usd: 0, calls: 0, images: 0 };
@@ -191,21 +194,21 @@ export function registerUsageRoutes(app: express.Express) {
     });
   });
 
-  app.put('/api/usage/budgets/:userId', requireUser, requirePermission('users.manage'), (req, res) => {
+  app.put('/api/usage/budgets/:userId', requireUser, requirePermission('users.manage'), async (req, res) => {
     const parsed = z.object({ monthlyUsd: z.number().min(0).max(100_000).nullable() }).safeParse(req.body);
     if (!parsed.success) return res.status(400).json({ error: 'أدخل رصيدًا صحيحًا بالدولار، أو اتركه فارغًا لإلغاء الحد.' });
     const userId = String(req.params.userId);
-    if (!getUser(userId)) return res.status(404).json({ error: 'المستخدم غير موجود.' });
-    db.prepare('INSERT INTO user_budgets (user_id,monthly_usd,updated_at) VALUES (?,?,?) ON CONFLICT(user_id) DO UPDATE SET monthly_usd=excluded.monthly_usd, updated_at=excluded.updated_at')
-      .run(userId, parsed.data.monthlyUsd, new Date().toISOString());
+    if (!(await getUser(userId))) return res.status(404).json({ error: 'المستخدم غير موجود.' });
+    await db.run('INSERT INTO user_budgets (user_id,monthly_usd,updated_at) VALUES (?,?,?) ON CONFLICT(user_id) DO UPDATE SET monthly_usd=excluded.monthly_usd, updated_at=excluded.updated_at',
+      [userId, parsed.data.monthlyUsd, new Date().toISOString()]);
     res.json({ userId, budgetUsd: parsed.data.monthlyUsd });
   });
 
-  app.put('/api/usage/pricing', requireUser, requirePermission('users.manage'), (req, res) => {
+  app.put('/api/usage/pricing', requireUser, requirePermission('users.manage'), async (req, res) => {
     const rate = z.object({ textIn: z.number().min(0).max(1000), imageIn: z.number().min(0).max(1000), out: z.number().min(0).max(1000) });
     const parsed = z.object({ usdToEgp: z.number().min(0.01).max(10_000), defaultMonthlyUsd: z.number().min(0).max(100_000).nullable(), models: z.record(z.string().max(80), rate).optional() }).safeParse(req.body);
     if (!parsed.success) return res.status(400).json({ error: 'قيم التسعير غير صالحة.' });
-    const current = getPricing();
-    res.json(setSetting<Pricing>('ai.pricing', { ...current, ...parsed.data, models: { ...current.models, ...(parsed.data.models ?? {}) } }));
+    const current = await getPricing();
+    res.json(await setSetting<Pricing>('ai.pricing', { ...current, ...parsed.data, models: { ...current.models, ...(parsed.data.models ?? {}) } }));
   });
 }

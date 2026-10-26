@@ -25,8 +25,8 @@ const doc = z.object({
   logo: z.object({ variantId: z.enum(['lockup-reversed', 'lockup-positive', 'symbol-reversed', 'symbol-positive']), x: z.number(), y: z.number(), width: z.number() }).nullable(),
 });
 
-function editableItem(req: express.Request, res: express.Response) {
-  const item = getContent(String(req.params.contentId));
+async function editableItem(req: express.Request, res: express.Response) {
+  const item = await getContent(String(req.params.contentId));
   if (!item || !canEdit(req.user!, item)) { res.status(404).json({ error: 'المحتوى غير موجود أو غير متاح للتعديل.' }); return null; }
   if (!item.creative) { res.status(400).json({ error: 'لا يحتوي هذا المنشور على تصميم.' }); return null; }
   if (item.creative.svgTemplate || !/^[0-9a-f-]{36}$/.test(item.creative.requestId)) { res.status(400).json({ error: 'أُنشئ هذا المنشور من قالب SVG؛ عدّله من القالب.', code: 'svg_template' }); return null; }
@@ -39,15 +39,15 @@ const safeAreaOf = (format: StudioFormat) => format === 'story' ? { top: 230, ri
 
 export function registerStudioRoutes(app: express.Express) {
   /** Latest saved layer document for the post, or null when it has not been made editable yet. */
-  app.get('/api/studio/:contentId/doc', requireUser, (req, res) => {
-    const item = editableItem(req, res);
+  app.get('/api/studio/:contentId/doc', requireUser, async (req, res) => {
+    const item = await editableItem(req, res);
     if (!item) return;
-    const saved = listVersions(item.id).find((v) => v.studio);
+    const saved = (await listVersions(item.id)).find((v) => v.studio);
     res.setHeader('Cache-Control', 'no-store');
     res.json({ doc: saved?.studio ?? null, format: formatOf(item.creative!.directionId), imageUrl: item.creative!.imageUrl });
   });
-  app.post('/api/studio/:contentId/decompose', requireUser, requireAiBudget, (req, res) => {
-    const item = editableItem(req, res);
+  app.post('/api/studio/:contentId/decompose', requireUser, requireAiBudget, async (req, res) => {
+    const item = await editableItem(req, res);
     if (!item || !process.env.OPENAI_API_KEY?.trim()) { if (item) res.status(503).json({ error: 'أضف OPENAI_API_KEY على الخادم.' }); return; }
     const { requestId, directionId } = item.creative!;
     const format = formatOf(directionId);
@@ -59,33 +59,33 @@ export function registerStudioRoutes(app: express.Express) {
     });
     res.status(202).json({ jobId: job.id });
   });
-  app.post('/api/studio/:contentId/ai-edit', requireUser, requireAiBudget, (req, res) => {
-    const item = editableItem(req, res);
+  app.post('/api/studio/:contentId/ai-edit', requireUser, requireAiBudget, async (req, res) => {
+    const item = await editableItem(req, res);
     if (!item) return;
     const parsed = z.object({ doc, box, instruction: z.string().trim().min(3).max(600) }).safeParse(req.body);
     if (!parsed.success) return res.status(400).json({ error: 'حدّد منطقة واكتب التعديل.' });
     const job = startStudioJob(req.user!.id, () => aiEdit(parsed.data.doc as StudioDoc, parsed.data.box, parsed.data.instruction, formatOf(item.creative!.directionId)));
     res.status(202).json({ jobId: job.id });
   });
-  app.get('/api/studio/jobs/:id', requireUser, (req, res) => {
+  app.get('/api/studio/jobs/:id', requireUser, async (req, res) => {
     const job = jobs.get(String(req.params.id));
     res.setHeader('Cache-Control', 'no-store');
     if (!job || job.ownerId !== req.user!.id) return res.status(404).json({ error: 'المهمة غير موجودة.' });
     res.json(job);
   });
   app.post('/api/studio/:contentId/render', requireUser, async (req, res) => {
-    const item = editableItem(req, res);
+    const item = await editableItem(req, res);
     if (!item) return;
     const parsed = z.object({ doc, note: z.string().max(200).default('Studio edit') }).safeParse(req.body);
     if (!parsed.success) return res.status(400).json({ error: 'بيانات الطبقات غير صالحة.' });
     try {
       const result = await renderStudio(parsed.data.doc as StudioDoc, safeAreaOf(formatOf(item.creative!.directionId)));
       if (result.problems.some((p) => p.startsWith('Logo'))) return res.status(422).json({ error: result.problems.join(' '), problems: result.problems, previewUrl: studioUrl(result.file) });
-      const version = addVersion(req.user!, item.id, { imageUrl: studioUrl(result.file), storyUrl: item.creative!.storyUrl ?? null, studio: result.doc, note: parsed.data.note });
+      const version = await addVersion(req.user!, item.id, { imageUrl: studioUrl(result.file), storyUrl: item.creative!.storyUrl ?? null, studio: result.doc, note: parsed.data.note });
       res.json({ version, problems: result.problems });
     } catch (error) { res.status(500).json({ error: error instanceof Error ? error.message : 'Render failed' }); }
   });
-  app.get('/api/studio/:file', requireUser, (req, res) => {
+  app.get('/api/studio/:file', requireUser, async (req, res) => {
     let path: string;
     try { path = studioPath(String(req.params.file)); } catch { return res.status(404).end(); }
     res.sendFile(path, { headers: { 'Cache-Control': 'private, max-age=86400' } }, (error) => { if (error && !res.headersSent) res.status(404).end(); });

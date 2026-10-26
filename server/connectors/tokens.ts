@@ -35,14 +35,14 @@ export function providerAccessToken(platform:Provider):Promise<string> {
  const promise=resolveAccessToken(configs[platform]).finally(()=>inFlight.delete(platform));
  inFlight.set(platform,promise);return promise;
 }
-export function hasSavedOAuthToken(platform:Provider):boolean {
- return Boolean(getEncryptedToken(platform));
+export async function hasSavedOAuthToken(platform:Provider):Promise<boolean> {
+ return Boolean(await getEncryptedToken(platform));
 }
-export function saveOAuthAccessToken(platform:Provider,value:TokenRecord):void {
+export async function saveOAuthAccessToken(platform:Provider,value:TokenRecord):Promise<void> {
  const secret=key();
  if(!secret)throw new Error('TOKEN_ENCRYPTION_KEY غير مضبوط؛ تعذّر حفظ التوكن بأمان.');
  if(!value.accessToken||!value.refreshToken)throw new Error('TikTok لم يُرجع access token وrefresh token معًا.');
- saveEncryptedToken(platform,encrypt(platform,value,secret));
+ await saveEncryptedToken(platform,encrypt(platform,value,secret));
 }
 async function resolveAccessToken(config:Config):Promise<string>{
  const fallback=process.env[config.accessEnv]?.trim()||'';
@@ -50,7 +50,7 @@ async function resolveAccessToken(config:Config):Promise<string>{
  const clientId=process.env[config.clientIdEnv]?.trim()||'';
  const clientSecret=process.env[config.clientSecretEnv]?.trim()||'';
  const envRefresh=process.env[config.refreshEnv]?.trim()||'';
- const stored=secret?getEncryptedToken(config.platform):undefined;
+ const stored=secret?await getEncryptedToken(config.platform):undefined;
  if(!secret||!clientId||!clientSecret||(!envRefresh&&!stored)){
   if(fallback)return fallback;
   throw new Error(`مطلوب ${config.accessEnv} أو ${config.refreshEnv} مع بيانات OAuth وTOKEN_ENCRYPTION_KEY.`);
@@ -67,6 +67,6 @@ async function resolveAccessToken(config:Config):Promise<string>{
   throw new Error(`${reason} (${config.platform}, HTTP ${response.status})`);
  }
  const next:TokenRecord={accessToken:result.access_token,refreshToken:result.refresh_token||refreshToken,expiresAt:Date.now()+Math.max(60,Number(result.expires_in)||3600)*1000};
- saveEncryptedToken(config.platform,encrypt(config.platform,next,secret));
+ await saveEncryptedToken(config.platform,encrypt(config.platform,next,secret));
  return next.accessToken;
 }

@@ -10,11 +10,11 @@ import type express from 'express';
 import { z } from 'zod';
 import { requirePermission, requireUser, userCan } from './auth.js';
 import { openAIJson } from './creative-intelligence/generation/provider.js';
-import { db } from './store.js';
+import { db, defineSchema } from './db.js';
 import { mediaDir } from './paths.js';
 import { requireAiBudget } from './usage.js';
 
-db.exec(`CREATE TABLE IF NOT EXISTS svg_templates (
+defineSchema(`CREATE TABLE IF NOT EXISTS svg_templates (
  id TEXT PRIMARY KEY, name TEXT NOT NULL, description TEXT NOT NULL DEFAULT '', format TEXT NOT NULL, width INTEGER NOT NULL, height INTEGER NOT NULL,
  svg TEXT NOT NULL, fields_json TEXT NOT NULL DEFAULT '[]', source_prompt TEXT NOT NULL DEFAULT '', department_id TEXT, created_by TEXT NOT NULL,
  usage_count INTEGER NOT NULL DEFAULT 0, created_at TEXT NOT NULL, updated_at TEXT NOT NULL
@@ -46,7 +46,7 @@ const toTemplate = (r: Record<string, unknown>): SvgTemplate => ({
   svg: String(r.svg), fields: JSON.parse(String(r.fields_json || '[]')) as TemplateField[], sourcePrompt: String(r.source_prompt), departmentId: (r.department_id as string | null) ?? null,
   createdBy: String(r.created_by), usageCount: Number(r.usage_count), createdAt: String(r.created_at), updatedAt: String(r.updated_at),
 });
-const getTemplate = (id: string) => { const r = db.prepare('SELECT * FROM svg_templates WHERE id=?').get(id) as Record<string, unknown> | undefined; return r ? toTemplate(r) : undefined; };
+const getTemplate = async (id: string) => { const r = await db.get('SELECT * FROM svg_templates WHERE id=?', [id]); return r ? toTemplate(r) : undefined; };
 
 /**
  * Keeps an SVG inert: no scripts, event handlers, foreign HTML or outside URLs. Images may only point at
@@ -133,12 +133,12 @@ async function design(input: { instructions: string; text: string; image?: strin
 const imageDataUrl = z.string().regex(/^data:image\/(png|jpeg|webp);base64,[A-Za-z0-9+/=]+$/).max(14_000_000);
 
 export function registerSvgTemplateRoutes(app: express.Express) {
-  app.get('/api/svg-templates', requireUser, (_req, res) => {
+  app.get('/api/svg-templates', requireUser, async (_req, res) => {
     res.setHeader('Cache-Control', 'no-store');
-    res.json((db.prepare('SELECT * FROM svg_templates ORDER BY usage_count DESC, updated_at DESC').all() as Record<string, unknown>[]).map(toTemplate));
+    res.json((await db.all('SELECT * FROM svg_templates ORDER BY usage_count DESC, updated_at DESC')).map(toTemplate));
   });
-  app.get('/api/svg-templates/:id', requireUser, (req, res) => {
-    const template = getTemplate(String(req.params.id));
+  app.get('/api/svg-templates/:id', requireUser, async (req, res) => {
+    const template = await getTemplate(String(req.params.id));
     if (!template) return res.status(404).json({ error: 'القالب غير موجود.' });
     res.json(template);
   });
@@ -153,16 +153,15 @@ export function registerSvgTemplateRoutes(app: express.Express) {
         : `Design request: ${prompt}`;
       const result = await design({ instructions: DESIGN_RULES, text, image: reference, format });
       const id = randomUUID(), now = new Date().toISOString(), size = TEMPLATE_FORMATS[format];
-      db.prepare('INSERT INTO svg_templates (id,name,description,format,width,height,svg,fields_json,source_prompt,department_id,created_by,created_at,updated_at) VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?)')
-        .run(id, result.name || 'قالب جديد', result.description, format, size.width, size.height, result.svg, JSON.stringify(result.fields), prompt, req.user!.departmentId, req.user!.id, now, now);
-      res.status(201).json(getTemplate(id));
+      await db.run('INSERT INTO svg_templates (id,name,description,format,width,height,svg,fields_json,source_prompt,department_id,created_by,created_at,updated_at) VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?)', [id, result.name || 'قالب جديد', result.description, format, size.width, size.height, result.svg, JSON.stringify(result.fields), prompt, req.user!.departmentId, req.user!.id, now, now]);
+      res.status(201).json(await getTemplate(id));
     } catch (error) {
       res.status(502).json({ error: error instanceof Error ? error.message : 'تعذّر تصميم القالب.' });
     }
   });
 
   app.post('/api/svg-templates/:id/revise', requireUser, requirePermission('content.create'), requireAiBudget, async (req, res) => {
-    const template = getTemplate(String(req.params.id));
+    const template = await getTemplate(String(req.params.id));
     if (!template) return res.status(404).json({ error: 'القالب غير موجود.' });
     const parsed = z.object({ instruction: z.string().trim().min(3).max(1000) }).safeParse(req.body);
     if (!parsed.success) return res.status(400).json({ error: 'اكتب التعديل المطلوب.' });
@@ -172,39 +171,39 @@ export function registerSvgTemplateRoutes(app: express.Express) {
         text: `Requested change: ${parsed.data.instruction}\n\nCurrent fields: ${JSON.stringify(template.fields)}\n\nCurrent SVG:\n${template.svg}`,
         format: template.format,
       });
-      db.prepare('UPDATE svg_templates SET svg=?, fields_json=?, updated_at=? WHERE id=?').run(result.svg, JSON.stringify(result.fields), new Date().toISOString(), template.id);
-      res.json(getTemplate(template.id));
+      await db.run('UPDATE svg_templates SET svg=?, fields_json=?, updated_at=? WHERE id=?', [result.svg, JSON.stringify(result.fields), new Date().toISOString(), template.id]);
+      res.json(await getTemplate(template.id));
     } catch (error) {
       res.status(502).json({ error: error instanceof Error ? error.message : 'تعذّر تعديل القالب.' });
     }
   });
 
-  app.put('/api/svg-templates/:id', requireUser, (req, res) => {
-    const template = getTemplate(String(req.params.id));
+  app.put('/api/svg-templates/:id', requireUser, async (req, res) => {
+    const template = await getTemplate(String(req.params.id));
     if (!template) return res.status(404).json({ error: 'القالب غير موجود.' });
     if (template.createdBy !== req.user!.id && !userCan(req.user!, 'templates.manage')) return res.status(403).json({ error: 'لا تملك صلاحية تعديل هذا القالب.' });
     const parsed = z.object({ name: z.string().trim().min(2).max(120), description: z.string().max(500).default(''), svg: z.string().min(20).max(200_000), fields: z.array(field).max(30) }).safeParse(req.body);
     if (!parsed.success) return res.status(400).json({ error: 'بيانات القالب غير صالحة.' });
     let svg: string;
     try { svg = sanitizeSvg(parsed.data.svg, template.width, template.height); } catch { return res.status(400).json({ error: 'شيفرة SVG غير صالحة.' }); }
-    db.prepare('UPDATE svg_templates SET name=?, description=?, svg=?, fields_json=?, updated_at=? WHERE id=?')
-      .run(parsed.data.name, parsed.data.description, svg, JSON.stringify(keepDeclaredFields(svg, parsed.data.fields)), new Date().toISOString(), template.id);
-    res.json(getTemplate(template.id));
+    await db.run('UPDATE svg_templates SET name=?, description=?, svg=?, fields_json=?, updated_at=? WHERE id=?',
+      [parsed.data.name, parsed.data.description, svg, JSON.stringify(keepDeclaredFields(svg, parsed.data.fields)), new Date().toISOString(), template.id]);
+    res.json(await getTemplate(template.id));
   });
-  app.delete('/api/svg-templates/:id', requireUser, (req, res) => {
-    const template = getTemplate(String(req.params.id));
+  app.delete('/api/svg-templates/:id', requireUser, async (req, res) => {
+    const template = await getTemplate(String(req.params.id));
     if (!template) return res.status(404).json({ error: 'القالب غير موجود.' });
     if (template.createdBy !== req.user!.id && !userCan(req.user!, 'templates.manage')) return res.status(403).json({ error: 'لا تملك صلاحية حذف هذا القالب.' });
-    db.prepare('DELETE FROM svg_templates WHERE id=?').run(template.id);
+    await db.run('DELETE FROM svg_templates WHERE id=?', [template.id]);
     res.json({ deleted: true });
   });
-  app.post('/api/svg-templates/:id/used', requireUser, (req, res) => {
-    db.prepare('UPDATE svg_templates SET usage_count = usage_count + 1 WHERE id=?').run(String(req.params.id));
+  app.post('/api/svg-templates/:id/used', requireUser, async (req, res) => {
+    await db.run('UPDATE svg_templates SET usage_count = usage_count + 1 WHERE id=?', [String(req.params.id)]);
     res.json({ ok: true });
   });
 
   /** Finished post images exported in the browser (template posts) are stored here and referenced by content items. */
-  app.post('/api/uploads', requireUser, requirePermission('content.create'), (req, res) => {
+  app.post('/api/uploads', requireUser, requirePermission('content.create'), async (req, res) => {
     const parsed = z.object({ dataUrl: z.string().regex(/^data:image\/png;base64,[A-Za-z0-9+/=]+$/).max(16_000_000) }).safeParse(req.body);
     if (!parsed.success) return res.status(400).json({ error: 'يجب أن تكون الصورة بصيغة PNG وأقل من 12 ميجابايت.' });
     const dir = mediaDir('uploads');
@@ -213,7 +212,7 @@ export function registerSvgTemplateRoutes(app: express.Express) {
     writeFileSync(resolve(dir, `${id}.png`), Buffer.from(parsed.data.dataUrl.split(',')[1], 'base64'));
     res.status(201).json({ url: `/api/uploads/${id}.png` });
   });
-  app.get('/api/uploads/:file', requireUser, (req, res) => {
+  app.get('/api/uploads/:file', requireUser, async (req, res) => {
     const file = String(req.params.file);
     if (!/^[0-9a-f-]{36}\.png$/.test(file)) return res.status(404).end();
     res.sendFile(mediaDir('uploads', file), { headers: { 'Cache-Control': 'private, max-age=86400' } }, (error) => { if (error && !res.headersSent) res.status(404).end(); });

@@ -1,8 +1,11 @@
+import { useEffect } from 'react';
 import { AnimatePresence, motion } from 'motion/react';
 import { Bell, ChevronRight, Menu as MenuIcon, Moon, PanelLeft, Search, SunMedium } from 'lucide-react';
-import { Link } from '../app/router/router';
+import { Link, useRouter } from '../app/router/router';
 import { useLiveData } from '../app/providers/LiveDataProvider';
+import { updateActiveCreative, useActiveCreative } from '../features/creative-studio/activeCreative';
 import { useTheme } from '../hooks/ui';
+import { ApiError, api } from '../lib/api';
 import { useI18n } from '../i18n/I18nProvider';
 import { useNotificationGroups } from './NotificationCenter';
 import { useShell } from './ShellContext';
@@ -57,6 +60,7 @@ export function Header() {
           <span className="shell-search-trigger__text">{t('Search', 'بحث')}</span>
           <kbd className="ui-kbd">{isMac ? '⌘K' : 'Ctrl K'}</kbd>
         </button>
+        <ActiveCreativePill />
         <ThemeToggle />
         <button type="button" className="ui-icon-btn ui-icon-btn--md ui-icon-btn--ghost shell-bell" onClick={() => setNotificationsOpen(true)} aria-label={unread ? t(`Notifications, ${unread} unread`, `الإشعارات، ${unread} غير مقروءة`) : t('Notifications', 'الإشعارات')} title={t('Notifications', 'الإشعارات')}>
           <Bell size={17} />
@@ -64,6 +68,35 @@ export function Header() {
         </button>
       </div>
     </header>
+  );
+}
+
+/** A design still generating, visible from every page; it finishes on the server even when the person browses away. */
+function ActiveCreativePill() {
+  const { t } = useI18n();
+  const { path, navigate } = useRouter();
+  const active = useActiveCreative();
+  useEffect(() => {
+    if (!active || active.status !== 'running' || !active.jobId) return;
+    const timer = setInterval(() => {
+      api<{ status: string }>(`/api/ai/jobs/${active.jobId}`)
+        .then((job) => job.status !== 'running' && updateActiveCreative({ status: job.status === 'done' ? 'done' : 'failed' }))
+        .catch((error) => {
+          if (!(error instanceof ApiError) || error.status !== 404) return;
+          if (!active.requestId) return;
+          void api(`/api/ai/runs/${active.requestId}`)
+            .then(() => updateActiveCreative({ status: 'done' }))
+            .catch((runError) => { if (runError instanceof ApiError && runError.status === 404) updateActiveCreative({ status: 'failed' }); });
+        });
+    }, 5000);
+    return () => clearInterval(timer);
+  }, [active?.jobId, active?.status]);
+  if (!active || active.status !== 'running' || path === '/') return null;
+  return (
+    <button type="button" className="shell-generating" onClick={() => navigate('/')}>
+      <span className="shell-generating__spin" aria-hidden />
+      {t('Designing your post…', 'جارٍ تصميم منشورك…')}
+    </button>
   );
 }
 

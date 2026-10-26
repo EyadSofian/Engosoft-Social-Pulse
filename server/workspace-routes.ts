@@ -8,7 +8,7 @@ import {
   readCookie, recordFailedLogin, requirePermission, requireUser, SESSION_COOKIE, updateUser, userCan, type AuthUser,
 } from './auth.js';
 import {
-  addComment, addVersion, allowedMoves, canEdit, createContent, getContent, listContent, listEvents, listVersions, transition, updateContent, WorkspaceError,
+  addComment, addVersion, allowedMoves, canEdit, canSee, createContent, getContent, listContent, listEvents, listVersions, transition, updateContent, WorkspaceError, type StoredContent,
 } from './workspace.js';
 import { notifyContent } from './notify.js';
 
@@ -19,7 +19,7 @@ const creativeRef = z.object({ requestId: z.string().max(60), directionId: z.str
 const captions = z.partialRecord(z.enum(CHANNELS), z.string().max(5000));
 
 const publicUser = (user: AuthUser) => ({ id: user.id, name: user.name, email: user.email, role: user.role, departmentId: user.departmentId, title: user.title, status: user.status, lastActiveAt: user.lastActiveAt });
-const withMoves = (user: AuthUser) => <T extends ReturnType<typeof getContent>>(item: NonNullable<T>) => ({ ...item, moves: allowedMoves(user, item), editable: canEdit(user, item) });
+const withMoves = (user: AuthUser) => (item: StoredContent) => ({ ...item, moves: allowedMoves(user, item), editable: canEdit(user, item) });
 
 function fail(res: express.Response, error: unknown) {
   if (error instanceof WorkspaceError) return res.status(error.status).json({ error: error.message });
@@ -28,25 +28,25 @@ function fail(res: express.Response, error: unknown) {
 }
 
 export function registerAuthRoutes(app: express.Express) {
-  app.post('/api/auth/login', (req, res) => {
+  app.post('/api/auth/login', async (req, res) => {
     const parsed = z.object({ email: z.string().email().max(200), password: z.string().min(1).max(200) }).safeParse(req.body);
     if (!parsed.success) return res.status(400).json({ error: 'اكتب البريد الإلكتروني وكلمة المرور.' });
     const key = `${parsed.data.email.toLowerCase()}|${req.ip}`;
     if (loginBlocked(key)) return res.status(429).json({ error: 'محاولات كثيرة. انتظر ربع ساعة ثم حاول مرة أخرى.' });
-    const user = authenticate(parsed.data.email, parsed.data.password);
+    const user = await authenticate(parsed.data.email, parsed.data.password);
     if (!user) { recordFailedLogin(key); return res.status(401).json({ error: 'البريد الإلكتروني أو كلمة المرور غير صحيحة.' }); }
     clearFailedLogins(key);
-    const session = createSession(user.id);
+    const session = await createSession(user.id);
     res.cookie(SESSION_COOKIE, session.token, { httpOnly: true, sameSite: 'lax', secure: req.secure, path: '/', expires: new Date(session.expiresAt) });
     res.json({ user: publicUser(user) });
   });
-  app.post('/api/auth/logout', (req, res) => {
+  app.post('/api/auth/logout', async (req, res) => {
     const token = readCookie(req, SESSION_COOKIE);
-    if (token) endSession(decodeURIComponent(token));
+    if (token) await endSession(decodeURIComponent(token));
     res.clearCookie(SESSION_COOKIE, { path: '/' });
     res.json({ ok: true });
   });
-  app.get('/api/auth/me', requireUser, (req, res) => {
+  app.get('/api/auth/me', requireUser, async (req, res) => {
     const user = req.user!;
     res.setHeader('Cache-Control', 'no-store');
     res.json({
@@ -59,75 +59,75 @@ export function registerAuthRoutes(app: express.Express) {
 }
 
 export function registerWorkspaceRoutes(app: express.Express) {
-  app.get('/api/users', requireUser, (req, res) => {
-    const all = listUsers();
+  app.get('/api/users', requireUser, async (req, res) => {
+    const all = await listUsers();
     res.json(userCan(req.user!, 'users.manage') ? all.map(publicUser) : all.filter((u) => u.status === 'active').map((u) => ({ id: u.id, name: u.name, departmentId: u.departmentId, role: u.role })));
   });
   const userInput = z.object({ email: z.string().email().max(200), name: z.string().trim().min(2).max(120), role: z.string().refine(isRole), departmentId: z.string().refine(isDepartment).nullable(), title: z.string().max(120).optional(), password: z.string().min(10).max(200) });
-  app.post('/api/users', requireUser, requirePermission('users.manage'), (req, res) => {
+  app.post('/api/users', requireUser, requirePermission('users.manage'), async (req, res) => {
     try {
       const input = userInput.parse(req.body);
-      res.status(201).json(publicUser(createUser({ ...input, role: input.role as never, departmentId: input.departmentId as never })));
+      res.status(201).json(publicUser(await createUser({ ...input, role: input.role as never, departmentId: input.departmentId as never })));
     } catch (error) {
       if (error instanceof Error && /UNIQUE/.test(error.message)) return res.status(409).json({ error: 'هذا البريد الإلكتروني مستخدم بالفعل.' });
       fail(res, error);
     }
   });
-  app.patch('/api/users/:id', requireUser, requirePermission('users.manage'), (req, res) => {
+  app.patch('/api/users/:id', requireUser, requirePermission('users.manage'), async (req, res) => {
     try {
       const patch = userInput.omit({ email: true }).partial().extend({ status: z.enum(['active', 'suspended']).optional() }).parse(req.body);
       if (req.params.id === req.user!.id && (patch.status === 'suspended' || (patch.role && patch.role !== 'admin'))) return res.status(400).json({ error: 'لا يمكنك إيقاف حسابك أو تغيير دوره.' });
-      const user = updateUser(String(req.params.id), patch as never);
+      const user = await updateUser(String(req.params.id), patch as never);
       if (!user) return res.status(404).json({ error: 'المستخدم غير موجود.' });
       res.json(publicUser(user));
     } catch (error) { fail(res, error); }
   });
 
-  app.get('/api/content', requireUser, (req, res) => {
+  app.get('/api/content', requireUser, async (req, res) => {
     res.setHeader('Cache-Control', 'no-store');
-    res.json(listContent(req.user!).map(withMoves(req.user!)));
+    res.json((await listContent(req.user!)).map(withMoves(req.user!)));
   });
-  app.post('/api/content', requireUser, requirePermission('content.create'), (req, res) => {
+  app.post('/api/content', requireUser, requirePermission('content.create'), async (req, res) => {
     try {
       const input = z.object({ title: z.string().trim().min(2).max(300), channels: z.array(z.enum(CHANNELS)).min(1).max(7), captions: captions.default({}), creative: creativeRef.nullable(), templateId: z.string().max(80).nullable().optional() }).parse(req.body);
-      const item = createContent(req.user!, input);
-      notifyContent(req.user!, item, 'created');
+      const item = await createContent(req.user!, input);
+      void notifyContent(req.user!, item, 'created');
       res.status(201).json(withMoves(req.user!)(item));
     } catch (error) { fail(res, error); }
   });
-  app.get('/api/content/:id', requireUser, (req, res) => {
-    const item = getContent(String(req.params.id));
-    if (!item || !listContent(req.user!).some((entry) => entry.id === item.id)) return res.status(404).json({ error: 'المحتوى غير موجود.' });
+  app.get('/api/content/:id', requireUser, async (req, res) => {
+    const item = await getContent(String(req.params.id));
+    if (!item || !canSee(req.user!, item)) return res.status(404).json({ error: 'المحتوى غير موجود.' });
     res.setHeader('Cache-Control', 'no-store');
-    res.json({ ...withMoves(req.user!)(item), versions: listVersions(item.id), events: listEvents(item.id) });
+    res.json({ ...withMoves(req.user!)(item), versions: await listVersions(item.id), events: await listEvents(item.id) });
   });
-  app.patch('/api/content/:id', requireUser, (req, res) => {
+  app.patch('/api/content/:id', requireUser, async (req, res) => {
     try {
       const patch = z.object({ title: z.string().trim().min(2).max(300).optional(), channels: z.array(z.enum(CHANNELS)).min(1).max(7).optional(), captions: captions.optional() }).parse(req.body);
-      res.json(withMoves(req.user!)(updateContent(req.user!, String(req.params.id), patch)));
+      res.json(withMoves(req.user!)(await updateContent(req.user!, String(req.params.id), patch)));
     } catch (error) { fail(res, error); }
   });
-  app.post('/api/content/:id/transition', requireUser, (req, res) => {
+  app.post('/api/content/:id/transition', requireUser, async (req, res) => {
     try {
       const input = z.object({ to: z.enum(CONTENT_STATUSES as [ContentStatus, ...ContentStatus[]]), note: z.string().max(2000).optional(), scheduledAt: z.iso.datetime().optional() }).parse(req.body);
-      const item = transition(req.user!, String(req.params.id), input.to, input);
-      notifyContent(req.user!, item, input.to);
+      const item = await transition(req.user!, String(req.params.id), input.to, input);
+      void notifyContent(req.user!, item, input.to);
       res.json(withMoves(req.user!)(item));
     } catch (error) { fail(res, error); }
   });
-  app.post('/api/content/:id/comments', requireUser, (req, res) => {
+  app.post('/api/content/:id/comments', requireUser, async (req, res) => {
     try {
       const { body } = z.object({ body: z.string().trim().min(1).max(2000) }).parse(req.body);
-      addComment(req.user!, String(req.params.id), body);
-      res.status(201).json({ events: listEvents(String(req.params.id)) });
+      await addComment(req.user!, String(req.params.id), body);
+      res.status(201).json({ events: await listEvents(String(req.params.id)) });
     } catch (error) { fail(res, error); }
   });
-  app.post('/api/content/:id/versions', requireUser, (req, res) => {
+  app.post('/api/content/:id/versions', requireUser, async (req, res) => {
     try {
-      const item = getContent(String(req.params.id));
+      const item = await getContent(String(req.params.id));
       if (!item || !canEdit(req.user!, item)) return res.status(404).json({ error: 'المحتوى غير موجود.' });
       const input = z.object({ imageUrl: creativeUrl, storyUrl: creativeUrl.nullable().default(null), studio: z.unknown().optional().refine((v) => !(v && typeof v === 'object' && 'svgTemplate' in v) || svgTemplateRef.safeParse((v as { svgTemplate: unknown }).svgTemplate).success), note: z.string().max(300).default('Studio edit') }).parse(req.body);
-      res.status(201).json(addVersion(req.user!, item.id, { ...input, studio: input.studio ?? null }));
+      res.status(201).json(await addVersion(req.user!, item.id, { ...input, studio: input.studio ?? null }));
     } catch (error) { fail(res, error); }
   });
 }

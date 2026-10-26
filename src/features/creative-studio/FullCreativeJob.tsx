@@ -6,6 +6,7 @@ import { Button } from '../../components/ui/Button';
 import { useI18n } from '../../i18n/I18nProvider';
 import { api, errorMessage } from '../../lib/api';
 import type { CreativeJob, PublicResult, PublicRun } from '../../../server/creative-intelligence/generation/jobs';
+import { updateActiveCreative } from './activeCreative';
 import { extraFormats, type CreativeMaster, type CreativePlatform } from './platforms';
 
 const STAGES: Record<string, [string, string]> = {
@@ -31,7 +32,7 @@ async function poll(jobId: string, onUpdate: (job: CreativeJob) => void, signal:
 }
 
 /** Follows a full-creative job: direction cards appear as soon as the brief exists, each image is revealed when it is ready. */
-export function FullCreativeJob({ jobId, platforms, prompt, onRestart }: { jobId: string; platforms: CreativePlatform[]; prompt: string; onRestart: () => void }) {
+export function FullCreativeJob({ jobId, requestId, platforms, prompt, onRestart }: { jobId: string; requestId?: string; platforms: CreativePlatform[]; prompt: string; onRestart: () => void }) {
   const { t } = useI18n();
   const [job, setJob] = useState<CreativeJob | null>(null);
   const [run, setRun] = useState<PublicRun | null>(null);
@@ -42,9 +43,20 @@ export function FullCreativeJob({ jobId, platforms, prompt, onRestart }: { jobId
 
   useEffect(() => {
     const signal = { stopped: false };
-    void poll(jobId, (next) => { setJob(next); if (next.run) setRun(next.run); }, signal).catch((e) => setError(errorMessage(e, '')));
+    // The saved run on disk outlives the in-memory job (page left, server restarted, opened from a notification).
+    const fromDisk = () => requestId
+      ? api<PublicRun>(`/api/ai/runs/${requestId}`).then((saved) => { setRun(saved); updateActiveCreative({ status: 'done' }); })
+      : Promise.reject(new Error(t('This design is no longer available.', 'لم يعد هذا التصميم متاحًا.')));
+    const follow = jobId
+      ? poll(jobId, (next) => {
+          setJob(next);
+          if (next.run) setRun(next.run);
+          if (next.status !== 'running') updateActiveCreative({ status: next.status === 'done' ? 'done' : 'failed' });
+        }, signal).catch(() => fromDisk())
+      : fromDisk();
+    void follow.catch((e) => { setError(errorMessage(e, '')); updateActiveCreative({ status: 'failed' }); });
     return () => { signal.stopped = true; };
-  }, [jobId]);
+  }, [jobId, requestId]);
 
   const adapt = async (directionId: string, format: CreativeMaster) => {
     if (!run) return;
@@ -65,7 +77,7 @@ export function FullCreativeJob({ jobId, platforms, prompt, onRestart }: { jobId
     return <div className="creative-job creative-job--progress glass" aria-live="polite">
       <div className="creative-orbit" aria-hidden><span /><span /><span /></div>
       <AnimatePresence mode="wait"><motion.h2 key={stage[0]} initial={{ opacity: 0, y: 6 }} animate={{ opacity: 1, y: 0 }} exit={{ opacity: 0, y: -6 }}>{t(stage[0], stage[1])}…</motion.h2></AnimatePresence>
-      <p className="u-muted">{t('Odoo facts, three different ideas, a full AI design for each, then quality checks and the exact Engosoft logo.', 'بيانات Odoo، وثلاث أفكار مختلفة، وتصميم كامل بالذكاء الاصطناعي لكل فكرة، ثم مراجعة الجودة ووضع الشعار الأصلي.')}</p>
+      <p className="u-muted">{t('Odoo facts, two different ideas, a full AI design for each, then quality checks and the exact Engosoft logo. You can leave this page; you will be notified when it is ready.', 'بيانات Odoo، وفكرتان مختلفتان، وتصميم كامل بالذكاء الاصطناعي لكل فكرة، ثم مراجعة الجودة ووضع الشعار الأصلي. يمكنك الانتقال لصفحة أخرى، وسيصلك إشعار عند الانتهاء.')}</p>
     </div>;
   }
 

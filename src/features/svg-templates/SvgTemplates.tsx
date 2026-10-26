@@ -1,13 +1,14 @@
 import { useEffect, useMemo, useRef, useState } from 'react';
 import { AnimatePresence, motion } from 'motion/react';
-import { CalendarClock, Code2, FileText, ImagePlus, Loader2, Save, Send, Sparkles, Trash2, Wand2, X } from 'lucide-react';
+import { CalendarClock, Code2, FileText, ImagePlus, Loader2, Save, Search, Send, Sparkles, Trash2, Wand2, X } from 'lucide-react';
 import { useRouter } from '../../app/router/router';
 import { ChannelIcon } from '../../components/data-display/ChannelIcon';
 import { Button } from '../../components/ui/Button';
 import { useI18n } from '../../i18n/I18nProvider';
 import { api, errorMessage } from '../../lib/api';
+import { CoursePicker, runOf } from '../creative-studio/CoursePicker';
 import { CREATIVE_PLATFORMS, PLATFORM_FORMATS, type CreativePlatform } from '../creative-studio/platforms';
-import { exportPng, fillSvg, FORMAT_LABEL, loadBrandFonts, odooValues, sampleValues, type OdooEvent, type SvgTemplate, type TemplateFormat } from './render';
+import { exportPng, fillSvg, FORMAT_LABEL, loadBrandFonts, odooValues, sampleValues, type SvgTemplate, type TemplateFormat } from './render';
 
 export function useSvgTemplates() {
   const [items, setItems] = useState<SvgTemplate[] | null>(null);
@@ -17,21 +18,6 @@ export function useSvgTemplates() {
     void reload();
   }, []);
   return { items, error, reload, setItems };
-}
-
-export function useOdooEvents() {
-  const [events, setEvents] = useState<OdooEvent[]>([]);
-  const [message, setMessage] = useState('');
-  useEffect(() => {
-    fetch('/api/odoo/schedule')
-      .then((r) => r.json())
-      .then((data: { status: string; events?: OdooEvent[]; message?: string }) => {
-        if (data.status === 'connected') setEvents((data.events ?? []).filter((e) => Date.parse(e.startsAt) > Date.now() - 86_400_000).sort((a, b) => a.startsAt.localeCompare(b.startsAt)));
-        else setMessage(data.message || 'Odoo');
-      })
-      .catch(() => setMessage('Odoo'));
-  }, []);
-  return { events, message };
 }
 
 /** The filled template as live SVG, scaled to its container. */
@@ -144,18 +130,31 @@ export function TemplateGrid({ items, onOpen }: { items: SvgTemplate[]; onOpen: 
 /** Fill a template's fields by hand or from an Odoo event. */
 function FieldsForm({ template, values, onChange }: { template: SvgTemplate; values: Record<string, string>; onChange: (next: Record<string, string>) => void }) {
   const { t } = useI18n();
-  const { events, message } = useOdooEvents();
+  const [picking, setPicking] = useState(false);
   const usesOdoo = template.fields.some((field) => field.source !== 'manual');
   return (
     <div className="tpl-fields">
       {usesOdoo && (
-        <label className="tpl-fields__odoo">
-          <span><CalendarClock size={15} /> {t('Fill from an Odoo event', 'املأ الحقول من فعالية في Odoo')}</span>
-          <select defaultValue="" onChange={(e) => { const event = events.find((entry) => entry.id === e.target.value); if (event) onChange({ ...values, ...odooValues(event, template.fields) }); }}>
-            <option value="" disabled>{events.length ? t('Choose an event or course…', 'اختر فعالية أو دورة…') : message ? t('Odoo is not available', 'Odoo غير متاح') : t('Loading Odoo…', 'جارٍ تحميل Odoo…')}</option>
-            {events.map((event) => <option key={event.id} value={event.id}>{event.title} · {event.startsAt.slice(0, 10)}</option>)}
-          </select>
-        </label>
+        <div className="tpl-fields__odoo">
+          <span><CalendarClock size={15} /> {t('Fill from an Odoo course', 'املأ الحقول من دورة في Odoo')}</span>
+          {picking ? (
+            <CoursePicker autoFocus onPick={(pick) => {
+              const run = runOf(pick);
+              const filled = run ? odooValues(run, template.fields) : {};
+              // A catalog course: its own name and page link win over the run's session title.
+              if (pick.type === 'course') {
+                const titleField = template.fields.find((f) => f.source === 'odoo.title');
+                const linkField = template.fields.find((f) => f.source === 'odoo.link');
+                if (titleField) filled[titleField.key] = pick.course.name;
+                if (linkField && (pick.course.url || run?.registrationUrl)) filled[linkField.key] = (run?.registrationUrl || pick.course.url)!;
+              }
+              onChange({ ...values, ...filled });
+              setPicking(false);
+            }} />
+          ) : (
+            <Button variant="secondary" size="sm" onClick={() => setPicking(true)}><Search size={14} /> {t('Search courses', 'ابحث في الدورات')}</Button>
+          )}
+        </div>
       )}
       {template.fields.map((field) => (
         <label key={field.key} className="tpl-fields__field">

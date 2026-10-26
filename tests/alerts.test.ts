@@ -12,17 +12,18 @@ test('missed alert is immediate, deduplicated, and reset when publication state 
   const { newPlan }=await import('../server/domain.js');
   const { savePlan,getAlerts,db }=await import('../server/store.js');
   const { checkAlerts }=await import('../server/alerts.js');
+  await (await import('../server/db.js')).initDb();
   const now=new Date('2026-10-04T10:30:00.000Z');
-  const plan=savePlan(newPlan({platform:'facebook',title:'Alert fixture',scheduledAt:'2026-10-04T10:00:00.000Z'}));
+  const plan=await savePlan(newPlan({platform:'facebook',title:'Alert fixture',scheduledAt:'2026-10-04T10:00:00.000Z'}));
   assert.equal(await checkAlerts(now),1);
   assert.equal(await checkAlerts(now),0);
-  assert.equal(getAlerts().filter(a=>!a.dismissedAt).length,1);
-  savePlan({...plan,status:'published',externalId:'published-1',updatedAt:now.toISOString()});
+  assert.equal((await getAlerts()).filter(a=>!a.dismissedAt).length,1);
+  await savePlan({...plan,status:'published',externalId:'published-1',updatedAt:now.toISOString()});
   await checkAlerts(now);
-  assert.equal(getAlerts().filter(a=>!a.dismissedAt).length,0);
-  savePlan({...plan,status:'scheduled',externalId:'',updatedAt:now.toISOString()});
+  assert.equal((await getAlerts()).filter(a=>!a.dismissedAt).length,0);
+  await savePlan({...plan,status:'scheduled',externalId:'',updatedAt:now.toISOString()});
   assert.equal(await checkAlerts(now),1);
-  db.close();
+  await db.close();
  }finally{
   if(oldFile===undefined)delete process.env.DATA_FILE;else process.env.DATA_FILE=oldFile;
   if(oldBot===undefined)delete process.env.TELEGRAM_BOT_TOKEN;else process.env.TELEGRAM_BOT_TOKEN=oldBot;

@@ -8,10 +8,11 @@ import { TRANSITIONS, type ContentStatus } from '../src/domain/content.js';
 import type { Permission } from '../src/domain/users.js';
 import { userCan, type AuthUser } from './auth.js';
 import { matchingPost, newPlan } from './domain.js';
-import { db, getObserved, getPlan, savePlan } from './store.js';
-import type { Platform } from './types.js';
+import { db, defineSchema } from './db.js';
+import { getObserved, getPlan, savePlan } from './store.js';
+import type { ObservedPost, Platform } from './types.js';
 
-db.exec(`
+defineSchema(`
 CREATE TABLE IF NOT EXISTS content_items (
  id TEXT PRIMARY KEY, title TEXT NOT NULL, status TEXT NOT NULL, department_id TEXT, owner_id TEXT NOT NULL,
  channels_json TEXT NOT NULL DEFAULT '[]', captions_json TEXT NOT NULL DEFAULT '{}', creative_json TEXT,
@@ -52,9 +53,9 @@ const toContent = (r: Record<string, unknown>): StoredContent => ({
   createdAt: String(r.created_at), updatedAt: String(r.updated_at),
 });
 
-function log(contentId: string, actorId: string, kind: ContentEvent['kind'], body = '', from: string | null = null, to: string | null = null) {
-  db.prepare('INSERT INTO content_events (id,content_id,actor_id,kind,from_status,to_status,body,created_at) VALUES (?,?,?,?,?,?,?,?)')
-    .run(randomUUID(), contentId, actorId, kind, from, to, body, new Date().toISOString());
+async function log(contentId: string, actorId: string, kind: ContentEvent['kind'], body = '', from: string | null = null, to: string | null = null) {
+  await db.run('INSERT INTO content_events (id,content_id,actor_id,kind,from_status,to_status,body,created_at) VALUES (?,?,?,?,?,?,?,?)',
+    [randomUUID(), contentId, actorId, kind, from, to, body, new Date().toISOString()]);
 }
 
 /** Marketing roles see everything; managers and staff see their department; production roles their own work. */
@@ -71,71 +72,79 @@ export function canEdit(user: AuthUser, item: StoredContent): boolean {
 }
 
 /** Scheduled items whose plans the sync has matched to a real post become Published, with live metrics. */
-function withPublishProof(item: StoredContent): StoredContent {
+async function withPublishProof(item: StoredContent, posts: () => Promise<ObservedPost[]>): Promise<StoredContent> {
   if (!item.planIds.length || !['scheduled', 'published'].includes(item.status)) return item;
-  const posts = getObserved();
-  const published = item.planIds.map((id) => getPlan(id)).flatMap((plan) => {
-    const post = plan ? matchingPost(plan, posts) : undefined;
+  const observed = await posts();
+  const plans = await Promise.all(item.planIds.map((id) => getPlan(id)));
+  const published = plans.flatMap((plan) => {
+    const post = plan ? matchingPost(plan, observed) : undefined;
     return post ? [{ platform: post.platform, permalink: post.permalink, publishedAt: post.publishedAt, metrics: post.metrics as unknown as Record<string, number | null> }] : [];
   });
   if (!published.length) return item;
   if (item.status === 'scheduled') {
-    db.prepare('UPDATE content_items SET status=?, updated_at=? WHERE id=?').run('published', new Date().toISOString(), item.id);
-    log(item.id, 'system', 'transition', 'Matched with the published post by sync', 'scheduled', 'published');
+    await db.run('UPDATE content_items SET status=?, updated_at=? WHERE id=?', ['published', new Date().toISOString(), item.id]);
+    await log(item.id, 'system', 'transition', 'Matched with the published post by sync', 'scheduled', 'published');
   }
   return { ...item, status: 'published', published };
 }
+/** Observed posts are loaded at most once per request, and only when some item needs publish proof. */
+const lazyPosts = () => {
+  let loaded: Promise<ObservedPost[]> | null = null;
+  return () => (loaded ??= getObserved());
+};
 
-export function getContent(id: string): StoredContent | undefined {
-  const row = db.prepare('SELECT * FROM content_items WHERE id=?').get(id) as Record<string, unknown> | undefined;
-  return row ? withPublishProof(toContent(row)) : undefined;
+export async function getContent(id: string): Promise<StoredContent | undefined> {
+  const row = await db.get('SELECT * FROM content_items WHERE id=?', [id]);
+  return row ? withPublishProof(toContent(row), lazyPosts()) : undefined;
 }
-export function listContent(user: AuthUser): StoredContent[] {
-  return (db.prepare('SELECT * FROM content_items ORDER BY updated_at DESC LIMIT 500').all() as Record<string, unknown>[])
-    .map(toContent).filter((item) => canSee(user, item)).map(withPublishProof);
+export async function listContent(user: AuthUser): Promise<StoredContent[]> {
+  const posts = lazyPosts();
+  const rows = await db.all('SELECT * FROM content_items ORDER BY updated_at DESC LIMIT 500');
+  return Promise.all(rows.map(toContent).filter((item) => canSee(user, item)).map((item) => withPublishProof(item, posts)));
 }
 
-export function createContent(user: AuthUser, input: { title: string; channels: Channel[]; captions: Partial<Record<Channel, string>>; creative: CreativeRef | null; templateId?: string | null }): StoredContent {
+export async function createContent(user: AuthUser, input: { title: string; channels: Channel[]; captions: Partial<Record<Channel, string>>; creative: CreativeRef | null; templateId?: string | null }): Promise<StoredContent> {
   const id = randomUUID(), now = new Date().toISOString();
-  db.prepare('INSERT INTO content_items (id,title,status,department_id,owner_id,channels_json,captions_json,creative_json,template_id,created_at,updated_at) VALUES (?,?,?,?,?,?,?,?,?,?,?)')
-    .run(id, input.title, 'draft', user.departmentId, user.id, JSON.stringify(input.channels), JSON.stringify(input.captions), input.creative ? JSON.stringify(input.creative) : null, input.templateId ?? null, now, now);
-  log(id, user.id, 'created', input.title);
-  if (input.creative) addVersion(user, id, { imageUrl: input.creative.imageUrl, storyUrl: input.creative.storyUrl ?? null, studio: null, note: input.creative.directionName ?? 'AI creative' });
-  return getContent(id)!;
+  await db.run('INSERT INTO content_items (id,title,status,department_id,owner_id,channels_json,captions_json,creative_json,template_id,created_at,updated_at) VALUES (?,?,?,?,?,?,?,?,?,?,?)',
+    [id, input.title, 'draft', user.departmentId, user.id, JSON.stringify(input.channels), JSON.stringify(input.captions), input.creative ? JSON.stringify(input.creative) : null, input.templateId ?? null, now, now]);
+  await log(id, user.id, 'created', input.title);
+  if (input.creative) await addVersion(user, id, { imageUrl: input.creative.imageUrl, storyUrl: input.creative.storyUrl ?? null, studio: null, note: input.creative.directionName ?? 'AI creative' });
+  return (await getContent(id))!;
 }
 
-export function updateContent(user: AuthUser, id: string, patch: { title?: string; channels?: Channel[]; captions?: Partial<Record<Channel, string>>; creative?: CreativeRef }): StoredContent {
-  const item = getContent(id);
+export async function updateContent(user: AuthUser, id: string, patch: { title?: string; channels?: Channel[]; captions?: Partial<Record<Channel, string>>; creative?: CreativeRef }): Promise<StoredContent> {
+  const item = await getContent(id);
   if (!item) throw new WorkspaceError(404, 'المحتوى غير موجود.');
   if (!canEdit(user, item)) throw new WorkspaceError(403, 'لا تملك صلاحية تعديل هذا المحتوى.');
   if (['published', 'archived', 'cancelled'].includes(item.status)) throw new WorkspaceError(409, 'هذا المحتوى مُغلق.');
-  db.prepare('UPDATE content_items SET title=?, channels_json=?, captions_json=?, creative_json=?, updated_at=? WHERE id=?').run(
+  await db.run('UPDATE content_items SET title=?, channels_json=?, captions_json=?, creative_json=?, updated_at=? WHERE id=?', [
     patch.title ?? item.title, JSON.stringify(patch.channels ?? item.channels), JSON.stringify(patch.captions ?? item.captions),
-    JSON.stringify(patch.creative ?? item.creative), new Date().toISOString(), id);
-  if (patch.captions) log(id, user.id, 'caption', 'Caption updated');
-  return getContent(id)!;
+    JSON.stringify(patch.creative ?? item.creative), new Date().toISOString(), id]);
+  if (patch.captions) await log(id, user.id, 'caption', 'Caption updated');
+  return (await getContent(id))!;
 }
 
-export function addVersion(user: AuthUser, contentId: string, input: { imageUrl: string; storyUrl: string | null; studio: unknown; note: string }): ContentVersion {
+export async function addVersion(user: AuthUser, contentId: string, input: { imageUrl: string; storyUrl: string | null; studio: unknown; note: string }): Promise<ContentVersion> {
   const version: ContentVersion = { id: randomUUID(), contentId, imageUrl: input.imageUrl, storyUrl: input.storyUrl, studio: input.studio, note: input.note, createdBy: user.id, createdAt: new Date().toISOString() };
-  db.prepare('INSERT INTO content_versions (id,content_id,image_url,story_url,studio_json,note,created_by,created_at) VALUES (?,?,?,?,?,?,?,?)')
-    .run(version.id, contentId, version.imageUrl, version.storyUrl, input.studio ? JSON.stringify(input.studio) : null, version.note, user.id, version.createdAt);
-  const item = getContent(contentId);
+  await db.run('INSERT INTO content_versions (id,content_id,image_url,story_url,studio_json,note,created_by,created_at) VALUES (?,?,?,?,?,?,?,?)',
+    [version.id, contentId, version.imageUrl, version.storyUrl, input.studio ? JSON.stringify(input.studio) : null, version.note, user.id, version.createdAt]);
+  const row = await db.get('SELECT * FROM content_items WHERE id=?', [contentId]);
+  const item = row ? toContent(row) : undefined;
   // A template post's version carries the field values it was exported with, so reopening it edits the latest copy.
   const svgTemplate = (input.studio as { svgTemplate?: CreativeRef['svgTemplate'] } | null)?.svgTemplate;
-  if (item) db.prepare('UPDATE content_items SET creative_json=?, updated_at=? WHERE id=?').run(JSON.stringify({ ...(item.creative ?? { requestId: '', directionId: '' }), ...(svgTemplate ? { svgTemplate } : {}), imageUrl: version.imageUrl, ...(version.storyUrl ? { storyUrl: version.storyUrl } : {}) }), version.createdAt, contentId);
-  log(contentId, user.id, 'version', input.note);
+  if (item) await db.run('UPDATE content_items SET creative_json=?, updated_at=? WHERE id=?', [JSON.stringify({ ...(item.creative ?? { requestId: '', directionId: '' }), ...(svgTemplate ? { svgTemplate } : {}), imageUrl: version.imageUrl, ...(version.storyUrl ? { storyUrl: version.storyUrl } : {}) }), version.createdAt, contentId]);
+  await log(contentId, user.id, 'version', input.note);
   return version;
 }
-export const listVersions = (contentId: string): ContentVersion[] => (db.prepare('SELECT * FROM content_versions WHERE content_id=? ORDER BY created_at DESC').all(contentId) as Record<string, unknown>[])
+export const listVersions = async (contentId: string): Promise<ContentVersion[]> => (await db.all('SELECT * FROM content_versions WHERE content_id=? ORDER BY created_at DESC', [contentId]))
   .map((r) => ({ id: String(r.id), contentId: String(r.content_id), imageUrl: String(r.image_url), storyUrl: (r.story_url as string | null) ?? null, studio: parse(r.studio_json, null), note: String(r.note), createdBy: String(r.created_by), createdAt: String(r.created_at) }));
-export const listEvents = (contentId: string): ContentEvent[] => (db.prepare('SELECT * FROM content_events WHERE content_id=? ORDER BY created_at').all(contentId) as Record<string, unknown>[])
+export const listEvents = async (contentId: string): Promise<ContentEvent[]> => (await db.all('SELECT * FROM content_events WHERE content_id=? ORDER BY created_at', [contentId]))
   .map((r) => ({ id: String(r.id), contentId: String(r.content_id), actorId: String(r.actor_id), kind: r.kind as ContentEvent['kind'], from: (r.from_status as string | null) ?? null, to: (r.to_status as string | null) ?? null, body: String(r.body), createdAt: String(r.created_at) }));
 
-export function addComment(user: AuthUser, contentId: string, body: string) {
-  const item = getContent(contentId);
+export async function addComment(user: AuthUser, contentId: string, body: string) {
+  const item = await getContent(contentId);
   if (!item || !canSee(user, item)) throw new WorkspaceError(404, 'المحتوى غير موجود.');
-  log(contentId, user.id, 'comment', body.trim().slice(0, 2000));
+  await log(contentId, user.id, 'comment', body.trim().slice(0, 2000));
 }
 
 export class WorkspaceError extends Error { constructor(public status: number, message: string) { super(message); } }
@@ -147,8 +156,8 @@ export function allowedMoves(user: AuthUser, item: StoredContent): { to: Content
     .map((move) => ({ to: move.to, needsNote: move.needs === 'note' }));
 }
 
-export function transition(user: AuthUser, id: string, to: ContentStatus, input: { note?: string; scheduledAt?: string }): StoredContent {
-  const item = getContent(id);
+export async function transition(user: AuthUser, id: string, to: ContentStatus, input: { note?: string; scheduledAt?: string }): Promise<StoredContent> {
+  const item = await getContent(id);
   if (!item || !canSee(user, item)) throw new WorkspaceError(404, 'المحتوى غير موجود.');
   const move = allowedMoves(user, item).find((entry) => entry.to === to);
   if (!move) throw new WorkspaceError(403, 'هذه الخطوة غير متاحة لك الآن.');
@@ -159,20 +168,21 @@ export function transition(user: AuthUser, id: string, to: ContentStatus, input:
     const when = input.scheduledAt ? new Date(input.scheduledAt) : null;
     if (!when || Number.isNaN(when.getTime()) || when.getTime() < Date.now() - 60_000) throw new WorkspaceError(400, 'اختر موعد نشر في المستقبل.');
     // One plan per trackable channel, so the calendar, alerts and sync matching cover this post.
-    planIds = item.channels.flatMap((channel) => {
+    planIds = [];
+    for (const channel of item.channels) {
       const platform = TRACKED[channel];
-      if (!platform) return [];
-      const plan = savePlan(newPlan({ platform, title: item.title, caption: item.captions[channel] ?? '', scheduledAt: when.toISOString(), status: 'scheduled', owner: user.name, contentType: 'post', campaign: item.id, notes: `content:${item.id}` }));
-      return [plan.id];
-    });
-    db.prepare('UPDATE content_items SET scheduled_at=?, plan_ids_json=? WHERE id=?').run(when.toISOString(), JSON.stringify(planIds), id);
+      if (!platform) continue;
+      const plan = await savePlan(newPlan({ platform, title: item.title, caption: item.captions[channel] ?? '', scheduledAt: when.toISOString(), status: 'scheduled', owner: user.name, contentType: 'post', campaign: item.id, notes: `content:${item.id}` }));
+      planIds.push(plan.id);
+    }
+    await db.run('UPDATE content_items SET scheduled_at=?, plan_ids_json=? WHERE id=?', [when.toISOString(), JSON.stringify(planIds), id]);
   }
-  db.prepare('UPDATE content_items SET status=?, updated_at=? WHERE id=?').run(to, new Date().toISOString(), id);
-  log(id, user.id, 'transition', input.note?.trim() ?? '', item.status, to);
-  return getContent(id)!;
+  await db.run('UPDATE content_items SET status=?, updated_at=? WHERE id=?', [to, new Date().toISOString(), id]);
+  await log(id, user.id, 'transition', input.note?.trim() ?? '', item.status, to);
+  return (await getContent(id))!;
 }
 
 /** Counts by status for the people a user can see, used by navigation badges and the overview. */
-export function pipelineCounts(user: AuthUser): Record<string, number> {
-  return listContent(user).reduce<Record<string, number>>((acc, item) => { acc[item.status] = (acc[item.status] ?? 0) + 1; return acc; }, {});
+export async function pipelineCounts(user: AuthUser): Promise<Record<string, number>> {
+  return (await listContent(user)).reduce<Record<string, number>>((acc, item) => { acc[item.status] = (acc[item.status] ?? 0) + 1; return acc; }, {});
 }

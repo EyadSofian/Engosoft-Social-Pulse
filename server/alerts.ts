@@ -9,12 +9,12 @@ async function notifyTelegram(message:string):Promise<boolean>{
  }catch{return false;}
 }
 export async function checkAlerts(now=new Date()):Promise<number>{
- const plans=getPlans(),observed=getObserved();const grace=Number(process.env.ALERT_GRACE_MINUTES)||15;
- const statuses=new Map((getConnectorStatuses() as {platform:string;status:string}[]).map(x=>[x.platform,x.status]));
+ const [plans,observed]=await Promise.all([getPlans(),getObserved()]);const grace=Number(process.env.ALERT_GRACE_MINUTES)||15;
+ const statuses=new Map((await getConnectorStatuses() as {platform:string;status:string}[]).map(x=>[x.platform,x.status]));
  let created=0;
  for(const plan of plans){
    const state=planState(plan,observed,now,grace);
-   if(state==='published'||state==='cancelled'){dismissPlanAlerts(plan.id);continue;}
+   if(state==='published'||state==='cancelled'){await dismissPlanAlerts(plan.id);continue;}
    if(state==='draft')continue;
    const minutes=(new Date(plan.scheduledAt).getTime()-now.getTime())/60_000;
    let kind='';let message='';
@@ -24,11 +24,11 @@ export async function checkAlerts(now=new Date()):Promise<number>{
      message=`تنبيه: لم يتم تأكيد نشر «${plan.title}» على ${plan.platform} بعد موعده.${source!=='connected'?' الربط غير متاح حاليًا؛ راجع الصفحة يدويًا.':''}`;
    }
    if(!kind)continue;
-   const alert=addAlert(plan.id,kind,message);if(alert)created++;
+   const alert=await addAlert(plan.id,kind,message);if(alert)created++;
  }
  if(process.env.TELEGRAM_BOT_TOKEN&&process.env.TELEGRAM_CHAT_ID){
-   for(const alert of getAlerts().filter(a=>!a.deliveredAt&&!a.dismissedAt&&now.getTime()-new Date(a.createdAt).getTime()<86_400_000))
-     if(await notifyTelegram(alert.message))markAlertDelivered(alert.id);
+   for(const alert of (await getAlerts()).filter(a=>!a.deliveredAt&&!a.dismissedAt&&now.getTime()-new Date(a.createdAt).getTime()<86_400_000))
+     if(await notifyTelegram(alert.message))await markAlertDelivered(alert.id);
  }
  return created;
 }

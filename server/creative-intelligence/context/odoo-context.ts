@@ -53,10 +53,11 @@ export async function resolveOdooContext(prompt: string, now = new Date()): Prom
   const schedule = await readOdooSchedule();
   if (schedule.status !== 'connected') return { status: 'unavailable', message: schedule.message || 'Odoo unavailable' };
   const upcoming = schedule.events.filter((event) => new Date(event.startsAt).getTime() >= now.getTime() - 3_600_000);
-  const scored = upcoming.map((event) => ({ event, score: scoreEventMatch(prompt, event) })).filter((entry) => entry.score > 0)
-    .sort((a, b) => b.score - a.score || a.event.startsAt.localeCompare(b.event.startsAt));
+  // A weak overlap (one shared word) is not a match: better no Odoo facts than the wrong course's date.
+  const scored = upcoming.map((event) => ({ event, score: scoreEventMatch(prompt, event) })).filter((entry) => entry.score >= 1.5)
+    .sort((a, b) => Math.round((b.score - a.score) * 10) || a.event.startsAt.localeCompare(b.event.startsAt));
   if (!scored.length) return { status: 'no_match', message: 'No upcoming Odoo course or event matches the request' };
   const best = scored[0];
-  const alternatives = scored.slice(1).filter((entry) => entry.score === best.score).slice(0, 3).map((entry) => entry.event);
+  const alternatives = scored.slice(1).filter((entry) => Math.abs(entry.score - best.score) < 0.05).slice(0, 3).map((entry) => entry.event);
   return { status: 'matched', context: buildCourseContext(best.event, alternatives) };
 }

@@ -11,7 +11,7 @@ export function runSync(){
  inFlight=(async()=>{
    const groups=await Promise.all([syncMeta(),syncTikTok().then(x=>[x]),syncSnapchat().then(x=>[x]),syncGA4().then(x=>[x])]);
    const results=groups.flat();
-   results.forEach(saveConnectorResult);
+   for (const result of results) await saveConnectorResult(result);
    await checkAlerts();
    return results.map(({posts,website,websitePages,...status})=>({...status,postCount:posts.length,days:website?.length||0,pageDays:websitePages?.length||0}));
  })().finally(()=>{inFlight=null;});

@@ -3,9 +3,9 @@ import { createHash, randomBytes, randomUUID, scryptSync, timingSafeEqual } from
 import type express from 'express';
 import { can, DEPARTMENTS, ROLES } from '../src/domain/catalog.js';
 import type { DepartmentId, Permission, RoleId } from '../src/domain/users.js';
-import { db } from './store.js';
+import { db, defineSchema } from './db.js';
 
-db.exec(`
+defineSchema(`
 CREATE TABLE IF NOT EXISTS users (
  id TEXT PRIMARY KEY, email TEXT NOT NULL UNIQUE COLLATE NOCASE, name TEXT NOT NULL, role TEXT NOT NULL,
  department_id TEXT, title TEXT NOT NULL DEFAULT '', status TEXT NOT NULL DEFAULT 'active',
@@ -36,64 +36,64 @@ const toUser = (r: Record<string, unknown>): AuthUser => ({
   departmentId: (r.department_id as DepartmentId | null) ?? null, title: String(r.title ?? ''),
   status: r.status === 'suspended' ? 'suspended' : 'active', lastActiveAt: (r.last_active_at as string | null) ?? null,
 });
-export const listUsers = () => (db.prepare('SELECT * FROM users ORDER BY created_at').all() as Record<string, unknown>[]).map(toUser);
-export const getUser = (id: string) => { const r = db.prepare('SELECT * FROM users WHERE id=?').get(id) as Record<string, unknown> | undefined; return r ? toUser(r) : undefined; };
+export const listUsers = async () => (await db.all('SELECT * FROM users ORDER BY created_at')).map(toUser);
+export const getUser = async (id: string) => { const r = await db.get('SELECT * FROM users WHERE id=?', [id]); return r ? toUser(r) : undefined; };
 
 export const isRole = (value: unknown): value is RoleId => typeof value === 'string' && value in ROLES;
 export const isDepartment = (value: unknown): value is DepartmentId => DEPARTMENTS.some((d) => d.id === value);
 
-export function createUser(input: { email: string; name: string; role: RoleId; departmentId: DepartmentId | null; title?: string; password: string }): AuthUser {
+export async function createUser(input: { email: string; name: string; role: RoleId; departmentId: DepartmentId | null; title?: string; password: string }): Promise<AuthUser> {
   const problem = passwordProblem(input.password);
   if (problem) throw new Error(problem);
   const id = randomUUID();
-  db.prepare('INSERT INTO users (id,email,name,role,department_id,title,status,password_hash,created_at) VALUES (?,?,?,?,?,?,?,?,?)')
-    .run(id, input.email.trim().toLowerCase(), input.name.trim(), input.role, input.departmentId, input.title ?? '', 'active', hashPassword(input.password), new Date().toISOString());
-  return getUser(id)!;
+  await db.run('INSERT INTO users (id,email,name,role,department_id,title,status,password_hash,created_at) VALUES (?,?,?,?,?,?,?,?,?)',
+    [id, input.email.trim().toLowerCase(), input.name.trim(), input.role, input.departmentId, input.title ?? '', 'active', hashPassword(input.password), new Date().toISOString()]);
+  return (await getUser(id))!;
 }
-export function updateUser(id: string, patch: Partial<{ name: string; role: RoleId; departmentId: DepartmentId | null; title: string; status: 'active' | 'suspended'; password: string }>): AuthUser | undefined {
-  const user = getUser(id);
+export async function updateUser(id: string, patch: Partial<{ name: string; role: RoleId; departmentId: DepartmentId | null; title: string; status: 'active' | 'suspended'; password: string }>): Promise<AuthUser | undefined> {
+  const user = await getUser(id);
   if (!user) return undefined;
   if (patch.password !== undefined) {
     const problem = passwordProblem(patch.password);
     if (problem) throw new Error(problem);
-    db.prepare('UPDATE users SET password_hash=? WHERE id=?').run(hashPassword(patch.password), id);
-    db.prepare('DELETE FROM sessions WHERE user_id=?').run(id);
+    await db.run('UPDATE users SET password_hash=? WHERE id=?', [hashPassword(patch.password), id]);
+    await db.run('DELETE FROM sessions WHERE user_id=?', [id]);
   }
-  db.prepare('UPDATE users SET name=?, role=?, department_id=?, title=?, status=? WHERE id=?')
-    .run(patch.name ?? user.name, patch.role ?? user.role, patch.departmentId === undefined ? user.departmentId : patch.departmentId, patch.title ?? user.title, patch.status ?? user.status, id);
-  if (patch.status === 'suspended') db.prepare('DELETE FROM sessions WHERE user_id=?').run(id);
+  await db.run('UPDATE users SET name=?, role=?, department_id=?, title=?, status=? WHERE id=?',
+    [patch.name ?? user.name, patch.role ?? user.role, patch.departmentId === undefined ? user.departmentId : patch.departmentId, patch.title ?? user.title, patch.status ?? user.status, id]);
+  if (patch.status === 'suspended') await db.run('DELETE FROM sessions WHERE user_id=?', [id]);
   return getUser(id);
 }
 
 const tokenHash = (token: string) => createHash('sha256').update(token).digest('hex');
-export function createSession(userId: string): { token: string; expiresAt: number } {
+export async function createSession(userId: string): Promise<{ token: string; expiresAt: number }> {
   const token = randomBytes(32).toString('base64url');
   const expiresAt = Date.now() + SESSION_DAYS * 86_400_000;
-  db.prepare('INSERT INTO sessions (token_hash,user_id,expires_at,created_at) VALUES (?,?,?,?)').run(tokenHash(token), userId, expiresAt, new Date().toISOString());
-  db.prepare('DELETE FROM sessions WHERE expires_at < ?').run(Date.now());
+  await db.run('INSERT INTO sessions (token_hash,user_id,expires_at,created_at) VALUES (?,?,?,?)', [tokenHash(token), userId, expiresAt, new Date().toISOString()]);
+  await db.run('DELETE FROM sessions WHERE expires_at < ?', [Date.now()]);
   return { token, expiresAt };
 }
-export const endSession = (token: string) => { db.prepare('DELETE FROM sessions WHERE token_hash=?').run(tokenHash(token)); };
-export function userForToken(token: string): AuthUser | undefined {
-  const row = db.prepare('SELECT user_id, expires_at FROM sessions WHERE token_hash=?').get(tokenHash(token)) as { user_id: string; expires_at: number } | undefined;
+export const endSession = async (token: string) => { await db.run('DELETE FROM sessions WHERE token_hash=?', [tokenHash(token)]); };
+export async function userForToken(token: string): Promise<AuthUser | undefined> {
+  const row = await db.get<{ user_id: string; expires_at: number }>('SELECT user_id, expires_at FROM sessions WHERE token_hash=?', [tokenHash(token)]);
   if (!row || row.expires_at < Date.now()) return undefined;
-  const user = getUser(row.user_id);
+  const user = await getUser(row.user_id);
   if (!user || user.status !== 'active') return undefined;
   return user;
 }
 
-export function authenticate(email: string, password: string): AuthUser | undefined {
-  const row = db.prepare('SELECT * FROM users WHERE email=?').get(email.trim().toLowerCase()) as Record<string, unknown> | undefined;
+export async function authenticate(email: string, password: string): Promise<AuthUser | undefined> {
+  const row = await db.get('SELECT * FROM users WHERE lower(email)=?', [email.trim().toLowerCase()]);
   // Hash even when the user does not exist so response time does not reveal registered emails.
   const ok = verifyPassword(password, row ? String(row.password_hash) : 'scrypt$AAAAAAAAAAAAAAAAAAAAAA==$' + 'A'.repeat(88));
   if (!row || !ok || row.status !== 'active') return undefined;
-  db.prepare('UPDATE users SET last_active_at=? WHERE id=?').run(new Date().toISOString(), row.id);
+  await db.run('UPDATE users SET last_active_at=? WHERE id=?', [new Date().toISOString(), row.id]);
   return toUser(row);
 }
 
 /** First start: create the admin from ADMIN_EMAIL / ADMIN_PASSWORD when no user exists yet. */
-export function bootstrapAdmin(env = process.env): AuthUser | null {
-  const count = (db.prepare('SELECT COUNT(*) AS n FROM users').get() as { n: number }).n;
+export async function bootstrapAdmin(env = process.env): Promise<AuthUser | null> {
+  const count = Number((await db.get<{ n: number }>('SELECT COUNT(*) AS n FROM users'))?.n ?? 0);
   if (count > 0 || !env.ADMIN_EMAIL?.trim() || !env.ADMIN_PASSWORD) return null;
   return createUser({ email: env.ADMIN_EMAIL, name: env.ADMIN_NAME?.trim() || 'Admin', role: 'admin', departmentId: 'marketing', password: env.ADMIN_PASSWORD });
 }
@@ -103,7 +103,7 @@ export const userCan = (user: AuthUser, permission: Permission) => can(user.role
 export function readCookie(req: express.Request, name: string): string {
   return (req.header('cookie') || '').split(';').map((part) => part.trim()).find((part) => part.startsWith(`${name}=`))?.slice(name.length + 1) ?? '';
 }
-export function sessionUser(req: express.Request): AuthUser | undefined {
+export async function sessionUser(req: express.Request): Promise<AuthUser | undefined> {
   const token = readCookie(req, SESSION_COOKIE);
   return token ? userForToken(decodeURIComponent(token)) : undefined;
 }
@@ -111,8 +111,9 @@ export function sessionUser(req: express.Request): AuthUser | undefined {
 declare module 'express-serve-static-core' { interface Request { user?: AuthUser } }
 
 /** Attach the signed-in user; reject when there is none. */
-export const requireUser: express.RequestHandler = (req, res, next) => {
-  const user = sessionUser(req);
+export const requireUser: express.RequestHandler = async (req, res, next) => {
+  // Routes that already passed the /api gate reuse the user it found.
+  const user = req.user ?? await sessionUser(req);
   if (!user) { res.status(401).json({ error: 'سجّل الدخول أولًا.', code: 'unauthenticated' }); return; }
   req.user = user;
   next();
