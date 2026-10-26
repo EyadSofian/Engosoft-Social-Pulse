@@ -1,21 +1,21 @@
 # تسليم Engosoft Social Pulse
 
-آخر تحقق: 6 أكتوبر 2026، بتوقيت القاهرة. المشروع مستقل عن Engosoft Insights Hub.
+آخر تحقق: 27 أكتوبر 2026، بتوقيت القاهرة. المشروع مستقل عن Engosoft Insights Hub.
 
 ## الروابط والمكان
 
 | المورد | المكان |
 | --- | --- |
-| الكود المحلي | `/Users/eyad/Mac_Transfer_Work_Files_2026-08-02/2026-10-04__Engosoft_Social_Media_Dashboard` |
+| الكود المحلي | `/Users/eyad/media genrator /Engosoft-Social-Pulse` |
 | GitHub الخاص | https://github.com/EyadSofian/Engosoft-Social-Pulse |
 | التطبيق | https://web-production-d07de.up.railway.app |
 | صفحة تفاصيل البوستات | https://web-production-d07de.up.railway.app/#/content |
 | صفحة حالة الربط | https://web-production-d07de.up.railway.app/#/connections |
 | قالب الكاليندر | https://web-production-d07de.up.railway.app/calendar-template.xlsx |
 | Railway | مشروع `Engosoft-Social-Pulse`، خدمة `web`، بيئة `production` |
-| التخزين | SQLite على volume دائم، `/data/social-pulse.sqlite` |
+| التخزين | Postgres عبر شبكة Railway الداخلية، وvolume دائم `/data` للصور والملفات ونسخة SQLite القديمة |
 
-النسخة المنشورة من commit `c48caa6`، ونشر Railway `0946f04b-a6bc-4dc0-a4cb-47956efb6ca4` بحالة `SUCCESS`. التحديثات رُفعت إلى GitHub ونُشرت باستخدام Railway CLI؛ لا تعتمد على `git push` وحده لنشر تغيير جديد.
+النسخة المنشورة من commit `964c8f1`، ونشر Railway `f7b5248c-5e07-43e4-8475-f8281bdae8eb` بحالة `SUCCESS`. خدمة `web` مرتبطة بفرع `main`؛ يطلق `git push` نشرًا جديدًا. قد يطلب Railway موافقة على كوميتات حساب GitHub غير المرتبط بحساب Railway عضو في المشروع.
 
 ## حالة البيانات الحقيقية
 
@@ -38,9 +38,9 @@
 - مطابقة البوست المجدول مع المنشور الفعلي باستخدام رابط أو ID؛ لا يُعد منشورًا من غير دليل نشر.
 - تنبيه قبل الموعد بساعة، وتنبيه تأخر بعد الموعد و15 دقيقة، مع فحص يدوي حين يتعطل المصدر.
 - تنبيهات داخل التطبيق، وتنبيهات المتصفح عند فتح التطبيق وإعطاء الإذن. Telegram اختياري إذا ضُبطت بياناته.
-- توكن TikTok OAuth محفوظ مشفرًا في SQLite على volume، وتجديده التلقائي مفعّل.
+- توكن TikTok OAuth محفوظ مشفرًا في Postgres، وتجديده التلقائي مفعّل.
 
-الكاليندر ما زال فارغًا لأن الفريق لم يرفع خطة نشر. التطبيق يرصد ويخطط وينبّه؛ لا ينشر المحتوى تلقائيًا. **الداشبورد والـAPI بلا تسجيل دخول** تنفيذًا لطلب إزالة كلمة المرور؛ أي شخص لديه الرابط يستطيع قراءة البيانات وتعديل الكاليندر والتنبيهات وبدء المزامنة.
+الكاليندر ما زال فارغًا لأن الفريق لم يرفع خطة نشر. التطبيق يرصد ويخطط وينبّه؛ لا ينشر المحتوى تلقائيًا. الداشبورد والـAPI يتطلبان تسجيل دخول؛ حساب المسؤول الأول أُنشئ عند تشغيل النسخة الجديدة.
 
 ## متغيرات الإنتاج
 
@@ -62,10 +62,9 @@ npm install
 npm test
 npm run build
 git push origin main
-railway up --detach
 ```
 
-`npm test`: 11 اختبارًا ناجحًا. `npm run build`: ناجح. تم التحقق من `/api/health`، و`/api/dashboard`، وشاشة الربط، وجدول المحتوى، ونافذة تفاصيل فيديو حقيقي من الحساب الرسمي. تحقق من حالة نشر Railway وعداد البوستات بعد أي تحديث.
+`npm test`: 75 اختبارًا ناجحًا. `npm run build`: ناجح. تم التحقق من `/api/health` وOdoo وPostgres بعد النشر. تحقق من حالة نشر Railway وعداد البوستات بعد أي تحديث.
 
 ## متابعات لازمة
 
@@ -81,7 +80,7 @@ railway up --detach
 
 ## تحديث 2026-10-27: تسجيل الدخول، الاستهلاك، القوالب، الإشعارات
 
-- النشر: `railway up --detach` من مجلد المشروع (الرفع على GitHub وحده لا ينشر). آخر نشر ناجح من commit `4422827`.
+- النشر: خدمة Railway `web` متصلة الآن بفرع GitHub `main`. قد تحتاج كوميتات حساب GitHub غير العضو في مشروع Railway إلى موافقة قبل التنفيذ.
 - متغيرات Railway المضافة: `OPENAI_API_KEY`، `OPENAI_IMAGE_MODEL`، `OPENAI_TEXT_MODEL`، `OPENAI_TEMPLATE_MODEL`، متغيرات `ODOO_*`، `APP_URL`، `ADMIN_EMAIL`، `ADMIN_NAME`، `ADMIN_PASSWORD`. كلمة مرور المسؤول الأول محفوظة محليًا في `.env.production.local` (غير مرفوع)، ويُنشأ المسؤول مرة واحدة عند أول تشغيل بلا مستخدمين.
 - البريد الإلكتروني للإشعارات يحتاج: `SMTP_HOST`، `SMTP_PORT`، `SMTP_USER`، `SMTP_PASS`، `MAIL_FROM` (مع Gmail: `smtp.gmail.com`، المنفذ 465، وكلمة مرور تطبيقات App Password).
 - الصور المولّدة والمرفوعة وطبقات الاستوديو تُحفظ بجوار قاعدة البيانات على الـvolume (`/data`).
