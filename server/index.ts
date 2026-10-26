@@ -26,7 +26,7 @@ app.get('/api/odoo/schedule',async(_req,res)=>{
 });
 const imageCalls=new Map<string,number[]>();
 app.post('/api/ai/post-image',async(req,res)=>{
- if(!['127.0.0.1','localhost','::1'].includes(host)&&process.env.POST_DESIGNER_PUBLIC_AI!=='true')return res.status(503).json({error:'فعّل مصادقة المستخدمين قبل إتاحة توليد الصور علنًا.'});
+ if(!['127.0.0.1','localhost','::1'].includes(host))return res.status(503).json({error:'توليد الصور يحتاج مصادقة المستخدمين قبل إتاحته على سيرفر عام.'});
  if(!process.env.OPENAI_API_KEY?.trim())return res.status(503).json({error:'أضف OPENAI_API_KEY على السيرفر لتوليد الصور.'});
  const parsed=imageRequest.safeParse(req.body);
  if(!parsed.success)return res.status(400).json({error:'وصف الصورة أو المقاس غير صالح.'});
