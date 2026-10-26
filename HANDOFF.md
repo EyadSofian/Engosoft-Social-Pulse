@@ -78,3 +78,10 @@ railway up --detach
 ## ملاحظة أمنية سابقة
 
 ظهر توكن Meta قديم في خرج أداة خلال مراجعة سابقة لإعدادات Railway. لم يُرفع إلى GitHub؛ يُنصح بتدويره في Meta وتحديثه في Insights Hub وSocial Pulse. جرى تدوير رمز دخول اللوحة ومفتاح تشفير التوكنات اللذين ظهرا حينها، قبل إزالة تسجيل الدخول من اللوحة.
+
+## تحديث 2026-10-27: تسجيل الدخول، الاستهلاك، القوالب، الإشعارات
+
+- النشر: `railway up --detach` من مجلد المشروع (الرفع على GitHub وحده لا ينشر). آخر نشر ناجح من commit `af9c03e`.
+- متغيرات Railway المضافة: `OPENAI_API_KEY`، `OPENAI_IMAGE_MODEL`، `OPENAI_TEXT_MODEL`، `OPENAI_TEMPLATE_MODEL`، متغيرات `ODOO_*`، `APP_URL`، `ADMIN_EMAIL`، `ADMIN_NAME`، `ADMIN_PASSWORD`. كلمة مرور المسؤول الأول محفوظة محليًا في `.env.production.local` (غير مرفوع)، ويُنشأ المسؤول مرة واحدة عند أول تشغيل بلا مستخدمين.
+- البريد الإلكتروني للإشعارات يحتاج: `SMTP_HOST`، `SMTP_PORT`، `SMTP_USER`، `SMTP_PASS`، `MAIL_FROM` (مع Gmail: `smtp.gmail.com`، المنفذ 465، وكلمة مرور تطبيقات App Password).
+- الصور المولّدة والمرفوعة وطبقات الاستوديو تُحفظ بجوار قاعدة البيانات على الـvolume (`/data`).

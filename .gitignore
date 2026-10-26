@@ -17,3 +17,6 @@ data/creatives/
 
 # Studio layer images (local history, not source).
 data/studio/
+
+# Uploaded template exports (local history, not source).
+data/uploads/
