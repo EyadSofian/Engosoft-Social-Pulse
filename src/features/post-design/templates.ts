@@ -65,9 +65,8 @@ function textLines(value: string, x: number, y: number, size: number, width: num
   }).join('');
 }
 
-function mark(x: number, y: number, scale: number, light: boolean): string {
-  const c = light ? '#ffffff' : '#0046ff';
-  return `<g transform="translate(${x} ${y}) scale(${scale})" fill="${c}"><path d="M0 45 18 27q3-3 6 0l6 6q3 3 0 6L12 57q-3 3-6 0l-6-6q-3-3 0-6Z"/><path d="M25 42 53 14q3-3 6 0l6 6q3 3 0 6L37 54q-3 3-6 0l-6-6q-3-3 0-6Z"/><path d="M60 39 96 3q3-3 6 0l6 6q3 3 0 6L72 51q-3 3-6 0l-6-6q-3-3 0-6Z"/><circle cx="108" cy="54" r="8" fill="#ff6600"/></g>`;
+function mark(x: number, y: number, scale: number): string {
+  return `<g transform="translate(${x} ${y}) scale(${scale})"><rect width="128" height="128" rx="38" fill="#0046ff" stroke="#ffffff" stroke-opacity=".22" stroke-width="2"/><path d="M39 45 65 35M39 69 88 50M39 94 88 75" stroke="#fff" stroke-width="17" stroke-linecap="round"/><circle cx="89" cy="29" r="9" fill="#ff6600"/></g>`;
 }
 
 /** Builds a self-contained SVG. GPT images, when present, sit behind editable SVG type. */
@@ -102,7 +101,6 @@ export function renderPosterSvg(template: PostTemplate, sizeId: PostSizeId, data
     case 'proof': ornament = `<text x="60" y="${h * .72}" fill="${template.accent}" font-size="540" opacity=".15">“</text><rect x="65" y="85" width="950" height="${h - 170}" rx="50" fill="#fff" opacity=".75"/>`; break;
     case 'minimal': ornament = `<circle cx="890" cy="150" r="240" fill="${template.accent}" opacity=".14"/><path d="M70 ${h - 155}h940" stroke="${template.accent}" stroke-width="12"/>`; break;
   }
-  const dark = ['#f2f6ff', '#eff4ff', '#f4f7ff', '#eaf0ff'].includes(template.bg);
   const titleX = template.layout === 'split' && wide ? 620 : 1000;
   const titleWidth = template.layout === 'split' && wide ? 540 : contentWidth;
   const actualFont = data.title.length > 90 ? font * .7 : data.title.length > 52 ? font * .82 : font;
@@ -111,5 +109,5 @@ export function renderPosterSvg(template: PostTemplate, sizeId: PostSizeId, data
   const cta = `<rect x="${wide ? 60 : 70}" y="${footerY - 33}" width="${wide ? 260 : 310}" height="58" rx="29" fill="${template.accent}"/><text x="${wide ? 190 : 225}" y="${footerY + 4}" text-anchor="middle" fill="#fff" font-family="Almarai, Arial" font-size="24" font-weight="700">${xml(data.cta.slice(0, 28))}</text>`;
   const body = data.body ? textLines(data.body, 1000, bodyY, wide ? 29 : 34, contentWidth, wide ? 2 : 3, template.ink, 400) : '';
   const detail = data.detail ? textLines(data.detail, 1000, footerY - (wide ? 52 : 80), wide ? 24 : 29, contentWidth, 2, template.ink, 700) : '';
-  return `<svg xmlns="http://www.w3.org/2000/svg" xmlns:xlink="http://www.w3.org/1999/xlink" width="${size.width}" height="${size.height}" viewBox="0 0 1080 ${h}" role="img" aria-label="${xml(data.title)}"><rect width="1080" height="${h}" fill="${template.bg}"/>${image ? `<image href="${xml(image)}" x="0" y="0" width="1080" height="${h}" preserveAspectRatio="xMidYMid slice" opacity=".2"/>` : ''}${ornament}${head}${mark(910, wide ? 43 : 58, wide ? .6 : .75, !dark)}${textLines(data.title, titleX, titleY, actualFont, titleWidth, wide ? 2 : story ? 4 : 3, template.ink)}${body}${detail}${cta}</svg>`;
+  return `<svg xmlns="http://www.w3.org/2000/svg" xmlns:xlink="http://www.w3.org/1999/xlink" width="${size.width}" height="${size.height}" viewBox="0 0 1080 ${h}" role="img" aria-label="${xml(data.title)}"><rect width="1080" height="${h}" fill="${template.bg}"/>${image ? `<image href="${xml(image)}" x="0" y="0" width="1080" height="${h}" preserveAspectRatio="xMidYMid slice" opacity=".2"/>` : ''}${ornament}${head}${mark(910, wide ? 43 : 58, wide ? .6 : .75)}${textLines(data.title, titleX, titleY, actualFont, titleWidth, wide ? 2 : story ? 4 : 3, template.ink)}${body}${detail}${cta}</svg>`;
 }
