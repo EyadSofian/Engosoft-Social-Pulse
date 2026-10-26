@@ -1,11 +1,32 @@
-/** Read-only schedule bridge for Odoo 19+ JSON-2. No Odoo secret reaches the browser. */
-export interface ScheduleEntry { id: string; title: string; startsAt: string; endsAt: string; source: string }
+/** Read-only schedule bridge for Odoo 17 JSON-RPC or Odoo 19+ JSON-2. No secret reaches the browser. */
+import { request as httpsRequest } from 'node:https';
+import { request as httpRequest } from 'node:http';
+export interface ScheduleEntry { id: string; title: string; startsAt: string; endsAt: string; source: string; location?: string; registrationUrl?: string; websitePublished?: boolean }
 type OdooRow = Record<string, unknown>;
 
+async function postJson(url: string, body: unknown, headers: Record<string, string>): Promise<{ status: number; payload: unknown }> {
+  const target = new URL(url);
+  const request = target.protocol === 'https:' ? httpsRequest : httpRequest;
+  return new Promise((resolve, reject) => {
+    const req = request(target, { method: 'POST', headers }, (res) => {
+      const chunks: Buffer[] = [];
+      let bytes = 0;
+      res.on('data', (chunk: Buffer) => { bytes += chunk.length; if (bytes > 10_000_000) { req.destroy(new Error('Odoo response too large')); return; } chunks.push(chunk); });
+      res.on('end', () => {
+        try { resolve({ status: res.statusCode ?? 0, payload: JSON.parse(Buffer.concat(chunks).toString('utf8')) }); }
+        catch { reject(new Error('Odoo returned invalid JSON')); }
+      });
+    });
+    req.setTimeout(20000, () => req.destroy(new Error('Odoo connection timed out')));
+    req.on('error', reject);
+    req.end(JSON.stringify(body));
+  });
+}
+
 async function jsonRpc(base: string, service: string, method: string, args: unknown[]): Promise<unknown> {
-  const response = await fetch(`${base}/jsonrpc`, { method: 'POST', headers: { 'Content-Type': 'application/json', 'User-Agent': 'Engosoft-Social-Pulse/1' }, body: JSON.stringify({ jsonrpc: '2.0', method: 'call', params: { service, method, args }, id: 1 }), signal: AbortSignal.timeout(12000) });
-  const payload = await response.json().catch(() => ({})) as { result?: unknown; error?: { data?: { message?: string }; message?: string } };
-  if (!response.ok || payload.error) throw new Error(payload.error?.data?.message || payload.error?.message || `Odoo RPC HTTP ${response.status}`);
+  const response = await postJson(`${base}/jsonrpc`, { jsonrpc: '2.0', method: 'call', params: { service, method, args }, id: 1 }, { 'Content-Type': 'application/json', 'User-Agent': 'Engosoft-Social-Pulse/1' });
+  const payload = response.payload as { result?: unknown; error?: { data?: { message?: string }; message?: string } };
+  if (response.status < 200 || response.status >= 300 || payload.error) throw new Error(payload.error?.data?.message || payload.error?.message || `Odoo RPC HTTP ${response.status}`);
   return payload.result;
 }
 
@@ -16,7 +37,12 @@ export function mapScheduleRows(rows: OdooRow[], model: string, startField: stri
     const end = typeof row[endField] === 'string' ? row[endField] : start;
     if (!title || !start) return [];
     const toIso = (value: string) => value.includes('T') ? value : value.replace(' ', 'T') + (value.length === 10 ? 'T00:00:00Z' : 'Z');
-    return [{ id: `${model}:${row.id}`, title, startsAt: toIso(start), endsAt: toIso(end), source: model }];
+    const location = Array.isArray(row.address_id) && typeof row.address_id[1] === 'string' ? row.address_id[1] : '';
+    const registrationUrl = row.website_published === true && typeof row.website_url === 'string' ? row.website_url : '';
+    return [{ id: `${model}:${row.id}`, title, startsAt: toIso(start), endsAt: toIso(end), source: model,
+      ...(location ? { location } : {}), ...(registrationUrl ? { registrationUrl } : {}),
+      ...(typeof row.website_published === 'boolean' ? { websitePublished: row.website_published } : {}),
+    }];
   });
 }
 
@@ -27,10 +53,8 @@ export async function readOdooSchedule(env: NodeJS.ProcessEnv = process.env): Pr
   if (!/^https:\/\//.test(base) && !/^http:\/\/localhost(?::\d+)?$/.test(base)) return { status: 'error', events: [], message: 'استخدم رابط Odoo آمنًا (HTTPS).' };
   const headers: Record<string, string> = { Authorization: `bearer ${key}`, 'Content-Type': 'application/json', 'User-Agent': 'Engosoft-Social-Pulse/1' };
   if (env.ODOO_DATABASE?.trim()) headers['X-Odoo-Database'] = env.ODOO_DATABASE.trim();
-  const models = [
-    { name: 'calendar.event', start: 'start', end: 'stop' },
-    { name: 'event.event', start: 'date_begin', end: 'date_end' },
-  ];
+  const models = [{ name: 'event.event', start: 'date_begin', end: 'date_end' }];
+  if (env.ODOO_INCLUDE_CALENDAR_EVENTS === 'true') models.push({ name: 'calendar.event', start: 'start', end: 'stop' });
   if (env.ODOO_COURSE_MODEL?.trim()) models.push({ name: env.ODOO_COURSE_MODEL.trim(), start: env.ODOO_COURSE_START_FIELD?.trim() || 'date_begin', end: env.ODOO_COURSE_END_FIELD?.trim() || 'date_end' });
   const events: ScheduleEntry[] = [];
   const errors: string[] = [];
@@ -48,16 +72,16 @@ export async function readOdooSchedule(env: NodeJS.ProcessEnv = process.env): Pr
           if (typeof uid !== 'number' || uid < 1) throw new Error('Odoo رفض بيانات حساب القراءة.');
           rpcUid = uid;
         }
-        rows = await jsonRpc(base, 'object', 'execute_kw', [env.ODOO_DATABASE, rpcUid, key, model.name, 'search_read', [[[model.start, '>=', since]]], { fields: ['id', 'name', model.start, model.end], limit: 150, order: `${model.start} asc` }]);
+        rows = await jsonRpc(base, 'object', 'execute_kw', [env.ODOO_DATABASE, rpcUid, key, model.name, 'search_read', [[[model.start, '>=', since]]], { fields: ['id', 'name', model.start, model.end, ...(model.name === 'event.event' ? ['address_id', 'website_url', 'website_published'] : [])], limit: 150, order: `${model.start} asc` }]);
       } else {
         const url = `${base}/json/2/${encodeURIComponent(model.name)}/search_read`;
-        const response = await fetch(url, { method: 'POST', headers, body: JSON.stringify({ domain: [[model.start, '>=', since]], fields: ['id', 'name', model.start, model.end], limit: 150, order: `${model.start} asc` }), signal: AbortSignal.timeout(12000) });
-        if (!response.ok) throw new Error(`${model.name}: HTTP ${response.status}`);
-        rows = await response.json();
+        const response = await postJson(url, { domain: [[model.start, '>=', since]], fields: ['id', 'name', model.start, model.end, ...(model.name === 'event.event' ? ['address_id', 'website_url', 'website_published'] : [])], limit: 150, order: `${model.start} asc` }, headers);
+        if (response.status < 200 || response.status >= 300) throw new Error(`${model.name}: HTTP ${response.status}`);
+        rows = response.payload;
       }
       if (!Array.isArray(rows)) throw new Error(`${model.name}: invalid response`);
       successfulModels++;
-      events.push(...mapScheduleRows(rows, model.name, model.start, model.end));
+      events.push(...mapScheduleRows(rows, model.name, model.start, model.end).map((event) => ({ ...event, ...(event.registrationUrl && event.registrationUrl.startsWith('/') ? { registrationUrl: `${base}${event.registrationUrl}` } : {}) })));
     } catch (error) { errors.push(error instanceof Error ? error.message : String(error)); }
   }
   if (!successfulModels) return { status: 'error', events: [], message: `تعذّرت قراءة مواعيد Odoo: ${errors.join('; ')}` };

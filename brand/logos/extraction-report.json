@@ -1,0 +1,74 @@
+{
+  "sourcePdfSha256": "526783e4ed946d36d2ee3315130f429ef423bdc3e1183c458fe2f226ba9bc81b",
+  "variants": {
+    "lockup-reversed": {
+      "file": "engosoft-lockup-reversed.svg",
+      "sha256": "f2dfb9119ef2c7d1993998bd98b99c7b18b35a33d57ad82e5b3d23f5b49e3327",
+      "sourceBoxPt": [
+        56.189,
+        1808.276,
+        153.525,
+        1870.33
+      ],
+      "widthPt": 97.337,
+      "heightPt": 62.054,
+      "fills": [
+        "#FF6600",
+        "#FFFFFF"
+      ],
+      "pathCount": 39
+    },
+    "lockup-positive": {
+      "file": "engosoft-lockup-positive.svg",
+      "sha256": "2019b232ec9ad46751e2e7365335f60bc23b75fa993b73602c84cecdbb760534",
+      "sourceBoxPt": [
+        248.461,
+        1808.276,
+        345.797,
+        1870.33
+      ],
+      "widthPt": 97.336,
+      "heightPt": 62.054,
+      "fills": [
+        "#0046FF",
+        "#1A1A1A",
+        "#FF6600"
+      ],
+      "pathCount": 39
+    },
+    "symbol-reversed": {
+      "file": "engosoft-symbol-reversed.svg",
+      "sha256": "babb0b0a1cbce4db81d70a09d02e595dd0f61ae7ffbf4c5c423a118fb8fe130a",
+      "sourceBoxPt": [
+        87.409,
+        1968.724,
+        106.573,
+        1994.595
+      ],
+      "widthPt": 19.164,
+      "heightPt": 25.871,
+      "fills": [
+        "#FF6600",
+        "#FFFFFF"
+      ],
+      "pathCount": 4
+    },
+    "symbol-positive": {
+      "file": "engosoft-symbol-positive.svg",
+      "sha256": "16a8f579d6a30b7d854d9436ad4c194890285e50ec6b69552ffe814214c84e84",
+      "sourceBoxPt": [
+        87.409,
+        2076.018,
+        106.573,
+        2101.889
+      ],
+      "widthPt": 19.164,
+      "heightPt": 25.871,
+      "fills": [
+        "#0046FF",
+        "#FF6600"
+      ],
+      "pathCount": 4
+    }
+  }
+}

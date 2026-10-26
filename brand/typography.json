@@ -1,0 +1,10 @@
+{
+  "$comment": "From the guidelines' Typography section.",
+  "english": { "family": "Plus Jakarta Sans", "weights": "all weights and styles", "source": "Brand Guidelines — English Typeface" },
+  "arabic": { "family": "Almarai", "weights": [300, 400, 700, 800], "weightsNote": "Guidelines say '4 weights'; Almarai ships Light, Regular, Bold and ExtraBold.", "style": "Modern Arabic Sans Serif", "source": "Brand Guidelines — Arabic Typeface" },
+  "digits": { "arabicIndic": "٠١٢٣٤٥٦٧٨٩", "latin": "0123456789", "note": "Both digit sets appear in the Almarai character set; which one a post uses is a copy decision, not a typography rule." },
+  "rendering": {
+    "requirement": "Fonts must be embedded or installed at render time. A fallback to Arial is a validation failure, not a warning.",
+    "currentGap": "The current SVG renderer sets font-family='Almarai,Arial,sans-serif' without embedding the font, so server-side and exported renders fall back to Arial."
+  }
+}

@@ -1,0 +1,7 @@
+# Reference system
+
+Five supplied contact sheets are preserved in `public/visual-references/`. `scripts/ingest-reference-montages.ts` crops 80 individual cards into `public/reference-cards/` and writes `public/data/reference-cards.json`. Each record keeps source sheet, panel coordinate, captured provenance, family, course, visual grammar, tags, manual-verification status, quality/performance placeholders and designer notes. The sheet is evidence; each panel is the searchable unit.
+
+`retrieveVisualReferences` ranks individual cards using term/course/objective overlap. It promotes neither missing quality nor missing performance. Results are diversified across source sheets and labelled `content`, `composition`, `color-and-mood`, or `subject-treatment`. Content can inform the actual depicted topic; style-only roles must not import their subject matter. The selected IDs and roles are passed to the brief and image prompt compiler. Only a few relevant references are retrieved, never the full library.
+
+The 80 labels are preliminary and marked `needs_review`; they are not claims of machine-verified OCR or quality. The 95 Facebook URLs in `public/data/facebook-design-references.csv` are provenance links, not 95 downloaded image assets. Future ingestion should accept single uploads, social API assets and approved generated results; analyze each image's subject, layout, palette, density and text treatment; provide a crop/tag review UI; and use engagement as one noncausal ranking signal when available.

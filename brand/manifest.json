@@ -1,0 +1,23 @@
+{
+  "brand": "Engosoft",
+  "version": "2026-10-26.1",
+  "tagline": "Where Passion Becomes Success",
+  "source": {
+    "document": "Brand Guidelines for UI-UX.pdf",
+    "sha256": "526783e4ed946d36d2ee3315130f429ef423bdc3e1183c458fe2f226ba9bc81b",
+    "status": "Logos extracted from the guidelines PDF. Replace with master SVG/AI exports from the brand owner when available; hashes in logos.json will change and the extraction report must be regenerated."
+  },
+  "files": {
+    "logos": "brand/logos.json",
+    "colors": "brand/colors.json",
+    "typography": "brand/typography.json",
+    "spacing": "brand/spacing.json",
+    "usageRules": "brand/usage-rules.json"
+  },
+  "deprecatedAssets": [
+    { "path": "public/brand/engosoft-approved-lockups.png", "reason": "Opaque 1053x1268 raster sheet with baked blue and white panels and the outdated tagline 'Empowering Educational Success'. Cropping it always ships a colored rectangle with the logo." },
+    { "path": "public/brand/engosoft-favicon.svg", "reason": "Embeds the entire lockup sheet as base64 PNG and crops it with a viewBox; carries a blue square background." },
+    { "path": "public/engosoft-mark.png", "reason": "128px raster app icon on a rounded blue square; fine for a favicon, not a brand asset for creatives." }
+  ],
+  "legacyLogoInReferences": "Every supplied reference creative shows an older 'e | ENGO SOFT' mark. References must never teach logo treatment, and reference images sent to an image model need that region masked or must be accompanied by an explicit do-not-reproduce instruction."
+}

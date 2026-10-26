@@ -1,4 +1,4 @@
-import { useMemo } from 'react';
+import { useEffect, useMemo, useState } from 'react';
 import { DateTime } from 'luxon';
 import { ExternalLink } from 'lucide-react';
 import { useQueryState } from '../../app/router/router';
@@ -6,15 +6,16 @@ import { useLiveData } from '../../app/providers/LiveDataProvider';
 import { BarList, ColumnChart } from '../../components/charts/Bars';
 import { ChannelIcon } from '../../components/data-display/ChannelIcon';
 import { DataTable, type Column } from '../../components/data-display/DataTable';
-import { DemoSourceLine, SourceLine, Stat } from '../../components/data-display/Metric';
-import { DataNotice, EmptyState, ProgressBar, progressTone } from '../../components/feedback/States';
+import { SourceLine, Stat } from '../../components/data-display/Metric';
+import { DataNotice, EmptyState } from '../../components/feedback/States';
 import { Badge } from '../../components/ui/Badge';
 import { Card, CardBody, CardHeader } from '../../components/ui/Card';
 import { Segmented, Tabs } from '../../components/ui/Tabs';
 import { DEPARTMENTS, departmentById } from '../../domain/catalog';
-import { useWorkspace } from '../../features/workspace/WorkspaceProvider';
+import { inMonth, rollup, usePipeline, type PipelineRollup } from '../../features/content-pipeline/usePipeline';
+import { api } from '../../lib/api';
 import { useClock } from '../../features/workspace/hooks';
-import { allPlanProgress, monthKey, operationalKpis } from '../../features/workspace/selectors';
+import { monthKey } from '../../features/workspace/selectors';
 import { useI18n } from '../../i18n/I18nProvider';
 import { channelName } from '../../i18n/labels';
 import { bestSlots, byPlatform, splitByPeriod, summarize, topPosts, websiteTotals, type Period } from '../../lib/analytics';
@@ -37,14 +38,14 @@ const PERIODS: Period[] = [7, 30, 90, 365];
 export function AnalyticsPage() {
   const { t } = useI18n();
   const [query, setQuery] = useQueryState();
-  usePageMeta(t('Analytics', 'التحليلات'), [{ label: t('Analytics', 'التحليلات') }]);
+  usePageMeta(t('Performance', 'الأداء'), [{ label: t('Performance', 'الأداء') }]);
   const tab = (TABS as string[]).includes(query.get('tab') ?? '') ? (query.get('tab') as Tab) : 'executive';
   const period = (PERIODS.map(String).includes(query.get('period') ?? '') ? Number(query.get('period')) : 30) as Period;
 
   return (
     <div className="u-stack">
       <PageHeader
-        title={t('Analytics', 'التحليلات')}
+        title={t('Performance', 'الأداء')}
         description={t('Content performance from connected platforms, and delivery from the workflow. Every number names its source; missing values show —.', 'أداء المحتوى من المنصات المربوطة، والتسليم من سير العمل. كل رقم يذكر مصدره؛ القيم الناقصة تظهر —.')}
         actions={
           <Segmented
@@ -87,7 +88,6 @@ function usePeriodPosts(period: number) {
 function Executive({ period }: { period: number }) {
   const { t, tx, num, compact, pct } = useI18n();
   const { store } = useLiveData();
-  const { state } = useWorkspace();
   const now = useClock();
   const { current, previous } = usePeriodPosts(period);
   const summary = summarize(current);
@@ -106,11 +106,8 @@ function Executive({ period }: { period: number }) {
   }, [store.data.posts, now]);
   const activeWeeks = weeks.filter((week) => week.value > 0).length;
 
-  const month = monthKey(now);
-  const published = state.content.filter((item) => item.status === 'published' && item.publishAt && DateTime.fromISO(item.publishAt, { zone: businessZone() }).toFormat('yyyy-LL') === month);
-  const campaigns = state.campaigns
-    .map((campaign) => ({ campaign, count: published.filter((item) => item.campaignId === campaign.id).length + state.content.filter((item) => item.campaignId === campaign.id && item.status === 'scheduled').length }))
-    .sort((a, b) => b.count - a.count);
+  const { items } = usePipeline();
+  const thisMonth = inMonth(items ?? [], monthKey(now));
 
   const change = (a: number | null, b: number | null) => (a == null || b == null || b === 0 ? null : ((a - b) / b) * 100);
   const delta = (value: number | null) => (value == null ? t('no earlier period to compare', 'لا فترة سابقة للمقارنة') : `${value >= 0 ? '+' : '−'}${pct(Math.abs(value))} ${t('vs previous period', 'عن الفترة السابقة')}`);
@@ -142,24 +139,24 @@ function Executive({ period }: { period: number }) {
           </CardBody>
         </Card>
         <Card>
-          <CardHeader title={t('Department participation', 'مشاركة الأقسام')} description={t('Published items this month, by department', 'العناصر المنشورة هذا الشهر حسب القسم')} />
+          <CardHeader title={t('Department participation', 'مشاركة الأقسام')} description={t('Posts created this month in the content pipeline, by department', 'البوستات اللي اتعملت الشهر ده في سير المحتوى حسب القسم')} />
           <CardBody>
-            <BarList
-              label={t('Department participation', 'مشاركة الأقسام')}
-              data={DEPARTMENTS.filter((department) => department.plansContent).map((department) => ({ key: department.id, label: tx(department.name), value: published.filter((item) => item.departmentId === department.id).length }))}
-              format={num}
-            />
-            <DemoSourceLine basis={t('workflow records, not platform data', 'سجلات سير العمل، لا بيانات المنصات')} />
+            {items == null ? (
+              <EmptyState compact title={t('Loading the pipeline…', 'جاري تحميل سير المحتوى…')} />
+            ) : (
+              <BarList
+                label={t('Department participation', 'مشاركة الأقسام')}
+                data={DEPARTMENTS.filter((department) => department.plansContent).map((department) => {
+                  const mine = rollup(thisMonth.filter((item) => item.departmentId === department.id));
+                  return { key: department.id, label: tx(department.name), value: mine.created, display: t(`${num(mine.created)} · ${num(mine.published)} published`, `${num(mine.created)} · ${num(mine.published)} منشور`) };
+                })}
+                format={num}
+              />
+            )}
+            <PipelineSourceLine />
           </CardBody>
         </Card>
       </div>
-      <Card>
-        <CardHeader title={t('Campaigns', 'الحملات')} description={t('Items published or scheduled this month per campaign', 'العناصر المنشورة أو المجدولة هذا الشهر لكل حملة')} />
-        <CardBody>
-          <BarList label={t('Campaigns', 'الحملات')} data={campaigns.map(({ campaign, count }) => ({ key: campaign.id, label: campaign.name, value: count }))} format={num} />
-          <DemoSourceLine basis={t('campaign reach needs posts linked to campaigns on the server', 'وصول الحملات يحتاج ربط البوستات بالحملات على السيرفر')} />
-        </CardBody>
-      </Card>
     </div>
   );
 }
@@ -343,102 +340,85 @@ function Platforms({ period }: { period: number }) {
   );
 }
 
-function Departments() {
-  const { t, tx, num, pct, ratio } = useI18n();
-  const { state } = useWorkspace();
-  const now = useClock();
-  const progress = allPlanProgress(state, now);
+/** One row per department or person: what they made and moved through the pipeline, and how their published posts did. */
+function RollupTable({ caption, head, rows, reach }: { caption: string; head: string; rows: { key: string; label: string; sub?: string; data: PipelineRollup }[]; reach: boolean }) {
+  const { t, num, compact } = useI18n();
   return (
-    <div className="u-stack">
-      <Card>
-        <CardHeader title={t('Monthly plan completion', 'إنجاز الخطط الشهرية')} />
-        <div className="ui-table-scroll">
-          <table className="ui-table">
-            <caption className="sr-only">{t('Monthly plan completion', 'إنجاز الخطط الشهرية')}</caption>
-            <thead>
-              <tr>
-                <th scope="col">{t('Department', 'القسم')}</th>
-                <th scope="col" className="ui-table__end">{t('Published', 'منشور')}</th>
-                <th scope="col" className="ui-table__end">{t('In progress', 'قيد العمل')}</th>
-                <th scope="col" className="ui-table__end">{t('Missing', 'ناقص')}</th>
-                <th scope="col" className="ui-table__end">{t('Overdue', 'متأخر')}</th>
-                <th scope="col">{t('Completion', 'الإنجاز')}</th>
-              </tr>
-            </thead>
-            <tbody>
-              {progress.map((row) => {
-                const kpis = operationalKpis(state, now, { departmentId: row.departmentId });
-                return (
-                  <tr key={row.plan.id}>
-                    <td>{tx(departmentById(row.departmentId)!.name)}</td>
-                    <td className="ui-table__end u-tnum">
-                      {ratio(row.published, row.target)}
-                    </td>
-                    <td className="ui-table__end u-tnum">{num(row.inFlight)}</td>
-                    <td className="ui-table__end u-tnum">{num(row.missing)}</td>
-                    <td className="ui-table__end u-tnum">{num(kpis.openOverdue)}</td>
-                    <td>
-                      <span className="u-row">
-                        <ProgressBar value={row.completion} tone={progressTone(row.completion)} label={tx(departmentById(row.departmentId)!.name)} />
-                        <span className="u-tnum u-sm">{pct(row.completion)}</span>
-                      </span>
-                    </td>
-                  </tr>
-                );
-              })}
-            </tbody>
-          </table>
-        </div>
-        <CardBody>
-          <DemoSourceLine basis={t('workflow records', 'سجلات سير العمل')} />
-        </CardBody>
-      </Card>
+    <div className="ui-table-scroll">
+      <table className="ui-table">
+        <caption className="sr-only">{caption}</caption>
+        <thead>
+          <tr>
+            <th scope="col">{head}</th>
+            <th scope="col" className="ui-table__end">{t('Created', 'اتعمل')}</th>
+            <th scope="col" className="ui-table__end">{t('In review', 'في المراجعة')}</th>
+            <th scope="col" className="ui-table__end">{t('Changes asked', 'طلب تعديل')}</th>
+            <th scope="col" className="ui-table__end">{t('Approved / scheduled', 'معتمد / مجدول')}</th>
+            <th scope="col" className="ui-table__end">{t('Published', 'منشور')}</th>
+            {reach && <th scope="col" className="ui-table__end">{t('Reach', 'الوصول')}</th>}
+            {reach && <th scope="col" className="ui-table__end">{t('Interactions', 'التفاعل')}</th>}
+          </tr>
+        </thead>
+        <tbody>
+          {rows.map((row) => (
+            <tr key={row.key}>
+              <td>
+                {row.label}
+                {row.sub && <small className="u-xs u-muted" style={{ display: 'block' }}>{row.sub}</small>}
+              </td>
+              <td className="ui-table__end u-tnum">{num(row.data.created)}</td>
+              <td className="ui-table__end u-tnum">{num(row.data.inReview)}</td>
+              <td className="ui-table__end u-tnum">{row.data.changes ? <span className="due due--overdue">{num(row.data.changes)}</span> : num(0)}</td>
+              <td className="ui-table__end u-tnum">{num(row.data.approved)}</td>
+              <td className="ui-table__end u-tnum">{num(row.data.published)}</td>
+              {reach && <td className="ui-table__end u-tnum">{row.data.reach == null ? '—' : compact(row.data.reach)}</td>}
+              {reach && <td className="ui-table__end u-tnum">{row.data.interactions == null ? '—' : compact(row.data.interactions)}</td>}
+            </tr>
+          ))}
+        </tbody>
+      </table>
     </div>
   );
 }
 
-function Team() {
-  const { t, tx, num, pct } = useI18n();
-  const { state } = useWorkspace();
-  const now = useClock();
-  const people = state.users.filter((user) => user.status === 'active' && user.role !== 'admin');
+function PipelineSourceLine() {
+  const { t } = useI18n();
+  return <p className="u-xs u-muted">{t('Source: the content pipeline on the server; reach and interactions come from platform sync once a scheduled post is matched to the live post.', 'المصدر: سير المحتوى على السيرفر؛ الوصول والتفاعل من مزامنة المنصات بعد ما البوست المجدول يتطابق مع البوست المنشور.')}</p>;
+}
+
+function Departments() {
+  const { t, tx } = useI18n();
+  const { items } = usePipeline();
+  if (items == null) return <EmptyState compact title={t('Loading the pipeline…', 'جاري تحميل سير المحتوى…')} />;
+  const rows = DEPARTMENTS.map((department) => ({ key: department.id, label: tx(department.name), data: rollup(items.filter((item) => item.departmentId === department.id)) })).filter((row) => row.data.created > 0 || DEPARTMENTS.find((d) => d.id === row.key)?.plansContent);
   return (
     <Card>
-      <CardHeader title={t('Operational KPIs', 'مؤشرات التشغيل')} description={t('Delivery this month: completed, on time, reviewed. Social reach is deliberately not an employee KPI.', 'التسليم هذا الشهر: المنجز، في الموعد، المراجع. وصول السوشيال ليس مؤشر أداء للموظف عن قصد.')} />
-      <div className="ui-table-scroll">
-        <table className="ui-table">
-          <caption className="sr-only">{t('Operational KPIs per person', 'مؤشرات التشغيل لكل شخص')}</caption>
-          <thead>
-            <tr>
-              <th scope="col">{t('Person', 'الشخص')}</th>
-              <th scope="col" className="ui-table__secondary">{t('Department', 'القسم')}</th>
-              <th scope="col" className="ui-table__end">{t('Tasks done', 'مهام منجزة')}</th>
-              <th scope="col" className="ui-table__end">{t('On time', 'في الموعد')}</th>
-              <th scope="col" className="ui-table__end">{t('Posts published', 'بوستات منشورة')}</th>
-              <th scope="col" className="ui-table__end">{t('Reviews', 'مراجعات')}</th>
-              <th scope="col" className="ui-table__end">{t('Overdue now', 'متأخر الآن')}</th>
-            </tr>
-          </thead>
-          <tbody>
-            {people.map((user) => {
-              const kpis = operationalKpis(state, now, { userId: user.id });
-              return (
-                <tr key={user.id}>
-                  <td>{user.name}</td>
-                  <td className="ui-table__secondary">{user.departmentId ? tx(departmentById(user.departmentId)!.name) : '—'}</td>
-                  <td className="ui-table__end u-tnum">{num(kpis.tasksCompleted)}</td>
-                  <td className="ui-table__end u-tnum">{pct(kpis.tasksOnTime)}</td>
-                  <td className="ui-table__end u-tnum">{num(kpis.postsPublished)}</td>
-                  <td className="ui-table__end u-tnum">{num(kpis.reviewsCompleted)}</td>
-                  <td className="ui-table__end u-tnum">{kpis.openOverdue ? <span className="due due--overdue">{num(kpis.openOverdue)}</span> : num(0)}</td>
-                </tr>
-              );
-            })}
-          </tbody>
-        </table>
-      </div>
+      <CardHeader title={t('Departments in the pipeline', 'الأقسام في سير المحتوى')} description={t('Every post a department creates, where it stands, and how it performed after publishing.', 'كل بوست القسم عمله، وصل لفين، وأداؤه بعد النشر.')} />
+      <RollupTable caption={t('Department pipeline', 'سير المحتوى لكل قسم')} head={t('Department', 'القسم')} rows={rows} reach />
       <CardBody>
-        <DemoSourceLine basis={t('tasks, approvals and content records this month', 'المهام والاعتمادات وعناصر المحتوى هذا الشهر')} />
+        <PipelineSourceLine />
+      </CardBody>
+    </Card>
+  );
+}
+
+function Team() {
+  const { t, tx } = useI18n();
+  const { items, team } = usePipeline();
+  if (items == null) return <EmptyState compact title={t('Loading the pipeline…', 'جاري تحميل سير المحتوى…')} />;
+  const rows = team
+    .map((member) => {
+      const department = member.departmentId ? departmentById(member.departmentId as never) : undefined;
+      return { key: member.id, label: member.name, sub: department ? tx(department.name) : undefined, data: rollup(items.filter((item) => item.ownerId === member.id)) };
+    })
+    .filter((row) => row.data.created > 0)
+    .sort((a, b) => b.data.created - a.data.created);
+  return (
+    <Card>
+      <CardHeader title={t('Team delivery', 'تسليم الفريق')} description={t('Posts each person created and moved through review. Social reach is deliberately not an employee KPI.', 'البوستات اللي كل شخص عملها ومشيها في المراجعة. وصول السوشيال مش مؤشر أداء للموظف عن قصد.')} />
+      {rows.length === 0 ? <CardBody><EmptyState compact title={t('Nobody has created content yet.', 'محدش عمل محتوى لسه.')} /></CardBody> : <RollupTable caption={t('Team delivery', 'تسليم الفريق')} head={t('Person', 'الشخص')} rows={rows} reach={false} />}
+      <CardBody>
+        <PipelineSourceLine />
       </CardBody>
     </Card>
   );
@@ -447,11 +427,15 @@ function Team() {
 function Learning() {
   const { t, num, date, oneDecimal } = useI18nPlus();
   const { store } = useLiveData();
-  const { state } = useWorkspace();
   const now = useClock();
   const slots = bestSlots(store.data.posts, dayNumber(now)).slice(0, 6);
-  const templates = state.templates
-    .map((template) => ({ template, count: state.content.filter((item) => item.templateId === template.id && item.status === 'published').length }))
+  const { items } = usePipeline();
+  const [aiTemplates, setAiTemplates] = useState<{ id: string; name: string }[]>([]);
+  useEffect(() => {
+    api<{ id: string; name: string }[]>('/api/ai-templates').then(setAiTemplates).catch(() => {});
+  }, []);
+  const templates = aiTemplates
+    .map((template) => ({ template, count: (items ?? []).filter((item) => item.templateId === template.id).length }))
     .filter((entry) => entry.count > 0)
     .sort((a, b) => b.count - a.count)
     .slice(0, 6);
@@ -478,14 +462,14 @@ function Learning() {
         </CardBody>
       </Card>
       <Card>
-        <CardHeader title={t('Recurring formats that ship', 'قوالب متكررة يتم نشرها')} description={t('Templates by items published', 'القوالب حسب العناصر المنشورة')} />
+        <CardHeader title={t('AI templates in use', 'قوالب AI المستخدمة')} description={t('Posts created from each saved AI template', 'البوستات اللي اتعملت من كل قالب AI محفوظ')} />
         <CardBody>
           {templates.length === 0 ? (
-            <EmptyState compact title={t('No template-based posts published yet.', 'لم يُنشر محتوى من قوالب بعد.')} />
+            <EmptyState compact title={t('No posts created from an AI template yet.', 'لسه مفيش بوستات اتعملت من قالب AI.')} />
           ) : (
-            <BarList label={t('Templates', 'القوالب')} data={templates.map(({ template, count }) => ({ key: template.id, label: t(template.name.en, template.name.ar), value: count }))} format={num} />
+            <BarList label={t('Templates', 'القوالب')} data={templates.map(({ template, count }) => ({ key: template.id, label: template.name, value: count }))} format={num} />
           )}
-          <DemoSourceLine basis={t('linking published items to live posts will add their performance here', 'ربط العناصر المنشورة بالبوستات الحية سيضيف أداءها هنا')} />
+          <PipelineSourceLine />
         </CardBody>
       </Card>
     </div>

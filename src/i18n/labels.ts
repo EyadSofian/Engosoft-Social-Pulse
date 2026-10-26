@@ -99,6 +99,7 @@ export const approvalStatusTone: Record<ApprovalStatus, Tone> = {
 export const channelName: Record<Channel, string> = {
   facebook: 'Facebook',
   instagram: 'Instagram',
+  whatsapp: 'WhatsApp',
   linkedin: 'LinkedIn',
   tiktok: 'TikTok',
   snapchat: 'Snapchat',

@@ -1,0 +1,131 @@
+{
+  "$comment": "The four approved Engosoft logo artworks. Forbidden backgrounds combine the guidelines' Incorrect Logo Usage page (orange) with pairings that are illegible by construction (white artwork on white or light, blue artwork on brand blue). Every value is measured from the official 'Brand Guidelines for UI-UX' PDF (section 'Correct Logo Usage — Approved') by scripts/brand/extract-logos-from-guidelines.py. Fields under 'provisional' are engineering defaults the guidelines do not specify; they need brand-team confirmation and must never be presented as official rules.",
+  "source": {
+    "document": "Brand Guidelines for UI-UX.pdf",
+    "sha256": "526783e4ed946d36d2ee3315130f429ef423bdc3e1183c458fe2f226ba9bc81b",
+    "section": "Correct Logo Usage — Approved",
+    "extraction": "Exact vector paths and fills copied from the PDF content stream; background panels and circle containers excluded; no path was redrawn.",
+    "tagline": "Where Passion Becomes Success"
+  },
+  "variants": [
+    {
+      "id": "lockup-reversed",
+      "label": "Primary lockup — reversed (white artwork, orange dot)",
+      "assetPath": "brand/logos/engosoft-lockup-reversed.svg",
+      "publicPath": "/brand/logos/engosoft-lockup-reversed.svg",
+      "sha256": "f2dfb9119ef2c7d1993998bd98b99c7b18b35a33d57ad82e5b3d23f5b49e3327",
+      "format": "svg",
+      "kind": "lockup",
+      "width": 97.337,
+      "height": 62.054,
+      "aspectRatio": 1.5686,
+      "hasTransparentBackground": true,
+      "fills": ["#FFFFFF", "#FF6600"],
+      "parts": ["symbol", "orange-dot", "wordmark", "tagline"],
+      "evidence": {
+        "shownOn": ["#0046FF panel (Correct Logo Usage)", "#0046FF section and cover pages"],
+        "guidelineBox": [56.189, 1808.276, 153.525, 1870.33]
+      },
+      "usage": {
+        "approvedBackgrounds": ["brand-blue"],
+        "forbiddenBackgrounds": ["brand-orange", "white", "light"],
+        "unspecifiedBackgrounds": ["dark-neutral", "dark-photographic", "mid-tone-photographic"]
+      },
+      "immutable": true
+    },
+    {
+      "id": "lockup-positive",
+      "label": "Primary lockup — positive (blue artwork, orange dot, dark tagline)",
+      "assetPath": "brand/logos/engosoft-lockup-positive.svg",
+      "publicPath": "/brand/logos/engosoft-lockup-positive.svg",
+      "sha256": "2019b232ec9ad46751e2e7365335f60bc23b75fa993b73602c84cecdbb760534",
+      "format": "svg",
+      "kind": "lockup",
+      "width": 97.336,
+      "height": 62.054,
+      "aspectRatio": 1.5686,
+      "hasTransparentBackground": true,
+      "fills": ["#0046FF", "#FF6600", "#1A1A1A"],
+      "parts": ["symbol", "orange-dot", "wordmark", "tagline"],
+      "evidence": {
+        "shownOn": ["#FFFFFF panel (Correct Logo Usage)"],
+        "guidelineBox": [248.461, 1808.276, 345.797, 1870.33]
+      },
+      "usage": {
+        "approvedBackgrounds": ["white", "light"],
+        "forbiddenBackgrounds": ["brand-blue", "brand-orange", "dark-neutral", "dark-photographic"],
+        "unspecifiedBackgrounds": ["light-photographic"]
+      },
+      "immutable": true
+    },
+    {
+      "id": "symbol-reversed",
+      "label": "Symbol — reversed (white bars, orange dot)",
+      "assetPath": "brand/logos/engosoft-symbol-reversed.svg",
+      "publicPath": "/brand/logos/engosoft-symbol-reversed.svg",
+      "sha256": "babb0b0a1cbce4db81d70a09d02e595dd0f61ae7ffbf4c5c423a118fb8fe130a",
+      "format": "svg",
+      "kind": "symbol",
+      "width": 19.164,
+      "height": 25.871,
+      "aspectRatio": 0.7408,
+      "hasTransparentBackground": true,
+      "fills": ["#FFFFFF", "#FF6600"],
+      "parts": ["symbol", "orange-dot"],
+      "evidence": {
+        "shownOn": ["#0046FF circle badge (Correct Logo Usage)", "#0046FF wave-texture page", "#0046FF section pages"],
+        "guidelineBox": [87.409, 1968.724, 106.573, 1994.595]
+      },
+      "usage": {
+        "approvedBackgrounds": ["brand-blue", "brand-blue-texture"],
+        "approvedContainers": ["brand-blue-circle"],
+        "forbiddenBackgrounds": ["brand-orange", "white", "light"],
+        "forbiddenContainers": ["black-circle", "orange-circle"],
+        "unspecifiedBackgrounds": ["dark-neutral", "dark-photographic", "mid-tone-photographic"]
+      },
+      "immutable": true
+    },
+    {
+      "id": "symbol-positive",
+      "label": "Symbol — positive (blue bars, orange dot)",
+      "assetPath": "brand/logos/engosoft-symbol-positive.svg",
+      "publicPath": "/brand/logos/engosoft-symbol-positive.svg",
+      "sha256": "16a8f579d6a30b7d854d9436ad4c194890285e50ec6b69552ffe814214c84e84",
+      "format": "svg",
+      "kind": "symbol",
+      "width": 19.164,
+      "height": 25.871,
+      "aspectRatio": 0.7408,
+      "hasTransparentBackground": true,
+      "fills": ["#0046FF", "#FF6600"],
+      "parts": ["symbol", "orange-dot"],
+      "evidence": {
+        "shownOn": ["#F2F5FA guideline page, standalone", "white circle badge with soft shadow (Correct Logo Usage)"],
+        "guidelineBox": [87.409, 2076.018, 106.573, 2101.889]
+      },
+      "usage": {
+        "approvedBackgrounds": ["white", "light"],
+        "approvedContainers": ["white-circle"],
+        "forbiddenBackgrounds": ["brand-blue", "brand-orange", "dark-neutral", "dark-photographic"],
+        "forbiddenContainers": ["black-circle", "orange-circle"],
+        "unspecifiedBackgrounds": ["light-photographic"]
+      },
+      "immutable": true
+    }
+  ],
+  "containers": {
+    "$comment": "Circle badges appear in the approved section as containers for the symbol, not as separate logo artworks. They are drawn deterministically, never generated.",
+    "brand-blue-circle": { "fill": "#0046FF", "symbolVariant": "symbol-reversed", "symbolWidthToDiameter": 0.3157 },
+    "white-circle": { "fill": "#FFFFFF", "shadow": "soft drop shadow (raster in PDF)", "symbolVariant": "symbol-positive", "symbolWidthToDiameter": 0.3157 }
+  },
+  "provisional": {
+    "status": "pending_brand_confirmation",
+    "$comment": "The guidelines give no clear-space or minimum-size rule. These defaults keep the tagline legible and are derived from the artwork's own geometry.",
+    "clearSpaceUnit": "orange-dot diameter of the rendered artwork",
+    "clearSpaceUnits": 2,
+    "orangeDotDiameterToHeight": { "lockup": 0.0939, "symbol": 0.2211 },
+    "minimumRenderedWidthPx": { "lockup": 240, "symbol": 44 },
+    "referenceCanvasWidthPx": 1080,
+    "extendedBackgroundPolicy": "Unspecified backgrounds (photographic, dark neutral) may use a variant only when the local contrast check passes; such placements are logged as policy 'engineering-default' for brand-team review."
+  }
+}

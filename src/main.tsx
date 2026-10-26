@@ -7,10 +7,13 @@ import './styles/components.css';
 import './styles/shell.css';
 import './styles/pages.css';
 import './styles/post-designer.css';
+import './styles/creation-home.css';
 import './legacy/styles/legacy-base.css';
 import './legacy/styles/ui.css';
 import './legacy/styles/views.css';
 import './legacy/styles/calendar.css';
+import './styles/glass.css';
+import './styles/motion.css';
 
 createRoot(document.getElementById('root')!).render(
   <React.StrictMode>

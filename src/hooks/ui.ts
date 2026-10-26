@@ -1,31 +1,41 @@
-import { useCallback, useEffect, useLayoutEffect, useRef, useState, type RefObject } from 'react';
+import { useCallback, useEffect, useLayoutEffect, useRef, useState, useSyncExternalStore, type RefObject } from 'react';
 
 /* ── Theme ─────────────────────────────────────────────────────────── */
 
 export type Theme = 'dark' | 'light';
 const THEME_KEY = 'social-pulse-theme';
-const THEME_COLOR: Record<Theme, string> = { dark: '#0d1015', light: '#f6f8fb' };
+const THEME_COLOR: Record<Theme, string> = { dark: '#070b18', light: '#f5f8ff' };
 
+const themeListeners = new Set<() => void>();
+const readTheme = (): Theme => (document.documentElement.dataset.theme === 'dark' ? 'dark' : 'light');
+
+/** One theme for the whole app: every toggle (header, account menu) reads and writes the same root attribute. */
 export function useTheme() {
-  const [theme, setTheme] = useState<Theme>(() => (document.documentElement.dataset.theme === 'dark' ? 'dark' : 'light'));
-  useEffect(() => {
-    document.documentElement.dataset.theme = theme;
-    document.querySelector('meta[name="theme-color"]')?.setAttribute('content', THEME_COLOR[theme]);
-  }, [theme]);
-  // Only an explicit choice is remembered; until then the page follows the system setting.
-  const toggle = useCallback(
-    () =>
-      setTheme((current) => {
-        const next = current === 'dark' ? 'light' : 'dark';
-        try {
-          localStorage.setItem(THEME_KEY, next);
-        } catch {
-          /* The choice simply won't persist. */
-        }
-        return next;
-      }),
-    [],
+  const theme = useSyncExternalStore(
+    (listener) => {
+      themeListeners.add(listener);
+      return () => themeListeners.delete(listener);
+    },
+    readTheme,
   );
+  // Only an explicit choice is remembered; until then the page follows the system setting.
+  const toggle = useCallback(() => {
+    const next: Theme = readTheme() === 'dark' ? 'light' : 'dark';
+    const apply = () => {
+      document.documentElement.dataset.theme = next;
+      document.querySelector('meta[name="theme-color"]')?.setAttribute('content', THEME_COLOR[next]);
+      themeListeners.forEach((listener) => listener());
+    };
+    // A cross-fade between themes where the browser supports view transitions.
+    const doc = document as Document & { startViewTransition?: (update: () => void) => unknown };
+    if (doc.startViewTransition && !window.matchMedia('(prefers-reduced-motion: reduce)').matches) doc.startViewTransition(apply);
+    else apply();
+    try {
+      localStorage.setItem(THEME_KEY, next);
+    } catch {
+      /* The choice simply won't persist. */
+    }
+  }, []);
   return { theme, toggle };
 }
 

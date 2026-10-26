@@ -1,0 +1,22 @@
+[
+  {"id":"cfm-webinar","prompt":"اعمل بوست للـ CFM اللي جاي للفيسبوك والانستجرام والواتساب","objective":"event","platforms":["facebook","instagram","whatsapp"],"requiresOdoo":true},
+  {"id":"pmp-launch","prompt":"أعلن عن دورة PMP القادمة للمهندسين","objective":"course_launch","platforms":["instagram"],"requiresOdoo":true},
+  {"id":"bim-instructor","prompt":"قدّم مدرب BIM وخبرته في بوست مهني","objective":"course_launch","platforms":["facebook"],"requiresOdoo":true},
+  {"id":"weekly-schedule","prompt":"اعرض جدول الدورات الأسبوعي بشكل واضح","objective":"course_schedule","platforms":["facebook"],"requiresOdoo":true},
+  {"id":"student-achievement","prompt":"احتفل بإنجاز مشروع أحد المتدربين في التصميم الداخلي","objective":"certificate","platforms":["instagram"],"requiresOdoo":false},
+  {"id":"employee-recognition","prompt":"اشكر فريق التدريب على إنجاز هذا الشهر","objective":"general","platforms":["linkedin"],"requiresOdoo":false},
+  {"id":"saudi-national-day","prompt":"صمّم تهنئة راقية لليوم الوطني السعودي","objective":"event","platforms":["instagram"],"requiresOdoo":false},
+  {"id":"engineering-education","prompt":"اشرح نظام نقل الحركة في السيارة بصريًا من غير معلومات مختلقة","objective":"education","platforms":["instagram"],"requiresOdoo":false},
+  {"id":"corporate-contract","prompt":"أعلن عن شراكة تدريبية جديدة بدون ذكر اسم العميل","objective":"general","platforms":["linkedin"],"requiresOdoo":false},
+  {"id":"seven-day-reminder","prompt":"فكّر المهندسين بدورة هتبدأ بعد أسبوع","objective":"event","platforms":["whatsapp"],"requiresOdoo":true},
+  {"id":"certificate-success","prompt":"هنّئ متدرب حصل على شهادة CFM بعد موافقته","objective":"certificate","platforms":["facebook"],"requiresOdoo":false},
+  {"id":"discount","prompt":"صمّم إعلان خصم لدورات التصميم من غير اختراع نسبة خصم","objective":"course_launch","platforms":["instagram"],"requiresOdoo":true},
+  {"id":"ask-majd","prompt":"بوست اسأل ماجد عن أدوات الذكاء الاصطناعي للتعلم","objective":"education","platforms":["instagram"],"requiresOdoo":false},
+  {"id":"automotive-education","prompt":"اشرح فكرة فحص أعطال السيارة بالمجسات","objective":"education","platforms":["facebook"],"requiresOdoo":false},
+  {"id":"architecture-project","prompt":"اعرض مشروع تصميم معماري لطالب بشكل محترف","objective":"certificate","platforms":["instagram"],"requiresOdoo":false},
+  {"id":"customer-review","prompt":"اعرض مراجعة عميل بعد موافقته من غير تغيير نصها","objective":"general","platforms":["facebook"],"requiresOdoo":false},
+  {"id":"linkedin-announcement","prompt":"أعلن عن مسار هندسي جديد على لينكدإن","objective":"course_launch","platforms":["linkedin"],"requiresOdoo":true},
+  {"id":"whatsapp-promo","prompt":"رسالة واتساب مباشرة عن كورس التصميم الداخلي","objective":"course_launch","platforms":["whatsapp"],"requiresOdoo":true},
+  {"id":"story-campaign","prompt":"ستوري انستجرام لحملة تعليم هندسي عملية","objective":"general","platforms":["instagram"],"requiresOdoo":false},
+  {"id":"multi-platform","prompt":"حملة BIM للفيسبوك والانستجرام والواتساب ولينكدإن","objective":"course_launch","platforms":["facebook","instagram","whatsapp","linkedin"],"requiresOdoo":true}
+]

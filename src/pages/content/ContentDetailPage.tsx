@@ -101,7 +101,7 @@ function Workspace({ item }: { item: ContentItem }) {
             </ButtonLink>
           ) : (
             <>
-              <ButtonLink to={`/ai-studio/post-designer?content=${encodeURIComponent(item.id)}`} variant="secondary">
+              <ButtonLink to={item.designDocumentId ? `/ai-studio/post-designer?draft=${encodeURIComponent(item.designDocumentId)}` : `/ai-studio/post-designer?content=${encodeURIComponent(item.id)}`} variant="secondary">
                 {t('Design post', 'صمّم بوست')}
               </ButtonLink>
               <AssignMenu item={item} size="md" />

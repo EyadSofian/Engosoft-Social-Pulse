@@ -118,7 +118,7 @@ export function useNotificationGroups(): NotificationGroup[] {
           count: failing.length,
           at: failing.reduce((latest, connector) => Math.max(latest, connector.checkedAt ? parseTimestamp(connector.checkedAt) : 0), 0),
           unread: true,
-          href: '/connections',
+          href: '/settings',
           provenance: 'live',
         });
     }

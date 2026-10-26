@@ -17,7 +17,7 @@ const RouterContext = createContext<RouterApi | null>(null);
 
 /** Old hash routes (#/content, #/connections?tiktok=…) keep working from bookmarks and the TikTok OAuth return. */
 const LEGACY_HASH: Record<string, string> = {
-  overview: '/',
+  overview: '/overview',
   calendar: '/calendar',
   content: '/analytics?tab=content',
   insights: '/analytics',

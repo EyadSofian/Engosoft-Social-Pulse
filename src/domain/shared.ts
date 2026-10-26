@@ -11,8 +11,8 @@ export interface Text {
 }
 
 /** Channels content can be prepared for. LinkedIn has no connector yet: it can be planned, not measured. */
-export type Channel = Platform | 'linkedin';
-export const CHANNELS: Channel[] = ['facebook', 'instagram', 'linkedin', 'tiktok', 'snapchat', 'website'];
+export type Channel = Platform | 'linkedin' | 'whatsapp';
+export const CHANNELS: Channel[] = ['facebook', 'instagram', 'whatsapp', 'linkedin', 'tiktok', 'snapchat', 'website'];
 
 export type Priority = 'low' | 'normal' | 'high' | 'urgent';
 

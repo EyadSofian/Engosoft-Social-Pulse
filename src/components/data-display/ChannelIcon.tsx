@@ -1,4 +1,4 @@
-import { Globe } from 'lucide-react';
+import { Globe, MessageCircle } from 'lucide-react';
 import type { Channel } from '../../domain/shared';
 import { channelName } from '../../i18n/labels';
 import { BRAND_PATHS } from '../../lib/platformIcons';
@@ -9,6 +9,7 @@ const LINKEDIN =
 
 export function ChannelIcon({ channel, size = 14 }: { channel: Channel; size?: number }) {
   if (channel === 'website') return <Globe size={size} style={{ color: 'var(--p-website)' }} aria-hidden />;
+  if (channel === 'whatsapp') return <MessageCircle size={size} style={{ color: '#25d366' }} aria-hidden />;
   const path = channel === 'linkedin' ? LINKEDIN : BRAND_PATHS[channel];
   return (
     <svg width={size} height={size} viewBox="0 0 24 24" aria-hidden style={{ color: `var(--p-${channel})`, flex: 'none' }}>

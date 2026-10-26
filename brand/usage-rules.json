@@ -1,0 +1,19 @@
+{
+  "$comment": "Logo usage rules. 'official' rules are stated or shown in the guidelines; 'provisional' rules are engineering defaults awaiting brand-team confirmation.",
+  "official": [
+    { "id": "no-distortion", "rule": "Do not stretch, distort, or rotate the logo.", "evidence": "Incorrect Logo Usage, text" },
+    { "id": "original-proportions", "rule": "Always use the logo in its approved forms and colors, keeping its original proportions.", "evidence": "Correct Logo Usage, text" },
+    { "id": "fixed-artwork-colors", "rule": "Do not recolor any part: the bars stay blue or white, the dot stays #FF6600, the positive tagline stays #1A1A1A.", "evidence": "Incorrect Logo Usage shows orange bars, white or blue dots, a blue tagline and all-black symbols, each struck through" },
+    { "id": "no-orange-background", "rule": "Never place the lockup or symbol on a brand-orange background or orange circle.", "evidence": "Incorrect Logo Usage, orange panel and orange circle struck through" },
+    { "id": "no-black-container", "rule": "Never use a black circle container or monochrome black artwork.", "evidence": "Incorrect Logo Usage, black circle and black symbols struck through" },
+    { "id": "approved-pairings", "rule": "Reversed artwork on brand blue; positive artwork on white or light surfaces; symbol may sit in a blue or white circle badge.", "evidence": "Correct Logo Usage — Approved" },
+    { "id": "never-generated", "rule": "Official artwork is always the exact source file, composited after generation. It is never requested from, redrawn by, or edited by an image model.", "evidence": "Implied by 'approved forms and colors'; mandated by product rules" }
+  ],
+  "provisional": [
+    { "id": "clear-space", "rule": "Keep two orange-dot diameters of clear space on every side; nothing salient (text, face, subject edge) enters it." },
+    { "id": "minimum-size", "rule": "Lockup at least 240px wide on a 1080px canvas (tagline legibility); symbol at least 44px wide." },
+    { "id": "no-plate", "rule": "Do not add a plate, box or rectangle behind the logo to rescue contrast. Choose another variant, another zone, or repair the creative." },
+    { "id": "no-opacity", "rule": "Render at 100% opacity, no blend modes, no shadows or glows applied to the artwork." },
+    { "id": "unspecified-backgrounds", "rule": "On photographic or dark-neutral backgrounds a variant is allowed only if local contrast passes (WCAG 3:1 against the artwork's main fill across the clear-space box) and the zone is quiet; log as 'engineering-default'." }
+  ]
+}

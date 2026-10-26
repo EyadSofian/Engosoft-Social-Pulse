@@ -1,6 +1,8 @@
-import { Bell, ChevronRight, Menu as MenuIcon, PanelLeft, Search } from 'lucide-react';
+import { AnimatePresence, motion } from 'motion/react';
+import { Bell, ChevronRight, Menu as MenuIcon, Moon, PanelLeft, Search, SunMedium } from 'lucide-react';
 import { Link } from '../app/router/router';
 import { useLiveData } from '../app/providers/LiveDataProvider';
+import { useTheme } from '../hooks/ui';
 import { useI18n } from '../i18n/I18nProvider';
 import { useNotificationGroups } from './NotificationCenter';
 import { useShell } from './ShellContext';
@@ -55,12 +57,36 @@ export function Header() {
           <span className="shell-search-trigger__text">{t('Search', 'بحث')}</span>
           <kbd className="ui-kbd">{isMac ? '⌘K' : 'Ctrl K'}</kbd>
         </button>
+        <ThemeToggle />
         <button type="button" className="ui-icon-btn ui-icon-btn--md ui-icon-btn--ghost shell-bell" onClick={() => setNotificationsOpen(true)} aria-label={unread ? t(`Notifications, ${unread} unread`, `الإشعارات، ${unread} غير مقروءة`) : t('Notifications', 'الإشعارات')} title={t('Notifications', 'الإشعارات')}>
           <Bell size={17} />
           {unread > 0 && <span className="shell-bell__dot u-tnum">{unread > 9 ? '9+' : unread}</span>}
         </button>
       </div>
     </header>
+  );
+}
+
+/** Sun and moon swap with a turn; the page cross-fades between themes. */
+function ThemeToggle() {
+  const { t } = useI18n();
+  const { theme, toggle } = useTheme();
+  const label = theme === 'dark' ? t('Switch to light mode', 'التحويل للوضع الفاتح') : t('Switch to dark mode', 'التحويل للوضع الداكن');
+  return (
+    <button type="button" className="ui-icon-btn ui-icon-btn--md ui-icon-btn--ghost shell-theme" onClick={toggle} aria-label={label} title={label}>
+      <AnimatePresence mode="wait" initial={false}>
+        <motion.span
+          key={theme}
+          className="shell-theme__icon"
+          initial={{ rotate: -90, scale: 0.4, opacity: 0 }}
+          animate={{ rotate: 0, scale: 1, opacity: 1 }}
+          exit={{ rotate: 90, scale: 0.4, opacity: 0 }}
+          transition={{ duration: 0.22, ease: [0.16, 1, 0.3, 1] }}
+        >
+          {theme === 'dark' ? <SunMedium size={17} /> : <Moon size={17} />}
+        </motion.span>
+      </AnimatePresence>
+    </button>
   );
 }
 

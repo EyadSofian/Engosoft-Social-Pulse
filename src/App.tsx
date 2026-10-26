@@ -4,6 +4,7 @@ import { RouterProvider } from './app/router/router';
 import { ToastProvider } from './components/feedback/Toast';
 import { CreateContentProvider } from './features/content/CreateContent';
 import { WorkspaceProvider } from './features/workspace/WorkspaceProvider';
+import { AuthProvider } from './features/auth/AuthProvider';
 import { I18nProvider, useI18n } from './i18n/I18nProvider';
 import { AppShell } from './shell/AppShell';
 import { ShellProvider } from './shell/ShellContext';
@@ -26,17 +27,19 @@ function Toasts() {
   const { t } = useI18n();
   return (
     <ToastProvider closeLabel={t('Close', 'إغلاق')}>
-      <RouterProvider>
-        <WorkspaceProvider>
-          <LiveDataProvider>
-            <ShellProvider>
-              <CreateContentProvider>
-                <AppShell />
-              </CreateContentProvider>
-            </ShellProvider>
-          </LiveDataProvider>
-        </WorkspaceProvider>
-      </RouterProvider>
+      <AuthProvider>
+        <RouterProvider>
+          <WorkspaceProvider>
+            <LiveDataProvider>
+              <ShellProvider>
+                <CreateContentProvider>
+                  <AppShell />
+                </CreateContentProvider>
+              </ShellProvider>
+            </LiveDataProvider>
+          </WorkspaceProvider>
+        </RouterProvider>
+      </AuthProvider>
     </ToastProvider>
   );
 }

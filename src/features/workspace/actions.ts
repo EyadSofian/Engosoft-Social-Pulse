@@ -112,6 +112,7 @@ export interface NewContentInput {
   assigneeId: string | null;
   priority: Priority;
   planTargetId?: string | null;
+  designDocumentId?: string;
 }
 
 export function createContent(state: WorkspaceState, actor: User, input: NewContentInput, now: string): Result {
@@ -134,6 +135,7 @@ export function createContent(state: WorkspaceState, actor: User, input: NewCont
     templateId: input.templateId,
     caption: input.caption,
     versions: [],
+    designDocumentId: input.designDocumentId,
     assetIds: [],
     ai: { used: false, credits: 0, tools: [] },
     publishedUrl: '',
@@ -258,7 +260,7 @@ export function setAchievementStep(state: WorkspaceState, actor: User, id: strin
   return { ok: true, state: { ...state, achievements: state.achievements.map((entry) => (entry.id === id ? { ...entry, steps: { ...entry.steps, [step]: value } } : entry)) } };
 }
 
-export type ContentPatch = Partial<Pick<ContentItem, 'title' | 'caption' | 'channels' | 'priority' | 'dueAt' | 'versions' | 'campaignId'>>;
+export type ContentPatch = Partial<Pick<ContentItem, 'title' | 'caption' | 'channels' | 'priority' | 'dueAt' | 'versions' | 'campaignId' | 'designDocumentId'>>;
 
 export function editContent(state: WorkspaceState, actor: User, id: string, patch: ContentPatch, now: string): Result {
   const item = state.content.find((entry) => entry.id === id);

@@ -1,15 +1,13 @@
 import { useEffect, useMemo, useRef, useState, type KeyboardEvent, type ReactNode } from 'react';
 import { createPortal } from 'react-dom';
 import { AnimatePresence, motion } from 'motion/react';
-import { BookUser, CornerDownLeft, FileImage, GraduationCap, Languages, Layers, LayoutTemplate, ListChecks, Megaphone, Moon, Plus, Search, Trophy, UserRound } from 'lucide-react';
+import { CornerDownLeft, Languages, Layers, Moon, Plus, Search } from 'lucide-react';
 import { useRouter } from '../app/router/router';
-import { useCreateContent } from '../features/content/CreateContent';
 import { useWorkspace } from '../features/workspace/WorkspaceProvider';
-import { visibleContent } from '../features/workspace/selectors';
+import { STATUS_LABEL, type PipelineItem } from '../features/content-pipeline/types';
+import { api } from '../lib/api';
 import { useOverlay, useTheme } from '../hooks/ui';
 import { useI18n } from '../i18n/I18nProvider';
-import { contentStatusLabel, taskStatusLabel } from '../i18n/labels';
-import { departmentById, ROLES } from '../domain/catalog';
 import { NAV_ITEMS } from './nav';
 import { useShell } from './ShellContext';
 
@@ -54,10 +52,11 @@ export function CommandPalette() {
 
 function Palette({ onClose }: { onClose: () => void }) {
   const { t, tx, lang, setLang } = useI18n();
-  const { state, me, can } = useWorkspace();
+  const { me, can } = useWorkspace();
+  const [posts, setPosts] = useState<PipelineItem[]>([]);
+  useEffect(() => { void api<PipelineItem[]>('/api/content').then(setPosts).catch(() => {}); }, []);
   const { navigate } = useRouter();
   const { toggle } = useTheme();
-  const create = useCreateContent();
   const ref = useOverlay(true, onClose);
   const input = useRef<HTMLInputElement | null>(null);
   const [query, setQuery] = useState('');
@@ -81,10 +80,7 @@ function Palette({ onClose }: { onClose: () => void }) {
         group: '',
         label: t('Create content', 'إنشاء محتوى'),
         icon: <Plus size={15} />,
-        run: () => {
-          onClose();
-          create.open();
-        },
+        run: go('/'),
       });
     actions.push(
       { key: 'a-lang', group: '', label: lang === 'ar' ? 'Switch to English' : 'التحويل إلى العربية', icon: <Languages size={15} />, run: () => setLang(lang === 'ar' ? 'en' : 'ar') },
@@ -107,51 +103,12 @@ function Palette({ onClose }: { onClose: () => void }) {
 
     add(
       t('Content', 'المحتوى'),
-      visibleContent(state, me)
-        .filter((item) => match(item.title, item.caption))
-        .map((item) => ({ key: `c-${item.id}`, group: '', label: item.title, hint: `${tx(contentStatusLabel[item.status])} · ${tx(departmentById(item.departmentId)!.name)}`, icon: <Layers size={15} />, run: go(`/content/${item.id}`) })),
-    );
-    add(
-      t('Tasks', 'المهام'),
-      state.tasks
-        .filter((task) => match(task.title, task.description))
-        .map((task) => ({ key: `t-${task.id}`, group: '', label: task.title, hint: tx(taskStatusLabel[task.status]), icon: <ListChecks size={15} />, run: go(`/tasks?task=${task.id}`) })),
-    );
-    add(
-      t('Campaigns', 'الحملات'),
-      state.campaigns.filter((campaign) => match(campaign.name)).map((campaign) => ({ key: `cp-${campaign.id}`, group: '', label: campaign.name, hint: tx(departmentById(campaign.departmentId)!.name), icon: <Megaphone size={15} />, run: go(`/content?campaign=${campaign.id}`) })),
-    );
-    add(
-      t('Templates', 'القوالب'),
-      state.templates.filter((template) => match(template.name.en, template.name.ar)).map((template) => ({ key: `tp-${template.id}`, group: '', label: tx(template.name), icon: <LayoutTemplate size={15} />, run: go(`/templates/${template.id}`) })),
-    );
-    add(
-      t('Courses', 'الكورسات'),
-      state.courses.filter((course) => match(course.code, course.title, course.cohort)).map((course) => ({ key: `co-${course.id}`, group: '', label: `${course.code} — ${course.cohort}`, hint: course.title, icon: <GraduationCap size={15} />, run: go(`/calendar?course=${course.id}`) })),
-    );
-    add(
-      t('Students', 'الطلاب'),
-      state.achievements.filter((entry) => match(entry.studentName, entry.certification)).map((entry) => ({ key: `s-${entry.id}`, group: '', label: entry.studentName, hint: entry.certification, icon: <Trophy size={15} />, run: go(`/achievements?student=${entry.id}`) })),
-    );
-    add(
-      t('Media', 'الوسائط'),
-      state.assets.filter((asset) => match(asset.name, ...asset.tags)).map((asset) => ({ key: `as-${asset.id}`, group: '', label: asset.name, icon: <FileImage size={15} />, run: go(`/media?asset=${asset.id}`) })),
-    );
-    add(
-      t('People', 'الأشخاص'),
-      state.users.filter((user) => match(user.name, user.email)).map((user) => ({
-        key: `u-${user.id}`,
-        group: '',
-        label: user.name,
-        hint: tx(ROLES[user.role].name),
-        icon: user.role === 'lecturer' ? <BookUser size={15} /> : <UserRound size={15} />,
-        run: go(can('users.manage') ? `/admin?user=${user.id}` : `/departments/${user.departmentId ?? 'marketing'}`),
-      })),
+      posts.filter((item) => match(item.title)).map((item) => ({ key: `c-${item.id}`, group: '', label: item.title, hint: tx(STATUS_LABEL[item.status]), icon: <Layers size={15} />, run: go(`/content/${item.id}`) })),
     );
     return out;
     // `go` and `create` are stable enough for a palette that lives a few seconds.
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [query, state, me, lang]);
+  }, [query, posts, me, lang]);
 
   useEffect(() => setActive(0), [query]);
   useEffect(() => {

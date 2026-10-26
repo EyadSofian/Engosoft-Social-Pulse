@@ -1,9 +1,11 @@
-import { useMemo } from 'react';
-import { Check, ChevronsUpDown, Languages, Moon, SunMedium } from 'lucide-react';
+import { useEffect, useState } from 'react';
+import { motion } from 'motion/react';
+import { ChevronsUpDown, Languages, LogOut, Moon, Plus, Sparkles, SunMedium } from 'lucide-react';
 import { Link, useRouter } from '../app/router/router';
 import { ROLES, departmentById } from '../domain/catalog';
 import { useWorkspace } from '../features/workspace/WorkspaceProvider';
-import { isOverdue, isTaskOpen, reviewQueue } from '../features/workspace/selectors';
+import { useAuth } from '../features/auth/AuthProvider';
+import { api } from '../lib/api';
 import { useTheme } from '../hooks/ui';
 import { useI18n } from '../i18n/I18nProvider';
 import { Avatar } from '../components/ui/Avatar';
@@ -11,20 +13,25 @@ import { Menu, type MenuItem } from '../components/ui/Menu';
 import { activeNav, NAV, type NavId } from './nav';
 import { useShell } from './ShellContext';
 
-/** Engosoft mark: a blue tile with the orange accent dot. */
+/** Engosoft mark: the approved white symbol inside the approved brand-blue circle badge (symbol = 31.57% of the diameter). */
 export function BrandMark({ size = 32 }: { size?: number }) {
-  return <img src="/social-pulse-app-icon.png" width={size} height={size} alt="" aria-hidden className="shell-brand__mark" />;
+  return <svg width={size} height={size} viewBox="0 0 100 100" aria-hidden className="shell-brand__mark"><circle cx="50" cy="50" r="50" fill="#0046FF" /><image href="/brand/logos/engosoft-symbol-reversed.svg" x="34.215" y="28.69" width="31.57" height="42.62" /></svg>;
 }
 
+/** What is waiting for this person: posts to review for approvers, change requests on their own posts. */
 function useNavCounts(): Partial<Record<NavId, number>> {
-  const { state, me, can } = useWorkspace();
-  return useMemo(() => {
-    const now = Date.now();
-    const myTasks = state.tasks.filter((task) => task.assigneeId === me.id && isTaskOpen(task)).length;
-    const myOverdue = state.content.filter((item) => (item.ownerId === me.id || item.assigneeId === me.id) && isOverdue(item, now)).length;
-    const reviews = can('content.approve') ? reviewQueue(state).length : 0;
-    return { 'my-work': myTasks + myOverdue + reviews, tasks: reviews || undefined };
-  }, [state, me, can]);
+  const { user, can } = useAuth();
+  const [count, setCount] = useState(0);
+  useEffect(() => {
+    let alive = true;
+    const load = () => void api<{ status: string; ownerId: string }[]>('/api/content').then((items) => {
+      if (alive) setCount(items.filter((item) => (can('content.approve') && item.status === 'ready_for_review') || (item.ownerId === user.id && item.status === 'changes_requested')).length);
+    }).catch(() => {});
+    load();
+    const timer = setInterval(load, 60_000);
+    return () => { alive = false; clearInterval(timer); };
+  }, [user.id, can]);
+  return { content: count || undefined };
 }
 
 /** `drawer` renders the full-width version inside the mobile navigation sheet. */
@@ -35,6 +42,7 @@ export function Sidebar({ drawer }: { drawer?: boolean }) {
   const { setMobileNavOpen } = shell;
   const collapsed = shell.collapsed && !drawer;
   const { me } = useWorkspace();
+  const { can } = useAuth();
   const counts = useNavCounts();
   const active = activeNav(path);
 
@@ -49,6 +57,20 @@ export function Sidebar({ drawer }: { drawer?: boolean }) {
           </span>
         )}
       </Link>
+
+      {can('content.create') && (
+        <Link to="/" className="shell-create" title={collapsed ? t('New post', 'بوست جديد') : undefined} aria-label={collapsed ? t('New post', 'بوست جديد') : undefined} onClick={() => setMobileNavOpen(false)}>
+          <span className="shell-create__icon">
+            <Plus size={18} strokeWidth={2.4} aria-hidden />
+          </span>
+          {!collapsed && (
+            <>
+              <span className="shell-create__text">{t('New post', 'بوست جديد')}</span>
+              <Sparkles size={15} className="shell-create__spark" aria-hidden />
+            </>
+          )}
+        </Link>
+      )}
 
       <nav className="shell-nav" aria-label={t('Main navigation', 'التنقل الرئيسي')}>
         {NAV.map((group) => {
@@ -72,7 +94,10 @@ export function Sidebar({ drawer }: { drawer?: boolean }) {
                         aria-label={collapsed ? tx(item.label) : undefined}
                         onClick={() => setMobileNavOpen(false)}
                       >
-                        <Icon size={17} strokeWidth={1.9} aria-hidden />
+                        {current && <motion.span layoutId={drawer ? 'nav-pill-drawer' : 'nav-pill'} className="shell-nav__pill" transition={{ type: 'spring', stiffness: 420, damping: 34 }} aria-hidden />}
+                        <span className="shell-nav__icon">
+                          <Icon size={17} strokeWidth={1.9} aria-hidden />
+                        </span>
                         {!collapsed && <span className="shell-nav__text">{tx(item.label)}</span>}
                         {count ? (
                           <span className="shell-nav__count u-tnum" aria-label={t(`${count} open`, `${count} مفتوحة`)}>
@@ -94,54 +119,33 @@ export function Sidebar({ drawer }: { drawer?: boolean }) {
   );
 }
 
-/** Who the app is showing, plus language and theme. "View as" stands in for sign-in until authentication exists. */
+/** The signed-in account, language, theme and sign-out. */
 function UserMenu({ collapsed }: { collapsed: boolean }) {
   const { t, tx, lang, setLang } = useI18n();
   const { theme, toggle } = useTheme();
-  const { me, setMe, state } = useWorkspace();
-  const { navigate } = useRouter();
-  const department = departmentById(me.departmentId);
-
-  const people: MenuItem[] = state.users
-    .filter((user) => user.status === 'active')
-    .map((user) => ({
-      key: user.id,
-      label: (
-        <span className="shell-user__option">
-          <Avatar name={user.name} size={22} />
-          <span className="u-truncate">{user.name}</span>
-          {user.id === me.id && <Check size={14} aria-label={t('current', 'الحالي')} />}
-        </span>
-      ),
-      hint: `${tx(ROLES[user.role].name)}${user.departmentId ? ` · ${tx(departmentById(user.departmentId)!.name)}` : ''}`,
-      onSelect: () => {
-        setMe(user.id);
-        navigate('/');
-      },
-    }));
-
+  const { user, logout } = useAuth();
+  const department = departmentById(user.departmentId);
   const items: MenuItem[] = [
     { key: 'lang', icon: <Languages size={15} />, label: lang === 'ar' ? 'English' : 'العربية', onSelect: () => setLang(lang === 'ar' ? 'en' : 'ar') },
     { key: 'theme', icon: theme === 'dark' ? <SunMedium size={15} /> : <Moon size={15} />, label: theme === 'dark' ? t('Light mode', 'الوضع الفاتح') : t('Dark mode', 'الوضع الداكن'), onSelect: toggle },
-    ...people,
+    { key: 'logout', icon: <LogOut size={15} />, label: t('Sign out', 'تسجيل الخروج'), onSelect: () => void logout() },
   ];
-
   return (
     <div className="shell-user">
       <Menu
-        label={t('Account and view', 'الحساب والعرض')}
+        label={t('Account', 'الحساب')}
         align="start"
-        header={<span className="u-xs u-muted">{t('View the app as (demo — sign-in is not enabled yet)', 'اعرض التطبيق باسم (تجريبي — تسجيل الدخول غير مفعّل بعد)')}</span>}
+        header={<span className="u-xs u-muted" dir="ltr">{user.email}</span>}
         items={items}
         trigger={(props) => (
-          <button type="button" className="shell-user__trigger" title={collapsed ? me.name : undefined} aria-label={collapsed ? me.name : undefined} {...props}>
-            <Avatar name={me.name} size={30} />
+          <button type="button" className="shell-user__trigger" title={collapsed ? user.name : undefined} aria-label={collapsed ? user.name : undefined} {...props}>
+            <Avatar name={user.name} size={30} />
             {!collapsed && (
               <>
                 <span className="shell-user__text">
-                  <b className="u-truncate">{me.name}</b>
+                  <b className="u-truncate">{user.name}</b>
                   <small className="u-truncate">
-                    {tx(ROLES[me.role].name)}
+                    {tx(ROLES[user.role].name)}
                     {department ? ` · ${tx(department.name)}` : ''}
                   </small>
                 </span>

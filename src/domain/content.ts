@@ -55,6 +55,7 @@ export interface ContentItem {
   templateId: Id | null;
   caption: string;
   versions: PlatformVersion[];
+  designDocumentId?: string;
   assetIds: Id[];
   /** AI help recorded on the item; never implies the AI published anything. */
   ai: { used: boolean; credits: number; tools: string[] };

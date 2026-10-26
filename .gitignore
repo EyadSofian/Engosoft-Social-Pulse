@@ -6,6 +6,14 @@ dist/
 data/*.sqlite*
 *.log
 .railway/
-.claude/
+# Local Claude Code state stays private; project skills are shared.
+.claude/*
+!.claude/skills/
 .DS_Store
 outputs/*.inspect.ndjson
+
+# Generated creatives and their traces (local history, not source).
+data/creatives/
+
+# Studio layer images (local history, not source).
+data/studio/

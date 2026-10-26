@@ -1,6 +1,7 @@
 import { createContext, useCallback, useContext, useMemo, useRef, useState, type ReactNode } from 'react';
 import type { Permission, User } from '../../domain/users';
 import { createSeed } from '../../services/demo/seed';
+import { useAuth } from '../auth/AuthProvider';
 import * as ops from './actions';
 import { hasPermission } from './permissions';
 import type { WorkspaceState } from './state';
@@ -51,7 +52,11 @@ export function WorkspaceProvider({ children }: { children: ReactNode }) {
   const stateRef = useRef(state);
   stateRef.current = state;
 
-  const me = state.users.find((user) => user.id === meId) ?? state.users.find((user) => user.id === DEFAULT_USER)!;
+  // The signed-in account is "me"; the demo seed only backs screens that have not moved to the server yet.
+  const auth = useAuth();
+  const sessionMe: User = { id: auth.user.id, name: auth.user.name, email: auth.user.email, title: { en: auth.user.title, ar: auth.user.title }, role: auth.user.role, departmentId: auth.user.departmentId, status: 'active', lastActiveAt: auth.user.lastActiveAt };
+  void meId;
+  const me = sessionMe;
   const meRef = useRef(me);
   meRef.current = me;
 

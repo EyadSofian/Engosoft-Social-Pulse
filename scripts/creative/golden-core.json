@@ -1,0 +1,5 @@
+[
+  { "id": "cfm-course", "prompt": "اعمل بوست قوي لدورة CFM الجاية للفيسبوك والانستجرام", "format": "feed", "directions": 2 },
+  { "id": "course-launch-pmp", "prompt": "عايز بوست إطلاق لدورة PMP أونلاين الجاية، يشجع المهندسين يسجلوا", "format": "feed", "directions": 2 },
+  { "id": "educational-fire", "prompt": "بوست تعليمي للمهندسين عن أهم أخطاء تصميم شبكات مكافحة الحريق في المباني، من غير مواعيد أو عروض", "format": "feed", "directions": 2, "skipOdoo": true }
+]

@@ -1,0 +1,9 @@
+{
+  "$comment": "The guidelines define no spacing scale for social creatives. These are provisional production defaults, measured on a 1080px-wide reference canvas and scaled proportionally.",
+  "status": "pending_brand_confirmation",
+  "referenceCanvasWidthPx": 1080,
+  "edgeMarginPx": 54,
+  "logoEdgeMarginPx": 48,
+  "minimumBodyTextPx": 26,
+  "minimumCtaTextPx": 28
+}
