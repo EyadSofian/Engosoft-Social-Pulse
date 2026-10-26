@@ -85,3 +85,10 @@ railway up --detach
 - متغيرات Railway المضافة: `OPENAI_API_KEY`، `OPENAI_IMAGE_MODEL`، `OPENAI_TEXT_MODEL`، `OPENAI_TEMPLATE_MODEL`، متغيرات `ODOO_*`، `APP_URL`، `ADMIN_EMAIL`، `ADMIN_NAME`، `ADMIN_PASSWORD`. كلمة مرور المسؤول الأول محفوظة محليًا في `.env.production.local` (غير مرفوع)، ويُنشأ المسؤول مرة واحدة عند أول تشغيل بلا مستخدمين.
 - البريد الإلكتروني للإشعارات يحتاج: `SMTP_HOST`، `SMTP_PORT`، `SMTP_USER`، `SMTP_PASS`، `MAIL_FROM` (مع Gmail: `smtp.gmail.com`، المنفذ 465، وكلمة مرور تطبيقات App Password).
 - الصور المولّدة والمرفوعة وطبقات الاستوديو تُحفظ بجوار قاعدة البيانات على الـvolume (`/data`).
+
+## تحديث 2026-10-27: استمرار التوليد، Odoo، وPostgres
+
+- التغييرات رُفعت إلى `main` في commit `f3ef615`. توليد المنشور يطلب اتجاهين/صورتين، وتستمر المهمة عند التنقل بين الصفحات، مع استعادة النتيجة المحفوظة وإشعار عند الاكتمال.
+- منتقي Odoo يعرض كتالوج الدورات والمواعيد القادمة ويبحث بالعربية والإنجليزية مع تحمل بعض الأخطاء الإملائية. القراءة المباشرة أرجعت 177 دورة eLearning و119 منتج دورة بعد استبعاد منتجات تسجيل الفعاليات، و110 مواعيد قادمة.
+- Postgres في Railway متصل بـ`web` عبر متغير `DATABASE_URL` المرجعي. نُقلت 19 جدولًا من SQLite مع 4,266 منشورًا مرصودًا ومستخدم واحد و7 سجلات استهلاك، مع بقاء ملف SQLite الأصلي على volume. نُشر الكود عبر `railway up --detach`، وسجّل الخادم `Postgres` عند التشغيل.
+- خدمة `web` ما زالت بلا GitHub source؛ وصلتها عبر واجهة Railway وCLI رُفض لأن GitHub App لا يملك صلاحية هذا الريبو. يلزم إضافة `EyadSofian/Engosoft-Social-Pulse` إلى صلاحيات Railway GitHub App في إعدادات GitHub، ثم اختيار الريبو و`main` في Source لخدمة `web` لتفعيل النشر التلقائي.

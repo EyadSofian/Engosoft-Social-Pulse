@@ -157,7 +157,7 @@ async function loadCatalog(env: NodeJS.ProcessEnv) {
     ...products.flatMap((row): OdooCourse[] => {
       const name = text(row.name);
       // Discounts, fees and the per-event registration products are not courses.
-      if (!name || /discount|\bfees?\b|installation|%\s*on\b|خصم|-\s*event$/i.test(name)) return [];
+      if (!name || /discount|\bfees?\b|installation|%\s*on\b|خصم|(?:\s*[-–]\s*|\s+)event$/i.test(name)) return [];
       const category = Array.isArray(row.categ_id) ? text(row.categ_id[1]).split(' / ').slice(1).join(' / ') : '';
       return [{ id: `product.template:${row.id}`, kind: 'course', name, category, description: text(row.description_sale).slice(0, 800), ...(row.is_published === true && text(row.website_url) ? { url: absolute(text(row.website_url)) } : {}), ...(typeof row.list_price === 'number' && row.list_price > 0 ? { price: row.list_price } : {}), nextRuns: runsFor(name) }];
     }),
