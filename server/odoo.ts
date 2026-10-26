@@ -49,7 +49,7 @@ export function mapScheduleRows(rows: OdooRow[], model: string, startField: stri
 export async function readOdooSchedule(env: NodeJS.ProcessEnv = process.env): Promise<{ status: 'connected' | 'needs_setup' | 'error'; events: ScheduleEntry[]; message?: string }> {
   const base = env.ODOO_URL?.trim().replace(/\/+$/, '');
   const key = env.ODOO_API_KEY?.trim();
-  if (!base || !key) return { status: 'needs_setup', events: [], message: 'أضف ODOO_URL و ODOO_API_KEY على السيرفر.' };
+  if (!base || !key) return { status: 'needs_setup', events: [], message: 'أضف ODOO_URL و ODOO_API_KEY على الخادم.' };
   if (!/^https:\/\//.test(base) && !/^http:\/\/localhost(?::\d+)?$/.test(base)) return { status: 'error', events: [], message: 'استخدم رابط Odoo آمنًا (HTTPS).' };
   const headers: Record<string, string> = { Authorization: `bearer ${key}`, 'Content-Type': 'application/json', 'User-Agent': 'Engosoft-Social-Pulse/1' };
   if (env.ODOO_DATABASE?.trim()) headers['X-Odoo-Database'] = env.ODOO_DATABASE.trim();

@@ -51,10 +51,10 @@ import {
 const DESCRIPTION: Record<HomeProfile, [string, string]> = {
   marketing_manager: ['Reviews, publishing and every department’s plan in one place.', 'المراجعات والنشر وخطط كل الأقسام في مكان واحد.'],
   publisher: ['Approved content waiting for a slot, this week’s schedule and publishing issues.', 'المحتوى المعتمد بانتظار موعد، وجدول الأسبوع، ومشاكل النشر.'],
-  ops_lead: ['Course starts, first sessions, endings and the content each one needs.', 'بدايات الكورسات وأول المحاضرات والنهايات والمحتوى المطلوب لكل منها.'],
+  ops_lead: ['Course starts, first sessions, endings and the content each one needs.', 'بدايات الدورات وأول المحاضرات والنهايات والمحتوى المطلوب لكل منها.'],
   evaluation: ['Evaluation videos, certificates and student achievements to follow up.', 'فيديوهات التقييم والشهادات وإنجازات الطلاب للمتابعة.'],
   hr: ['Recognition, new joiners and your monthly HR content plan.', 'التكريم والموظفون الجدد وخطة محتوى الموارد البشرية الشهرية.'],
-  education: ['Course launches, new programs and educational content.', 'إطلاق الكورسات والبرامج الجديدة والمحتوى التعليمي.'],
+  education: ['Course launches, new programs and educational content.', 'إطلاق الدورات والبرامج الجديدة والمحتوى التعليمي.'],
   corporate: ['Contracts, partnerships and corporate training stories.', 'العقود والشراكات وقصص تدريب الشركات.'],
   production: ['Your design and video tasks, revisions and deadlines.', 'مهام التصميم والفيديو والتعديلات والمواعيد.'],
   admin: ['People, connections, credits and system health.', 'المستخدمون والربط والرصيد وصحة النظام.'],
@@ -162,7 +162,7 @@ function HomeBody({ profile, now }: { profile: HomeProfile; now: number }) {
           <Stat value={num(queue.length)} label={t('Awaiting review', 'بانتظار المراجعة')} tone={queue.length ? 'warning' : undefined} to="/tasks?tab=approvals" />
           <Stat value={num(scheduledThisWeek(mine, now).length)} label={t('Scheduled this week', 'مجدول هذا الأسبوع')} to="/calendar" />
           <Stat value={num(overdue.length)} label={t('Overdue', 'متأخر')} tone={overdue.length ? 'danger' : undefined} to="/content?due=overdue" />
-          <Stat value={pct(company.completion)} label={t('Monthly plan', 'الخطة الشهرية')} hint={t(`${num(company.published)} of ${num(company.target)} posts`, `${num(company.published)} من ${num(company.target)} بوست`)} to="/departments" />
+          <Stat value={pct(company.completion)} label={t('Monthly plan', 'الخطة الشهرية')} hint={t(`${num(company.published)} of ${num(company.target)} posts`, `${num(company.published)} من ${num(company.target)} منشور`)} to="/departments" />
         </Stats>
         <Grid>
           <Col>
@@ -198,7 +198,7 @@ function HomeBody({ profile, now }: { profile: HomeProfile; now: number }) {
           <Col>
             <PublishingQueueCard now={now} />
             <WeekScheduleCard now={now} items={state.content} />
-            <ContentListCard title={t('Drafts and incomplete posts', 'مسودات وبوستات غير مكتملة')} items={drafts} now={now} empty={{ title: t('No drafts in progress.', 'لا توجد مسودات قيد العمل.') }} more="/content?status=draft" />
+            <ContentListCard title={t('Drafts and incomplete posts', 'مسودات ومنشورات غير مكتملة')} items={drafts} now={now} empty={{ title: t('No drafts in progress.', 'لا توجد مسودات قيد العمل.') }} more="/content?status=draft" />
           </Col>
           <Col>
             <ReviewQueueCard now={now} limit={4} title={t('In Marketing review', 'في مراجعة التسويق')} />
@@ -217,7 +217,7 @@ function HomeBody({ profile, now }: { profile: HomeProfile; now: number }) {
     return (
       <>
         <Stats>
-          <Stat value={num(signals.startingSoon.length)} label={t('Courses starting within 7 days', 'كورسات تبدأ خلال 7 أيام')} />
+          <Stat value={num(signals.startingSoon.length)} label={t('Courses starting within 7 days', 'دورات تبدأ خلال 7 أيام')} />
           <Stat value={num(signals.startingToday.length)} label={t('Starting today', 'تبدأ اليوم')} tone={signals.startingToday.length ? 'brand' : undefined} />
           <Stat value={num(signals.evaluationNeeded.length)} label={t('Evaluation videos required', 'فيديوهات تقييم مطلوبة')} tone={signals.evaluationNeeded.length ? 'warning' : undefined} />
           <Stat value={num(opsTasks.length)} label={t('Pending operational tasks', 'مهام تشغيلية معلقة')} to="/tasks" />
@@ -246,7 +246,7 @@ function HomeBody({ profile, now }: { profile: HomeProfile; now: number }) {
       <>
         <Stats>
           <Stat value={num(signals.evaluationNeeded.length)} label={t('Evaluation videos required', 'فيديوهات تقييم مطلوبة')} tone={signals.evaluationNeeded.length ? 'warning' : undefined} />
-          <Stat value={num(certs.length)} label={t('Certificate posts in progress', 'بوستات شهادات قيد العمل')} />
+          <Stat value={num(certs.length)} label={t('Certificate posts in progress', 'منشورات شهادات قيد العمل')} />
           <Stat value={num(pending.length)} label={t('Achievements to follow up', 'إنجازات للمتابعة')} to="/achievements?tab=workflow" />
           <Stat value={num(reposts.length)} label={t('Repost tasks', 'مهام إعادة نشر')} />
         </Stats>
@@ -257,7 +257,7 @@ function HomeBody({ profile, now }: { profile: HomeProfile; now: number }) {
           </Col>
           <Col>
             <TaskListCard title={t('My tasks', 'مهامي')} tasks={myTasks} now={now} empty={{ title: t('No open tasks.', 'لا مهام مفتوحة.') }} />
-            <ContentListCard title={t('Certificate & achievement posts', 'بوستات الشهادات والإنجازات')} items={certs} now={now} empty={{ title: t('No certificate posts in progress.', 'لا بوستات شهادات قيد العمل.') }} />
+            <ContentListCard title={t('Certificate & achievement posts', 'منشورات الشهادات والإنجازات')} items={certs} now={now} empty={{ title: t('No certificate posts in progress.', 'لا منشورات شهادات قيد العمل.') }} />
           </Col>
         </Grid>
       </>
@@ -285,10 +285,10 @@ function HomeBody({ profile, now }: { profile: HomeProfile; now: number }) {
             <ContentListCard title={t('Your department’s content', 'محتوى قسمك')} description={departmentById(departmentId)?.responsibility.en && t(departmentById(departmentId)!.responsibility.en, departmentById(departmentId)!.responsibility.ar)} items={working} now={now} empty={{ title: t('Nothing in progress.', 'لا شيء قيد العمل.'), text: t('Start from a template to keep the plan on track.', 'ابدأ من قالب لتبقى الخطة على المسار.') }} more={`/content?department=${departmentId}`} />
             {profile === 'education' && (
               <ContentListCard
-                title={t('Recently finished courses', 'كورسات انتهت مؤخرًا')}
+                title={t('Recently finished courses', 'دورات انتهت مؤخرًا')}
                 items={state.content.filter((item) => recentCourses.some((course) => course.id === item.courseId))}
                 now={now}
-                empty={{ title: t('No course finished in the last three weeks.', 'لم ينتهِ كورس خلال آخر ثلاثة أسابيع.') }}
+                empty={{ title: t('No course finished in the last three weeks.', 'لم ينتهِ دورة خلال آخر ثلاثة أسابيع.') }}
               />
             )}
             <TaskListCard title={t('My tasks', 'مهامي')} tasks={myTasks} now={now} empty={{ title: t('No open tasks.', 'لا مهام مفتوحة.') }} />

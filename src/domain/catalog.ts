@@ -75,7 +75,7 @@ export const ROLES: Record<RoleId, Role> = {
   lecturer: {
     id: 'lecturer',
     name: { en: 'Lecturer', ar: 'محاضر' },
-    description: { en: 'Contributes course and educational content.', ar: 'يساهم بمحتوى الكورسات والمحتوى التعليمي.' },
+    description: { en: 'Contributes course and educational content.', ar: 'يساهم بمحتوى الدورات والمحتوى التعليمي.' },
     permissions: ['content.create', 'content.edit_own'],
   },
   freelancer: {
@@ -101,7 +101,7 @@ export const DEPARTMENTS: Department[] = [
   {
     id: 'operations',
     name: { en: 'Operations', ar: 'التشغيل' },
-    responsibility: { en: 'Course lifecycle content: schedules, first sessions, evaluations, certificates.', ar: 'محتوى دورة حياة الكورس: الجداول، أول محاضرة، التقييمات، الشهادات.' },
+    responsibility: { en: 'Course lifecycle content: schedules, first sessions, evaluations, certificates.', ar: 'محتوى دورة حياة الدورة: الجداول، أول محاضرة، التقييمات، الشهادات.' },
     managerId: 'u-ahmed',
     plansContent: true,
   },

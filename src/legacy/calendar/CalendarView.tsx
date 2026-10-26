@@ -82,7 +82,7 @@ const STATE_FILTERS: { value: StateFilter; label: string; match: (state: PlanSta
 const SHORTCUTS: [string[], string][] = [
   [['→', '←'], 'الفترة السابقة / التالية'],
   [['T'], 'العودة إلى اليوم'],
-  [['N'], 'بوست جديد'],
+  [['N'], 'منشور جديد'],
   [['M', 'W', 'D', 'L', 'B'], 'شهر · أسبوع · يوم · قائمة · لوحة'],
   [['/'], 'البحث في الخطة'],
   [['?'], 'هذه القائمة'],
@@ -323,19 +323,19 @@ export function CalendarView() {
       const ms = target.toMillis();
       if (ms === plan.ts) return;
       if ((plan.status === 'scheduled' || plan.status === 'approved') && ms < Date.now()) {
-        toast.error('الموعد الجديد في الماضي', 'اختر موعدًا قادمًا، أو حوّل البوست إلى مسودة أولًا.');
+        toast.error('الموعد الجديد في الماضي', 'اختر موعدًا قادمًا، أو حوّل المنشور إلى مسودة أولًا.');
         return;
       }
       const previous = plan.scheduledAt;
       setSelected(day);
       try {
         await store.patchPlan(plan.id, { scheduledAt: target.toUTC().toISO() ?? previous });
-        toast.success('تم نقل البوست', `«${plan.title}» · ${fmtWeekdayDate(ms)} · ${fmtTime(ms)}`, {
+        toast.success('تم نقل المنشور', `«${plan.title}» · ${fmtWeekdayDate(ms)} · ${fmtTime(ms)}`, {
           label: 'تراجع',
           run: () => void store.patchPlan(plan.id, { scheduledAt: previous }).catch((error) => toast.error('تعذّر التراجع', errorMessage(error, ''))),
         });
       } catch (error) {
-        toast.error('تعذّر نقل البوست', errorMessage(error, 'حاول مرة أخرى.'));
+        toast.error('تعذّر نقل المنشور', errorMessage(error, 'حاول مرة أخرى.'));
       }
     },
     [plansById, store, toast],
@@ -434,14 +434,14 @@ export function CalendarView() {
     try {
       const result = await store.importCalendar(file);
       toast.success(
-        result.imported ? `تمت إضافة ${num(result.imported)} بوست إلى الخطة` : 'لا توجد صفوف جديدة',
+        result.imported ? `تمت إضافة ${num(result.imported)} منشور إلى الخطة` : 'لا توجد صفوف جديدة',
         result.duplicates ? `${num(result.duplicates)} صف موجود مسبقًا وتم تجاهله.` : undefined,
       );
       if (result.errors.length) setReport(result);
     } catch (error) {
       const rows = error instanceof ApiError ? (error.details as { errors?: string[] } | undefined)?.errors : undefined;
       if (rows?.length) setReport({ imported: 0, duplicates: 0, errors: rows, failed: errorMessage(error, '') });
-      else toast.error('تعذّر رفع الكاليندر', errorMessage(error, 'تأكد أن الملف بصيغة XLSX أو CSV وعلى قالب الكاليندر.'));
+      else toast.error('تعذّر رفع التقويم', errorMessage(error, 'تأكد أن الملف بصيغة XLSX أو CSV وعلى قالب التقويم.'));
     } finally {
       setImporting(false);
       if (fileInput.current) fileInput.current.value = '';
@@ -451,13 +451,13 @@ export function CalendarView() {
   const exportAs = (format: 'csv' | 'ics') => {
     setExportOpen(false);
     if (!inRange.length) {
-      toast.info('لا توجد بوستات للتصدير', `خطة ${rangeLabel} فارغة بالفلاتر الحالية.`);
+      toast.info('لا توجد منشورات للتصدير', `خطة ${rangeLabel} فارغة بالفلاتر الحالية.`);
       return;
     }
     const stamp = monthly ? cursor.toFormat('yyyy-LL') : cells[0].key;
     if (format === 'csv') downloadText(`social-pulse-${stamp}.csv`, plansToCsv(inRange), 'text/csv;charset=utf-8');
     else downloadText(`social-pulse-${stamp}.ics`, plansToIcs(inRange), 'text/calendar;charset=utf-8');
-    toast.success(`تم تصدير ${num(inRange.length)} بوست`, format === 'csv' ? 'ملف CSV بنفس أعمدة قالب الرفع.' : 'افتحه في Google Calendar أو Outlook.');
+    toast.success(`تم تصدير ${num(inRange.length)} منشور`, format === 'csv' ? 'ملف CSV بنفس أعمدة قالب الرفع.' : 'افتحه في Google Calendar أو Outlook.');
   };
 
   useEffect(() => {
@@ -520,7 +520,7 @@ export function CalendarView() {
   return (
     <div className="cal" {...dropHandlers}>
       <Reveal>
-        <ViewHeader title="كاليندر المحتوى" subtitle="خطّط، اسحب لتغيير المواعيد، وتابع تأكيد كل بوست على منصته.">
+        <ViewHeader title="كاليندر المحتوى" subtitle="خطّط، اسحب لتغيير المواعيد، وتابع تأكيد كل منشور على منصته.">
           <LinkButton href="/calendar-template.xlsx" download icon={<FileSpreadsheet size={16} />}>
             القالب
           </LinkButton>
@@ -542,7 +542,7 @@ export function CalendarView() {
                   transition={{ duration: 0.16 }}
                 >
                   <span className="menu__caption">
-                    {num(inRange.length)} بوست · {rangeLabel}
+                    {num(inRange.length)} منشور · {rangeLabel}
                   </span>
                   <button type="button" role="menuitem" onClick={() => exportAs('csv')}>
                     <FileSpreadsheet size={16} />
@@ -563,7 +563,7 @@ export function CalendarView() {
             </AnimatePresence>
           </div>
           <Button variant="primary" icon={<Plus size={17} />} onClick={() => openPlan({ mode: 'new', day: selected })}>
-            بوست جديد
+            منشور جديد
           </Button>
           <input ref={fileInput} type="file" accept=".csv,.xlsx" hidden onChange={(event) => void upload(event.target.files?.[0])} />
         </ViewHeader>
@@ -651,7 +651,7 @@ export function CalendarView() {
           </div>
           <div className="cal__views">
             <Segmented
-              label="طريقة عرض الكاليندر"
+              label="طريقة عرض التقويم"
               size="sm"
               value={mode}
               onChange={setMode}
@@ -812,8 +812,8 @@ export function CalendarView() {
                   days={agendaDays}
                   todayKey={todayKey}
                   now={now}
-                  emptyTitle={activeFilters ? 'لا توجد بوستات تطابق الفلاتر' : `لا توجد بوستات في خطة ${fmtMonth(cursor.toMillis())}`}
-                  emptyText={activeFilters ? 'غيّر الفلاتر أو امسحها لعرض بقية الخطة.' : 'أضف بوست أو ارفع كاليندر الفريق.'}
+                  emptyTitle={activeFilters ? 'لا توجد منشورات تطابق الفلاتر' : `لا توجد منشورات في خطة ${fmtMonth(cursor.toMillis())}`}
+                  emptyText={activeFilters ? 'غيّر الفلاتر أو امسحها لعرض بقية الخطة.' : 'أضف منشور أو ارفع كاليندر الفريق.'}
                   actions={actions}
                   onPlanOccasion={planOccasion}
                 />
@@ -827,7 +827,7 @@ export function CalendarView() {
               <StatePill key={state} state={state} />
             ))}
             <span className="cal__legend-note">
-              {mode === 'board' ? 'اسحب البطاقة بين الأعمدة لتغيير حالتها' : 'اسحب أي بوست لتغيير موعده · دبل كليك على يوم لإضافة بوست'}
+              {mode === 'board' ? 'اسحب البطاقة بين الأعمدة لتغيير حالتها' : 'اسحب أي منشور لتغيير موعده · نقر مزدوج على يوم لإضافة منشور'}
             </span>
           </footer>
         </section>
@@ -864,7 +864,7 @@ export function CalendarView() {
           <motion.div className="dropzone" initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }} transition={{ duration: 0.15 }}>
             <div className="dropzone__card glass glass--float">
               <FileSpreadsheet size={34} />
-              <b>أفلت ملف الكاليندر هنا</b>
+              <b>أفلت ملف التقويم هنا</b>
               <span>XLSX أو CSV على قالب Social Pulse</span>
             </div>
           </motion.div>
@@ -874,7 +874,7 @@ export function CalendarView() {
       <Modal
         open={helpOpen}
         onClose={() => setHelpOpen(false)}
-        title="اختصارات الكاليندر"
+        title="اختصارات التقويم"
         icon={
           <span className="drawer__icon">
             <Keyboard size={19} />
@@ -899,7 +899,7 @@ export function CalendarView() {
       <Modal
         open={report != null}
         onClose={() => setReport(null)}
-        title={report?.failed ? 'لم يُرفع الكاليندر' : 'صفوف تحتاج مراجعة'}
+        title={report?.failed ? 'لم يُرفع التقويم' : 'صفوف تحتاج مراجعة'}
         icon={
           <span className="drawer__icon drawer__icon--warn">
             <FileWarning size={19} />
@@ -921,7 +921,7 @@ export function CalendarView() {
             <p className="report__summary">
               {report.failed
                 ? report.failed
-                : `أُضيف ${num(report.imported)} بوست${report.duplicates ? `، وتم تجاهل ${num(report.duplicates)} صف مكرر` : ''}. الصفوف التالية لم تُضف:`}
+                : `أُضيف ${num(report.imported)} منشور${report.duplicates ? `، وتم تجاهل ${num(report.duplicates)} صف مكرر` : ''}. الصفوف التالية لم تُضف:`}
             </p>
             <ul className="report__list">
               {report.errors.map((row, index) => (

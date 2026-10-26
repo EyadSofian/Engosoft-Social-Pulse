@@ -96,9 +96,9 @@ export function createSeed(nowMs: number = Date.now()): WorkspaceState {
 
   const target = (id: string, en: string, ar: string, count: number, templateId: string | null = null, contentType: ContentType | null = null) => ({ id, label: L(en, ar), templateId, contentType, target: count });
   const plans: MonthlyPlan[] = [
-    plan('marketing', 'u-mariam', [target('m-tips', 'Educational tips', 'معلومات تعليمية', 4, 't-educational-tip'), target('m-promo', 'Course promotion', 'ترويج الكورسات', 5), target('m-events', 'Occasions & events', 'المناسبات', 3, 't-event')]),
-    plan('operations', 'u-ahmed', [target('op-schedule', 'Weekly course schedule', 'جدول الكورسات الأسبوعي', 4, 't-weekly-schedule'), target('op-starts', 'Course starts next week', 'الكورس يبدأ الأسبوع القادم', 2, 't-starts-next-week'), target('op-finished', 'Course finished', 'انتهاء الكورس', 2, 't-course-finished')]),
-    plan('education', 'u-hany', [target('ed-course', 'New courses', 'كورسات جديدة', 2, 't-new-course'), target('ed-tips', 'Educational content', 'محتوى تعليمي', 2, 't-educational-tip')]),
+    plan('marketing', 'u-mariam', [target('m-tips', 'Educational tips', 'معلومات تعليمية', 4, 't-educational-tip'), target('m-promo', 'Course promotion', 'ترويج الدورات', 5), target('m-events', 'Occasions & events', 'المناسبات', 3, 't-event')]),
+    plan('operations', 'u-ahmed', [target('op-schedule', 'Weekly course schedule', 'جدول الدورات الأسبوعي', 4, 't-weekly-schedule'), target('op-starts', 'Course starts next week', 'الدورة يبدأ الأسبوع القادم', 2, 't-starts-next-week'), target('op-finished', 'Course finished', 'انتهاء الدورة', 2, 't-course-finished')]),
+    plan('education', 'u-hany', [target('ed-course', 'New courses', 'دورات جديدة', 2, 't-new-course'), target('ed-tips', 'Educational content', 'محتوى تعليمي', 2, 't-educational-tip')]),
     plan('hr', 'u-salma', [target('hr-recognition', 'Employee recognition', 'تكريم الموظفين', 1, 't-employee-recognition'), target('hr-newjoiner', 'New employees', 'موظفون جدد', 1, 't-new-employee')]),
     plan('corporate', 'u-karim', [target('co-contract', 'Corporate contracts', 'عقود الشركات', 1, 't-corporate-contract'), target('co-case', 'Case studies', 'دراسات حالة', 1)]),
   ];
@@ -165,7 +165,7 @@ export function createSeed(nowMs: number = Date.now()): WorkspaceState {
   };
 
   // Awaiting Marketing review (12).
-  item({ id: 'ci-cfm-starts', title: 'Course Starts Next Week — CFM October Cohort', dept: 'operations', owner: 'u-ahmed', status: 'ready_for_review', priority: 'high', due: at(0, 23), template: 't-starts-next-week', course: 'c-cfm-oct', target: 'op-starts', campaign: 'cp-launches', assets: ['as-cfm-cover'], caption: 'CFM — Certified Facility Manager starts next week. Seven weeks of live sessions with Eng. Tamer Lotfy. Register through the direct link below.\n\nكورس CFM يبدأ الأسبوع القادم. سجّل الآن.', created: -2 });
+  item({ id: 'ci-cfm-starts', title: 'Course Starts Next Week — CFM October Cohort', dept: 'operations', owner: 'u-ahmed', status: 'ready_for_review', priority: 'high', due: at(0, 23), template: 't-starts-next-week', course: 'c-cfm-oct', target: 'op-starts', campaign: 'cp-launches', assets: ['as-cfm-cover'], caption: 'CFM — Certified Facility Manager starts next week. Seven weeks of live sessions with Eng. Tamer Lotfy. Register through the direct link below.\n\nدورة CFM يبدأ الأسبوع القادم. سجّل الآن.', created: -2 });
   item({ id: 'ci-pmp-first', title: 'First Session — PMP October Cohort', dept: 'operations', owner: 'u-ahmed', status: 'ready_for_review', priority: 'high', due: at(0, 23), template: 't-first-session', course: 'c-pmp-oct', assets: ['as-zoom-pmp'], caption: 'أول محاضرة في دفعة PMP أكتوبر بحضور 24 مهندس ومهندسة.', created: 0 });
   item({ id: 'ci-revit-starts', title: 'Revit MEP starts this week', dept: 'operations', owner: 'u-ahmed', status: 'ready_for_review', due: at(1, 18), template: 't-starts-next-week', course: 'c-revit', target: 'op-starts', created: -3 });
   item({ id: 'ci-cert-ahmed', title: 'Certificate — Ahmed Ali (CFM)', dept: 'operations', owner: 'u-nour', status: 'ready_for_review', channels: ['linkedin', 'facebook'], due: at(1, 18), template: 't-certificate', achievement: 'sa-ahmed-ali', assets: ['as-cert-ahmed'], campaign: 'cp-success', created: -2 });
@@ -440,7 +440,7 @@ export function createSeed(nowMs: number = Date.now()): WorkspaceState {
 
   const events: ContentEvent[] = [
     { id: 'ev-graduation', name: L('Quarterly graduates celebration', 'احتفال خريجي الربع'), date: dayKey(18), kind: 'company', departments: ['marketing', 'operations'], suggestion: L('Photo carousel with graduates’ quotes', 'كاروسيل صور مع آراء الخريجين'), suggestedType: 'carousel', source: 'company' },
-    { id: 'ev-open-day', name: L('Corporate training open day', 'يوم مفتوح لتدريب الشركات'), date: dayKey(11), kind: 'company', departments: ['corporate', 'marketing'], suggestion: L('Invitation post for HR and training managers', 'بوست دعوة لمديري التدريب والموارد البشرية'), suggestedType: 'post', source: 'company' },
+    { id: 'ev-open-day', name: L('Corporate training open day', 'يوم مفتوح لتدريب الشركات'), date: dayKey(11), kind: 'company', departments: ['corporate', 'marketing'], suggestion: L('Invitation post for HR and training managers', 'منشور دعوة لمديري التدريب والموارد البشرية'), suggestedType: 'post', source: 'company' },
   ];
 
   /* ── Credits ────────────────────────────────────────────────────── */
@@ -511,7 +511,7 @@ export function createSeed(nowMs: number = Date.now()): WorkspaceState {
   notify('u-nour', 'approved', L('Approved by Marketing', 'اعتمدها التسويق'), 'Certificate — Mahmoud Fawzy (PMP)', 26, '/content/ci-cert-mahmoud', 'approved-ci-cert-mahmoud', true);
   notify('u-dina', 'changes_requested', L('Changes requested', 'مطلوب تعديلات'), 'Course Launch Video — CFM', 20, '/content/ci-cfm-video', 'changes-ci-cfm-video');
   notify('u-salma', 'changes_requested', L('Changes requested', 'مطلوب تعديلات'), 'Welcome: our new instructional designer', 20, '/content/ci-hr-newjoiner', 'changes-ci-hr-newjoiner');
-  notify('u-ahmed', 'deadline', L('Course starts in 7 days', 'الكورس يبدأ بعد 7 أيام'), 'CFM — October Cohort', 4, '/content/ci-cfm-starts', 'course-c-cfm-oct');
+  notify('u-ahmed', 'deadline', L('Course starts in 7 days', 'الدورة يبدأ بعد 7 أيام'), 'CFM — October Cohort', 4, '/content/ci-cfm-starts', 'course-c-cfm-oct');
   notify('u-hany', 'credit_warning', L('Your department is at 97% of its AI credits', 'قسمك استخدم 97% من رصيد الذكاء الاصطناعي'), 'Education · 2,910 / 3,000', 20, '/credits', 'credits-education');
   notify('u-omar', 'publishing_reminder', L('Publishing today', 'نشر اليوم'), 'Weekly Course Schedule — this week · 6:00 PM', 1, '/content/ci-schedule-now', 'publish-ci-schedule-now');
 

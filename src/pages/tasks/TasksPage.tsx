@@ -43,7 +43,7 @@ export function TasksPage() {
     <div className="u-stack">
       <PageHeader
         title={t('Tasks & Approvals', 'المهام والاعتمادات')}
-        description={t('Production work and Marketing’s review decisions. Tasks and posts are separate: one post can need several tasks.', 'أعمال الإنتاج وقرارات مراجعة التسويق. المهام منفصلة عن البوستات: البوست الواحد قد يحتاج عدة مهام.')}
+        description={t('Production work and Marketing’s review decisions. Tasks and posts are separate: one post can need several tasks.', 'أعمال الإنتاج وقرارات مراجعة التسويق. المهام منفصلة عن المنشورات: المنشور الواحد قد يحتاج عدة مهام.')}
         actions={
           <Button variant="primary" icon={<Plus size={16} />} onClick={() => setCreating(true)}>
             {t('New task', 'مهمة جديدة')}

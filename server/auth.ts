@@ -29,7 +29,7 @@ export function verifyPassword(password: string, stored: string): boolean {
   const actual = scryptSync(password, Buffer.from(salt, 'base64'), expected.length);
   return timingSafeEqual(actual, expected);
 }
-export const passwordProblem = (password: string) => password.length < 10 ? 'كلمة المرور لازم تكون 10 حروف على الأقل.' : null;
+export const passwordProblem = (password: string) => password.length < 10 ? 'يجب ألا تقل كلمة المرور عن 10 أحرف.' : null;
 
 const toUser = (r: Record<string, unknown>): AuthUser => ({
   id: String(r.id), email: String(r.email), name: String(r.name), role: r.role as RoleId,
@@ -113,12 +113,12 @@ declare module 'express-serve-static-core' { interface Request { user?: AuthUser
 /** Attach the signed-in user; reject when there is none. */
 export const requireUser: express.RequestHandler = (req, res, next) => {
   const user = sessionUser(req);
-  if (!user) { res.status(401).json({ error: 'سجّل الدخول الأول.', code: 'unauthenticated' }); return; }
+  if (!user) { res.status(401).json({ error: 'سجّل الدخول أولًا.', code: 'unauthenticated' }); return; }
   req.user = user;
   next();
 };
 export const requirePermission = (permission: Permission): express.RequestHandler => (req, res, next) => {
-  if (!req.user || !userCan(req.user, permission)) { res.status(403).json({ error: 'مش عندك صلاحية للعملية دي.', code: 'forbidden' }); return; }
+  if (!req.user || !userCan(req.user, permission)) { res.status(403).json({ error: 'لا تملك صلاحية تنفيذ هذه العملية.', code: 'forbidden' }); return; }
   next();
 };
 

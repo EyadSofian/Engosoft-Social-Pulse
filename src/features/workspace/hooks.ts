@@ -15,7 +15,7 @@ const ERRORS: Record<ActionError, [string, string]> = {
   live: ['Calendar plans are edited in the Calendar.', 'خطط التقويم تُعدّل من صفحة التقويم.'],
   note_required: ['Add a note explaining the decision.', 'أضف ملاحظة توضح القرار.'],
   time_required: ['Choose a publishing date and time.', 'اختر تاريخ ووقت النشر.'],
-  proof_required: ['Paste the published post link as proof.', 'الصق رابط البوست المنشور كدليل.'],
+  proof_required: ['Paste the published post link as proof.', 'الصق رابط المنشور المنشور كدليل.'],
   title_required: ['Give it a title.', 'أضف عنوانًا.'],
 };
 

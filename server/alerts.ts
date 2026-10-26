@@ -18,7 +18,7 @@ export async function checkAlerts(now=new Date()):Promise<number>{
    if(state==='draft')continue;
    const minutes=(new Date(plan.scheduledAt).getTime()-now.getTime())/60_000;
    let kind='';let message='';
-   if(minutes>0 && minutes<=60){kind='upcoming';message=`تذكير: بوست «${plan.title}» على ${plan.platform} موعده خلال ${Math.ceil(minutes)} دقيقة.`;}
+   if(minutes>0 && minutes<=60){kind='upcoming';message=`تذكير: منشور «${plan.title}» على ${plan.platform} موعده خلال ${Math.ceil(minutes)} دقيقة.`;}
    if(state==='missed'){
      kind='missed';const source=statuses.get(plan.platform);
      message=`تنبيه: لم يتم تأكيد نشر «${plan.title}» على ${plan.platform} بعد موعده.${source!=='connected'?' الربط غير متاح حاليًا؛ راجع الصفحة يدويًا.':''}`;

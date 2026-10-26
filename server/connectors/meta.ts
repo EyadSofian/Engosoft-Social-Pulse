@@ -121,8 +121,8 @@ export async function syncMeta():Promise<ConnectorResult[]> {
      }catch(e){const message=e instanceof Error?e.message:'تعذّر القراءة';igErrors.push(`${page.name}: ${message.includes('code 10')?'صلاحية instagram_basic/instagram_manage_insights غير متاحة لهذا التوكن.':message}`);}
    }
    return [
-     {platform:'facebook',status:fbErrors.length&&!facebook.length?'error':'connected',message:fbErrors.join(' ')||`تم جلب ${facebook.length} بوست. مشاهدات المحتوى متاحة لـ ${facebookMediaViews} بوست، والمشاهدون الفريدون لـ ${facebookUniqueViewers} بوست. ${fbDetail}`,posts:facebook},
-     {platform:'instagram',status:igErrors.length&&!instagram.length?'error':'connected',message:igErrors.join(' ')||`تم جلب ${instagram.length} بوست.${canReadIgInsights?'':' reach/views/saves تحتاج صلاحية instagram_manage_insights.'}`,posts:instagram}
+     {platform:'facebook',status:fbErrors.length&&!facebook.length?'error':'connected',message:fbErrors.join(' ')||`تم جلب ${facebook.length} منشور. مشاهدات المحتوى متاحة لـ ${facebookMediaViews} منشور، والمشاهدون الفريدون لـ ${facebookUniqueViewers} منشور. ${fbDetail}`,posts:facebook},
+     {platform:'instagram',status:igErrors.length&&!instagram.length?'error':'connected',message:igErrors.join(' ')||`تم جلب ${instagram.length} منشور.${canReadIgInsights?'':' reach/views/saves تحتاج صلاحية instagram_manage_insights.'}`,posts:instagram}
    ];
  }catch(e){const message=e instanceof Error?e.message:'تعذّر الاتصال بـMeta';return [{platform:'facebook',status:'error',message,posts:[]},{platform:'instagram',status:'error',message,posts:[]}];}
 }

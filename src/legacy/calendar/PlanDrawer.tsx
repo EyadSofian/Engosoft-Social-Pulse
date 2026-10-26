@@ -166,7 +166,7 @@ function PlanSheet({ target, open, onClose }: { target: PlanTarget; open: boolea
   };
 
   const errors = {
-    title: form.title.trim() ? '' : 'اكتب عنوانًا للبوست.',
+    title: form.title.trim() ? '' : 'اكتب عنوانًا للمنشور.',
     platforms: form.platforms.length ? '' : 'اختر منصة واحدة على الأقل.',
     scheduledAt: Number.isFinite(scheduledMs) ? '' : 'حدّد موعد النشر.',
     proof: form.status === 'published' && !form.permalink.trim() && !form.externalId.trim() ? 'أضف رابط المنشور أو معرّفه لتأكيد النشر.' : '',
@@ -204,13 +204,13 @@ function PlanSheet({ target, open, onClose }: { target: PlanTarget; open: boolea
         });
       await store.reload();
       toast.success(
-        editing ? 'تم حفظ التعديلات' : form.platforms.length > 1 ? `أُضيف البوست على ${form.platforms.length} منصات` : 'أُضيف البوست إلى الكاليندر',
+        editing ? 'تم حفظ التعديلات' : form.platforms.length > 1 ? `أُضيف المنشور على ${form.platforms.length} منصات` : 'أُضيف المنشور إلى التقويم',
         fmtDateTime(scheduledAt),
       );
       onClose();
     } catch (error) {
       void store.reload();
-      toast.error('تعذّر حفظ البوست', errorMessage(error, 'حاول مرة أخرى.'));
+      toast.error('تعذّر حفظ المنشور', errorMessage(error, 'حاول مرة أخرى.'));
     } finally {
       setSaving(false);
     }
@@ -222,10 +222,10 @@ function PlanSheet({ target, open, onClose }: { target: PlanTarget; open: boolea
     try {
       await store.deletePlan(editing.id);
       await store.reload();
-      toast.success('تم حذف البوست من الكاليندر');
+      toast.success('تم حذف المنشور من التقويم');
       onClose();
     } catch (error) {
-      toast.error('تعذّر حذف البوست', errorMessage(error, 'حاول مرة أخرى.'));
+      toast.error('تعذّر حذف المنشور', errorMessage(error, 'حاول مرة أخرى.'));
     } finally {
       setSaving(false);
     }
@@ -239,14 +239,14 @@ function PlanSheet({ target, open, onClose }: { target: PlanTarget; open: boolea
     <Drawer
       open={open}
       onClose={onClose}
-      title={editing ? 'تعديل البوست' : 'بوست جديد'}
+      title={editing ? 'تعديل المنشور' : 'منشور جديد'}
       subtitle={editing ? <StatePill state={editing.computedState} /> : 'يُضاف إلى الخطة للمتابعة والتنبيه — لا يُنشر تلقائيًا.'}
       icon={<span className="drawer__icon">{editing ? <PencilLine size={19} /> : <CalendarClock size={19} />}</span>}
       width={580}
       footer={
         confirmDelete ? (
           <>
-            <span className="drawer__confirm">حذف هذا البوست نهائيًا من الكاليندر؟</span>
+            <span className="drawer__confirm">حذف هذا المنشور نهائيًا من الكاليندر؟</span>
             <Button variant="ghost" icon={<Undo2 size={15} />} onClick={() => setConfirmDelete(false)}>
               تراجع
             </Button>
@@ -277,7 +277,7 @@ function PlanSheet({ target, open, onClose }: { target: PlanTarget; open: boolea
       }
     >
       <form id={FORM_ID} className="form" onSubmit={(event) => void submit(event)} noValidate>
-        <Field label="عنوان البوست" wide error={touched ? errors.title : ''}>
+        <Field label="عنوان المنشور" wide error={touched ? errors.title : ''}>
           <input
             className="input"
             data-autofocus
@@ -291,7 +291,7 @@ function PlanSheet({ target, open, onClose }: { target: PlanTarget; open: boolea
         <div className="field field--wide" data-invalid={touched && errors.platforms ? true : undefined}>
           <span className="field__label">
             {editing ? 'المنصة' : 'المنصات'}
-            {!editing && <small>اختر أكثر من منصة لإضافة بوست مستقل لكل واحدة</small>}
+            {!editing && <small>اختر أكثر من منصة لإضافة منشور مستقل لكل واحدة</small>}
           </span>
           <div className="picker" role="group" aria-label="المنصات">
             {PLATFORMS.map((item) => (
@@ -367,7 +367,7 @@ function PlanSheet({ target, open, onClose }: { target: PlanTarget; open: boolea
                   className="suggest__item"
                   data-active={active}
                   aria-pressed={active}
-                  title={`متوسط ${compact(Math.round(slot.average))} تفاعل من ${num(slot.posts)} بوست`}
+                  title={`متوسط ${compact(Math.round(slot.average))} تفاعل من ${num(slot.posts)} منشور`}
                   onClick={() => set('scheduledAt', next.toFormat(INPUT_FORMAT))}
                 >
                   {slotDay(slot)} · {hourLabel(slot.hour)}
@@ -377,7 +377,7 @@ function PlanSheet({ target, open, onClose }: { target: PlanTarget; open: boolea
           </div>
         )}
 
-        <Field label="نص البوست" wide hint="اختياري">
+        <Field label="نص المنشور" wide hint="اختياري">
           <textarea className="input" rows={4} value={form.caption} maxLength={5000} placeholder="النص أو وصف التصميم… #هاشتاج" onChange={(event) => set('caption', event.target.value)} />
           <span className="caption-meta" data-warn={captionLong || tooManyTags || undefined}>
             <span>
@@ -405,7 +405,7 @@ function PlanSheet({ target, open, onClose }: { target: PlanTarget; open: boolea
             <Link2 size={15} /> تأكيد النشر
           </legend>
           <p>
-            يُعتبر البوست منشورًا عند مطابقة معرّف المنشور أو رابطه بدقة مع ما رُصد على المنصة — تشابه النص وحده لا يكفي.
+            يُعتبر المنشور منشورًا عند مطابقة معرّف المنشور أو رابطه بدقة مع ما رُصد على المنصة — تشابه النص وحده لا يكفي.
           </p>
 
           {linked && (

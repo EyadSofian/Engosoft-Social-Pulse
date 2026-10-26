@@ -117,7 +117,7 @@ function Workflow({ focus }: { focus: string | null }) {
   const list = state.achievements.filter((entry) => !entry.historical).sort((a, b) => Number(b.id === focus) - Number(a.id === focus) || b.achievedAt.localeCompare(a.achievedAt));
   return (
     <div className="u-stack">
-      <p className="u-sm u-muted">{t('Certificate → customer LinkedIn post mentioning Engosoft → review → employee comment → repost → reward (50% coupon or free international exam booking support).', 'الشهادة ← بوست العميل على LinkedIn مع الإشارة إلى Engosoft ← التقييم ← تعليق الموظف ← إعادة النشر ← المكافأة (كوبون 50% أو دعم مجاني لحجز الامتحان الدولي).')}</p>
+      <p className="u-sm u-muted">{t('Certificate → customer LinkedIn post mentioning Engosoft → review → employee comment → repost → reward (50% coupon or free international exam booking support).', 'الشهادة ← منشور العميل على LinkedIn مع الإشارة إلى Engosoft ← التقييم ← تعليق الموظف ← إعادة النشر ← المكافأة (كوبون 50% أو دعم مجاني لحجز الامتحان الدولي).')}</p>
       {list.map((entry) => {
         const done = STEPS.filter((step) => entry.steps[step.key]).length;
         const post = state.content.find((item) => item.achievementId === entry.id);
@@ -139,7 +139,7 @@ function Workflow({ focus }: { focus: string | null }) {
                     </Link>
                   ) : (
                     <Button size="sm" variant="secondary" onClick={() => create.open({ templateId: entry.kind === 'international_exam' ? 't-intl-exam' : 't-certificate', title: `${entry.kind === 'international_exam' ? 'International exam success' : 'Certificate'} — ${entry.studentName} (${entry.certification})`, departmentId: 'operations' })}>
-                      {t('Create post', 'أنشئ بوست')}
+                      {t('Create post', 'أنشئ منشور')}
                     </Button>
                   )}
                   <Button size="sm" variant={entry.hallOfFame ? 'ghost' : 'secondary'} onClick={() => act(setHallOfFame(entry.id, !entry.hallOfFame), entry.hallOfFame ? t('Removed from the Hall of Fame', 'أزيل من لوحة الشرف') : t('Added to the Hall of Fame', 'أُضيف إلى لوحة الشرف'))}>
@@ -226,7 +226,7 @@ function Team() {
   const people = [...new Set(state.achievements.map((entry) => entry.responsibleId))];
   return (
     <Card>
-      <CardHeader title={t('Completed student posts per employee', 'بوستات الطلاب المكتملة لكل موظف')} description={t('A student post counts when the student posted on LinkedIn and Engosoft reposted it.', 'يُحسب البوست عندما ينشر الطالب على LinkedIn ويعيد Engosoft نشره.')} icon={<DemoBadge />} />
+      <CardHeader title={t('Completed student posts per employee', 'منشورات الطلاب المكتملة لكل موظف')} description={t('A student post counts when the student posted on LinkedIn and Engosoft reposted it.', 'يُحسب المنشور عندما ينشر الطالب على LinkedIn ويعيد Engosoft نشره.')} icon={<DemoBadge />} />
       <ul className="workload">
         {people.map((id) => {
           const mine = state.achievements.filter((entry) => entry.responsibleId === id);
@@ -289,7 +289,7 @@ function AddStudentForm({ onDone }: { onDone: () => void }) {
         <Field label={t('Certification', 'الشهادة')} required>
           {(id) => <Input id={id} value={certification} onChange={(event) => setCertification(event.target.value)} required />}
         </Field>
-        <Field label={t('Course', 'الكورس')}>{(id) => <Input id={id} value={course} onChange={(event) => setCourse(event.target.value)} />}</Field>
+        <Field label={t('Course', 'الدورة')}>{(id) => <Input id={id} value={course} onChange={(event) => setCourse(event.target.value)} />}</Field>
         <Field label={t('Date', 'التاريخ')} required>
           {(id) => <Input id={id} type="date" value={day} onChange={(event) => setDay(event.target.value)} required />}
         </Field>

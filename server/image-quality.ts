@@ -1,4 +1,5 @@
 import { z } from 'zod';
+import { recordUsage, type OpenAIUsage } from './usage.js';
 
 export const qualityResult = z.object({ score: z.number().min(0).max(100), issues: z.array(z.string()), strengths: z.array(z.string()), revision: z.string(), fatal: z.boolean() });
 export type ImageAssessment = z.infer<typeof qualityResult> & { pass: boolean };
@@ -25,6 +26,7 @@ export async function assessImage(dataUrl: string, env: NodeJS.ProcessEnv = proc
     text: { format: { type: 'json_schema', name: 'engosoft_image_quality', strict: true, schema } },
   }), signal: AbortSignal.timeout(90000) });
   const result = await response.json().catch(() => ({})) as { output?: { content?: { type?: string; text?: string }[] }[]; error?: { message?: string } };
+  recordUsage({ kind: 'text', model: env.OPENAI_TEXT_MODEL?.trim() || 'gpt-4.1-mini', usage: (result as { usage?: OpenAIUsage }).usage });
   if (!response.ok) throw new Error(result.error?.message || `Image quality check failed (HTTP ${response.status})`);
   const text = result.output?.flatMap((item) => item.content ?? []).find((item) => item.type === 'output_text')?.text;
   if (!text) throw new Error('Image quality check returned no result');

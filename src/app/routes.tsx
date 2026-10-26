@@ -3,6 +3,9 @@ import { AnalyticsPage } from '../pages/analytics/AnalyticsPage';
 import { CalendarPage } from '../pages/calendar/CalendarPage';
 import { ContentBoardPage } from '../pages/content/ContentBoardPage';
 import { CreationHomePage } from '../pages/home/CreationHomePage';
+import { ContentTrackingPage, InsightsPage, OverviewPage } from '../pages/insights/InsightsPage';
+import { TemplatePage } from '../pages/library/TemplatePage';
+import { UsagePage } from '../pages/usage/UsagePage';
 import { LibraryPage } from '../pages/library/LibraryPage';
 import { SettingsPage } from '../pages/settings/SettingsPage';
 import { StudioPage } from '../pages/studio/StudioPage';
@@ -22,9 +25,15 @@ export const ROUTES: RouteDef[] = [
   { pattern: '/content/:id', nav: 'content', render: ({ id }) => <ContentBoardPage openId={id} /> },
   { pattern: '/studio/:id', nav: 'content', render: ({ id }) => <StudioPage key={id} id={id} /> },
   { pattern: '/calendar', nav: 'calendar', render: () => <CalendarPage /> },
+  { pattern: '/overview', nav: 'overview', render: () => <OverviewPage /> },
+  { pattern: '/tracking', nav: 'tracking', render: () => <ContentTrackingPage /> },
+  { pattern: '/analytics', nav: 'analytics', render: () => <InsightsPage /> },
   { pattern: '/performance', nav: 'performance', render: () => <AnalyticsPage /> },
   { pattern: '/library', nav: 'library', render: () => <LibraryPage /> },
+  { pattern: '/library/templates/:id', nav: 'library', render: ({ id }) => <TemplatePage key={id} id={id} /> },
+  { pattern: '/usage', nav: 'usage', render: () => <UsagePage /> },
   { pattern: '/settings', nav: 'settings', render: () => <SettingsPage /> },
+  { pattern: '/connections', nav: 'settings', render: () => <SettingsPage initialTab="connections" /> },
 ];
 
 export function resolveRoute(path: string): { route: RouteDef; params: Record<string, string> } | null {

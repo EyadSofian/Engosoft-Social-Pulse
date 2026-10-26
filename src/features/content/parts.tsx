@@ -284,7 +284,7 @@ function TransitionForm({ pending, onDone }: { pending: PendingMove; onDone: () 
         </>
       )}
       {move?.needs === 'publish_proof' && (
-        <Field label={t('Published post link', 'رابط البوست المنشور')} required hint={t('The item counts as published only with proof.', 'يُحسب العنصر منشورًا فقط بدليل.')}>
+        <Field label={t('Published post link', 'رابط المنشور المنشور')} required hint={t('The item counts as published only with proof.', 'يُحسب العنصر منشورًا فقط بدليل.')}>
           {(id, describedBy) => <Input id={id} aria-describedby={describedBy} type="url" inputMode="url" dir="ltr" placeholder="https://" data-autofocus value={proof} onChange={(event) => setProof(event.target.value)} required />}
         </Field>
       )}

@@ -34,15 +34,15 @@ export function ContentBoardPage({ openId }: { openId?: string }) {
   const deptOf = (id: string | null) => departments.find((d) => d.id === id);
 
   return <div className="u-stack u-stack--lg board-page">
-    <PageHeader title={t('Content', 'المحتوى')} description={t('Every department’s posts, from draft to published. Marketing reviews, approves and schedules; publishing is confirmed by the platform sync.', 'بوستات كل الأقسام من المسودة لحد النشر. التسويق بيراجع ويعتمد ويجدول، والنشر بيتأكد من مزامنة المنصات.')} />
+    <PageHeader title={t('Content', 'المحتوى')} description={t('Every department’s posts, from draft to published. Marketing reviews, approves and schedules; publishing is confirmed by the platform sync.', 'منشورات جميع الأقسام من المسودة حتى النشر. يراجع التسويق ويعتمد ويجدول، ويُتحقق من النشر عبر مزامنة المنصات.')} />
     <div className="board-toolbar glass">
       <div className="board-scope" role="group" aria-label={t('Show', 'اعرض')}>
         {(['all', 'mine', 'department'] as Scope[]).map((value) => <button key={value} type="button" aria-pressed={scope === value} onClick={() => setScope(value)}>
-          {value === 'all' ? t('All I can see', 'كل اللي يخصني') : value === 'mine' ? t('Mine', 'بتاعي') : t('My department', 'قسمي')}
+          {value === 'all' ? t('All I can see', 'كل ما يخصني') : value === 'mine' ? t('Mine', 'منشوراتي') : t('My department', 'قسمي')}
         </button>)}
       </div>
-      <label className="board-search"><Search size={15} /><input value={query} onChange={(e) => setQuery(e.target.value)} placeholder={t('Search posts', 'ابحث في البوستات')} /></label>
-      <Button variant="primary" onClick={() => navigate('/')}>{t('New post', 'بوست جديد')}</Button>
+      <label className="board-search"><Search size={15} /><input value={query} onChange={(e) => setQuery(e.target.value)} placeholder={t('Search posts', 'ابحث في المنشورات')} /></label>
+      <Button variant="primary" onClick={() => navigate('/')}>{t('New post', 'منشور جديد')}</Button>
     </div>
     {error && <p role="alert" className="creative-home__error">{error}</p>}
     {!items && !error && <div className="board-loading"><Loader2 className="creative-job__spin" size={22} /></div>}
@@ -65,7 +65,7 @@ export function ContentBoardPage({ openId }: { openId?: string }) {
                   </span>
                 </motion.button>)}
               </AnimatePresence>
-              {!cards.length && <p className="board-empty">{t('Nothing here', 'مفيش حاجة هنا')}</p>}
+              {!cards.length && <p className="board-empty">{t('Nothing here', 'لا يوجد شيء هنا')}</p>}
             </div>
           </section>;
         })}
@@ -93,7 +93,7 @@ function ContentDrawer({ id, team, onClose, onChanged }: { id: string; team: Tea
   const act = async (work: () => Promise<unknown>) => {
     setBusy(true); setError('');
     try { await work(); await load(); onChanged(); setNote(''); setComment(''); }
-    catch (e) { setError(errorMessage(e, t('That did not work.', 'العملية منجحتش.'))); }
+    catch (e) { setError(errorMessage(e, t('That did not work.', 'لم تنجح العملية.'))); }
     setBusy(false);
   };
   const move = (to: ContentStatus) => act(() => api(`/api/content/${id}/transition`, { body: { to, ...(note.trim() ? { note } : {}), ...(to === 'scheduled' && when ? { scheduledAt: new Date(when).toISOString() } : {}) } }));
@@ -115,24 +115,24 @@ function ContentDrawer({ id, team, onClose, onChanged }: { id: string; team: Tea
           {image ? <img src={image} alt={item.title} /> : <span className="board-card__placeholder"><ImageIcon size={26} /></span>}
           {item.creative?.storyUrl && <img className="content-drawer__story" src={item.creative.storyUrl} alt="9:16" />}
         </div>
-        {item.editable && item.creative && !['published', 'archived', 'cancelled'].includes(item.status) && <Button variant="secondary" onClick={() => navigate(`/studio/${item.id}`)}><Paintbrush size={15} /> {t('Open in Studio', 'افتح في الستوديو')}</Button>}
+        {item.editable && item.creative && !['published', 'archived', 'cancelled'].includes(item.status) && <Button variant="secondary" onClick={() => navigate(item.creative!.svgTemplate ? `/library/templates/${item.creative!.svgTemplate.id}?content=${item.id}` : `/studio/${item.id}`)}><Paintbrush size={15} /> {item.creative.svgTemplate ? t('Edit the template', 'عدّل في القالب') : t('Open in Studio', 'افتح في الاستوديو')}</Button>}
 
-        {item.published?.length ? <section className="content-drawer__section"><h3>{t('Live results', 'النتايج على المنصات')}</h3>
+        {item.published?.length ? <section className="content-drawer__section"><h3>{t('Live results', 'النتائج على المنصات')}</h3>
           {item.published.map((p) => <a key={p.permalink} href={p.permalink} target="_blank" rel="noreferrer" className="content-live">{p.platform} · {t('views', 'مشاهدات')} {p.metrics.views ?? '—'} · {t('reach', 'وصول')} {p.metrics.reach ?? '—'} <ExternalLink size={13} /></a>)}
         </section> : null}
 
-        {item.moves.length > 0 && <section className="content-drawer__section content-drawer__actions"><h3>{t('Next step', 'الخطوة الجاية')}</h3>
-          {item.moves.some((m) => m.needsNote) && <textarea rows={2} value={note} onChange={(e) => setNote(e.target.value)} placeholder={t('Note for the owner (required to request changes or cancel)', 'ملاحظة لصاحب البوست (لازم لو هتطلب تعديل أو تلغي)')} dir="auto" />}
+        {item.moves.length > 0 && <section className="content-drawer__section content-drawer__actions"><h3>{t('Next step', 'الخطوة التالية')}</h3>
+          {item.moves.some((m) => m.needsNote) && <textarea rows={2} value={note} onChange={(e) => setNote(e.target.value)} placeholder={t('Note for the owner (required to request changes or cancel)', 'ملاحظة لصاحب المنشور (مطلوبة عند طلب التعديل أو الإلغاء)')} dir="auto" />}
           {item.moves.some((m) => m.to === 'scheduled') && <label>{t('Publish at', 'ميعاد النشر')}<input type="datetime-local" value={when} onChange={(e) => setWhen(e.target.value)} /></label>}
           <div className="content-drawer__buttons">{item.moves.map((m) => <Button key={m.to} variant={m.to === 'approved' || m.to === 'ready_for_review' || m.to === 'scheduled' ? 'primary' : 'secondary'} disabled={busy || (m.needsNote && !note.trim()) || (m.to === 'scheduled' && !when)} onClick={() => void move(m.to)}>{tx(MOVE_LABEL[m.to] ?? STATUS_LABEL[m.to])}</Button>)}</div>
         </section>}
 
-        <section className="content-drawer__section"><h3>{t('Captions', 'الكابشن')}</h3>
+        <section className="content-drawer__section"><h3>{t('Captions', 'النص المرافق')}</h3>
           {item.channels.map((channel) => <label key={channel} className="content-caption">{CHANNEL_LABEL[channel]}
             <textarea rows={channel === 'facebook' || channel === 'linkedin' ? 5 : 3} dir="auto" value={captions[channel] ?? ''} disabled={!item.editable} onChange={(e) => setCaptions((c) => ({ ...c, [channel]: e.target.value }))} />
             <button type="button" className="ui-link" onClick={() => void navigator.clipboard.writeText(captions[channel] ?? '')}>{t('Copy', 'انسخ')}</button>
           </label>)}
-          {captionsChanged && <Button variant="primary" disabled={busy} onClick={() => void act(() => api(`/api/content/${id}`, { method: 'PATCH', body: { captions } }))}>{t('Save captions', 'احفظ الكابشن')}</Button>}
+          {captionsChanged && <Button variant="primary" disabled={busy} onClick={() => void act(() => api(`/api/content/${id}`, { method: 'PATCH', body: { captions } }))}>{t('Save captions', 'احفظ النص المرافق')}</Button>}
         </section>
 
         {item.versions.length > 1 && <section className="content-drawer__section"><h3>{t('Versions', 'النسخ')}</h3>
@@ -141,10 +141,10 @@ function ContentDrawer({ id, team, onClose, onChanged }: { id: string; team: Tea
 
         <section className="content-drawer__section"><h3><MessageSquare size={15} /> {t('Activity', 'السجل')}</h3>
           <ol className="content-timeline">{item.events.map((e) => <li key={e.id} data-kind={e.kind}>
-            <b>{nameOf(e.actorId)}</b> <span>{e.kind === 'transition' && e.to ? `→ ${tx(STATUS_LABEL[e.to as ContentStatus] ?? { en: e.to, ar: e.to })}` : e.kind === 'comment' ? '' : e.kind === 'created' ? t('created', 'أنشأ') : e.kind === 'version' ? t('new version', 'نسخة جديدة') : t('edited captions', 'عدّل الكابشن')}</span>
+            <b>{nameOf(e.actorId)}</b> <span>{e.kind === 'transition' && e.to ? `→ ${tx(STATUS_LABEL[e.to as ContentStatus] ?? { en: e.to, ar: e.to })}` : e.kind === 'comment' ? '' : e.kind === 'created' ? t('created', 'أنشأ') : e.kind === 'version' ? t('new version', 'نسخة جديدة') : t('edited captions', 'عدّل النص المرافق')}</span>
             {e.body && <p dir="auto">{e.body}</p>}<time>{new Date(e.createdAt).toLocaleString()}</time>
           </li>)}</ol>
-          <div className="content-comment"><input value={comment} onChange={(e) => setComment(e.target.value)} placeholder={t('Write a comment', 'اكتب تعليق')} dir="auto" /><Button variant="secondary" disabled={busy || !comment.trim()} onClick={() => void act(() => api(`/api/content/${id}/comments`, { body: { body: comment } }))}><Send size={14} /></Button></div>
+          <div className="content-comment"><input value={comment} onChange={(e) => setComment(e.target.value)} placeholder={t('Write a comment', 'اكتب تعليقًا')} dir="auto" /><Button variant="secondary" disabled={busy || !comment.trim()} onClick={() => void act(() => api(`/api/content/${id}/comments`, { body: { body: comment } }))}><Send size={14} /></Button></div>
         </section>
       </div>}
     </motion.aside>

@@ -1,4 +1,5 @@
 import { z } from 'zod';
+import { recordUsage, type OpenAIUsage } from './usage.js';
 import { readFileSync } from 'node:fs';
 import { resolve } from 'node:path';
 import { localDirections } from '../src/features/creative-studio/design-plan.js';
@@ -28,7 +29,7 @@ const briefResult = z.object({
 /** Interpret source material as data. The model may use it for the brief, never as instructions. */
 export async function generateCreativeBrief(input: BriefRequest, env: NodeJS.ProcessEnv = process.env) {
   const key = env.OPENAI_API_KEY?.trim();
-  if (!key) throw new Error('OPENAI_API_KEY غير مضبوط على السيرفر.');
+  if (!key) throw new Error('OPENAI_API_KEY غير مضبوط على الخادم.');
   const relevant = retrieveVisualReferences(input.prompt, input.objective === 'auto' ? 'general' : input.objective, 3);
   const content: ({ type: 'input_text'; text: string } | { type: 'input_image'; image_url: string; detail: 'low' } | { type: 'input_file'; filename: string; file_data: string })[] = [
     { type: 'input_text', text: `Create an Engosoft social post brief AND exactly four genuinely different structured creative directions. User request: ${input.prompt}\nPreferred objective: ${input.objective}\nPlatforms: ${input.platforms.join(', ')}\n${input.verifiedEvent ? `Verified Odoo event selected by the user: ${JSON.stringify(input.verifiedEvent)}. This event title and start date may be used; other facts are unverified.` : 'No Odoo event confirmed. Do not invent course or event facts.'}\nUser references: ${input.references.map((r) => `${r.name} (${r.mime})`).join(', ') || 'none'}. Retrieved Engosoft visual references: ${relevant.map((r) => `${r.id} [${r.role}; ${r.reason}]: ${r.visualGrammar}`).join(' | ')}. Use only these IDs in referenceIds. References marked composition or mood must not contribute their subject matter. Make the four concepts distinct in STORY as well as layout: for a course/event consider human instructor authority, learner outcome, discipline-specific technical scene, and minimal premium type. Do not choose a Saudi/cultural family unless the request is culturally relevant. Do not invent an instructor identity or certification result. Choose a family that fits the actual request, then vary composition, image treatment, palette, and CTA meaningfully. Captions: Facebook descriptive, Instagram concise, WhatsApp direct, LinkedIn professional, TikTok and Snapchat very short. Unused captions empty. AI image is only the visual asset; all text and approved logo remain separate editable layers. Do not invent dates, prices, instructors, credentials or guarantees.` },
@@ -62,6 +63,7 @@ export async function generateCreativeBrief(input: BriefRequest, env: NodeJS.Pro
     input: [{ role: 'user', content }], text: { format: { type: 'json_schema', name: 'engosoft_creative_brief', strict: true, schema } },
   }), signal: AbortSignal.timeout(90000) });
   const result = await response.json().catch(() => ({})) as { output?: { type?: string; content?: { type?: string; text?: string }[] }[]; error?: { message?: string } };
+  recordUsage({ kind: 'text', model: env.OPENAI_TEXT_MODEL?.trim() || 'gpt-4.1-mini', usage: (result as { usage?: OpenAIUsage }).usage });
   if (!response.ok) throw new Error(result.error?.message || `AI brief failed (HTTP ${response.status}).`);
   const text = result.output?.flatMap((part) => part.content ?? []).find((part) => part.type === 'output_text')?.text;
   if (!text) throw new Error('AI لم يرجع Brief صالحًا.');

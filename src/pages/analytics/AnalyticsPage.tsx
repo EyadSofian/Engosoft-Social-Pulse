@@ -38,14 +38,14 @@ const PERIODS: Period[] = [7, 30, 90, 365];
 export function AnalyticsPage() {
   const { t } = useI18n();
   const [query, setQuery] = useQueryState();
-  usePageMeta(t('Performance', 'الأداء'), [{ label: t('Performance', 'الأداء') }]);
+  usePageMeta(t('Team performance', 'أداء الفرق'), [{ label: t('Team performance', 'أداء الفرق') }]);
   const tab = (TABS as string[]).includes(query.get('tab') ?? '') ? (query.get('tab') as Tab) : 'executive';
   const period = (PERIODS.map(String).includes(query.get('period') ?? '') ? Number(query.get('period')) : 30) as Period;
 
   return (
     <div className="u-stack">
       <PageHeader
-        title={t('Performance', 'الأداء')}
+        title={t('Team performance', 'أداء الفرق')}
         description={t('Content performance from connected platforms, and delivery from the workflow. Every number names its source; missing values show —.', 'أداء المحتوى من المنصات المربوطة، والتسليم من سير العمل. كل رقم يذكر مصدره؛ القيم الناقصة تظهر —.')}
         actions={
           <Segmented
@@ -119,8 +119,8 @@ function Executive({ period }: { period: number }) {
         <CardBody>
           <LiveGate needs="posts">
             <div className="stat-row">
-              <Stat value={num(summary.count)} label={t('Posts published', 'بوستات منشورة')} hint={delta(change(summary.count, before.count))} />
-              <Stat value={summary.reachCount ? compact(summary.reach) : '—'} label={t('Reach', 'الوصول')} hint={summary.count ? t(`reported by ${num(summary.reachCount)} of ${num(summary.count)} posts`, `متاح في ${num(summary.reachCount)} من ${num(summary.count)} بوست`) : undefined} />
+              <Stat value={num(summary.count)} label={t('Posts published', 'منشورات منشورة')} hint={delta(change(summary.count, before.count))} />
+              <Stat value={summary.reachCount ? compact(summary.reach) : '—'} label={t('Reach', 'الوصول')} hint={summary.count ? t(`reported by ${num(summary.reachCount)} of ${num(summary.count)} posts`, `متاح في ${num(summary.reachCount)} من ${num(summary.count)} منشور`) : undefined} />
               <Stat value={summary.measured ? compact(summary.interactions) : '—'} label={t('Engagement (interactions)', 'التفاعل')} hint={delta(change(summary.measured ? summary.interactions : null, before.measured ? before.interactions : null))} />
               <Stat value="—" label={t('Leads', 'العملاء المحتملون')} hint={t('No lead source connected (CRM / forms)', 'لا مصدر عملاء محتملين مربوط (CRM / نماذج)')} />
             </div>
@@ -130,19 +130,19 @@ function Executive({ period }: { period: number }) {
       </Card>
       <div className="u-grid u-grid--2">
         <Card>
-          <CardHeader title={t('Publishing consistency', 'انتظام النشر')} description={t(`${activeWeeks} of the last 12 weeks had at least one post`, `${activeWeeks} من آخر 12 أسبوعًا فيها بوست واحد على الأقل`)} />
+          <CardHeader title={t('Publishing consistency', 'انتظام النشر')} description={t(`${activeWeeks} of the last 12 weeks had at least one post`, `${activeWeeks} من آخر 12 أسبوعًا فيها منشور واحد على الأقل`)} />
           <CardBody>
             <LiveGate needs="posts">
-              <ColumnChart data={weeks} label={t('Posts per week', 'بوستات لكل أسبوع')} format={num} />
+              <ColumnChart data={weeks} label={t('Posts per week', 'منشورات لكل أسبوع')} format={num} />
               <SourceLine source={store.data.connectors.filter((connector) => connector.status === 'connected').map((connector) => sourceOf(connector.platform, store.data.connectors))} now={now} />
             </LiveGate>
           </CardBody>
         </Card>
         <Card>
-          <CardHeader title={t('Department participation', 'مشاركة الأقسام')} description={t('Posts created this month in the content pipeline, by department', 'البوستات اللي اتعملت الشهر ده في سير المحتوى حسب القسم')} />
+          <CardHeader title={t('Department participation', 'مشاركة الأقسام')} description={t('Posts created this month in the content pipeline, by department', 'المنشورات التي أُنشئت هذا الشهر في سير المحتوى حسب القسم')} />
           <CardBody>
             {items == null ? (
-              <EmptyState compact title={t('Loading the pipeline…', 'جاري تحميل سير المحتوى…')} />
+              <EmptyState compact title={t('Loading the pipeline…', 'جارٍ تحميل سير المحتوى…')} />
             ) : (
               <BarList
                 label={t('Department participation', 'مشاركة الأقسام')}
@@ -167,7 +167,7 @@ function PostTable({ posts, now, caption }: { posts: Post[]; now: number; captio
   const columns: Column<Post>[] = [
     {
       key: 'title',
-      header: t('Post', 'البوست'),
+      header: t('Post', 'المنشور'),
       cell: (post) => (
         <a href={post.permalink} target="_blank" rel="noreferrer" className="cell-title__link u-row" dir="auto">
           <ChannelIcon channel={post.platform} />
@@ -185,7 +185,7 @@ function PostTable({ posts, now, caption }: { posts: Post[]; now: number; captio
   ];
   return (
     <>
-      <DataTable caption={caption} rows={posts} columns={columns} rowKey={(post) => post.key} pageSize={10} dense empty={<EmptyState compact title={t('No posts in this period.', 'لا بوستات في هذه الفترة.')} />} />
+      <DataTable caption={caption} rows={posts} columns={columns} rowKey={(post) => post.key} pageSize={10} dense empty={<EmptyState compact title={t('No posts in this period.', 'لا منشورات في هذه الفترة.')} />} />
       <SourceLine source={[...new Set(posts.map((post) => post.platform))].map((platform) => sourceOf(platform, store.data.connectors))} now={now} />
     </>
   );
@@ -209,26 +209,26 @@ function ContentTab({ period }: { period: number }) {
     <LiveGate needs="posts">
       <div className="u-stack u-stack--lg">
         <Card>
-          <CardHeader title={t('Top posts', 'أفضل البوستات')} description={t('By interactions, measured posts only', 'حسب التفاعل، البوستات المقاسة فقط')} />
-          <PostTable posts={top} now={now} caption={t('Top posts', 'أفضل البوستات')} />
+          <CardHeader title={t('Top posts', 'أفضل المنشورات')} description={t('By interactions, measured posts only', 'حسب التفاعل، المنشورات المقاسة فقط')} />
+          <PostTable posts={top} now={now} caption={t('Top posts', 'أفضل المنشورات')} />
         </Card>
         <div className="u-grid u-grid--2">
           <Card>
-            <CardHeader title={t('Content types', 'أنواع المحتوى')} description={t('Average interactions per measured post (n = sample size)', 'متوسط التفاعل لكل بوست مقاس (n = حجم العينة)')} />
+            <CardHeader title={t('Content types', 'أنواع المحتوى')} description={t('Average interactions per measured post (n = sample size)', 'متوسط التفاعل لكل منشور مقاس (n = حجم العينة)')} />
             <CardBody>
               <BarList label={t('Content types', 'أنواع المحتوى')} data={types} />
             </CardBody>
           </Card>
           <Card>
-            <CardHeader title={t('Publishing time', 'وقت النشر')} description={t('Posts by hour of day (business time zone)', 'البوستات حسب ساعة النشر (توقيت الشركة)')} />
+            <CardHeader title={t('Publishing time', 'وقت النشر')} description={t('Posts by hour of day (business time zone)', 'المنشورات حسب ساعة النشر (توقيت الشركة)')} />
             <CardBody>
-              <ColumnChart data={hours} label={t('Posts by hour', 'البوستات حسب الساعة')} format={num} height={110} />
+              <ColumnChart data={hours} label={t('Posts by hour', 'المنشورات حسب الساعة')} format={num} height={110} />
             </CardBody>
           </Card>
         </div>
         <Card>
-          <CardHeader title={t('Weakest measured posts', 'أضعف البوستات المقاسة')} description={t('Worth reviewing: topic, format or timing', 'تستحق المراجعة: الموضوع أو الشكل أو التوقيت')} />
-          <PostTable posts={weak} now={now} caption={t('Weakest posts', 'أضعف البوستات')} />
+          <CardHeader title={t('Weakest measured posts', 'أضعف المنشورات المقاسة')} description={t('Worth reviewing: topic, format or timing', 'تستحق المراجعة: الموضوع أو الشكل أو التوقيت')} />
+          <PostTable posts={weak} now={now} caption={t('Weakest posts', 'أضعف المنشورات')} />
         </Card>
       </div>
     </LiveGate>
@@ -271,7 +271,7 @@ function Platforms({ period }: { period: number }) {
                   <>
                     <dl className="metric-grid">
                       <div>
-                        <dt>{t('Posts', 'بوستات')}</dt>
+                        <dt>{t('Posts', 'منشورات')}</dt>
                         <dd className="u-tnum">{num(row.count)}</dd>
                       </div>
                       <div>
@@ -279,7 +279,7 @@ function Platforms({ period }: { period: number }) {
                         <dd className="u-tnum">{row.measured ? compact(row.interactions) : '—'}</dd>
                       </div>
                       <div>
-                        <dt>{t('Avg / post', 'المتوسط / بوست')}</dt>
+                        <dt>{t('Avg / post', 'المتوسط / منشور')}</dt>
                         <dd className="u-tnum">{oneDecimal(row.average)}</dd>
                       </div>
                       <div>
@@ -350,7 +350,7 @@ function RollupTable({ caption, head, rows, reach }: { caption: string; head: st
         <thead>
           <tr>
             <th scope="col">{head}</th>
-            <th scope="col" className="ui-table__end">{t('Created', 'اتعمل')}</th>
+            <th scope="col" className="ui-table__end">{t('Created', 'أُنشئ')}</th>
             <th scope="col" className="ui-table__end">{t('In review', 'في المراجعة')}</th>
             <th scope="col" className="ui-table__end">{t('Changes asked', 'طلب تعديل')}</th>
             <th scope="col" className="ui-table__end">{t('Approved / scheduled', 'معتمد / مجدول')}</th>
@@ -383,17 +383,17 @@ function RollupTable({ caption, head, rows, reach }: { caption: string; head: st
 
 function PipelineSourceLine() {
   const { t } = useI18n();
-  return <p className="u-xs u-muted">{t('Source: the content pipeline on the server; reach and interactions come from platform sync once a scheduled post is matched to the live post.', 'المصدر: سير المحتوى على السيرفر؛ الوصول والتفاعل من مزامنة المنصات بعد ما البوست المجدول يتطابق مع البوست المنشور.')}</p>;
+  return <p className="u-xs u-muted">{t('Source: the content pipeline on the server; reach and interactions come from platform sync once a scheduled post is matched to the live post.', 'المصدر: سير المحتوى على الخادم؛ ويأتي الوصول والتفاعل من مزامنة المنصات بعد مطابقة المنشور المجدول بالمنشور الفعلي.')}</p>;
 }
 
 function Departments() {
   const { t, tx } = useI18n();
   const { items } = usePipeline();
-  if (items == null) return <EmptyState compact title={t('Loading the pipeline…', 'جاري تحميل سير المحتوى…')} />;
+  if (items == null) return <EmptyState compact title={t('Loading the pipeline…', 'جارٍ تحميل سير المحتوى…')} />;
   const rows = DEPARTMENTS.map((department) => ({ key: department.id, label: tx(department.name), data: rollup(items.filter((item) => item.departmentId === department.id)) })).filter((row) => row.data.created > 0 || DEPARTMENTS.find((d) => d.id === row.key)?.plansContent);
   return (
     <Card>
-      <CardHeader title={t('Departments in the pipeline', 'الأقسام في سير المحتوى')} description={t('Every post a department creates, where it stands, and how it performed after publishing.', 'كل بوست القسم عمله، وصل لفين، وأداؤه بعد النشر.')} />
+      <CardHeader title={t('Departments in the pipeline', 'الأقسام في سير المحتوى')} description={t('Every post a department creates, where it stands, and how it performed after publishing.', 'كل منشور أنشأه القسم، ومرحلته الحالية، وأداؤه بعد النشر.')} />
       <RollupTable caption={t('Department pipeline', 'سير المحتوى لكل قسم')} head={t('Department', 'القسم')} rows={rows} reach />
       <CardBody>
         <PipelineSourceLine />
@@ -405,7 +405,7 @@ function Departments() {
 function Team() {
   const { t, tx } = useI18n();
   const { items, team } = usePipeline();
-  if (items == null) return <EmptyState compact title={t('Loading the pipeline…', 'جاري تحميل سير المحتوى…')} />;
+  if (items == null) return <EmptyState compact title={t('Loading the pipeline…', 'جارٍ تحميل سير المحتوى…')} />;
   const rows = team
     .map((member) => {
       const department = member.departmentId ? departmentById(member.departmentId as never) : undefined;
@@ -415,8 +415,8 @@ function Team() {
     .sort((a, b) => b.data.created - a.data.created);
   return (
     <Card>
-      <CardHeader title={t('Team delivery', 'تسليم الفريق')} description={t('Posts each person created and moved through review. Social reach is deliberately not an employee KPI.', 'البوستات اللي كل شخص عملها ومشيها في المراجعة. وصول السوشيال مش مؤشر أداء للموظف عن قصد.')} />
-      {rows.length === 0 ? <CardBody><EmptyState compact title={t('Nobody has created content yet.', 'محدش عمل محتوى لسه.')} /></CardBody> : <RollupTable caption={t('Team delivery', 'تسليم الفريق')} head={t('Person', 'الشخص')} rows={rows} reach={false} />}
+      <CardHeader title={t('Team delivery', 'إنجاز الفريق')} description={t('Posts each person created and moved through review. Social reach is deliberately not an employee KPI.', 'المنشورات التي أنشأها كل شخص ومرّرها للمراجعة. لا يُعد وصول المنصات مؤشرًا لأداء الموظف، وذلك عن قصد.')} />
+      {rows.length === 0 ? <CardBody><EmptyState compact title={t('Nobody has created content yet.', 'لم يُنشئ أحد محتوى بعد.')} /></CardBody> : <RollupTable caption={t('Team delivery', 'إنجاز الفريق')} head={t('Person', 'الشخص')} rows={rows} reach={false} />}
       <CardBody>
         <PipelineSourceLine />
       </CardBody>
@@ -443,7 +443,7 @@ function Learning() {
   return (
     <div className="u-grid u-grid--2">
       <Card>
-        <CardHeader title={t('Best timing patterns', 'أفضل أوقات النشر')} description={t('Weekday and hour slots ranked by average interactions. A slot needs at least two measured posts.', 'أوقات مرتبة حسب متوسط التفاعل. الوقت يحتاج بوستين مقاسين على الأقل.')} />
+        <CardHeader title={t('Best timing patterns', 'أفضل أوقات النشر')} description={t('Weekday and hour slots ranked by average interactions. A slot needs at least two measured posts.', 'أوقات مرتبة حسب متوسط التفاعل. الوقت يحتاج منشورين مقاسين على الأقل.')} />
         <CardBody>
           <LiveGate needs="posts">
             {slots.length === 0 ? (
@@ -462,10 +462,10 @@ function Learning() {
         </CardBody>
       </Card>
       <Card>
-        <CardHeader title={t('AI templates in use', 'قوالب AI المستخدمة')} description={t('Posts created from each saved AI template', 'البوستات اللي اتعملت من كل قالب AI محفوظ')} />
+        <CardHeader title={t('AI templates in use', 'قوالب الذكاء الاصطناعي المستخدمة')} description={t('Posts created from each saved AI template', 'المنشورات التي أُنشئت من كل قالب ذكاء اصطناعي محفوظ')} />
         <CardBody>
           {templates.length === 0 ? (
-            <EmptyState compact title={t('No posts created from an AI template yet.', 'لسه مفيش بوستات اتعملت من قالب AI.')} />
+            <EmptyState compact title={t('No posts created from an AI template yet.', 'لا توجد منشورات من قوالب الذكاء الاصطناعي بعد.')} />
           ) : (
             <BarList label={t('Templates', 'القوالب')} data={templates.map(({ template, count }) => ({ key: template.id, label: template.name, value: count }))} format={num} />
           )}

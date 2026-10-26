@@ -38,7 +38,7 @@ export const contentStatusTone: Record<ContentStatus, Tone> = {
 export type Tone = 'neutral' | 'brand' | 'accent' | 'success' | 'warning' | 'danger' | 'info' | 'violet';
 
 export const contentTypeLabel: Record<ContentType, Text> = {
-  post: L('Post', 'بوست'),
+  post: L('Post', 'منشور'),
   carousel: L('Carousel', 'كاروسيل'),
   reel: L('Reel', 'ريل'),
   video: L('Video', 'فيديو'),

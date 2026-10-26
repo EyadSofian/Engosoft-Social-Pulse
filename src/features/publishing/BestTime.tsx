@@ -24,7 +24,7 @@ export function BestTime({ channels, now, onUse, compact }: { channels: Channel[
           {measurable.length
             ? t(
                 `Not enough measured posts on ${measurable.map((channel) => channelName[channel]).join(', ')} to recommend a time. A slot needs at least two posts with engagement data.`,
-                `لا توجد بوستات مقاسة كافية على ${measurable.map((channel) => channelName[channel]).join('، ')} لاقتراح وقت. الوقت يحتاج بوستين على الأقل ببيانات تفاعل.`,
+                `لا توجد منشورات مقاسة كافية على ${measurable.map((channel) => channelName[channel]).join('، ')} لاقتراح وقت. الوقت يحتاج منشورين على الأقل ببيانات تفاعل.`,
               )
             : t('LinkedIn has no connector yet, so there is no history to learn from.', 'LinkedIn غير مربوط بعد، فلا يوجد سجل نتعلم منه.')}
         </p>
@@ -44,7 +44,7 @@ export function BestTime({ channels, now, onUse, compact }: { channels: Channel[
         <Badge tone={rec.confidence === 'high' ? 'success' : rec.confidence === 'medium' ? 'brand' : 'warning'}>{confidence}</Badge>
       </div>
       <p className="u-sm u-muted">
-        {t(`Based on ${num(rec.samples)} previous posts in this slot`, `بناءً على ${num(rec.samples)} بوست سابق في هذا الوقت`)} ({rec.platforms.map((platform) => channelName[platform]).join(', ')})
+        {t(`Based on ${num(rec.samples)} previous posts in this slot`, `بناءً على ${num(rec.samples)} منشور سابق في هذا الوقت`)} ({rec.platforms.map((platform) => channelName[platform]).join(', ')})
         {rec.lift != null && (
           <>
             {' · '}
@@ -53,7 +53,7 @@ export function BestTime({ channels, now, onUse, compact }: { channels: Channel[
               {rec.lift >= 0 ? '+' : '−'}
               {pct(Math.abs(rec.lift))}
             </b>{' '}
-            {t(`vs. all ${num(rec.basis)} measured posts`, `مقارنة بكل ${num(rec.basis)} بوست مقاس`)}
+            {t(`vs. all ${num(rec.basis)} measured posts`, `مقارنة بكل ${num(rec.basis)} منشور مقاس`)}
           </>
         )}
       </p>

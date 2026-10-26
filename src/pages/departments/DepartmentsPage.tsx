@@ -48,7 +48,7 @@ export function DepartmentsPage() {
                   visible && plan ? (
                     <span className="dept-card__plan">
                       <span className="u-row u-row--between">
-                        <span className="u-sm u-tnum">{t(`${ratio(plan.published, plan.target)} posts`, `${ratio(plan.published, plan.target)} بوست`)}</span>
+                        <span className="u-sm u-tnum">{t(`${ratio(plan.published, plan.target)} posts`, `${ratio(plan.published, plan.target)} منشور`)}</span>
                         <b className="u-tnum">{pct(plan.completion)}</b>
                       </span>
                       <ProgressBar value={plan.completion} tone={progressTone(plan.completion)} label={tx(department.name)} />

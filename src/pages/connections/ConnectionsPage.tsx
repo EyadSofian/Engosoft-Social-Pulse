@@ -19,7 +19,7 @@ import { PageHeader } from '../../shell/Header';
 import { usePageMeta } from '../../shell/ShellContext';
 
 const GUIDE: Record<Platform, { reads: [string, string]; env: string[] }> = {
-  facebook: { reads: ['Page posts with text, links and dates; likes, comments, shares and reach when the token allows.', 'بوستات الصفحات ونصها وروابطها وتواريخها؛ والإعجابات والتعليقات والمشاركات والوصول حسب صلاحية التوكن.'], env: ['META_ACCESS_TOKEN', 'META_PAGE_IDS', 'META_API_VERSION'] },
+  facebook: { reads: ['Page posts with text, links and dates; likes, comments, shares and reach when the token allows.', 'منشورات الصفحات ونصها وروابطها وتواريخها؛ والإعجابات والتعليقات والمشاركات والوصول حسب صلاحية التوكن.'], env: ['META_ACCESS_TOKEN', 'META_PAGE_IDS', 'META_API_VERSION'] },
   instagram: { reads: ['Professional account media with likes, comments, reach, saves and views.', 'منشورات الحساب الاحترافي مع الإعجابات والتعليقات والوصول والحفظ والمشاهدات.'], env: ['META_ACCESS_TOKEN'] },
   tiktok: { reads: ['Account videos with views, likes, comments and shares (Display API, OAuth).', 'فيديوهات الحساب مع المشاهدات والإعجابات والتعليقات والمشاركات (Display API عبر OAuth).'], env: ['TIKTOK_CLIENT_KEY', 'TIKTOK_CLIENT_SECRET', 'TIKTOK_REDIRECT_URI', 'TOKEN_ENCRYPTION_KEY'] },
   snapchat: { reads: ['Public Profile stories and Spotlight with views, reach, favourites and shares.', 'القصص والـSpotlight للملف العام مع المشاهدات والوصول والمفضلة والمشاركات.'], env: ['SNAP_PROFILE_ID', 'SNAP_PROFILE_ACCESS_TOKEN', 'SNAP_PROFILE_REFRESH_TOKEN', 'SNAP_CLIENT_ID', 'SNAP_CLIENT_SECRET'] },
@@ -68,7 +68,7 @@ export function ConnectionsPage() {
     <div className="u-stack u-stack--lg">
       <PageHeader
         title={t('Connections', 'الربط والمنصات')}
-        description={t('Where performance data comes from. Tokens stay on the server and are never shown here.', 'من أين تأتي بيانات الأداء. التوكنات تبقى على السيرفر ولا تظهر هنا أبدًا.')}
+        description={t('Where performance data comes from. Tokens stay on the server and are never shown here.', 'من أين تأتي بيانات الأداء. التوكنات تبقى على الخادم ولا تظهر هنا أبدًا.')}
         actions={
           manage ? (
             <Button variant="primary" icon={<RefreshCw size={15} />} busy={store.syncing} disabled={store.phase !== 'ready'} onClick={() => void runSync()}>
@@ -89,9 +89,9 @@ export function ConnectionsPage() {
               <ConnectorCard key={connector.platform} connector={connector} manage={manage} />
             ))}
             <FutureCard />
-            <Card className="connector"><CardHeader title="Odoo" description={t('Courses and events schedule', 'مواعيد الكورسات والإيفنتات')} actions={<Badge tone={odoo.status === 'connected' ? 'success' : odoo.status === 'error' ? 'danger' : 'neutral'}>{odoo.status === 'connected' ? t('Connected', 'متصل') : odoo.status === 'loading' ? t('Checking', 'جارٍ الفحص') : t('Needs setup', 'يحتاج إعداد')}</Badge>} /><CardBody><p className="u-sm">{odoo.status === 'connected' ? t(`${odoo.events.length} upcoming dates are available in the Calendar and Post Designer.`, `${odoo.events.length} موعد قادم متاح في التقويم ومصمم البوستات.`) : odoo.message}</p><p className="u-xs u-muted" dir="ltr">ODOO_URL · ODOO_API_KEY · ODOO_DATABASE</p></CardBody></Card>
+            <Card className="connector"><CardHeader title="Odoo" description={t('Courses and events schedule', 'مواعيد الدورات والإيفنتات')} actions={<Badge tone={odoo.status === 'connected' ? 'success' : odoo.status === 'error' ? 'danger' : 'neutral'}>{odoo.status === 'connected' ? t('Connected', 'متصل') : odoo.status === 'loading' ? t('Checking', 'جارٍ الفحص') : t('Needs setup', 'يحتاج إعداد')}</Badge>} /><CardBody><p className="u-sm">{odoo.status === 'connected' ? t(`${odoo.events.length} upcoming dates are available in the Calendar and Post Designer.`, `${odoo.events.length} موعد قادم متاح في التقويم ومصمم المنشورات.`) : odoo.message}</p><p className="u-xs u-muted" dir="ltr">ODOO_URL · ODOO_API_KEY · ODOO_DATABASE</p></CardBody></Card>
           </div>
-          <p className="u-xs u-muted">{t('Automatic sync runs on the server every 30 minutes. Values a platform does not return are shown as —, never as zero.', 'المزامنة التلقائية تعمل على السيرفر كل 30 دقيقة. القيم التي لا ترجعها المنصة تظهر —، وليس صفرًا.')}</p>
+          <p className="u-xs u-muted">{t('Automatic sync runs on the server every 30 minutes. Values a platform does not return are shown as —, never as zero.', 'المزامنة التلقائية تعمل على الخادم كل 30 دقيقة. القيم التي لا ترجعها المنصة تظهر —، وليس صفرًا.')}</p>
         </>
       )}
     </div>
@@ -140,7 +140,7 @@ function ConnectorCard({ connector, manage }: { connector: Connector; manage: bo
               ...(website
                 ? [{ label: t('Days stored', 'أيام محفوظة'), value: num(store.data.website.length) }]
                 : [
-                    { label: t('Posts stored', 'بوستات محفوظة'), value: num(posts.length) },
+                    { label: t('Posts stored', 'منشورات محفوظة'), value: num(posts.length) },
                     { label: t('Accounts', 'الحسابات'), value: accounts.length ? accounts.map((account) => account.name).join(' · ') : '—' },
                   ]),
             ]}
@@ -170,7 +170,7 @@ function ConnectorCard({ connector, manage }: { connector: Connector; manage: bo
           <details className="connector__guide">
             <summary>{t('What it reads and how it is set up', 'ماذا يقرأ وكيف يُعد')}</summary>
             <p className="u-sm">{t(...guide.reads)}</p>
-            <p className="u-xs u-muted">{t('Server environment variables (values are never shown):', 'متغيرات بيئة السيرفر (القيم لا تُعرض أبدًا):')}</p>
+            <p className="u-xs u-muted">{t('Server environment variables (values are never shown):', 'متغيرات بيئة الخادم (القيم لا تُعرض أبدًا):')}</p>
             <ul className="env-list">
               {guide.env.map((name) => (
                 <li key={name}>
@@ -204,7 +204,7 @@ function FutureCard() {
         actions={<Badge>{t('Not available yet', 'غير متاح بعد')}</Badge>}
       />
       <CardBody>
-        <p className="u-sm u-muted">{t('LinkedIn content can be planned and approved today, but there is no connector, so its posts are not measured. X and YouTube are also planned.', 'يمكن تخطيط محتوى LinkedIn واعتماده اليوم، لكن لا يوجد موصل، فلا تُقاس بوستاته. X وYouTube مخطط لهما أيضًا.')}</p>
+        <p className="u-sm u-muted">{t('LinkedIn content can be planned and approved today, but there is no connector, so its posts are not measured. X and YouTube are also planned.', 'يمكن تخطيط محتوى LinkedIn واعتماده اليوم، لكن لا يوجد موصل، فلا تُقاس منشوراته. X وYouTube مخطط لهما أيضًا.')}</p>
       </CardBody>
     </Card>
   );

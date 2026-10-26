@@ -19,7 +19,12 @@ export interface AppContextValue {
   setFilters: (patch: Partial<Filters>) => void;
   openPlan: (target: PlanTarget) => void;
   openPost: (post: Post) => void;
+  /** Moves between the original dashboard's views, now pages of the new shell. */
+  go: (view: LegacyView) => void;
 }
+
+export type LegacyView = 'overview' | 'calendar' | 'content' | 'insights' | 'connections';
+export const LEGACY_PATHS: Record<LegacyView, string> = { overview: '/overview', calendar: '/calendar', content: '/tracking', insights: '/analytics', connections: '/settings' };
 
 export const AppContext = createContext<AppContextValue | null>(null);
 

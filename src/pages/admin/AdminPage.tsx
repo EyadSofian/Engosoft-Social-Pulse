@@ -38,7 +38,7 @@ export function AdminPage() {
       <div className="ui-notice ui-notice--partial" role="status">
         <div className="ui-notice__text">
           <b>{t('Sign-in is not enabled yet', 'تسجيل الدخول غير مفعّل بعد')}</b>
-          <span>{t('Roles shape what each person sees in the app today. Server-side enforcement arrives with authentication — until then anyone with the link can reach the API.', 'الأدوار تحدد ما يراه كل شخص في التطبيق اليوم. التطبيق على السيرفر يأتي مع تسجيل الدخول — وحتى ذلك الحين يستطيع أي شخص لديه الرابط الوصول إلى الـAPI.')}</span>
+          <span>{t('Roles shape what each person sees in the app today. Server-side enforcement arrives with authentication — until then anyone with the link can reach the API.', 'الأدوار تحدد ما يراه كل شخص في التطبيق اليوم. التطبيق على الخادم يأتي مع تسجيل الدخول — وحتى ذلك الحين يستطيع أي شخص لديه الرابط الوصول إلى الـAPI.')}</span>
         </div>
       </div>
       <Tabs
@@ -280,12 +280,12 @@ function System() {
           <DefinitionList
             items={[
               { label: t('Time zone', 'المنطقة الزمنية'), value: <span dir="ltr">{businessZone()}</span> },
-              { label: t('Reminder before a post', 'التذكير قبل البوست'), value: t('1 hour (server)', 'ساعة (السيرفر)') },
+              { label: t('Reminder before a post', 'التذكير قبل المنشور'), value: t('1 hour (server)', 'ساعة (الخادم)') },
               { label: t('“Not confirmed” after', '«غير مؤكد» بعد'), value: <span dir="ltr">ALERT_GRACE_MINUTES</span> },
               { label: t('Automatic sync', 'المزامنة التلقائية'), value: t('Every 30 minutes', 'كل 30 دقيقة') },
             ]}
           />
-          <p className="u-xs u-muted">{t('These are server settings (environment variables); they are listed, not edited, here.', 'هذه إعدادات سيرفر (متغيرات بيئة)؛ تُعرض هنا ولا تُعدّل.')}</p>
+          <p className="u-xs u-muted">{t('These are server settings (environment variables); they are listed, not edited, here.', 'هذه إعدادات خادم (متغيرات بيئة)؛ تُعرض هنا ولا تُعدّل.')}</p>
         </CardBody>
       </Card>
       <Card>

@@ -10,7 +10,7 @@ export interface ResolvedEvent {
 }
 const verified = <T>(value: T): VerifiedValue<T> => ({ value, source: 'odoo', verified: true, updatedAt: new Date().toISOString() });
 const normalize = (value: string) => value.toLowerCase().replace(/[^\p{L}\p{N}]+/gu, ' ').trim();
-const generic = new Set(['course','training','webinar','event','post','design','engosoft','دورة','كورس','تدريب','ويبينار','فعالية','بوست','تصميم','من','في','عن','على']);
+const generic = new Set(['course','training','webinar','event','post','design','engosoft','دورة','دورة','تدريب','ويبينار','فعالية','منشور','تصميم','من','في','عن','على']);
 export function scoreEventMatch(prompt: string, event: Pick<ScheduleEntry, 'title'>): number {
   const title = normalize(event.title).split(' ');
   return [...new Set(normalize(prompt).split(' ').filter((word) => word.length >= 3 && !generic.has(word)))].reduce((score, word) => score + (title.some((part) => part === word || (word.length >= 5 && part.startsWith(word))) ? (/[a-z0-9]/.test(word) ? 3 : 1) : 0), 0);

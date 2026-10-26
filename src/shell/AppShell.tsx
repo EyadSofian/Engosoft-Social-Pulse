@@ -1,6 +1,6 @@
 import { useEffect } from 'react';
 import { AnimatePresence, motion } from 'motion/react';
-import { CalendarDays, ChartColumn, House, Layers, Library, Lock, MapPinOff, WandSparkles } from 'lucide-react';
+import { CalendarDays, House, Layers, Library, Lock, MapPinOff, Newspaper, WandSparkles } from 'lucide-react';
 import { Link, useRouter } from '../app/router/router';
 import { resolveRoute } from '../app/routes';
 import { EmptyState } from '../components/feedback/States';
@@ -13,6 +13,7 @@ import { CommandPalette } from './CommandPalette';
 import { Header } from './Header';
 import { activeNav, navItem, type NavId } from './nav';
 import { NotificationCenter } from './NotificationCenter';
+import { NotificationPopups } from './serverNotifications';
 import { useShell, usePageMeta } from './ShellContext';
 import { Sidebar } from './Sidebar';
 
@@ -67,6 +68,7 @@ export function AppShell() {
       <BottomNav />
       <CommandPalette />
       <NotificationCenter />
+      <NotificationPopups />
     </div>
   );
 }
@@ -101,7 +103,7 @@ const BOTTOM: { id: NavId; icon: typeof House }[] = [
   { id: 'home', icon: WandSparkles },
   { id: 'content', icon: Layers },
   { id: 'calendar', icon: CalendarDays },
-  { id: 'performance', icon: ChartColumn },
+  { id: 'tracking', icon: Newspaper },
   { id: 'library', icon: Library },
 ];
 

@@ -45,7 +45,7 @@ export const connectorLabel: Record<ConnectorStatus, string> = {
 };
 
 export const contentTypes: { value: string; label: string }[] = [
-  { value: 'post', label: 'بوست' },
+  { value: 'post', label: 'منشور' },
   { value: 'reel', label: 'ريل' },
   { value: 'video', label: 'فيديو' },
   { value: 'story', label: 'ستوري' },
@@ -63,7 +63,7 @@ export interface ConnectorGuide {
 
 export const connectorGuide: Record<Platform, ConnectorGuide> = {
   facebook: {
-    reads: 'بوستات الصفحات ونصها وروابطها وتاريخها، والإعجابات والتعليقات والمشاركات عند توفر الصلاحية.',
+    reads: 'منشورات الصفحات ونصها وروابطها وتاريخها، والإعجابات والتعليقات والمشاركات عند توفر الصلاحية.',
     steps: [
       'توكن Meta يملك صلاحية قراءة الصفحات (pages_read_engagement).',
       'صلاحية read_insights لعرض الوصول والـinsights.',

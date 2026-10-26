@@ -1,3 +1,4 @@
+import { recordUsage, type OpenAIUsage } from '../../usage.js';
 /** Image model adapter. Business logic talks to CreativeImageProvider; only this file knows OpenAI request syntax. */
 
 export type ImageQuality = 'low' | 'medium' | 'high' | 'auto';
@@ -34,7 +35,7 @@ async function fetchWithRetry(url: string, init: () => RequestInit, attempts = 2
   }
 }
 
-interface OpenAIImageResponse { data?: { b64_json?: string }[]; error?: { message?: string } }
+interface OpenAIImageResponse { data?: { b64_json?: string }[]; error?: { message?: string }; usage?: OpenAIUsage }
 
 export class OpenAIImageProvider implements CreativeImageProvider {
   readonly name = 'openai';
@@ -50,7 +51,7 @@ export class OpenAIImageProvider implements CreativeImageProvider {
       body: JSON.stringify({ model: this.model, prompt: request.prompt, size: request.size, quality: request.quality, output_format: 'png', n: request.n ?? 1 }),
       signal: AbortSignal.timeout(this.timeoutMs),
     }));
-    return this.read(response, request, started);
+    return this.read(response, request, started, 'image');
   }
 
   async edit(request: ImageEditRequest): Promise<GeneratedImage[]> {
@@ -67,13 +68,14 @@ export class OpenAIImageProvider implements CreativeImageProvider {
     const response = await fetchWithRetry('https://api.openai.com/v1/images/edits', () => ({
       method: 'POST', headers: { Authorization: `Bearer ${this.apiKey}` }, body: form, signal: AbortSignal.timeout(this.timeoutMs),
     }));
-    return this.read(response, request, started);
+    return this.read(response, request, started, 'image_edit');
   }
 
-  private async read(response: Response, request: ImageGenerateRequest, started: number): Promise<GeneratedImage[]> {
+  private async read(response: Response, request: ImageGenerateRequest, started: number, kind: 'image' | 'image_edit'): Promise<GeneratedImage[]> {
     const body = await response.json().catch(() => ({})) as OpenAIImageResponse;
     if (!response.ok) throw new ImageProviderError(body.error?.message || `Image generation failed (HTTP ${response.status})`, response.status);
     const images = (body.data ?? []).filter((item) => item.b64_json).map((item) => Buffer.from(item.b64_json!, 'base64'));
+    recordUsage({ kind, model: this.model, usage: body.usage, images: images.length, size: request.size, quality: request.quality });
     if (!images.length) throw new ImageProviderError('Image model returned no image');
     const latencyMs = Date.now() - started;
     return images.map((png) => ({ png, model: this.model, size: request.size, quality: request.quality, latencyMs }));
@@ -97,7 +99,8 @@ export async function openAIJson<T>(input: {
     }),
     signal: AbortSignal.timeout(180_000),
   }));
-  const body = await response.json().catch(() => ({})) as { output?: { content?: { type?: string; text?: string }[] }[]; error?: { message?: string } };
+  const body = await response.json().catch(() => ({})) as { output?: { content?: { type?: string; text?: string }[] }[]; error?: { message?: string }; usage?: OpenAIUsage };
+  if (response.ok) recordUsage({ kind: 'text', model: input.model, usage: body.usage });
   if (!response.ok) throw new ImageProviderError(body.error?.message || `${input.model} request failed (HTTP ${response.status})`, response.status);
   const text = body.output?.flatMap((part) => part.content ?? []).find((part) => part.type === 'output_text')?.text;
   if (!text) throw new ImageProviderError(`${input.model} returned no structured output`);

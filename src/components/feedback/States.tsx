@@ -35,7 +35,7 @@ export function DataNotice({ status, message, onRetry, setupHref }: { status: Ex
   const { t } = useI18n();
   const icon = status === 'error' ? <CircleAlert size={16} /> : status === 'needs_setup' ? <PlugZap size={16} /> : <Clock3 size={16} />;
   const title = {
-    error: t('This source returned an error', 'المصدر رجّع خطأ'),
+    error: t('This source returned an error', 'أعاد المصدر خطأً'),
     needs_setup: t('This source is not connected yet', 'المصدر غير مربوط بعد'),
     stale: t('Showing the last data we received', 'نعرض آخر بيانات وصلتنا'),
     partial: t('Some values are not provided by the source', 'بعض القيم لا يوفرها المصدر'),

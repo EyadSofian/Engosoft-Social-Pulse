@@ -83,7 +83,7 @@ export function TimeGrid({ cells, todayKey, now, selected, plansByDay, postsByDa
               <span className="tgrid__weekday">{WEEKDAY_NAMES[cell.date.weekday]}</span>
               <b className="tgrid__date">{cell.date.day}</b>
               <span className="tgrid__meta">
-                {count > 0 ? `${count} بوست` : 'لا شيء'}
+                {count > 0 ? `${count} منشور` : 'لا شيء'}
                 {dayOccasions.length > 0 && <OccasionTag occasion={dayOccasions[0]} compact={cells.length > 1} />}
               </span>
             </button>
@@ -139,7 +139,7 @@ export function TimeGrid({ cells, todayKey, now, selected, plansByDay, postsByDa
                 }}
               >
                 {best && (
-                  <div className="tgrid__best" style={{ top: best.hour * HOUR_PX }} title={`أفضل وقت${best.weekday ? ` يوم ${WEEKDAY_NAMES[best.weekday]}` : ''}: متوسط ${compact(Math.round(best.average))} تفاعل من ${best.posts} بوست`}>
+                  <div className="tgrid__best" style={{ top: best.hour * HOUR_PX }} title={`أفضل وقت${best.weekday ? ` يوم ${WEEKDAY_NAMES[best.weekday]}` : ''}: متوسط ${compact(Math.round(best.average))} تفاعل من ${best.posts} منشور`}>
                     <Flame size={11} /> أفضل وقت
                   </div>
                 )}
@@ -231,7 +231,7 @@ export function TimeGrid({ cells, todayKey, now, selected, plansByDay, postsByDa
         </div>
       </div>
       <p className="tgrid__hint">
-        اضغط على أي خانة لإضافة بوست في هذا الوقت · اسحب البوست لتغيير يومه أو ساعته · {fmtDay(cells[0].date.toMillis())}
+        اضغط على أي خانة لإضافة منشور في هذا الوقت · اسحب المنشور لتغيير يومه أو ساعته · {fmtDay(cells[0].date.toMillis())}
         {cells.length > 1 && ` – ${fmtDay(cells[cells.length - 1].date.toMillis())}`}
       </p>
     </div>

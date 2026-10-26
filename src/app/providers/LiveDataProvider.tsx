@@ -30,7 +30,7 @@ export function LiveDataProvider({ children }: { children: ReactNode }) {
   const onNewAlert = useCallback(
     (alert: Alert) => {
       const message = readable(alert.message);
-      toast.alert(alert.kind === 'missed' ? t('Publishing not confirmed', 'نشر غير مؤكد') : t('Post due soon', 'بوست قريب'), message);
+      toast.alert(alert.kind === 'missed' ? t('Publishing not confirmed', 'نشر غير مؤكد') : t('Post due soon', 'منشور قريب'), message);
       if ('Notification' in window && Notification.permission === 'granted') {
         try {
           new Notification('Social Pulse', { body: message, tag: alert.id, lang: 'ar', dir: 'rtl' });

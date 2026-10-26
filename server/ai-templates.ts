@@ -41,7 +41,7 @@ export function registerAiTemplateRoutes(app: express.Express) {
   app.delete('/api/ai-templates/:id', requireUser, (req, res) => {
     const template = getTemplate(String(req.params.id));
     if (!template) return res.status(404).json({ error: 'القالب غير موجود.' });
-    if (template.createdBy !== req.user!.id && !userCan(req.user!, 'templates.manage')) return res.status(403).json({ error: 'مش من حقك تمسح القالب ده.' });
+    if (template.createdBy !== req.user!.id && !userCan(req.user!, 'templates.manage')) return res.status(403).json({ error: 'لا تملك صلاحية حذف هذا القالب.' });
     db.prepare('DELETE FROM ai_templates WHERE id=?').run(template.id);
     res.json({ deleted: true });
   });

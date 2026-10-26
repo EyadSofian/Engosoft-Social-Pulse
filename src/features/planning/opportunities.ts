@@ -53,7 +53,7 @@ export function upcomingOpportunities(state: WorkspaceState, nowMs: number, hori
       date: occasion.day,
       kind: KIND[occasion.kind],
       departments: DEPARTMENTS[occasion.kind],
-      suggestion: occasion.kind === 'global' ? { en: 'Educational carousel tied to the day', ar: 'كاروسيل تعليمي مرتبط باليوم' } : { en: 'Greeting post', ar: 'بوست تهنئة' },
+      suggestion: occasion.kind === 'global' ? { en: 'Educational carousel tied to the day', ar: 'كاروسيل تعليمي مرتبط باليوم' } : { en: 'Greeting post', ar: 'منشور تهنئة' },
       suggestedType: occasion.kind === 'global' ? 'carousel' : 'post',
       source: 'catalog',
       approximate: Boolean(occasion.approximate),

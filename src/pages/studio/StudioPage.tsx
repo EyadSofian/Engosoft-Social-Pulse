@@ -25,7 +25,7 @@ async function waitForJob(jobId: string): Promise<StudioDoc> {
 export function StudioPage({ id }: { id: string }) {
   const { t } = useI18n();
   const { navigate } = useRouter();
-  usePageMeta(t('Studio', 'الستوديو'), [{ label: t('Content', 'المحتوى'), to: '/content' }, { label: t('Studio', 'الستوديو') }]);
+  usePageMeta(t('Studio', 'الاستوديو'), [{ label: t('Content', 'المحتوى'), to: '/content' }, { label: t('Studio', 'الاستوديو') }]);
   const [doc, setDoc] = useState<StudioDoc | null>(null);
   const [history, setHistory] = useState<StudioDoc[]>([]);
   const [imageUrl, setImageUrl] = useState('');
@@ -75,7 +75,7 @@ export function StudioPage({ id }: { id: string }) {
   const save = async () => {
     if (!doc) return;
     setSaving(true); setError('');
-    try { await api(`/api/studio/${id}/render`, { body: { doc, note: t('Studio edit', 'تعديل من الستوديو') } }); navigate(`/content/${id}`); }
+    try { await api(`/api/studio/${id}/render`, { body: { doc, note: t('Studio edit', 'تعديل من الاستوديو') } }); navigate(`/content/${id}`); }
     catch (e) { setError(errorMessage(e, '')); }
     setSaving(false);
   };
@@ -121,10 +121,10 @@ export function StudioPage({ id }: { id: string }) {
 
   return <div className="studio">
     <header className="studio__bar glass">
-      <button type="button" className="ui-link" onClick={() => navigate(`/content/${id}`)}><ArrowRight size={15} className="studio__back" /> {t('Back to the post', 'رجوع للبوست')}</button>
+      <button type="button" className="ui-link" onClick={() => navigate(`/content/${id}`)}><ArrowRight size={15} className="studio__back" /> {t('Back to the post', 'رجوع للمنشور')}</button>
       {phase === 'editing' && <div className="studio__tools" role="toolbar">
         <button type="button" aria-pressed={tool === 'select'} onClick={() => { setTool('select'); setRegion(null); }}><MousePointer2 size={15} /> {t('Select', 'تحديد')}</button>
-        <button type="button" aria-pressed={tool === 'ai'} onClick={() => { setTool('ai'); setSelected(null); }}><Wand2 size={15} /> {t('AI edit area', 'تعديل منطقة بالـAI')}</button>
+        <button type="button" aria-pressed={tool === 'ai'} onClick={() => { setTool('ai'); setSelected(null); }}><Wand2 size={15} /> {t('AI edit area', 'تعديل منطقة بالذكاء الاصطناعي')}</button>
         <button type="button" onClick={addLayer}><Plus size={15} /> {t('Text', 'نص')}</button>
         <button type="button" disabled={!history.length} onClick={undo}><Undo2 size={15} /> {t('Undo', 'تراجع')}</button>
       </div>}
@@ -136,9 +136,9 @@ export function StudioPage({ id }: { id: string }) {
       <div className={`studio__preview${phase === 'decomposing' ? ' is-scanning' : ''}`}>{imageUrl && <img src={imageUrl} alt="" />}<span className="studio__scan" aria-hidden /></div>
       <div className="studio__intro-text glass">
         <Type size={22} />
-        <h2>{phase === 'decomposing' ? t('Separating the text from the design…', 'بنفصل النص عن التصميم…') : t('Make this design editable', 'خلّي التصميم قابل للتعديل')}</h2>
-        <p>{t('The AI removes the text from the image and rebuilds the background behind it. Every text then becomes a layer you can retype, move, resize or recolor, always rendered in the Engosoft brand fonts. The logo is placed again automatically when you save.', 'الـAI بيشيل النص من الصورة ويكمّل الخلفية اللي وراه. بعدها كل نص بيبقى طبقة تقدر تكتبها من جديد أو تحركها أو تكبرها أو تغير لونها، وبتطلع دايمًا بخط هوية إنجوسوفت. اللوجو بيتركب تاني لوحده لما تحفظ.')}</p>
-        <Button variant="primary" disabled={phase !== 'intro'} onClick={() => void makeEditable()}>{phase === 'decomposing' ? <><Loader2 className="creative-job__spin" size={16} /> {t('About a minute', 'حوالي دقيقة')}</> : <><Sparkles size={16} /> {t('Make editable', 'ابدأ التعديل')}</>}</Button>
+        <h2>{phase === 'decomposing' ? t('Separating the text from the design…', 'جارٍ فصل النص عن التصميم…') : t('Make this design editable', 'اجعل التصميم قابلًا للتعديل')}</h2>
+        <p>{t('The AI removes the text from the image and rebuilds the background behind it. Every text then becomes a layer you can retype, move, resize or recolor, always rendered in the Engosoft brand fonts. The logo is placed again automatically when you save.', 'يزيل الذكاء الاصطناعي النص من الصورة ويُكمل الخلفية خلفه، ثم يصبح كل نص طبقة مستقلة يمكنك إعادة كتابتها أو تحريكها أو تكبيرها أو تغيير لونها، ويُعرض دائمًا بخط هوية إنجوسوفت. ويُعاد وضع الشعار تلقائيًا عند الحفظ.')}</p>
+        <Button variant="primary" disabled={phase !== 'intro'} onClick={() => void makeEditable()}>{phase === 'decomposing' ? <><Loader2 className="creative-job__spin" size={16} /> {t('About a minute', 'نحو دقيقة')}</> : <><Sparkles size={16} /> {t('Make editable', 'ابدأ التعديل')}</>}</Button>
       </div>
     </div>}
 
@@ -148,18 +148,18 @@ export function StudioPage({ id }: { id: string }) {
           <AnimatePresence mode="popLayout"><motion.img key={doc.baseFile} src={`/api/studio/${doc.baseFile}`} alt="" draggable={false} initial={{ opacity: 0, filter: 'blur(12px)' }} animate={{ opacity: 1, filter: 'blur(0px)' }} exit={{ opacity: 0 }} transition={{ duration: 0.6 }} /></AnimatePresence>
           {doc.layers.map((l) => <div key={l.id} className="studio__layer" data-selected={l.id === selected || undefined} onPointerDown={(e) => onLayerDown(e, l)}
             style={{ left: l.x * scale, top: l.y * scale, width: l.width * scale, fontSize: l.size * scale, color: l.color, fontWeight: l.weight, lineHeight: l.lineHeight, direction: ARABIC.test(l.text) ? 'rtl' : 'ltr', textAlign: l.align === 'center' ? 'center' : l.align, fontFamily: ARABIC.test(l.text) ? 'Almarai, sans-serif' : "'Plus Jakarta Sans', sans-serif" }}>{l.text}</div>)}
-          <div className="studio__logo-slot" aria-hidden title={t('The official logo is placed here on save', 'اللوجو الرسمي بيتركب لما تحفظ')} style={doc.logo ? { left: doc.logo.x * scale, top: doc.logo.y * scale, width: doc.logo.width * scale } : undefined} />
+          <div className="studio__logo-slot" aria-hidden title={t('The official logo is placed here on save', 'يُضاف الشعار الرسمي عند الحفظ')} style={doc.logo ? { left: doc.logo.x * scale, top: doc.logo.y * scale, width: doc.logo.width * scale } : undefined} />
           {region && <div className={`studio__region${aiBusy ? ' is-working' : ''}`} style={{ left: region.x * scale, top: region.y * scale, width: region.width * scale, height: region.height * scale }} />}
         </div>
       </div>
 
       <aside className="studio__panel glass">
         {tool === 'ai' ? <div className="studio__ai">
-          <h3><Wand2 size={16} /> {t('Edit an area with AI', 'عدّل منطقة بالـAI')}</h3>
-          <p className="u-sm u-muted">{t('Draw a box over what to change, then describe it. Only that area changes; text layers stay on top.', 'ارسم مربع حوالين اللي عايز تغيره واكتب التعديل. المنطقة دي بس هي اللي بتتغير، والنصوص بتفضل فوقها.')}</p>
-          <textarea rows={3} dir="auto" value={instruction} onChange={(e) => setInstruction(e.target.value)} placeholder={t('e.g. replace the tablet with a laptop', 'مثلًا: بدّل التابلت بلابتوب')} />
-          <Button variant="primary" disabled={!region || !instruction.trim() || aiBusy} onClick={() => void runAiEdit()}>{aiBusy ? <><Loader2 className="creative-job__spin" size={15} /> {t('Editing…', 'بنعدّل…')}</> : t('Apply', 'نفّذ')}</Button>
-          {!region && <small className="u-muted">{t('Draw a box on the image first.', 'ارسم مربع على الصورة الأول.')}</small>}
+          <h3><Wand2 size={16} /> {t('Edit an area with AI', 'عدّل منطقة بالذكاء الاصطناعي')}</h3>
+          <p className="u-sm u-muted">{t('Draw a box over what to change, then describe it. Only that area changes; text layers stay on top.', 'ارسم مربعًا حول ما تريد تغييره واكتب التعديل. تتغير هذه المنطقة وحدها وتبقى النصوص فوقها.')}</p>
+          <textarea rows={3} dir="auto" value={instruction} onChange={(e) => setInstruction(e.target.value)} placeholder={t('e.g. replace the tablet with a laptop', 'مثلًا: استبدل الجهاز اللوحي بحاسوب محمول')} />
+          <Button variant="primary" disabled={!region || !instruction.trim() || aiBusy} onClick={() => void runAiEdit()}>{aiBusy ? <><Loader2 className="creative-job__spin" size={15} /> {t('Editing…', 'جارٍ التعديل…')}</> : t('Apply', 'نفّذ')}</Button>
+          {!region && <small className="u-muted">{t('Draw a box on the image first.', 'ارسم مربعًا على الصورة أولًا.')}</small>}
         </div> : layer ? <div className="studio__inspector">
           <h3><Type size={16} /> {t('Text layer', 'طبقة نص')}</h3>
           <textarea rows={3} dir="auto" value={layer.text} onChange={(e) => patchLayer(layer.id, { text: e.target.value })} />
@@ -167,15 +167,15 @@ export function StudioPage({ id }: { id: string }) {
           <label>{t('Width', 'العرض')} <input type="range" min={80} max={doc.width} value={layer.width} onChange={(e) => patchLayer(layer.id, { width: Number(e.target.value) })} /><span className="u-tnum">{layer.width}</span></label>
           <label>{t('Color', 'اللون')} <input type="color" value={layer.color} onChange={(e) => patchLayer(layer.id, { color: e.target.value.toUpperCase() })} />
             <span className="studio__swatches">{['#FFFFFF', '#0046FF', '#FF6600', '#1A1A1A', '#001BB7'].map((c) => <button key={c} type="button" style={{ background: c }} aria-label={c} onClick={() => patchLayer(layer.id, { color: c })} />)}</span></label>
-          <label>{t('Weight', 'التخانة')} <select value={layer.weight} onChange={(e) => patchLayer(layer.id, { weight: Number(e.target.value) })}><option value={300}>Light</option><option value={400}>Regular</option><option value={700}>Bold</option><option value={800}>ExtraBold</option></select></label>
+          <label>{t('Weight', 'السُّمك')} <select value={layer.weight} onChange={(e) => patchLayer(layer.id, { weight: Number(e.target.value) })}><option value={300}>Light</option><option value={400}>Regular</option><option value={700}>Bold</option><option value={800}>ExtraBold</option></select></label>
           <label>{t('Align', 'المحاذاة')} <select value={layer.align} onChange={(e) => patchLayer(layer.id, { align: e.target.value as TextLayer['align'] })}><option value="start">{t('Start', 'البداية')}</option><option value="center">{t('Center', 'المنتصف')}</option><option value="end">{t('End', 'النهاية')}</option></select></label>
           <button type="button" className="ui-link studio__delete" onClick={() => { commit({ ...doc, layers: doc.layers.filter((l) => l.id !== layer.id) }); setSelected(null); }}><Trash2 size={14} /> {t('Delete layer', 'احذف الطبقة')}</button>
         </div> : <div className="studio__layers">
           <h3>{t('Layers', 'الطبقات')}</h3>
           <ul>{[...doc.layers].reverse().map((l) => <li key={l.id}><button type="button" onClick={() => setSelected(l.id)}><Type size={13} /><span dir="auto" className="u-truncate">{l.text}</span></button></li>)}
-            <li className="studio__layers-fixed">{t('Official logo · placed on save', 'اللوجو الرسمي · بيتركب عند الحفظ')}</li>
+            <li className="studio__layers-fixed">{t('Official logo · placed on save', 'الشعار الرسمي · يُضاف عند الحفظ')}</li>
             <li className="studio__layers-fixed">{t('Background image', 'الصورة الخلفية')}</li></ul>
-          <p className="u-xs u-muted">{t('Click a text to edit it. Drag to move. Text is rendered in Almarai / Plus Jakarta Sans on save.', 'دوس على أي نص عشان تعدله، واسحبه عشان تحركه. النص بيطلع بخط المراعي / Plus Jakarta Sans عند الحفظ.')}</p>
+          <p className="u-xs u-muted">{t('Click a text to edit it. Drag to move. Text is rendered in Almarai / Plus Jakarta Sans on save.', 'انقر أي نص لتعديله واسحبه لتحريكه. يُحفظ النص بخط المراعي / Plus Jakarta Sans.')}</p>
         </div>}
       </aside>
     </div>}

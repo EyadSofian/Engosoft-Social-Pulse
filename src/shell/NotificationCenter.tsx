@@ -18,7 +18,19 @@ import { channelName, notificationCategoryLabel } from '../i18n/labels';
 import { alertPhase } from '../lib/analytics';
 import { errorMessage } from '../lib/api';
 import { parseTimestamp } from '../lib/format';
+import { markServerRead, useServerNotifications } from './serverNotifications';
 import { useShell } from './ShellContext';
+
+const SERVER_CATEGORY: Record<string, NotificationCategory> = {
+  content_created: 'task_assigned',
+  content_review: 'review_required',
+  content_approved: 'approved',
+  content_changes_requested: 'changes_requested',
+  content_cancelled: 'changes_requested',
+  content_scheduled: 'publishing_reminder',
+  content_published: 'approved',
+  test: 'mention',
+};
 
 const ICON: Record<NotificationCategory, LucideIcon> = {
   task_assigned: ListTodo,
@@ -46,6 +58,8 @@ export interface NotificationGroup {
   provenance: 'live' | 'demo';
   /** Live calendar alerts are dismissed on the server, not marked read locally. */
   alertIds?: string[];
+  /** Server notification (post created, sent for review, review result). */
+  serverId?: string;
 }
 
 /**
@@ -53,23 +67,28 @@ export interface NotificationGroup {
  * API: publishing alerts and connector errors. Grouped by `groupKey`, newest first.
  */
 export function useNotificationGroups(): NotificationGroup[] {
-  const { state, me } = useWorkspace();
+  const { me } = useWorkspace();
   const { store } = useLiveData();
   const { data } = store;
 
+  const { items } = useServerNotifications();
+
   return useMemo(() => {
     const groups = new Map<string, NotificationGroup>();
-    for (const entry of state.notifications) {
-      if (entry.userId !== me.id && entry.userId !== 'all') continue;
-      const at = parseTimestamp(entry.at);
-      const hit = groups.get(entry.groupKey);
-      if (hit) {
-        hit.count++;
-        if (!hit.bodies.includes(entry.body)) hit.bodies.push(entry.body);
-        hit.unread ||= !entry.read;
-        if (at > hit.at) hit.at = at;
-      } else
-        groups.set(entry.groupKey, { key: entry.groupKey, category: entry.category, title: entry.title, bodies: [entry.body], count: 1, at, unread: !entry.read, href: entry.href, provenance: entry.provenance });
+    // Posts created or sent for review by any department, and review results on your own posts (server, per person).
+    for (const entry of items) {
+      groups.set(entry.id, {
+        key: entry.id,
+        category: SERVER_CATEGORY[entry.kind] ?? 'review_required',
+        title: { en: entry.title, ar: entry.title },
+        bodies: [entry.body],
+        count: 1,
+        at: parseTimestamp(entry.createdAt),
+        unread: !entry.readAt,
+        href: entry.link || '/content',
+        provenance: 'live',
+        serverId: entry.id,
+      });
     }
 
     // Publishing alerts concern whoever schedules and publishes.
@@ -95,7 +114,7 @@ export function useNotificationGroups(): NotificationGroup[] {
           groups.set(key, {
             key,
             category: phase === 'missed' ? 'publishing_failure' : 'publishing_reminder',
-            title: phase === 'missed' ? { en: 'Publishing not confirmed', ar: 'لم يتأكد النشر' } : { en: 'Posts due soon', ar: 'بوستات قريبة' },
+            title: phase === 'missed' ? { en: 'Publishing not confirmed', ar: 'لم يتأكد النشر' } : { en: 'Posts due soon', ar: 'منشورات قريبة' },
             bodies: [body],
             count: 1,
             at,
@@ -113,7 +132,7 @@ export function useNotificationGroups(): NotificationGroup[] {
         groups.set('live-connectors', {
           key: 'live-connectors',
           category: 'integration_problem',
-          title: { en: 'A connection returned an error', ar: 'مصدر ربط رجّع خطأ' },
+          title: { en: 'A connection returned an error', ar: 'أعاد مصدر ربط خطأً' },
           bodies: failing.map((connector) => `${channelName[connector.platform]}: ${connector.message}`),
           count: failing.length,
           at: failing.reduce((latest, connector) => Math.max(latest, connector.checkedAt ? parseTimestamp(connector.checkedAt) : 0), 0),
@@ -124,13 +143,12 @@ export function useNotificationGroups(): NotificationGroup[] {
     }
 
     return [...groups.values()].sort((a, b) => Number(b.unread) - Number(a.unread) || b.at - a.at);
-  }, [state.notifications, me, data.alerts, data.plans, data.connectors]);
+  }, [items, me, data.alerts, data.plans, data.connectors]);
 }
 
 export function NotificationCenter() {
   const { t, tx, relative, num } = useI18n();
   const { notificationsOpen, setNotificationsOpen } = useShell();
-  const { markRead } = useWorkspace();
   const { store } = useLiveData();
   const { navigate } = useRouter();
   const toast = useToast();
@@ -139,11 +157,11 @@ export function NotificationCenter() {
   const [busy, setBusy] = useState('');
 
   const visible = filter === 'unread' ? groups.filter((group) => group.unread) : groups;
-  const unread = groups.filter((group) => group.unread && group.provenance === 'demo').length;
+  const unread = groups.filter((group) => group.unread && group.serverId).length;
   const close = () => setNotificationsOpen(false);
 
   const open = (group: NotificationGroup) => {
-    if (group.provenance === 'demo') markRead(group.key);
+    if (group.serverId && group.unread) void markServerRead([group.serverId]);
     close();
     navigate(group.href);
   };
@@ -179,7 +197,7 @@ export function NotificationCenter() {
               { value: 'unread', label: t('Unread', 'غير المقروءة') },
             ]}
           />
-          <Button size="sm" variant="ghost" disabled={!unread} onClick={() => markRead()}>
+          <Button size="sm" variant="ghost" disabled={!unread} onClick={() => void markServerRead()}>
             {t('Mark all read', 'تعليم الكل كمقروء')}
           </Button>
         </div>

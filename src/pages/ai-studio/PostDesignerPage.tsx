@@ -33,7 +33,7 @@ export function PostDesignerPage() {
   const { state, me, createContent, editContent, transition } = useWorkspace();
   const { navigate } = useRouter();
   const [query, setQuery] = useQueryState();
-  usePageMeta(t('Post designer', 'مصمم البوستات'), [{ label: t('AI Studio', 'استوديو الذكاء الاصطناعي'), to: '/ai-studio' }, { label: t('Post designer', 'مصمم البوستات') }]);
+  usePageMeta(t('Post designer', 'مصمم المنشورات'), [{ label: t('AI Studio', 'استوديو الذكاء الاصطناعي'), to: '/ai-studio' }, { label: t('Post designer', 'مصمم المنشورات') }]);
   const editable = state.content.filter((entry) => canEditContent(me, entry) && !['published', 'archived', 'cancelled'].includes(entry.status));
   const fromBrief = query.get('from') === 'brief';
   const directTemplate = query.get('template');
@@ -204,7 +204,7 @@ export function PostDesignerPage() {
     setTitle(version.layers.headline); setBody(version.layers.body); setDetail(version.layers.detail); setCta(version.layers.cta);
     setCanvasOverride(version.canvasDocument ? { key: JSON.stringify([version.direction?.id, version.sizeId, version.layers.headline, version.layers.eyebrow, version.layers.body, version.layers.cta, version.layers.detail, version.layers.backgroundImage.length, version.layers.backgroundImage.slice(0, 80), logoReady, normalizeLogoVariant(version.logoVariant)]), design: upgradeLegacyDesign(version.canvasDocument, logoHrefs) } : null);
     setLogoVariant(normalizeLogoVariant(version.logoVariant));
-    setSaveMessage(t('Version restored. Save to keep it as the latest version.', 'رجّعنا النسخة. احفظها عشان تبقى أحدث نسخة.'));
+    setSaveMessage(t('Version restored. Save to keep it as the latest version.', 'استُعيدت النسخة. احفظها لتصبح أحدث نسخة.'));
   };
   const save = async (): Promise<boolean> => {
     try {
@@ -212,7 +212,7 @@ export function PostDesignerPage() {
         backgroundImage: imageDataUrl, eyebrow, headline: title, body, detail, cta,
         approvedLogo: { locked: true, assetId: APPROVED_LOGO.id },
       } });
-      setSavedDocument(record); setSaveMessage(t('Draft version saved in this browser.', 'اتحفظت نسخة من المسودة في المتصفح.'));
+      setSavedDocument(record); setSaveMessage(t('Draft version saved in this browser.', 'حُفظت نسخة من المسودة في المتصفح.'));
       if (!draftParam) setQuery({ draft: draftId, from: null, template: null });
       return true;
     } catch { setSaveMessage(t('Could not save this draft in the browser.', 'تعذّر حفظ المسودة في المتصفح.')); return false; }
@@ -232,12 +232,12 @@ export function PostDesignerPage() {
       if (versions.length) editContent(contentId, { versions });
     }
     const result = transition(contentId, { to: 'ready_for_review' });
-    if (!result.ok) { setSaveMessage(t('Draft saved. Open the content item to submit it for review.', 'المسودة اتحفظت. افتح عنصر المحتوى لإرساله للمراجعة.')); navigate(`/content/${contentId}`); return; }
+    if (!result.ok) { setSaveMessage(t('Draft saved. Open the content item to submit it for review.', 'حُفظت المسودة. افتح عنصر المحتوى لإرساله للمراجعة.')); navigate(`/content/${contentId}`); return; }
     navigate(`/content/${contentId}`);
   };
 
   return <div className="u-stack">
-    <PageHeader title={t('Post designer', 'مصمم البوستات')} description={t('Build an editable post and export the right size for each platform.', 'جهّز بوست قابلًا للتعديل وصدّره بمقاس كل منصة.')} />
+    <PageHeader title={t('Post designer', 'مصمم المنشورات')} description={t('Build an editable post and export the right size for each platform.', 'جهّز منشور قابلًا للتعديل وصدّره بمقاس كل منصة.')} />
     {brief && <section className="post-designer__brief"><strong>{brief.source === 'ai' ? t('AI creative brief', 'الفكرة الإبداعية من AI') : t('Local draft', 'مسودة محلية')}</strong><p dir="auto">{brief.prompt}</p><div className="u-row u-row--wrap"><span>{brief.objective.replaceAll('_', ' ')}</span><span>{brief.platforms.join(' · ')}</span><span>{brief.references.length} {t('references', 'مراجع')}</span>{brief.verifiedEvent && <span>{t('Date verified from Odoo', 'التاريخ موثّق من Odoo')} · {brief.verifiedEvent.title}</span>}</div></section>}
     {variants.length > 1 && <div className="post-designer__platform-tabs" role="tablist" aria-label={t('Platform variants', 'نسخ المنصات')}>{allVariants.map((variant) => <button role="tab" aria-selected={channel === variant.platform} key={variant.platform} type="button" onClick={() => switchPlatform(variant.platform)}>{PLATFORM_FORMATS[variant.platform].label}<small>{PLATFORM_FORMATS[variant.platform].format}</small></button>)}<button type="button" role="tab" aria-selected={compare} onClick={() => setCompare((value) => !value)}>{t('Compare all', 'قارن الكل')}</button></div>}
     <div className="post-designer__ai-command"><Sparkles size={18} /><input aria-label={t('AI edit command', 'أمر تعديل AI')} value={editCommand} onChange={(event) => setEditCommand(event.target.value)} onKeyDown={(event) => { if (event.key === 'Enter') void applyAiEdit(); }} placeholder={t('Ask AI: shorten the headline, make it more premium, improve the picture…', 'اطلب من AI: قصّر العنوان، خلّيه أفخم، هات صورة أقوى…')} dir="auto" /><Button disabled={editState === 'loading' || editCommand.trim().length < 3} onClick={() => void applyAiEdit()}>{editState === 'loading' ? t('Editing…', 'بيعدّل…') : t('Apply', 'طبّق')}</Button>{editMessage && <p role="status">{editMessage}</p>}</div>
@@ -273,7 +273,7 @@ export function PostDesignerPage() {
         </label>}
         <label className="post-designer__field">{t('Odoo schedule', 'موعد من Odoo')}
           <select defaultValue="" onChange={(event) => { const found = events.find((entry) => entry.id === event.target.value); if (found) { setTitle(found.title); setDetail(new Intl.DateTimeFormat('ar-EG', { dateStyle: 'medium', timeStyle: 'short', timeZone: 'Africa/Cairo' }).format(new Date(found.startsAt))); } }}>
-            <option value="">{events.length ? t('Choose a course or event', 'اختر كورس أو إيفنت') : (odooState || t('Loading…', 'جارٍ التحميل…'))}</option>
+            <option value="">{events.length ? t('Choose a course or event', 'اختر دورة أو فعالية') : (odooState || t('Loading…', 'جارٍ التحميل…'))}</option>
             {events.map((entry) => <option key={entry.id} value={entry.id}>{entry.title} · {entry.startsAt.slice(0, 10)}</option>)}
           </select>
         </label>
@@ -281,7 +281,7 @@ export function PostDesignerPage() {
           <label className="post-designer__field">{t('Headline', 'العنوان')}<input value={title} onChange={(event) => setTitle(event.target.value)} maxLength={130} dir="auto" /></label>
           <label className="post-designer__field">{t('Label', 'التصنيف')}<input value={eyebrow} onChange={(event) => setEyebrow(event.target.value)} maxLength={30} dir="auto" /></label>
         </div>
-        <label className="post-designer__field">{t('Post message', 'نص البوست')}<textarea value={body} onChange={(event) => setBody(event.target.value)} rows={3} maxLength={260} dir="auto" /></label>
+        <label className="post-designer__field">{t('Post message', 'نص المنشور')}<textarea value={body} onChange={(event) => setBody(event.target.value)} rows={3} maxLength={260} dir="auto" /></label>
         <div className="post-designer__fields">
           <label className="post-designer__field">{t('Date or detail', 'الموعد أو التفاصيل')}<input value={detail} onChange={(event) => setDetail(event.target.value)} maxLength={90} dir="auto" /></label>
           <label className="post-designer__field">{t('Call to action', 'دعوة الإجراء')}<input value={cta} onChange={(event) => setCta(event.target.value)} maxLength={28} dir="auto" /></label>
@@ -317,7 +317,7 @@ export function PostDesignerPage() {
             <span className="u-sm u-muted" dir="ltr">{size.width} × {size.height}</span>
           </div>
           {(!item || ['idea','draft','in_production','changes_requested'].includes(item.status)) && <Button disabled={checks.length > 0} onClick={() => void sendToReview()}>{t('Send to Marketing review', 'أرسل لمراجعة التسويق')}</Button>}
-          <p className="u-xs u-muted">{t('Review currently uses the local demo workspace; it resets on reload. Saved design versions stay in this browser.', 'المراجعة حاليًا في مساحة العمل التجريبية وبتتصفّر عند تحديث الصفحة. نسخ التصميم المحفوظة بتفضل في المتصفح.')}</p>
+          <p className="u-xs u-muted">{t('Review currently uses the local demo workspace; it resets on reload. Saved design versions stay in this browser.', 'المراجعة حاليًا في مساحة العمل التجريبية وتُعاد عند تحديث الصفحة. تبقى نسخ التصميم المحفوظة في المتصفح.')}</p>
         </div>
         {compare && variants.length > 1 && <section className="post-designer__compare"><h3>{t('Campaign variants', 'نسخ الحملة')}</h3><div>{allVariants.map((variant) => { const format = POST_SIZES.find((entry) => entry.id === variant.sizeId)!; const variantTemplate = POST_TEMPLATES.find((entry) => entry.id === variant.templateId) ?? POST_TEMPLATES[0]; const variantSvg = direction ? renderCreativeSvg(composeCreativeDesign(direction, variant.sizeId, { headline: variant.headline, body: variant.caption, eyebrow, detail, cta, imageDataUrl }, logoHrefs, logoVariant)) : renderPosterSvg(variantTemplate, variant.sizeId, { title: variant.headline, body: variant.caption, eyebrow, detail, cta, imageDataUrl }, logoHrefs); return <article key={variant.platform}><strong>{PLATFORM_FORMATS[variant.platform].label}</strong><small>{format.width} × {format.height}</small><img src={`data:image/svg+xml;charset=utf-8,${encodeURIComponent(variantSvg)}`} alt={`${variant.platform} preview`} /><Button variant="secondary" disabled={!logoReady} onClick={() => download(`${direction?.id ?? variantTemplate.id}-${variant.platform}.svg`, new Blob([variantSvg], { type: 'image/svg+xml;charset=utf-8' }))}><Download size={14} />SVG</Button></article>; })}</div></section>}
       </div>

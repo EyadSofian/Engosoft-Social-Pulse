@@ -2,6 +2,7 @@ import { randomUUID } from 'node:crypto';
 import express from 'express';
 import { z } from 'zod';
 import { requireUser } from './auth.js';
+import { requireAiBudget } from './usage.js';
 import { loadFullCreativeRun } from './creative-intelligence/generation/full-creative.js';
 import { aiEdit, decompose, originalWithoutLogo, renderStudio, studioPath, studioUrl, type StudioDoc } from './creative-intelligence/studio/studio.js';
 import { addVersion, canEdit, getContent, listVersions } from './workspace.js';
@@ -26,13 +27,15 @@ const doc = z.object({
 
 function editableItem(req: express.Request, res: express.Response) {
   const item = getContent(String(req.params.contentId));
-  if (!item || !canEdit(req.user!, item)) { res.status(404).json({ error: 'المحتوى غير موجود أو مش متاح للتعديل.' }); return null; }
-  if (!item.creative) { res.status(400).json({ error: 'البوست ده مفيهوش تصميم.' }); return null; }
+  if (!item || !canEdit(req.user!, item)) { res.status(404).json({ error: 'المحتوى غير موجود أو غير متاح للتعديل.' }); return null; }
+  if (!item.creative) { res.status(400).json({ error: 'لا يحتوي هذا المنشور على تصميم.' }); return null; }
+  if (item.creative.svgTemplate || !/^[0-9a-f-]{36}$/.test(item.creative.requestId)) { res.status(400).json({ error: 'أُنشئ هذا المنشور من قالب SVG؛ عدّله من القالب.', code: 'svg_template' }); return null; }
   return item;
 }
-const formatOf = (directionId: string) => directionId.endsWith('-story') ? 'story' as const : 'feed' as const;
-const sizeOf = (format: 'feed' | 'story') => format === 'story' ? { width: 1080, height: 1920 } : { width: 1080, height: 1350 };
-const safeAreaOf = (format: 'feed' | 'story') => format === 'story' ? { top: 230, right: 0, bottom: 330, left: 0 } : undefined;
+type StudioFormat = 'feed' | 'story' | 'landscape';
+const formatOf = (directionId: string): StudioFormat => directionId.endsWith('-story') ? 'story' : directionId.endsWith('-landscape') ? 'landscape' : 'feed';
+const sizeOf = (format: StudioFormat) => format === 'story' ? { width: 1080, height: 1920 } : format === 'landscape' ? { width: 1200, height: 630 } : { width: 1080, height: 1350 };
+const safeAreaOf = (format: StudioFormat) => format === 'story' ? { top: 230, right: 0, bottom: 330, left: 0 } : undefined;
 
 export function registerStudioRoutes(app: express.Express) {
   /** Latest saved layer document for the post, or null when it has not been made editable yet. */
@@ -43,9 +46,9 @@ export function registerStudioRoutes(app: express.Express) {
     res.setHeader('Cache-Control', 'no-store');
     res.json({ doc: saved?.studio ?? null, format: formatOf(item.creative!.directionId), imageUrl: item.creative!.imageUrl });
   });
-  app.post('/api/studio/:contentId/decompose', requireUser, (req, res) => {
+  app.post('/api/studio/:contentId/decompose', requireUser, requireAiBudget, (req, res) => {
     const item = editableItem(req, res);
-    if (!item || !process.env.OPENAI_API_KEY?.trim()) { if (item) res.status(503).json({ error: 'أضف OPENAI_API_KEY على السيرفر.' }); return; }
+    if (!item || !process.env.OPENAI_API_KEY?.trim()) { if (item) res.status(503).json({ error: 'أضف OPENAI_API_KEY على الخادم.' }); return; }
     const { requestId, directionId } = item.creative!;
     const format = formatOf(directionId);
     const job = startStudioJob(req.user!.id, async () => {
@@ -56,11 +59,11 @@ export function registerStudioRoutes(app: express.Express) {
     });
     res.status(202).json({ jobId: job.id });
   });
-  app.post('/api/studio/:contentId/ai-edit', requireUser, (req, res) => {
+  app.post('/api/studio/:contentId/ai-edit', requireUser, requireAiBudget, (req, res) => {
     const item = editableItem(req, res);
     if (!item) return;
     const parsed = z.object({ doc, box, instruction: z.string().trim().min(3).max(600) }).safeParse(req.body);
-    if (!parsed.success) return res.status(400).json({ error: 'حدد منطقة واكتب التعديل.' });
+    if (!parsed.success) return res.status(400).json({ error: 'حدّد منطقة واكتب التعديل.' });
     const job = startStudioJob(req.user!.id, () => aiEdit(parsed.data.doc as StudioDoc, parsed.data.box, parsed.data.instruction, formatOf(item.creative!.directionId)));
     res.status(202).json({ jobId: job.id });
   });

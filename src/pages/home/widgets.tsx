@@ -203,7 +203,7 @@ export function DepartmentProgressCard({ now, only }: { now: number; only?: Depa
                 <Link to={`/departments/${row.departmentId}`} className="progress-list__row">
                   <span className="progress-list__name">{tx(departmentById(row.departmentId)!.name)}</span>
                   <span className="progress-list__count u-tnum">
-                    {t(`${ratio(row.published, row.target)} posts`, `${ratio(row.published, row.target)} بوست`)}
+                    {t(`${ratio(row.published, row.target)} posts`, `${ratio(row.published, row.target)} منشور`)}
                   </span>
                   <span className="progress-list__pct u-tnum">{pct(row.completion)}</span>
                   <ProgressBar value={row.completion} tone={progressTone(row.completion)} label={tx(departmentById(row.departmentId)!.name)} />
@@ -327,7 +327,7 @@ export function LiveGate({ children, needs }: { children: ReactNode; needs?: 'po
   if (needs === 'posts' && !store.data.posts.length) {
     const connected = store.data.connectors.some((connector) => connector.status === 'connected');
     return connected ? (
-      <EmptyState compact title={t('Connected sources returned no posts yet.', 'المصادر المتصلة لم ترجع بوستات بعد.')} text={t('Run a sync from Connections.', 'شغّل المزامنة من صفحة الربط.')} />
+      <EmptyState compact title={t('Connected sources returned no posts yet.', 'المصادر المتصلة لم ترجع منشورات بعد.')} text={t('Run a sync from Connections.', 'شغّل المزامنة من صفحة الربط.')} />
     ) : (
       <DataNotice status="needs_setup" message={t('Connect a platform to see performance.', 'اربط منصة لعرض الأداء.')} setupHref="/connections" />
     );
@@ -352,7 +352,7 @@ export function TopContentCard({ now }: { now: number }) {
       <CardBody>
         <LiveGate needs="posts">
           {top.length === 0 ? (
-            <EmptyState compact title={t('No measured posts in the last 30 days.', 'لا بوستات مقاسة خلال آخر 30 يومًا.')} text={t('Posts appear once a connected platform returns engagement.', 'تظهر البوستات عندما ترجع منصة متصلة بيانات التفاعل.')} />
+            <EmptyState compact title={t('No measured posts in the last 30 days.', 'لا منشورات مقاسة خلال آخر 30 يومًا.')} text={t('Posts appear once a connected platform returns engagement.', 'تظهر المنشورات عندما ترجع منصة متصلة بيانات التفاعل.')} />
           ) : (
             <>
               <ol className="top-posts">
@@ -540,19 +540,19 @@ export function CourseLifecycleCard({ now }: { now: number }) {
     const list: { tone: 'warning' | 'danger' | 'brand' | 'neutral'; label: string; action?: () => void }[] = [];
     if (signals.startingToday.some((course) => course.id === id)) list.push({ tone: 'brand', label: t('Starts today', 'يبدأ اليوم') });
     if (signals.endingToday.some((course) => course.id === id)) list.push({ tone: 'brand', label: t('Ends today', 'ينتهي اليوم') });
-    if (signals.firstSessionNeeded.some((course) => course.id === id)) list.push({ tone: 'warning', label: t('First-session post needed', 'مطلوب بوست أول محاضرة'), action: () => create.open({ templateId: 't-first-session', courseId: id }) });
+    if (signals.firstSessionNeeded.some((course) => course.id === id)) list.push({ tone: 'warning', label: t('First-session post needed', 'مطلوب منشور أول محاضرة'), action: () => create.open({ templateId: 't-first-session', courseId: id }) });
     if (signals.missingInfo.some((course) => course.id === id)) list.push({ tone: 'danger', label: t('Missing lecturer or student count', 'ينقص المحاضر أو عدد الطلاب') });
     return list;
   };
   return (
     <Card>
-      <CardHeader title={t('Course lifecycle', 'دورة حياة الكورسات')} icon={<GraduationCap size={16} />} description={t('Starts, first sessions and endings that need content', 'بدايات وأول محاضرات ونهايات تحتاج محتوى')} actions={<ButtonLink to="/calendar?layer=courses" size="sm" variant="ghost">{t('Calendar', 'التقويم')}</ButtonLink>} />
+      <CardHeader title={t('Course lifecycle', 'دورة حياة الدورات')} icon={<GraduationCap size={16} />} description={t('Starts, first sessions and endings that need content', 'بدايات وأول محاضرات ونهايات تحتاج محتوى')} actions={<ButtonLink to="/calendar?layer=courses" size="sm" variant="ghost">{t('Calendar', 'التقويم')}</ButtonLink>} />
       <div className="ui-table-scroll">
         <table className="ui-table ui-table--dense">
-          <caption className="sr-only">{t('Courses', 'الكورسات')}</caption>
+          <caption className="sr-only">{t('Courses', 'الدورات')}</caption>
           <thead>
             <tr>
-              <th scope="col">{t('Course', 'الكورس')}</th>
+              <th scope="col">{t('Course', 'الدورة')}</th>
               <th scope="col">{t('Starts', 'يبدأ')}</th>
               <th scope="col" className="ui-table__secondary">{t('Ends', 'ينتهي')}</th>
               <th scope="col" className="ui-table__end">{t('Students', 'الطلاب')}</th>
@@ -602,7 +602,7 @@ export function EvaluationCard({ now }: { now: number }) {
     <Card>
       <CardHeader title={t('Evaluation videos required', 'فيديوهات تقييم مطلوبة')} count={signals.evaluationNeeded.length} icon={<FilePenLine size={16} />} description={t('Lecturer → Evaluation → Technical Support / Media → Marketing → Publish', 'المحاضر ← التقييم ← الدعم الفني / الميديا ← التسويق ← النشر')} />
       {signals.evaluationNeeded.length === 0 ? (
-        <EmptyState compact title={t('Every finished course has its evaluation post live.', 'كل كورس منتهٍ نُشر له بوست التقييم.')} />
+        <EmptyState compact title={t('Every finished course has its evaluation post live.', 'كل دورة منتهٍ نُشر له منشور التقييم.')} />
       ) : (
         <ul className="lines">
           {signals.evaluationNeeded.map((course) => {
@@ -622,7 +622,7 @@ export function EvaluationCard({ now }: { now: number }) {
                     </ButtonLink>
                   ) : (
                     <Button size="sm" variant="primary" onClick={() => create.open({ templateId: 't-evaluation-video', courseId: course.id })}>
-                      {t('Start evaluation post', 'ابدأ بوست التقييم')}
+                      {t('Start evaluation post', 'ابدأ منشور التقييم')}
                     </Button>
                   )}
                 </div>

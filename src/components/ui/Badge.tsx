@@ -62,7 +62,7 @@ export function PriorityBadge({ priority }: { priority: Priority }) {
 export function DemoBadge() {
   const { t } = useI18n();
   return (
-    <span className="ui-demo-badge" title={t('Seeded demo record — not stored on the server yet', 'سجل تجريبي — غير محفوظ على السيرفر بعد')}>
+    <span className="ui-demo-badge" title={t('Seeded demo record — not stored on the server yet', 'سجل تجريبي — غير محفوظ على الخادم بعد')}>
       {t('Demo', 'تجريبي')}
     </span>
   );

@@ -1,4 +1,5 @@
 import { z } from 'zod';
+import { recordUsage, type OpenAIUsage } from './usage.js';
 
 export const creativeEditRequest = z.object({
   command: z.string().trim().min(3).max(400),
@@ -17,7 +18,7 @@ const editResult = z.object({
 
 export async function applyCreativeCommand(input: CreativeEditRequest, env: NodeJS.ProcessEnv = process.env) {
   const key = env.OPENAI_API_KEY?.trim();
-  if (!key) throw new Error('OPENAI_API_KEY غير مضبوط على السيرفر.');
+  if (!key) throw new Error('OPENAI_API_KEY غير مضبوط على الخادم.');
   const schema = { type: 'object', additionalProperties: false, required: ['headline','body','cta','detail','visualDirection','action','explanation'], properties: {
     headline: { type: 'string' }, body: { type: 'string' }, cta: { type: 'string' }, detail: { type: 'string' }, visualDirection: { type: 'string' }, action: { type: 'string', enum: ['edit_text','regenerate_image','both'] }, explanation: { type: 'string' },
   } };
@@ -28,6 +29,7 @@ export async function applyCreativeCommand(input: CreativeEditRequest, env: Node
     text: { format: { type: 'json_schema', name: 'engosoft_creative_edit', strict: true, schema } },
   }), signal: AbortSignal.timeout(90000) });
   const result = await response.json().catch(() => ({})) as { output?: { content?: { type?: string; text?: string }[] }[]; error?: { message?: string } };
+  recordUsage({ kind: 'text', model: env.OPENAI_TEXT_MODEL?.trim() || 'gpt-4.1-mini', usage: (result as { usage?: OpenAIUsage }).usage });
   if (!response.ok) throw new Error(result.error?.message || `AI edit failed (HTTP ${response.status}).`);
   const text = result.output?.flatMap((part) => part.content ?? []).find((part) => part.type === 'output_text')?.text;
   if (!text) throw new Error('AI لم يرجع تعديلاً صالحًا.');

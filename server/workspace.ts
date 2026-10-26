@@ -29,11 +29,11 @@ CREATE INDEX IF NOT EXISTS content_events_by_item ON content_events(content_id, 
 CREATE INDEX IF NOT EXISTS content_versions_by_item ON content_versions(content_id, created_at);
 `);
 
-export type Channel = 'facebook' | 'instagram' | 'whatsapp' | 'linkedin' | 'tiktok' | 'snapchat';
+export type Channel = 'facebook' | 'instagram' | 'whatsapp' | 'linkedin' | 'tiktok' | 'snapchat' | 'website';
 /** Channels the sync can prove published; the others are tracked by status only. */
 const TRACKED: Partial<Record<Channel, Platform>> = { facebook: 'facebook', instagram: 'instagram', tiktok: 'tiktok', snapchat: 'snapchat' };
 
-export interface CreativeRef { requestId: string; directionId: string; imageUrl: string; storyUrl?: string; model?: string; directionName?: string }
+export interface CreativeRef { requestId: string; directionId: string; imageUrl: string; storyUrl?: string; landscapeUrl?: string; model?: string; directionName?: string; svgTemplate?: { id: string; values: Record<string, string> } }
 export interface StoredContent {
   id: string; title: string; status: ContentStatus; departmentId: string | null; ownerId: string;
   channels: Channel[]; captions: Partial<Record<Channel, string>>; creative: CreativeRef | null;
@@ -107,8 +107,8 @@ export function createContent(user: AuthUser, input: { title: string; channels: 
 export function updateContent(user: AuthUser, id: string, patch: { title?: string; channels?: Channel[]; captions?: Partial<Record<Channel, string>>; creative?: CreativeRef }): StoredContent {
   const item = getContent(id);
   if (!item) throw new WorkspaceError(404, 'المحتوى غير موجود.');
-  if (!canEdit(user, item)) throw new WorkspaceError(403, 'مش من حقك تعدّل المحتوى ده.');
-  if (['published', 'archived', 'cancelled'].includes(item.status)) throw new WorkspaceError(409, 'المحتوى ده اتقفل.');
+  if (!canEdit(user, item)) throw new WorkspaceError(403, 'لا تملك صلاحية تعديل هذا المحتوى.');
+  if (['published', 'archived', 'cancelled'].includes(item.status)) throw new WorkspaceError(409, 'هذا المحتوى مُغلق.');
   db.prepare('UPDATE content_items SET title=?, channels_json=?, captions_json=?, creative_json=?, updated_at=? WHERE id=?').run(
     patch.title ?? item.title, JSON.stringify(patch.channels ?? item.channels), JSON.stringify(patch.captions ?? item.captions),
     JSON.stringify(patch.creative ?? item.creative), new Date().toISOString(), id);
@@ -121,7 +121,9 @@ export function addVersion(user: AuthUser, contentId: string, input: { imageUrl:
   db.prepare('INSERT INTO content_versions (id,content_id,image_url,story_url,studio_json,note,created_by,created_at) VALUES (?,?,?,?,?,?,?,?)')
     .run(version.id, contentId, version.imageUrl, version.storyUrl, input.studio ? JSON.stringify(input.studio) : null, version.note, user.id, version.createdAt);
   const item = getContent(contentId);
-  if (item) db.prepare('UPDATE content_items SET creative_json=?, updated_at=? WHERE id=?').run(JSON.stringify({ ...(item.creative ?? { requestId: '', directionId: '' }), imageUrl: version.imageUrl, ...(version.storyUrl ? { storyUrl: version.storyUrl } : {}) }), version.createdAt, contentId);
+  // A template post's version carries the field values it was exported with, so reopening it edits the latest copy.
+  const svgTemplate = (input.studio as { svgTemplate?: CreativeRef['svgTemplate'] } | null)?.svgTemplate;
+  if (item) db.prepare('UPDATE content_items SET creative_json=?, updated_at=? WHERE id=?').run(JSON.stringify({ ...(item.creative ?? { requestId: '', directionId: '' }), ...(svgTemplate ? { svgTemplate } : {}), imageUrl: version.imageUrl, ...(version.storyUrl ? { storyUrl: version.storyUrl } : {}) }), version.createdAt, contentId);
   log(contentId, user.id, 'version', input.note);
   return version;
 }
@@ -149,13 +151,13 @@ export function transition(user: AuthUser, id: string, to: ContentStatus, input:
   const item = getContent(id);
   if (!item || !canSee(user, item)) throw new WorkspaceError(404, 'المحتوى غير موجود.');
   const move = allowedMoves(user, item).find((entry) => entry.to === to);
-  if (!move) throw new WorkspaceError(403, 'الخطوة دي مش متاحة ليك دلوقتي.');
+  if (!move) throw new WorkspaceError(403, 'هذه الخطوة غير متاحة لك الآن.');
   if (move.needsNote && !input.note?.trim()) throw new WorkspaceError(400, 'اكتب سبب أو ملاحظة.');
-  if (to === 'ready_for_review' && !item.creative) throw new WorkspaceError(400, 'ضيف التصميم الأول قبل ما تبعته للمراجعة.');
+  if (to === 'ready_for_review' && !item.creative) throw new WorkspaceError(400, 'أضف التصميم أولًا قبل إرساله للمراجعة.');
   let planIds = item.planIds;
   if (to === 'scheduled') {
     const when = input.scheduledAt ? new Date(input.scheduledAt) : null;
-    if (!when || Number.isNaN(when.getTime()) || when.getTime() < Date.now() - 60_000) throw new WorkspaceError(400, 'اختار ميعاد نشر في المستقبل.');
+    if (!when || Number.isNaN(when.getTime()) || when.getTime() < Date.now() - 60_000) throw new WorkspaceError(400, 'اختر موعد نشر في المستقبل.');
     // One plan per trackable channel, so the calendar, alerts and sync matching cover this post.
     planIds = item.channels.flatMap((channel) => {
       const platform = TRACKED[channel];

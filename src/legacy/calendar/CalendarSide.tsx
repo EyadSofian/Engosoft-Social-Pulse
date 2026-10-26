@@ -47,7 +47,7 @@ function MiniCalendar({ anchor, selected, todayKey, plansByDay, onPick }: { anch
               data-today={cell.key === todayKey || undefined}
               data-selected={cell.key === selected || undefined}
               data-load={count === 0 ? undefined : count > 2 ? 'high' : 'low'}
-              aria-label={`${fmtDayShort(cell.date.toMillis())}: ${count} بوست`}
+              aria-label={`${fmtDayShort(cell.date.toMillis())}: ${count} منشور`}
               onClick={() => onPick(cell.key)}
             >
               {cell.date.day}
@@ -65,7 +65,7 @@ function PlatformMix({ plans }: { plans: Plan[] }) {
   const counts = new Map<Platform, number>();
   for (const plan of plans) if (plan.computedState !== 'cancelled') counts.set(plan.platform, (counts.get(plan.platform) ?? 0) + 1);
   const total = [...counts.values()].reduce((sum, value) => sum + value, 0);
-  if (!total) return <p className="side__empty">لا توجد بوستات في هذه الفترة بعد.</p>;
+  if (!total) return <p className="side__empty">لا توجد منشورات في هذه الفترة بعد.</p>;
   const shown = PLATFORMS.filter((platform) => counts.has(platform));
   return (
     <div className="mix">
@@ -176,7 +176,7 @@ export function CalendarSide(props: Props) {
             ))}
           </div>
         ) : (
-          <p className="side__empty">لا بوستات مخططة لهذا اليوم.</p>
+          <p className="side__empty">لا منشورات مخططة لهذا اليوم.</p>
         )}
 
         <h3 className="side__label">
@@ -211,7 +211,7 @@ export function CalendarSide(props: Props) {
                 <span>ملف XLSX بورقة Calendar وورقة شرح للأعمدة.</span>
               </li>
               <li>
-                <b>املأ صفًا لكل بوست</b>
+                <b>املأ صفًا لكل منشور</b>
                 <span>التاريخ والوقت بتوقيت القاهرة، والمنصة والعنوان.</span>
               </li>
               <li>
@@ -244,19 +244,19 @@ export function CalendarSide(props: Props) {
                         {slotDay(slot)} · {hourLabel(slot.hour)}
                       </b>
                       <small>
-                        متوسط {compact(Math.round(slot.average))} تفاعل · {num(slot.posts)} بوست
+                        متوسط {compact(Math.round(slot.average))} تفاعل · {num(slot.posts)} منشور
                       </small>
                     </span>
-                    <IconButton label="أضف بوست في هذا الوقت" tip="none" className="icon-btn--sm" onClick={() => props.onPlanSlot(slot)}>
+                    <IconButton label="أضف منشور في هذا الوقت" tip="none" className="icon-btn--sm" onClick={() => props.onPlanSlot(slot)}>
                       <CalendarPlus size={15} />
                     </IconButton>
                   </li>
                 ))}
               </ol>
-              <p className="side__note">متوسط التفاعل لبوستاتكم المرصودة خلال آخر 12 شهرًا (بوستان على الأقل لكل وقت)، بتوقيت القاهرة.</p>
+              <p className="side__note">متوسط التفاعل لمنشوراتكم المرصودة خلال آخر 12 شهرًا (منشوران على الأقل لكل وقت)، بتوقيت القاهرة.</p>
             </>
           ) : (
-            <p className="side__empty">تظهر هنا أفضل الأوقات عندما تتوفر بيانات تفاعل كافية للبوستات المرصودة.</p>
+            <p className="side__empty">تظهر هنا أفضل الأوقات عندما تتوفر بيانات تفاعل كافية للمنشورات المرصودة.</p>
           )}
         </SideSection>
       </section>

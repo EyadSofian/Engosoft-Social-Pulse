@@ -36,7 +36,7 @@ export function DepartmentDetailPage({ id }: { id: string }) {
       <PageHeader title={tx(department.name)} description={tx(department.responsibility)} meta={department.id === me.departmentId ? <Badge tone="brand">{t('Your department', 'قسمك')}</Badge> : undefined} />
       <section aria-label={t('Operational KPIs', 'مؤشرات التشغيل')} className="u-stack u-stack--sm">
         <div className="stat-row">
-          <Stat value={num(kpis.postsPublished)} label={t('Posts published this month', 'بوستات منشورة هذا الشهر')} />
+          <Stat value={num(kpis.postsPublished)} label={t('Posts published this month', 'منشورات منشورة هذا الشهر')} />
           <Stat value={pct(kpis.postsOnTime)} label={t('Published on time', 'نُشرت في موعدها')} />
           <Stat value={num(kpis.tasksCompleted)} label={t('Tasks completed', 'مهام منجزة')} hint={kpis.tasksOnTime == null ? undefined : t(`${pct(kpis.tasksOnTime)} on time`, `${pct(kpis.tasksOnTime)} في الموعد`)} />
           <Stat value={num(kpis.openOverdue)} label={t('Overdue now', 'متأخر الآن')} tone={kpis.openOverdue ? 'danger' : undefined} />

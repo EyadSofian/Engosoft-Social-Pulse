@@ -6,12 +6,13 @@
 
 :root,
 :root[data-theme='light'] {
-  --orb-a: rgb(0 70 255 / 0.22);
-  --orb-b: rgb(86 161 255 / 0.28);
-  --orb-c: rgb(255 102 0 / 0.14);
-  --orb-d: rgb(110 86 207 / 0.16);
-  --grid-line: rgb(15 35 90 / 0.05);
-  --cursor-glow: rgb(0 70 255 / 0.07);
+  --orb-a: rgb(0 70 255 / 0.34);
+  --orb-b: rgb(86 161 255 / 0.42);
+  --orb-c: rgb(255 122 38 / 0.26);
+  --orb-d: rgb(124 92 255 / 0.28);
+  --grid-line: rgb(15 35 90 / 0.07);
+  --cursor-glow: rgb(0 70 255 / 0.12);
+  --dot: rgb(0 70 255 / 0.35);
 
   --card-bg: rgb(255 255 255 / 0.74);
   --card-bg-hover: rgb(255 255 255 / 0.9);
@@ -34,6 +35,7 @@
   --orb-d: rgb(120 90 255 / 0.22);
   --grid-line: rgb(255 255 255 / 0.035);
   --cursor-glow: rgb(61 115 255 / 0.12);
+  --dot: rgb(160 190 255 / 0.5);
 
   --card-bg: rgb(18 24 42 / 0.66);
   --card-bg-hover: rgb(22 30 52 / 0.8);

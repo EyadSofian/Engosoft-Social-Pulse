@@ -1,10 +1,10 @@
 import type { LucideIcon } from 'lucide-react';
-import { CalendarDays, ChartColumn, Layers, Library, Settings, WandSparkles } from 'lucide-react';
+import { CalendarDays, ChartColumn, ChartSpline, Layers, LayoutDashboard, Library, Newspaper, Settings, Wallet, WandSparkles } from 'lucide-react';
 import type { Text } from '../domain/shared';
 import type { User } from '../domain/users';
 import { hasPermission } from '../features/workspace/permissions';
 
-export type NavId = 'home' | 'content' | 'calendar' | 'performance' | 'library' | 'settings';
+export type NavId = 'home' | 'content' | 'calendar' | 'overview' | 'tracking' | 'analytics' | 'performance' | 'library' | 'usage' | 'settings';
 
 export interface NavItem {
   id: NavId;
@@ -16,14 +16,14 @@ export interface NavItem {
 }
 
 export interface NavGroup {
-  id: 'main' | 'system';
+  id: 'main' | 'tracking' | 'system';
   label: Text;
   items: NavItem[];
 }
 
 const everyone = () => true;
 
-/** Six destinations: make, move through review, plan, measure, reuse, configure. */
+/** Destinations: make, move through review, plan, measure (platforms and pipeline), reuse, configure. */
 export const NAV: NavGroup[] = [
   {
     id: 'main',
@@ -32,14 +32,26 @@ export const NAV: NavGroup[] = [
       { id: 'home', path: '/', label: { en: 'Create', ar: 'إنشاء' }, icon: WandSparkles, visible: (user) => hasPermission(user, 'content.create') },
       { id: 'content', path: '/content', label: { en: 'Content', ar: 'المحتوى' }, icon: Layers, visible: everyone },
       { id: 'calendar', path: '/calendar', label: { en: 'Calendar', ar: 'التقويم' }, icon: CalendarDays, visible: everyone },
-      { id: 'performance', path: '/performance', label: { en: 'Performance', ar: 'الأداء' }, icon: ChartColumn, visible: (user) => hasPermission(user, 'analytics.view') },
       { id: 'library', path: '/library', label: { en: 'Library', ar: 'المكتبة' }, icon: Library, visible: everyone },
+    ],
+  },
+  {
+    id: 'tracking',
+    label: { en: 'Tracking', ar: 'المتابعة' },
+    items: [
+      { id: 'overview', path: '/overview', label: { en: 'Overview', ar: 'نظرة عامة' }, icon: LayoutDashboard, visible: (user) => hasPermission(user, 'analytics.view') },
+      { id: 'tracking', path: '/tracking', label: { en: 'Content performance', ar: 'أداء المحتوى' }, icon: Newspaper, visible: (user) => hasPermission(user, 'analytics.view') },
+      { id: 'analytics', path: '/analytics', label: { en: 'Analytics', ar: 'التحليلات' }, icon: ChartSpline, visible: (user) => hasPermission(user, 'analytics.view') },
+      { id: 'performance', path: '/performance', label: { en: 'Team performance', ar: 'أداء الفرق' }, icon: ChartColumn, visible: (user) => hasPermission(user, 'analytics.view') },
     ],
   },
   {
     id: 'system',
     label: { en: 'System', ar: 'النظام' },
-    items: [{ id: 'settings', path: '/settings', label: { en: 'Settings', ar: 'الإعدادات' }, icon: Settings, visible: (user) => hasPermission(user, 'users.manage') || hasPermission(user, 'connections.manage') }],
+    items: [
+      { id: 'usage', path: '/usage', label: { en: 'AI usage', ar: 'الاستهلاك' }, icon: Wallet, visible: (user) => hasPermission(user, 'content.create') || hasPermission(user, 'users.manage') },
+      { id: 'settings', path: '/settings', label: { en: 'Settings', ar: 'الإعدادات' }, icon: Settings, visible: (user) => hasPermission(user, 'users.manage') || hasPermission(user, 'connections.manage') },
+    ],
   },
 ];
 

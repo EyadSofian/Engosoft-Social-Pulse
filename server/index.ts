@@ -23,9 +23,13 @@ import { bootstrapAdmin, requirePermission, requireUser } from './auth.js';
 import { registerAuthRoutes, registerWorkspaceRoutes } from './workspace-routes.js';
 import { countTemplateUse, getTemplate, registerAiTemplateRoutes } from './ai-templates.js';
 import { registerStudioRoutes } from './studio-routes.js';
+import { mediaDir } from './paths.js';
+import { registerUsageRoutes, requireAiBudget } from './usage.js';
+import { registerNotifyRoutes } from './notify.js';
+import { registerSvgTemplateRoutes } from './svg-templates.js';
 
 const app=express();const port=Number(process.env.PORT)||4100;const host=process.env.HOST||'127.0.0.1';
-app.disable('x-powered-by');app.set('trust proxy',1);app.use('/api/ai',express.json({limit:'18mb'}));app.use('/api/studio',express.json({limit:'18mb'}));app.use(express.json({limit:'1mb'}));
+app.disable('x-powered-by');app.set('trust proxy',1);app.use('/api/ai',express.json({limit:'18mb'}));app.use('/api/studio',express.json({limit:'18mb'}));app.use('/api/svg-templates',express.json({limit:'16mb'}));app.use('/api/uploads',express.json({limit:'16mb'}));app.use(express.json({limit:'1mb'}));
 app.get('/api/health',(_req,res)=>res.json({ok:true}));
 registerAuthRoutes(app);
 // Everything else under /api needs a signed-in user. TikTok's OAuth callback is protected by its own state cookie.
@@ -34,6 +38,9 @@ app.use('/api',(req,res,next)=>PUBLIC_API.has(req.originalUrl.split('?')[0])?nex
 registerWorkspaceRoutes(app);
 registerAiTemplateRoutes(app);
 registerStudioRoutes(app);
+registerUsageRoutes(app);
+registerNotifyRoutes(app);
+registerSvgTemplateRoutes(app);
 const admin=bootstrapAdmin();if(admin)console.log(`Created first admin ${admin.email}`);
 app.get('/api/odoo/schedule',async(_req,res)=>{
  const result=await readOdooSchedule();
@@ -42,64 +49,64 @@ app.get('/api/odoo/schedule',async(_req,res)=>{
 });
 const imageCalls=new Map<string,number[]>();
 const briefCalls=new Map<string,number[]>();
-app.post('/api/ai/creative-brief',requirePermission('content.create'),async(req,res)=>{
+app.post('/api/ai/creative-brief',requirePermission('content.create'),requireAiBudget,async(req,res)=>{
  const parsed=briefRequest.safeParse(req.body);
  if(!parsed.success)return res.status(400).json({error:'طلب المحتوى أو المراجع غير صالحة.'});
  const who=req.ip||'local';const now=Date.now();const recent=(briefCalls.get(who)||[]).filter(at=>now-at<10*60_000);
- if(recent.length>=10)return res.status(429).json({error:'وصلت للحد المؤقت: 10 مسودات خلال 10 دقائق.'});
+ if(recent.length>=10)return res.status(429).json({error:'بلغت الحد المؤقت: 10 مسودات خلال 10 دقائق.'});
  briefCalls.set(who,[...recent,now]);
  try{res.json(await generateCreativeBrief(parsed.data));}
  catch(error){res.status(502).json({error:error instanceof Error?error.message:'تعذّر إعداد المحتوى.'});}
 });
-app.post('/api/ai/creative-edit',requirePermission('content.create'),async(req,res)=>{
+app.post('/api/ai/creative-edit',requirePermission('content.create'),requireAiBudget,async(req,res)=>{
  const parsed=creativeEditRequest.safeParse(req.body);
  if(!parsed.success)return res.status(400).json({error:'طلب التعديل غير صالح.'});
  const who=req.ip||'local';const now=Date.now();const recent=(briefCalls.get(who)||[]).filter(at=>now-at<10*60_000);
- if(recent.length>=10)return res.status(429).json({error:'وصلت للحد المؤقت: 10 طلبات AI خلال 10 دقائق.'});
+ if(recent.length>=10)return res.status(429).json({error:'بلغت الحد المؤقت: 10 طلبات ذكاء اصطناعي خلال 10 دقائق.'});
  briefCalls.set(who,[...recent,now]);
  try{res.json(await applyCreativeCommand(parsed.data));}
  catch(error){res.status(502).json({error:error instanceof Error?error.message:'تعذّر تعديل التصميم.'});}
 });
-app.post('/api/ai/post-image',requirePermission('content.create'),async(req,res)=>{
- if(!process.env.OPENAI_API_KEY?.trim())return res.status(503).json({error:'أضف OPENAI_API_KEY على السيرفر لتوليد الصور.'});
+app.post('/api/ai/post-image',requirePermission('content.create'),requireAiBudget,async(req,res)=>{
+ if(!process.env.OPENAI_API_KEY?.trim())return res.status(503).json({error:'أضف OPENAI_API_KEY على الخادم لتوليد الصور.'});
  const parsed=imageRequest.safeParse(req.body);
  if(!parsed.success)return res.status(400).json({error:'وصف الصورة أو المقاس غير صالح.'});
  const who=req.ip||'local';const now=Date.now();const recent=(imageCalls.get(who)||[]).filter(at=>now-at<10*60_000);
- if(recent.length>=3)return res.status(429).json({error:'وصلت للحد المؤقت: 3 صور خلال 10 دقائق.'});
+ if(recent.length>=3)return res.status(429).json({error:'بلغت الحد المؤقت: 3 صور خلال 10 دقائق.'});
  imageCalls.set(who,[...recent,now]);
  try{res.json(await generatePostImage(parsed.data.subject,parsed.data.size,process.env,parsed.data.referenceImageDataUrl,parsed.data.count,parsed.data.objective,parsed.data.direction));}
  catch(error){res.status(502).json({error:error instanceof Error?error.message:'تعذّر توليد الصورة.'});}
 });
 const fullCreativeCalls=new Map<string,number[]>();
-const fullCreativeRequest=z.object({prompt:z.string().trim().min(5).max(2000),format:z.enum(['feed','story']).default('feed'),directions:z.number().int().min(1).max(3).default(3),templateId:z.string().uuid().optional()});
-const localOnly=(res:express.Response)=>{if(!process.env.OPENAI_API_KEY?.trim()){res.status(503).json({error:'أضف OPENAI_API_KEY على السيرفر.'});return true;}return false;};
-const limited=(req:express.Request,res:express.Response)=>{const who=req.ip||'local';const now=Date.now();const recent=(fullCreativeCalls.get(who)||[]).filter(at=>now-at<10*60_000);if(recent.length>=6){res.status(429).json({error:'وصلت للحد المؤقت: 6 طلبات تصميم خلال 10 دقائق.'});return true;}fullCreativeCalls.set(who,[...recent,now]);return false;};
-app.post('/api/ai/full-creative',requirePermission('content.create'),(req,res)=>{
+const fullCreativeRequest=z.object({prompt:z.string().trim().min(5).max(2000),format:z.enum(['feed','story','landscape']).default('feed'),directions:z.number().int().min(1).max(3).default(3),templateId:z.string().uuid().optional()});
+const localOnly=(res:express.Response)=>{if(!process.env.OPENAI_API_KEY?.trim()){res.status(503).json({error:'أضف OPENAI_API_KEY على الخادم.'});return true;}return false;};
+const limited=(req:express.Request,res:express.Response)=>{const who=req.ip||'local';const now=Date.now();const recent=(fullCreativeCalls.get(who)||[]).filter(at=>now-at<10*60_000);if(recent.length>=6){res.status(429).json({error:'بلغت الحد المؤقت: 6 طلبات تصميم خلال 10 دقائق.'});return true;}fullCreativeCalls.set(who,[...recent,now]);return false;};
+app.post('/api/ai/full-creative',requirePermission('content.create'),requireAiBudget,(req,res)=>{
  if(localOnly(res))return;
- const parsed=fullCreativeRequest.safeParse(req.body);if(!parsed.success)return res.status(400).json({error:'اكتب وصف البوست (5 حروف على الأقل).'});
+ const parsed=fullCreativeRequest.safeParse(req.body);if(!parsed.success)return res.status(400).json({error:'اكتب وصف المنشور (5 أحرف على الأقل).'});
  if(limited(req,res))return;
  const template=parsed.data.templateId?getTemplate(parsed.data.templateId):undefined;if(template)countTemplateUse(template.id);
  const job=startJob('generate',req.user!.id,(setStage)=>generateFullCreative({...parsed.data,style:template?.style},process.env,setStage));
  res.status(202).json({jobId:job.id});
 });
-app.post('/api/ai/full-creative/:requestId/adapt',requirePermission('content.create'),(req,res)=>{
+app.post('/api/ai/full-creative/:requestId/adapt',requirePermission('content.create'),requireAiBudget,(req,res)=>{
  if(localOnly(res))return;
- const parsed=z.object({directionId:z.string().regex(/^d\d$/),format:z.enum(['feed','story'])}).safeParse(req.body);if(!parsed.success)return res.status(400).json({error:'طلب التحويل غير صالح.'});
+ const parsed=z.object({directionId:z.string().regex(/^d\d$/),format:z.enum(['feed','story','landscape'])}).safeParse(req.body);if(!parsed.success)return res.status(400).json({error:'طلب التحويل غير صالح.'});
  let run;try{run=loadFullCreativeRun(String(req.params.requestId));}catch{return res.status(404).json({error:'التصميم غير موجود.'});}
  if(limited(req,res))return;
  const job=startJob('adapt',req.user!.id,async(setStage)=>{await adaptFullCreative(run,parsed.data.directionId,parsed.data.format,process.env,setStage);return run;});
  res.status(202).json({jobId:job.id});
 });
-app.get('/api/ai/jobs/:id',(req,res)=>{const job=getJob(String(req.params.id));res.setHeader('Cache-Control','no-store');if(!job||job.ownerId!==req.user!.id)return res.status(404).json({error:'المهمة غير موجودة؛ ربما أعيد تشغيل السيرفر.'});res.json(job);});
+app.get('/api/ai/jobs/:id',(req,res)=>{const job=getJob(String(req.params.id));res.setHeader('Cache-Control','no-store');if(!job||job.ownerId!==req.user!.id)return res.status(404).json({error:'المهمة غير موجودة؛ ربما أعيد تشغيل الخادم.'});res.json(job);});
 app.get('/api/creatives/:requestId/:file',(req,res)=>{
  const id=String(req.params.requestId),file=String(req.params.file);
- if(!/^[0-9a-f-]{36}$/.test(id)||!/^d\d(-story|-feed)?\.png$/.test(file))return res.status(404).end();
- res.sendFile(resolve('data/creatives',id,file),{headers:{'Cache-Control':'private, max-age=3600'}},(error)=>{if(error&&!res.headersSent)res.status(404).end();});
+ if(!/^[0-9a-f-]{36}$/.test(id)||!/^d\d(-story|-feed|-landscape)?\.png$/.test(file))return res.status(404).end();
+ res.sendFile(mediaDir('creatives',id,file),{headers:{'Cache-Control':'private, max-age=3600'}},(error)=>{if(error&&!res.headersSent)res.status(404).end();});
 });
 app.get('/api/oauth/tiktok/start',requirePermission('connections.manage'),(req,res)=>{
  const clientKey=process.env.TIKTOK_CLIENT_KEY?.trim();
  const redirectUri=process.env.TIKTOK_REDIRECT_URI?.trim();
- if(!clientKey||!redirectUri||!process.env.TIKTOK_CLIENT_SECRET?.trim())return res.status(503).send('إعداد TikTok OAuth غير مكتمل على السيرفر.');
+ if(!clientKey||!redirectUri||!process.env.TIKTOK_CLIENT_SECRET?.trim())return res.status(503).send('إعداد TikTok OAuth غير مكتمل على الخادم.');
  const state=randomBytes(32).toString('hex');
  saveOAuthState(state,Date.now()+10*60_000);
  res.cookie('tiktok_oauth_state',state,{httpOnly:true,secure:true,sameSite:'lax',maxAge:10*60_000,path:'/api/oauth/tiktok'});
@@ -122,7 +129,7 @@ app.get('/api/oauth/tiktok/callback',async(req,res)=>{
  const clientKey=process.env.TIKTOK_CLIENT_KEY?.trim()||'';
  const clientSecret=process.env.TIKTOK_CLIENT_SECRET?.trim()||'';
  const redirectUri=process.env.TIKTOK_REDIRECT_URI?.trim()||'';
- if(!clientKey||!clientSecret||!redirectUri)return res.status(503).send('إعداد TikTok OAuth غير مكتمل على السيرفر.');
+ if(!clientKey||!clientSecret||!redirectUri)return res.status(503).send('إعداد TikTok OAuth غير مكتمل على الخادم.');
  try{
   const body=new URLSearchParams({client_key:clientKey,client_secret:clientSecret,code,grant_type:'authorization_code',redirect_uri:redirectUri});
   const response=await fetch('https://open.tiktokapis.com/v2/oauth/token/',{method:'POST',headers:{'Content-Type':'application/x-www-form-urlencoded','Cache-Control':'no-cache'},body,signal:AbortSignal.timeout(15_000)});
@@ -152,7 +159,7 @@ const planSchema=z.object({
 const planPatchSchema=z.object({scheduledAt:z.iso.datetime().optional(),status:planStatus.optional(),permalink:z.string().max(1000).optional(),externalId:z.string().max(200).optional()}).strict();
 const PROOF_REQUIRED='أضف رابط المنشور أو معرّفه لتأكيد النشر.';
 app.post('/api/plans',async(req,res)=>{
- const parsed=planSchema.safeParse(req.body);if(!parsed.success)return res.status(400).json({error:'بيانات البوست غير صالحة.',issues:parsed.error.issues});
+ const parsed=planSchema.safeParse(req.body);if(!parsed.success)return res.status(400).json({error:'بيانات المنشور غير صالحة.',issues:parsed.error.issues});
  if(missingPublishProof(parsed.data))return res.status(400).json({error:PROOF_REQUIRED});
  const old=parsed.data.id?getPlan(parsed.data.id):undefined;
  const plan=newPlan({...old,...parsed.data,platform:parsed.data.platform as Platform,createdAt:old?.createdAt,sourceKey:old?.sourceKey});
@@ -162,7 +169,7 @@ app.post('/api/plans',async(req,res)=>{
 });
 app.patch('/api/plans/:id',async(req,res)=>{
  const parsed=planPatchSchema.safeParse(req.body);if(!parsed.success)return res.status(400).json({error:'تعديل غير صالح.',issues:parsed.error.issues});
- const old=getPlan(String(req.params.id));if(!old)return res.status(404).json({error:'البوست غير موجود؛ ربما حُذف.'});
+ const old=getPlan(String(req.params.id));if(!old)return res.status(404).json({error:'المنشور غير موجود؛ ربما حُذف.'});
  const plan=applyPlanPatch(old,parsed.data);
  if(missingPublishProof(plan))return res.status(400).json({error:PROOF_REQUIRED,code:'proof_required'});
  const saved=savePlan(plan);
@@ -178,7 +185,7 @@ app.post('/api/calendar/import',express.raw({type:'application/octet-stream',lim
   let imported=0;for(const plan of data.plans)if(saveImportedPlan(plan))imported++;
   await checkAlerts();
   res.json({imported,duplicates:data.plans.length-imported,errors:data.errors});
- }catch{res.status(400).json({error:'تعذّر قراءة ملف الكاليندر.'});}
+ }catch{res.status(400).json({error:'تعذّر قراءة ملف التقويم.'});}
 });
 app.post('/api/sync',requirePermission('connections.manage'),async(_req,res)=>{try{res.json({results:await runSync()});}catch{res.status(502).json({error:'تعذّر مزامنة المصادر.'});}});
 app.post('/api/alerts/check',async(_req,res)=>res.json({created:await checkAlerts()}));

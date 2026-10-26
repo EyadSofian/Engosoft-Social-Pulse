@@ -17,7 +17,7 @@ export async function request<T>(path: string, init: RequestInit = {}): Promise<
   try {
     response = await fetch(`/api${path}`, { ...init, headers });
   } catch {
-    throw new ApiError('تعذّر الوصول إلى السيرفر. تحقق من الاتصال وحاول مرة أخرى.', 0);
+    throw new ApiError('تعذّر الوصول إلى الخادم. تحقق من الاتصال وحاول مرة أخرى.', 0);
   }
   const body = (await response.json().catch(() => ({}))) as Record<string, unknown>;
   if (response.status === 401) window.dispatchEvent(new Event(SESSION_ENDED));
@@ -41,7 +41,7 @@ export async function api<T>(path: string, init: { method?: string; body?: unkno
       body: init.body === undefined ? undefined : JSON.stringify(init.body),
     });
   } catch {
-    throw new ApiError('تعذّر الوصول إلى السيرفر. تحقق من الاتصال وحاول مرة أخرى.', 0);
+    throw new ApiError('تعذّر الوصول إلى الخادم. تحقق من الاتصال وحاول مرة أخرى.', 0);
   }
   const data = (await response.json().catch(() => ({}))) as T & { error?: string };
   if (response.status === 401 && !path.startsWith('/api/auth/')) window.dispatchEvent(new Event(SESSION_ENDED));

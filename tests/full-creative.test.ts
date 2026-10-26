@@ -36,7 +36,7 @@ test('copy check accepts design line breaks but not wrong words or reordered dat
 });
 
 test('full-creative prompt asks for the whole post, reserves the logo corner and forbids generated logos', () => {
-  const brief: CreativeBriefPlan = { language: 'ar', objective: 'Registration', audience: 'engineers', caption: '', captions: { facebook: '', instagram: '', whatsapp: '', linkedin: '', tiktok: '', snapchat: '' }, canonicalCopy: { headline: 'عنوان', subheadline: 'سطر', facts: ['يبدأ الثلاثاء 24-11-2026'], cta: 'سجّل الآن' },
+  const brief: CreativeBriefPlan = { language: 'ar', objective: 'Registration', audience: 'engineers', caption: '', captions: { facebook: '', instagram: '', whatsapp: '', linkedin: '', tiktok: '', snapchat: '', website: 'w' }, canonicalCopy: { headline: 'عنوان', subheadline: 'سطر', facts: ['يبدأ الثلاثاء 24-11-2026'], cta: 'سجّل الآن' },
     directions: [{ id: 'd1', name: 'Authority', concept: 'c', subject: 's', composition: 'x', palette: 'p', typography: 't', mood: 'm' }] };
   const prompt = compileFullCreativePrompt(brief, brief.directions[0], 'feed');
   assert.match(prompt, /complete, finished, publish-ready/);
@@ -50,7 +50,7 @@ test('full-creative prompt asks for the whole post, reserves the logo corner and
 
 test('public run exposes image URLs but not server paths or prompts', () => {
   const pub = toPublicRun({ requestId: '00000000-0000-0000-0000-000000000000', createdAt: '', request: { prompt: 'x' }, context: { status: 'skipped' }, versions: {} as never, outputDir: '/secret/dir',
-    brief: { language: 'ar', objective: '', audience: '', caption: '', captions: { facebook: '', instagram: '', whatsapp: '', linkedin: '', tiktok: '', snapchat: '' }, canonicalCopy: { headline: 'h' }, directions: [] },
+    brief: { language: 'ar', objective: '', audience: '', caption: '', captions: { facebook: '', instagram: '', whatsapp: '', linkedin: '', tiktok: '', snapchat: '', website: 'w' }, canonicalCopy: { headline: 'h' }, directions: [] },
     results: [{ directionId: 'd1', directionName: 'n', status: 'ready', problems: [], imagePath: '/secret/dir/d1.png', rawImagePath: '/secret/dir/d1-raw.png', prompt: 'internal', logo: { requiresCreativeRepair: true, reason: '' }, repaired: false, copyChecks: [], inspection: {} as never, model: 'gpt-image-2', latencyMs: 1 }] });
   const json = JSON.stringify(pub);
   assert.ok(!json.includes('/secret') && !json.includes('internal'));

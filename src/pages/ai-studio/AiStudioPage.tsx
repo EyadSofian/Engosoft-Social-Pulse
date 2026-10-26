@@ -41,7 +41,7 @@ export function AiStudioPage() {
     <div className="u-stack">
       <PageHeader title={t('AI Studio', 'استوديو الذكاء الاصطناعي')} description={t('Draft and adapt content for a content item. Results are saved into the item and still go through Marketing review; nothing is published automatically.', 'صياغة المحتوى وتكييفه لعنصر محتوى. النتائج تُحفظ في العنصر وتمر بمراجعة التسويق؛ لا شيء يُنشر تلقائيًا.')} />
       <Link to={item ? `/ai-studio/post-designer?content=${encodeURIComponent(item.id)}` : '/ai-studio/post-designer'} className="post-designer-entry">
-        <span><strong>{t('Design a social post', 'صمّم بوست سوشيال')}</strong><small>{t('15 SVG layouts · platform sizes · GPT image backgrounds', '15 قالب SVG · مقاسات المنصات · صور GPT')}</small></span>
+        <span><strong>{t('Design a social post', 'صمّم منشور سوشيال')}</strong><small>{t('15 SVG layouts · platform sizes · GPT image backgrounds', '15 قالب SVG · مقاسات المنصات · صور GPT')}</small></span>
         <span aria-hidden>←</span>
       </Link>
       <DataNotice

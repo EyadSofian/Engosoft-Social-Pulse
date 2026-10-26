@@ -30,7 +30,7 @@ export function TemplatesPage() {
   return (
     <div className="u-stack">
       <PageHeader title={t('Templates', 'القوالب')} description={t('Saved workflows for recurring content: what to fill in, which assets, who acts, who approves, and when to start.', 'مسارات محفوظة للمحتوى المتكرر: ما يُملأ، والملفات المطلوبة، ومن ينفذ، ومن يعتمد، ومتى يبدأ.')} />
-      <Link to="/ai-studio/post-designer" className="post-designer-entry"><span><strong>{t('Visual post templates', 'قوالب تصميم البوستات')}</strong><small>{t('Open the SVG library and adapt a design to each platform.', 'افتح مكتبة SVG وجهّز التصميم لمقاس كل منصة.')}</small></span><span aria-hidden>←</span></Link>
+      <Link to="/ai-studio/post-designer" className="post-designer-entry"><span><strong>{t('Visual post templates', 'قوالب تصميم المنشورات')}</strong><small>{t('Open the SVG library and adapt a design to each platform.', 'افتح مكتبة SVG وجهّز التصميم لمقاس كل منصة.')}</small></span><span aria-hidden>←</span></Link>
       <div className="toolbar">
         <div className="toolbar__search">
           <SearchInput value={query.get('q') ?? ''} onChange={(value) => setQuery({ q: value || null })} placeholder={t('Search templates', 'ابحث في القوالب')} label={t('Search templates', 'ابحث في القوالب')} />

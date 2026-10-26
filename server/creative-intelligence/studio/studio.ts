@@ -7,6 +7,7 @@
  * render:    base + text layers as brand-font outlines (HarfBuzz) + logo resolved on the final pixels
  */
 import { randomUUID } from 'node:crypto';
+import { mediaDir } from '../../paths.js';
 import { existsSync, mkdirSync, readFileSync, writeFileSync } from 'node:fs';
 import { resolve } from 'node:path';
 import sharp from 'sharp';
@@ -19,8 +20,8 @@ import { outlineText } from '../typography/text-outline.js';
 import type { LogoVariantId } from '../brand/registry.js';
 
 export const STUDIO_VERSION = 'studio:v1';
-const STUDIO_DIR = resolve(process.cwd(), 'data/studio');
-const EDIT_SIZE = { feed: { w: 1088, h: 1360 }, story: { w: 1088, h: 1936 } } as const;
+const STUDIO_DIR = mediaDir('studio');
+const EDIT_SIZE = { feed: { w: 1088, h: 1360 }, story: { w: 1088, h: 1936 }, landscape: { w: 1520, h: 800 } } as const;
 
 export interface Box { x: number; y: number; width: number; height: number }
 export interface TextLayer { id: string; text: string; x: number; y: number; width: number; size: number; color: string; weight: number; align: 'start' | 'center' | 'end'; lineHeight: number }
@@ -49,20 +50,24 @@ export const studioUrl = (file: string) => `/api/studio/${file}`;
 
 /** The generated image without the logo, at platform size: the starting point for any edit. */
 export async function originalWithoutLogo(requestId: string, directionId: string, size: { width: number; height: number }): Promise<Buffer> {
-  if (!/^[0-9a-f-]{36}$/.test(requestId) || !/^d\d(-story|-feed)?$/.test(directionId)) throw new Error('Invalid creative reference');
-  const dir = resolve(process.cwd(), 'data/creatives', requestId);
+  if (!/^[0-9a-f-]{36}$/.test(requestId) || !/^d\d(-story|-feed|-landscape)?$/.test(directionId)) throw new Error('Invalid creative reference');
+  const dir = mediaDir('creatives', requestId);
   const raw = [`${directionId}-repaired-raw.png`, `${directionId}-raw.png`].map((f) => resolve(dir, f)).find((f) => existsSync(f));
   if (!raw) throw new Error('The original image for this design is not available on this server');
   return sharp(readFileSync(raw)).resize(size.width, size.height, { fit: 'cover' }).png().toBuffer();
 }
 
+/** Grows a box by `by` px and clips it to the image. Model boxes can spill past an edge; the result always lies inside. */
 const pad = (b: Box, by: number, w: number, h: number): Box => {
-  const x = Math.max(0, Math.floor(b.x - by)), y = Math.max(0, Math.floor(b.y - by));
-  return { x, y, width: Math.min(w - x, Math.ceil(b.width + 2 * by)), height: Math.min(h - y, Math.ceil(b.height + 2 * by)) };
+  const left = Math.max(0, Math.min(w - 1, Math.floor(b.x - by)));
+  const top = Math.max(0, Math.min(h - 1, Math.floor(b.y - by)));
+  const right = Math.max(left + 1, Math.min(w, Math.ceil(b.x + b.width + by)));
+  const bottom = Math.max(top + 1, Math.min(h, Math.ceil(b.y + b.height + by)));
+  return { x: left, y: top, width: right - left, height: bottom - top };
 };
 
 /** Masked AI edit, then keep the model's pixels only inside the boxes so the rest of the design is untouched. */
-async function editRegions(base: Buffer, boxes: Box[], instruction: string, format: 'feed' | 'story', env: NodeJS.ProcessEnv): Promise<Buffer> {
+async function editRegions(base: Buffer, boxes: Box[], instruction: string, format: 'feed' | 'story' | 'landscape', env: NodeJS.ProcessEnv): Promise<Buffer> {
   const { width = 0, height = 0 } = await sharp(base).metadata();
   const size = EDIT_SIZE[format];
   const sx = size.w / width, sy = size.h / height;
@@ -104,11 +109,14 @@ async function measureText(original: Buffer, clean: Buffer, box: Box): Promise<{
   return { color, lines: lines.filter((l) => l.height > 6), density: hits / (box.width * box.height) };
 }
 
-export async function decompose(input: { original: Buffer; format: 'feed' | 'story'; approvedCopy: string[]; env?: NodeJS.ProcessEnv }): Promise<StudioDoc> {
+export async function decompose(input: { original: Buffer; format: 'feed' | 'story' | 'landscape'; approvedCopy: string[]; env?: NodeJS.ProcessEnv }): Promise<StudioDoc> {
   const env = input.env ?? process.env;
   const { width = 0, height = 0 } = await sharp(input.original).metadata();
   const inspection = await inspectCreative(input.original, 'Studio decomposition: find every text element precisely.', env, input.approvedCopy);
-  const texts = inspection.texts.filter((t) => t.text.trim() && !/^[←→↑↓•|·]+$/.test(t.text.trim()));
+  // Boxes that fall (almost) entirely outside the image or are too small to hold a glyph are not text layers.
+  const texts = inspection.texts
+    .filter((t) => t.text.trim() && !/^[←→↑↓•|·]+$/.test(t.text.trim()))
+    .filter((t) => t.box.x < 0.98 && t.box.y < 0.98 && t.box.x + t.box.width > 0.02 && t.box.y + t.box.height > 0.02 && t.box.width * width >= 8 && t.box.height * height >= 8);
   const boxes = texts.map((t) => pad({ x: t.box.x * width, y: t.box.y * height, width: t.box.width * width, height: t.box.height * height }, Math.round(width * 0.012), width, height));
   const clean = boxes.length
     ? await editRegions(input.original, boxes, 'Remove all text, letters and numbers inside the transparent masked areas. Recreate exactly what would be behind them: continue the background, panels, buttons and shapes naturally with the same colors, lighting and texture. Do not add any text, logo, icon or new object.', input.format, env)
@@ -136,7 +144,7 @@ export async function decompose(input: { original: Buffer; format: 'feed' | 'sto
   };
 }
 
-export async function aiEdit(doc: StudioDoc, box: Box, instruction: string, format: 'feed' | 'story', env = process.env): Promise<StudioDoc> {
+export async function aiEdit(doc: StudioDoc, box: Box, instruction: string, format: 'feed' | 'story' | 'landscape', env = process.env): Promise<StudioDoc> {
   const base = readFileSync(studioPath(doc.baseFile));
   const region = pad(box, 0, doc.width, doc.height);
   if (region.width < 16 || region.height < 16) throw new Error('Select a larger area');

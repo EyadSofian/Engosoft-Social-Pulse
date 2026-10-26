@@ -76,7 +76,7 @@ export function MonthGrid({ cells, label, todayKey, selected, plansByDay, postsB
                 <button
                   type="button"
                   className="day__num"
-                  aria-label={`${WEEKDAY_NAMES[cell.date.weekday]} ${fmtDay(cell.date.toMillis())}، ${plans.length} بوست مخطط${posts.length ? `، ${posts.length} منشور فعليًا` : ''}`}
+                  aria-label={`${WEEKDAY_NAMES[cell.date.weekday]} ${fmtDay(cell.date.toMillis())}، ${plans.length} منشور مخطط${posts.length ? `، ${posts.length} منشور فعليًا` : ''}`}
                   aria-pressed={isSelected}
                   onClick={(event) => {
                     event.stopPropagation();
@@ -89,7 +89,7 @@ export function MonthGrid({ cells, label, todayKey, selected, plansByDay, postsB
                 <button
                   type="button"
                   className="day__add"
-                  aria-label={`أضف بوست يوم ${fmtDay(cell.date.toMillis())}`}
+                  aria-label={`أضف منشور يوم ${fmtDay(cell.date.toMillis())}`}
                   onClick={(event) => {
                     event.stopPropagation();
                     actions.add(cell.key);

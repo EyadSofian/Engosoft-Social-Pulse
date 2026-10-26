@@ -102,7 +102,7 @@ export function BoardView({ plans, actions, onStatus }: Props) {
                   </span>
                 </button>
               ))}
-              {!items.length && <p className="board__empty">اسحب بوست إلى هنا</p>}
+              {!items.length && <p className="board__empty">اسحب منشورًا إلى هنا</p>}
             </div>
           </section>
         );

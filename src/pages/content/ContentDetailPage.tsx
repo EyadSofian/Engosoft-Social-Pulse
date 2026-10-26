@@ -102,7 +102,7 @@ function Workspace({ item }: { item: ContentItem }) {
           ) : (
             <>
               <ButtonLink to={item.designDocumentId ? `/ai-studio/post-designer?draft=${encodeURIComponent(item.designDocumentId)}` : `/ai-studio/post-designer?content=${encodeURIComponent(item.id)}`} variant="secondary">
-                {t('Design post', 'صمّم بوست')}
+                {t('Design post', 'صمّم منشور')}
               </ButtonLink>
               <AssignMenu item={item} size="md" />
               <TransitionActions item={item} onRequest={request} limit={3} />
@@ -495,7 +495,7 @@ function DetailsCard({ item, now, template }: { item: ContentItem; now: number; 
             { label: t('Due', 'التسليم'), value: <DueLabel iso={item.dueAt} now={now} done={item.status === 'published' || item.status === 'scheduled'} /> },
             { label: t('Template', 'القالب'), value: template ? <Link to={`/templates/${template.id}`} className="ui-link">{tx(template.name)}</Link> : '—' },
             { label: t('Campaign', 'الحملة'), value: campaign ? <Link to={`/content?campaign=${campaign.id}`} className="ui-link">{campaign.name}</Link> : '—' },
-            { label: t('Course', 'الكورس'), value: course ? `${course.code} — ${course.cohort}` : '—' },
+            { label: t('Course', 'الدورة'), value: course ? `${course.code} — ${course.cohort}` : '—' },
             { label: t('Plan target', 'هدف الخطة'), value: target ? tx(target.label) : '—' },
             { label: t('AI credits used', 'رصيد AI المستخدم'), value: <span className="u-tnum">{item.ai.used ? num(item.ai.credits) : '—'}</span> },
             { label: t('Created', 'أُنشئ'), value: date(item.createdAt, 'date') },
@@ -565,11 +565,11 @@ function PerformanceCard({ item, now }: { item: ContentItem; now: number }) {
         {item.status !== 'published' ? (
           <p className="u-sm u-muted">{t('Performance appears after the item is published and its link is recorded.', 'يظهر الأداء بعد نشر العنصر وتسجيل رابطه.')}</p>
         ) : !item.publishedUrl ? (
-          <p className="u-sm u-muted">{t('Published without a recorded link, so no live post can be matched. Values stay —.', 'نُشر دون رابط مسجل، فلا يمكن مطابقته مع بوست حي. القيم تبقى —.')}</p>
+          <p className="u-sm u-muted">{t('Published without a recorded link, so no live post can be matched. Values stay —.', 'نُشر دون رابط مسجل، فلا يمكن مطابقته مع منشور حي. القيم تبقى —.')}</p>
         ) : store.phase === 'loading' ? (
           <p className="u-sm u-muted">{t('Loading…', 'جارٍ التحميل…')}</p>
         ) : !post ? (
-          <DataNotice status="partial" message={t('No synced post matches this link yet. It appears after the next sync if the platform is connected.', 'لا يوجد بوست متزامن يطابق هذا الرابط بعد. يظهر بعد المزامنة التالية إذا كانت المنصة متصلة.')} />
+          <DataNotice status="partial" message={t('No synced post matches this link yet. It appears after the next sync if the platform is connected.', 'لا يوجد منشور متزامن يطابق هذا الرابط بعد. يظهر بعد المزامنة التالية إذا كانت المنصة متصلة.')} />
         ) : (
           <div className="u-stack u-stack--sm">
             <dl className="metric-grid">

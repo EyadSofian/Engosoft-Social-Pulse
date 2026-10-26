@@ -21,7 +21,7 @@ const FIELD_KIND: Record<string, [string, string]> = {
   date: ['Date', 'تاريخ'],
   number: ['Number', 'رقم'],
   url: ['Link', 'رابط'],
-  course: ['Course', 'كورس'],
+  course: ['Course', 'دورة'],
   person: ['Person', 'شخص'],
 };
 

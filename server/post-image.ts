@@ -1,4 +1,5 @@
 import { z } from 'zod';
+import { recordUsage, type OpenAIUsage } from './usage.js';
 import { assessImage } from './image-quality.js';
 import { compileDefaultImagePrompt } from './image-prompt-compiler.js';
 import type { CreativeDirection } from '../src/features/creative-studio/design-plan.js';
@@ -8,12 +9,12 @@ const imageSize = (size: string) => ['story', 'portrait'].includes(size) ? '1024
 
 export async function generatePostImage(subject: string, size: string, env: NodeJS.ProcessEnv = process.env, referenceImageDataUrl?: string, count = 1, objective = 'general', direction?: CreativeDirection): Promise<{ imageDataUrl: string; imageDataUrls: string[]; model: string; rejectedCount: number; candidateScores: number[]; promptVersion: string; referenceIds: string[] }> {
   const key = env.OPENAI_API_KEY?.trim();
-  if (!key) throw new Error('OPENAI_API_KEY غير مضبوط على السيرفر.');
+  if (!key) throw new Error('OPENAI_API_KEY غير مضبوط على الخادم.');
   const model = env.OPENAI_IMAGE_MODEL?.trim() || 'gpt-image-2';
   const plan = compileDefaultImagePrompt(subject, objective, direction);
   const prompt = plan.prompt;
   const reference = referenceImageDataUrl ? /^data:image\/(png|jpeg|webp);base64,([A-Za-z0-9+/=]+)$/.exec(referenceImageDataUrl) : null;
-  if (referenceImageDataUrl && !reference) throw new Error('الصورة المرجعية لازم تكون PNG أو JPEG أو WebP.');
+  if (referenceImageDataUrl && !reference) throw new Error('يجب أن تكون الصورة المرجعية بصيغة PNG أو JPEG أو WebP.');
   const callModel = async (n: number, revision = ''): Promise<string[]> => {
     const requestedPrompt = revision ? `${prompt}\n\nImprove the rejected attempt: ${revision.slice(0, 700)}. Preserve the subject and text zone.` : prompt;
     let response: Response;
@@ -24,7 +25,8 @@ export async function generatePostImage(subject: string, size: string, env: Node
       form.append('size', imageSize(size)); form.append('quality', 'medium'); form.append('output_format', 'png'); form.append('n', String(n));
       response = await fetch('https://api.openai.com/v1/images/edits', { method: 'POST', headers: { Authorization: `Bearer ${key}` }, body: form, signal: AbortSignal.timeout(180000) });
     } else response = await fetch('https://api.openai.com/v1/images/generations', { method: 'POST', headers: { Authorization: `Bearer ${key}`, 'Content-Type': 'application/json' }, body: JSON.stringify({ model, prompt: requestedPrompt, size: imageSize(size), quality: 'medium', output_format: 'png', n }), signal: AbortSignal.timeout(180000) });
-    const result = await response.json().catch(() => ({})) as { data?: { b64_json?: string }[]; error?: { message?: string } };
+    const result = await response.json().catch(() => ({})) as { data?: { b64_json?: string }[]; error?: { message?: string }; usage?: OpenAIUsage };
+    if (response.ok) recordUsage({ kind: reference ? 'image_edit' : 'image', model, usage: result.usage, images: result.data?.length ?? n, size: imageSize(size), quality: 'medium' });
     if (!response.ok || !result.data?.[0]?.b64_json) throw new Error(result.error?.message || `تعذّر توليد الصورة (HTTP ${response.status}).`);
     return result.data.filter((item) => item.b64_json).map((item) => `data:image/png;base64,${item.b64_json}`);
   };

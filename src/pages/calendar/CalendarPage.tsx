@@ -54,7 +54,7 @@ export function CalendarPage() {
 
   return (
     <div className="u-stack">
-      <PageHeader title={t('Calendar', 'التقويم')} description={t('The content plan across departments, course dates and occasions — and the live publishing calendar.', 'خطة المحتوى لكل الأقسام ومواعيد الكورسات والمناسبات — وتقويم النشر الحي.')} />
+      <PageHeader title={t('Calendar', 'التقويم')} description={t('The content plan across departments, course dates and occasions — and the live publishing calendar.', 'خطة المحتوى لكل الأقسام ومواعيد الدورات والمناسبات — وتقويم النشر الحي.')} />
       <Tabs
         label={t('Calendars', 'التقاويم')}
         value={view}
@@ -66,7 +66,7 @@ export function CalendarPage() {
       />
       {view === 'live' ? (
         <>
-          <p className="u-sm u-muted">{t('Plans saved to the server: drag to reschedule, import the XLSX template, export to CSV or ICS. Alerts fire before and after each post time. This calendar is Arabic-only until it is rebuilt.', 'خطط محفوظة على السيرفر: اسحب لتغيير الموعد، ارفع قالب XLSX، صدّر CSV أو ICS. التنبيهات قبل وبعد موعد كل بوست. هذا التقويم بالعربية فقط حتى إعادة بنائه.')}</p>
+          <p className="u-sm u-muted">{t('Plans saved to the server: drag to reschedule, import the XLSX template, export to CSV or ICS. Alerts fire before and after each post time. This calendar is Arabic-only until it is rebuilt.', 'خطط محفوظة على الخادم: اسحب لتغيير الموعد، ارفع قالب XLSX، صدّر CSV أو ICS. التنبيهات قبل وبعد موعد كل منشور. هذا التقويم بالعربية فقط حتى إعادة بنائه.')}</p>
           {store.phase === 'ready' ? <LegacyCalendar /> : <EmptyState title={store.phase === 'loading' ? t('Loading the calendar…', 'جارٍ تحميل التقويم…') : t('The calendar API is not reachable.', 'واجهة التقويم غير متاحة.')} text={store.staleError || undefined} action={store.phase === 'offline' ? <Button onClick={() => void store.reload()}>{t('Retry', 'أعد المحاولة')}</Button> : undefined} />}
         </>
       ) : (
@@ -158,7 +158,7 @@ function PlanCalendar() {
     { key: 'content', label: t('In progress (due date)', 'قيد العمل (موعد التسليم)') },
     { key: 'scheduled', label: t('Scheduled', 'مجدول') },
     { key: 'published', label: t('Published', 'منشور') },
-    { key: 'course', label: t('Course dates', 'مواعيد الكورسات') },
+    { key: 'course', label: t('Course dates', 'مواعيد الدورات') },
     { key: 'event', label: t('Occasions & events', 'مناسبات وفعاليات') },
   ];
 
@@ -201,11 +201,11 @@ function PlanCalendar() {
       </div>
       <div className="filters">
         <Checkbox checked={layers.has('content')} onChange={() => toggle('content')} label={t('Content', 'المحتوى')} />
-        <Checkbox checked={layers.has('course')} onChange={() => toggle('course')} label={t('Courses', 'الكورسات')} />
+        <Checkbox checked={layers.has('course')} onChange={() => toggle('course')} label={t('Courses', 'الدورات')} />
         <Checkbox checked={layers.has('event')} onChange={() => toggle('event')} label={t('Occasions & events', 'المناسبات والفعاليات')} />
         {courseFocus && (
           <button type="button" className="ui-link" onClick={() => setQuery({ course: null })}>
-            {t('Show all courses', 'اعرض كل الكورسات')}
+            {t('Show all courses', 'اعرض كل الدورات')}
           </button>
         )}
         <span className="cal-legend" aria-label={t('Legend', 'دليل الألوان')}>
@@ -317,7 +317,7 @@ function EntryRow({ entry }: { entry: Entry }) {
       </span>
       {entry.channels && <Channels channels={entry.channels} size={12} />}
       {entry.status && <ContentStatusBadge status={entry.status} />}
-      {!entry.status && <span className="u-xs u-muted">{entry.category === 'course' ? t('Course', 'كورس') : t('Occasion', 'مناسبة')}</span>}
+      {!entry.status && <span className="u-xs u-muted">{entry.category === 'course' ? t('Course', 'دورة') : t('Occasion', 'مناسبة')}</span>}
     </li>
   );
 }

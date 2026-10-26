@@ -1,5 +1,6 @@
 import { useEffect, useRef, useState } from 'react';
-import { ArrowLeft, FileUp, ImagePlus, Sparkles } from 'lucide-react';
+import { AnimatePresence, motion } from 'motion/react';
+import { ArrowLeft, Coins, FileUp, ImagePlus, LayoutTemplate, Sparkles, Wand2 } from 'lucide-react';
 import { Link, useRouter } from '../../app/router/router';
 import { Button } from '../../components/ui/Button';
 import { CREATE_PREFILL_KEY, type CreatePrefill } from '../../features/content/CreateContent';
@@ -10,16 +11,16 @@ import { STATUS_LABEL, type PipelineItem } from '../../features/content-pipeline
 import { api } from '../../lib/api';
 import { TEMPLATE_PREFILL_KEY, type AiTemplate } from '../../features/ai-templates/AiTemplatesPanel';
 import { usePipeline } from '../../features/content-pipeline/usePipeline';
+import { TemplateComposer, TemplateGrid, useSvgTemplates } from '../../features/svg-templates/SvgTemplates';
 import { ChannelIcon } from '../../components/data-display/ChannelIcon';
-import { CREATIVE_PLATFORMS, PLATFORM_FORMATS, type CreativePlatform } from '../../features/creative-studio/platforms';
+import { CREATIVE_PLATFORMS, masterFormat, PLATFORM_FORMATS, type CreativePlatform } from '../../features/creative-studio/platforms';
 import { useWorkspace } from '../../features/workspace/WorkspaceProvider';
 import { useI18n } from '../../i18n/I18nProvider';
-import { PageHeader } from '../../shell/Header';
+
 import { usePageMeta } from '../../shell/ShellContext';
 
 type OdooEvent = { id: string; title: string; startsAt: string; endsAt: string; source: string; location?: string; registrationUrl?: string; websitePublished?: boolean };
 type Stage = 'compose' | 'generating';
-const FEED_PLATFORMS: CreativePlatform[] = ['instagram', 'facebook', 'linkedin'];
 const OBJECTIVES: { value: Objective | 'auto'; ar: string; en: string }[] = [
   { value: 'auto', ar: 'حدده من الطلب', en: 'Detect from prompt' },
   { value: 'course_launch', ar: 'إعلان دورة', en: 'Course announcement' },
@@ -27,7 +28,7 @@ const OBJECTIVES: { value: Objective | 'auto'; ar: string; en: string }[] = [
   { value: 'certificate', ar: 'شهادة أو إنجاز', en: 'Certificate or achievement' },
   { value: 'education', ar: 'محتوى تعليمي', en: 'Educational content' },
   { value: 'event', ar: 'فعالية أو مناسبة', en: 'Event or occasion' },
-  { value: 'general', ar: 'بوست عام', en: 'General post' },
+  { value: 'general', ar: 'منشور عام', en: 'General post' },
 ];
 const asDataUrl = (file: Blob) => new Promise<string>((resolve, reject) => {
   const reader = new FileReader(); reader.onload = () => resolve(String(reader.result)); reader.onerror = () => reject(reader.error); reader.readAsDataURL(file);
@@ -41,6 +42,7 @@ function detectPlatforms(prompt: string): CreativePlatform[] {
   if (/لينكد|linkedin/.test(text)) found.push('linkedin');
   if (/تيك|tiktok/.test(text)) found.push('tiktok');
   if (/سناب|snapchat/.test(text)) found.push('snapchat');
+  if (/الموقع|ويب ?سايت|website|blog|مدونة/.test(text)) found.push('website');
   return found;
 }
 function dateMention(prompt: string): { day: number; month: number } | null {
@@ -58,7 +60,7 @@ function RecentContent() {
     .sort((a, b) => Number(b.status === 'changes_requested') - Number(a.status === 'changes_requested')).slice(0, 6);
   if (!mine.length) return null;
   return <section className="creative-home__recent-real">
-    <div className="creative-home__section-title"><h2>{t('Continue your work', 'كمّل شغلك')}</h2><Link to="/content">{t('All content', 'كل المحتوى')} <ArrowLeft size={15} /></Link></div>
+    <div className="creative-home__section-title"><h2>{t('Continue your work', 'تابع عملك')}</h2><Link to="/content">{t('All content', 'كل المحتوى')} <ArrowLeft size={15} /></Link></div>
     <div className="library-grid">{mine.map((item) => <Link key={item.id} to={`/content/${item.id}`} className="library-card glass">
       {item.creative?.imageUrl && <img src={item.creative.imageUrl} alt="" loading="lazy" />}<b dir="auto">{item.title}</b><small>{tx(STATUS_LABEL[item.status])}</small>
     </Link>)}</div>
@@ -80,6 +82,7 @@ export function CreationHomePage() {
   const [stage, setStage] = useState<Stage>('compose');
   const [jobId, setJobId] = useState('');
   const [template, setTemplate] = useState<AiTemplate | null>(null);
+  const [mode, setMode] = useState<'ai' | 'template'>(() => (query.has('svgTemplate') ? 'template' : 'ai'));
   useEffect(() => {
     if (!query.has('template')) return;
     try {
@@ -119,41 +122,101 @@ export function CreationHomePage() {
     if (upload.current) upload.current.value = '';
   };
   const startFullCreative = async () => {
-    if (prompt.trim().length < 10) { setMessage(t('Describe the post in a little more detail.', 'اكتب وصف البوست بتفاصيل أكثر.')); return; }
-    if (!platforms.length) { setMessage(t('Choose at least one platform.', 'اختار منصة واحدة على الأقل.')); return; }
+    if (prompt.trim().length < 10) { setMessage(t('Describe the post in a little more detail.', 'اكتب وصف المنشور بتفاصيل أكثر.')); return; }
+    if (!platforms.length) { setMessage(t('Choose at least one platform.', 'اختر منصة واحدة على الأقل.')); return; }
     setCreating(true); setMessage('');
     try {
-      // The master is a 4:5 feed post when any feed platform is selected; story platforms get an adapted 9:16 version.
-      const format = platforms.some((p) => FEED_PLATFORMS.includes(p)) ? 'feed' : 'story';
+      // The master is a 4:5 feed post when any feed platform is selected; 9:16 and website versions are adapted from it.
+      const format = masterFormat(platforms);
       const response = await fetch('/api/ai/full-creative', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ prompt, format, directions: 3, ...(template ? { templateId: template.id } : {}) }) });
       const body = await response.json();
-      if (!response.ok) throw new Error(body.error || t('Generation could not start.', 'التوليد ما بدأش.'));
+      if (!response.ok) throw new Error(body.error || t('Generation could not start.', 'تعذّر بدء التوليد.'));
       setJobId(body.jobId); setStage('generating');
     } catch (error) { setMessage(error instanceof Error ? error.message : String(error)); }
     setCreating(false);
   };
   return <div className="u-stack u-stack--lg creative-home">
+    <header className="create-hero">
+      <div className="create-hero__titles">
+        <span className="create-hero__eyebrow"><Sparkles size={14} /> Engosoft Creative Studio</span>
+        <h1 className="create-hero__title">{t('What would you like to create?', 'ماذا تريد أن تنشئ؟')}</h1>
+        <p>{mode === 'ai' ? t('Describe the idea. We check Odoo, write the copy, design three directions and place the official logo.', 'اكتب الفكرة، وسنراجع بيانات Odoo ونكتب النص ونصمّم ثلاثة اتجاهات ونضع الشعار الرسمي.') : t('Pick a ready template, fill it by hand or from an Odoo event, and export instantly at no AI cost.', 'اختر قالبًا جاهزًا، واملأه يدويًا أو من فعالية في Odoo، ثم صدّره فورًا دون تكلفة ذكاء اصطناعي.')}</p>
+      </div>
+      <div className="create-mode" role="tablist" aria-label={t('How to create', 'طريقة الإنشاء')}>
+        {(['ai', 'template'] as const).map((value) => <button key={value} type="button" role="tab" aria-selected={mode === value} onClick={() => setMode(value)}>
+          {mode === value && <motion.span layoutId="create-mode-pill" className="create-mode__pill" transition={{ type: 'spring', stiffness: 420, damping: 34 }} />}
+          <span className="create-mode__label">{value === 'ai' ? <><Wand2 size={16} /> {t('Full AI design', 'تصميم كامل بالذكاء الاصطناعي')}</> : <><LayoutTemplate size={16} /> {t('From a template', 'من قالب جاهز')}<i>{t('no AI cost', 'دون تكلفة')}</i></>}</span>
+        </button>)}
+      </div>
+    </header>
+    {mode === 'template' ? <TemplateMode initialId={query.get('svgTemplate')} /> : <div className={stage === 'compose' ? 'create-layout' : 'create-layout create-layout--single'}>
     <div className="creative-home__hero">
-      <PageHeader title={t('What would you like to create?', 'ماذا تريد أن تنشئ؟')} description={t('Describe the idea. We will check company context, suggest directions, then build editable posts for every selected platform.', 'اكتب الفكرة. هنراجع بيانات الشركة ونقترح اتجاهات، ثم نجهّز بوستات قابلة للتعديل لكل منصة.')} />
       {stage === 'compose' && <>
-        <div className="creative-home__composer"><span className="creative-home__composer-icon"><Sparkles size={20} /></span><textarea value={prompt} onChange={(event) => { setPrompt(event.target.value); if (!platformTouched) { const found = detectPlatforms(event.target.value); if (found.length) setPlatforms(found); } }} rows={4} placeholder={t('Example: Create a CFM course post for Facebook, Instagram and WhatsApp next week…', 'مثال: اعمل بوست عن دورة CFM اللي هتبدأ الأسبوع الجاي للفيسبوك وإنستجرام وواتساب…')} aria-label={t('Describe the content to create', 'صف المحتوى الذي تريد إنشاءه')} dir="auto" /></div>
+        <div className="creative-home__composer"><span className="creative-home__composer-icon"><Sparkles size={20} /></span><textarea value={prompt} onChange={(event) => { setPrompt(event.target.value); if (!platformTouched) { const found = detectPlatforms(event.target.value); if (found.length) setPlatforms(found); } }} rows={4} placeholder={t('Example: Create a CFM course post for Facebook, Instagram and WhatsApp next week…', 'مثال: صمّم منشورًا عن دورة CFM التي تبدأ الأسبوع القادم لفيسبوك وإنستجرام وواتساب…')} aria-label={t('Describe the content to create', 'صف المحتوى الذي تريد إنشاءه')} dir="auto" /></div>
         <div className="creative-home__tools">
           <input ref={upload} hidden type="file" multiple accept="image/*,.pdf,.docx,.txt,.md" onChange={(event) => void addFiles(event.target.files)} />
-          <button type="button" onClick={() => upload.current?.click()}><FileUp size={16} />{t('Add reference', 'أضف مرجع')}</button>
-          <button type="button" onClick={() => upload.current?.click()}><ImagePlus size={16} />{t('Upload image / file', 'ارفع صورة أو ملف')}</button>
-          <button type="button" onClick={() => setSourcePanel(sourcePanel === 'post' ? null : 'post')}>{t('Use existing post', 'استخدم بوست سابق')}</button>
-          <button type="button" onClick={() => setSourcePanel(sourcePanel === 'course' ? null : 'course')}>{t('Choose course', 'اختار كورس')}</button>
-          <button type="button" onClick={() => setSourcePanel(sourcePanel === 'event' ? null : 'event')}>{t('Choose event', 'اختار إيفنت')}</button>
+          <button type="button" onClick={() => upload.current?.click()}><FileUp size={16} />{t('Add reference', 'أضف مرجعًا')}</button>
+          <button type="button" onClick={() => upload.current?.click()}><ImagePlus size={16} />{t('Upload image / file', 'ارفع صورة أو ملفًا')}</button>
+          <button type="button" onClick={() => setSourcePanel(sourcePanel === 'post' ? null : 'post')}>{t('Use existing post', 'استخدم منشورًا سابقًا')}</button>
+          <button type="button" onClick={() => setSourcePanel(sourcePanel === 'course' ? null : 'course')}>{t('Choose course', 'اختر دورة')}</button>
+          <button type="button" onClick={() => setSourcePanel(sourcePanel === 'event' ? null : 'event')}>{t('Choose event', 'اختر فعالية')}</button>
         </div>
-        {sourcePanel && <div className="creative-home__source"><strong>{sourcePanel === 'post' ? t('Existing posts', 'بوستات سابقة') : sourcePanel === 'course' ? t('Odoo courses and training', 'كورسات وتدريبات Odoo') : t('Odoo events', 'إيفنتات Odoo')}</strong><p className="u-xs u-muted">{sourcePanel === 'post' ? t('Existing workspace posts are references only.', 'البوستات السابقة مراجع فقط.') : odooEvents.length ? t('Dates come from Odoo. Select the correct record.', 'التواريخ من Odoo. اختار السجل الصحيح.') : (odooMessage || t('Loading Odoo events…', 'بنحمّل مواعيد Odoo…'))}</p><div>{(sourcePanel === 'post' ? (pipeline ?? []).slice(0, 8).map((item) => ({ id: item.id, label: item.title })) : odooEvents.filter((event) => sourcePanel === 'course' ? /course|training|دورة|كورس|تدريب/i.test(event.title) : !/course|training|دورة|كورس|تدريب/i.test(event.title)).slice(0, 12).map((event) => ({ id: event.id, label: `${event.title} · ${event.startsAt.slice(0,10)}` }))).map((item) => <button key={item.id} type="button" onClick={() => { setPrompt((current) => `${current}${current ? ' — ' : ''}${item.label}`); setSourcePanel(null); }}>{item.label}</button>)}</div></div>}
+        {sourcePanel && <div className="creative-home__source"><strong>{sourcePanel === 'post' ? t('Existing posts', 'منشورات سابقة') : sourcePanel === 'course' ? t('Odoo courses and training', 'دورات وتدريبات Odoo') : t('Odoo events', 'فعاليات Odoo')}</strong><p className="u-xs u-muted">{sourcePanel === 'post' ? t('Existing workspace posts are references only.', 'المنشورات السابقة مراجع فقط.') : odooEvents.length ? t('Dates come from Odoo. Select the correct record.', 'التواريخ من Odoo. اختر السجل الصحيح.') : (odooMessage || t('Loading Odoo events…', 'جارٍ تحميل مواعيد Odoo…'))}</p><div>{(sourcePanel === 'post' ? (pipeline ?? []).slice(0, 8).map((item) => ({ id: item.id, label: item.title })) : odooEvents.filter((event) => sourcePanel === 'course' ? /course|training|دورة|دورة|تدريب/i.test(event.title) : !/course|training|دورة|دورة|تدريب/i.test(event.title)).slice(0, 12).map((event) => ({ id: event.id, label: `${event.title} · ${event.startsAt.slice(0,10)}` }))).map((item) => <button key={item.id} type="button" onClick={() => { setPrompt((current) => `${current}${current ? ' — ' : ''}${item.label}`); setSourcePanel(null); }}>{item.label}</button>)}</div></div>}
         {references.length > 0 && <ul className="creative-home__references">{references.map((file, index) => <li key={`${file.name}-${index}`}>{file.mime.startsWith('image/') && file.dataUrl && <img src={file.dataUrl} alt="" />}<span>{file.name}</span><button type="button" onClick={() => setReferences((current) => current.filter((_, i) => i !== index))} aria-label={t(`Remove ${file.name}`, `احذف ${file.name}`)}>×</button></li>)}</ul>}
         <div className="creative-home__platforms" role="group" aria-label={t('Platforms', 'المنصات')}>{CREATIVE_PLATFORMS.map((platform) => <button key={platform} type="button" aria-pressed={platforms.includes(platform)} onClick={() => togglePlatform(platform)}><span className="creative-home__platform-icon"><ChannelIcon channel={platform} size={15} /></span>{PLATFORM_FORMATS[platform].label}</button>)}</div>
         <div className="creative-home__options"><label>{t('Objective', 'الهدف')}<select value={objective} onChange={(event) => setObjective(event.target.value as Objective | 'auto')}>{OBJECTIVES.map((entry) => <option key={entry.value} value={entry.value}>{t(entry.en, entry.ar)}</option>)}</select></label></div>
-        <div className="creative-home__action"><p className="u-xs">{t('Images, PDF and text inform AI. DOCX is retained as a reference. Up to 6 files, 2 MB each.', 'الصور وPDF والنصوص تدخل في الـAI. ملف DOCX يبقى كمرجع. حتى ٦ ملفات، ٢ ميجابايت للملف.')}</p><Button variant="primary" className="cta-create" disabled={creating} busy={creating} onClick={() => void startFullCreative()}>{!creating && <Sparkles size={17} className="cta-create__spark" />}{creating ? t('Starting…', 'بنبدأ…') : t('Design the post', 'صمّم البوست')}</Button></div>
+        <div className="creative-home__action"><p className="u-xs">{t('Images, PDF and text inform AI. DOCX is retained as a reference. Up to 6 files, 2 MB each.', 'تُرسَل الصور وملفات PDF والنصوص إلى الذكاء الاصطناعي، ويُحفظ ملف DOCX مرجعًا. حتى ٦ ملفات، ٢ ميجابايت لكل ملف.')}</p><Button variant="primary" className="cta-create" disabled={creating} busy={creating} onClick={() => void startFullCreative()}>{!creating && <Sparkles size={17} className="cta-create__spark" />}{creating ? t('Starting…', 'جارٍ البدء…') : t('Design the post', 'صمّم المنشور')}</Button></div>
       </>}
       {stage === 'generating' && jobId && <FullCreativeJob jobId={jobId} platforms={platforms} prompt={prompt} onRestart={() => { setStage('compose'); setJobId(''); }} />}
       {message && <p role="alert" className="creative-home__error">{message}</p>}
     </div>
+    {stage === 'compose' && <PlatformPreview platforms={platforms} />}
+    </div>}
     <RecentContent />
   </div>;
+}
+
+/** Exact delivery sizes of the chosen platforms, drawn to scale, with the expected AI cost. */
+function PlatformPreview({ platforms }: { platforms: CreativePlatform[] }) {
+  const { t } = useI18n();
+  const [estimate, setEstimate] = useState<{ usd: number } | null>(null);
+  useEffect(() => {
+    void api<{ averageImageUsd: number | null }>('/api/usage').then((report) => setEstimate({ usd: report.averageImageUsd ?? 0.2 })).catch(() => {});
+  }, []);
+  const groups = (['feed', 'story', 'landscape'] as const).map((format) => ({ format, items: platforms.filter((p) => PLATFORM_FORMATS[p].master === format) })).filter((group) => group.items.length);
+  const extra = groups.length - 1;
+  return <aside className="create-preview glass" aria-label={t('Sizes', 'المقاسات')}>
+    <h2>{t('What you will get', 'ما ستحصل عليه')}</h2>
+    <div className="create-preview__frames">
+      <AnimatePresence initial={false}>
+        {groups.map(({ format, items }) => {
+          const spec = PLATFORM_FORMATS[items[0]];
+          return <motion.figure layout key={format} className="create-frame" data-format={format} initial={{ opacity: 0, scale: 0.9 }} animate={{ opacity: 1, scale: 1 }} exit={{ opacity: 0, scale: 0.9 }} transition={{ type: 'spring', stiffness: 320, damping: 28 }}>
+            <div className="create-frame__shape" style={{ aspectRatio: `${spec.width} / ${spec.height}` }}>
+              <span className="create-frame__shine" />
+              <span className="create-frame__icons">{items.map((p) => <ChannelIcon key={p} channel={p} size={15} />)}</span>
+            </div>
+            <figcaption><b>{t(spec.format, spec.format)}</b><span dir="ltr">{spec.width}×{spec.height}</span><small>{items.map((p) => PLATFORM_FORMATS[p].label).join(' · ')}</small></figcaption>
+          </motion.figure>;
+        })}
+      </AnimatePresence>
+      {!groups.length && <p className="u-sm u-muted">{t('Choose at least one platform.', 'اختر منصة واحدة على الأقل.')}</p>}
+    </div>
+    {estimate && groups.length > 0 && <p className="create-preview__cost"><Coins size={15} /> {t('Expected AI cost', 'التكلفة المتوقعة')}: <b dir="ltr">≈ ${((3 + extra) * estimate.usd).toFixed(2)}</b> <small>{t(`3 designs${extra ? ` + ${extra} resize` : ''}`, `3 تصميمات${extra ? ` + ${extra} مقاس إضافي` : ''}`)}</small></p>}
+  </aside>;
+}
+
+/** Ready templates: choose one, fill it (or let an Odoo event fill it) and export without any image-model cost. */
+function TemplateMode({ initialId }: { initialId: string | null }) {
+  const { t } = useI18n();
+  const { navigate } = useRouter();
+  const { items } = useSvgTemplates();
+  const [selected, setSelected] = useState<string | null>(initialId);
+  const template = items?.find((item) => item.id === selected);
+  if (!items) return <div className="board-loading"><span className="ui-btn__spinner" /></div>;
+  if (template) return <TemplateComposer key={template.id} template={template} onClose={() => setSelected(null)} />;
+  return <section className="u-stack">
+    {items.length ? <TemplateGrid items={items} onOpen={(item) => setSelected(item.id)} /> : <div className="library-empty glass"><LayoutTemplate size={22} /><p>{t('No templates yet. Design one with AI in the Library once, then reuse it for free.', 'لا توجد قوالب بعد. صمّم قالبًا بالذكاء الاصطناعي في المكتبة مرة واحدة، ثم أعد استخدامه دون تكلفة.')}</p></div>}
+    <div><Button variant="secondary" onClick={() => navigate('/library')}><Wand2 size={15} /> {t('Design a new template', 'صمّم قالبًا جديدًا')}</Button></div>
+  </section>;
 }

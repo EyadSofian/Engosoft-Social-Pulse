@@ -10,10 +10,12 @@ import {
 import {
   addComment, addVersion, allowedMoves, canEdit, createContent, getContent, listContent, listEvents, listVersions, transition, updateContent, WorkspaceError,
 } from './workspace.js';
+import { notifyContent } from './notify.js';
 
-const CHANNELS = ['facebook', 'instagram', 'whatsapp', 'linkedin', 'tiktok', 'snapchat'] as const;
-const creativeUrl = z.string().regex(/^\/api\/creatives\/[0-9a-f-]{36}\/[a-z0-9.-]+\.png$|^\/api\/studio\/[0-9a-f-]{36}\.png$/);
-const creativeRef = z.object({ requestId: z.string().max(60), directionId: z.string().max(40), imageUrl: creativeUrl, storyUrl: creativeUrl.optional(), model: z.string().max(60).optional(), directionName: z.string().max(200).optional() });
+const CHANNELS = ['facebook', 'instagram', 'whatsapp', 'linkedin', 'tiktok', 'snapchat', 'website'] as const;
+const creativeUrl = z.string().regex(/^\/api\/creatives\/[0-9a-f-]{36}\/[a-z0-9.-]+\.png$|^\/api\/studio\/[0-9a-f-]{36}\.png$|^\/api\/uploads\/[0-9a-f-]{36}\.png$/);
+const svgTemplateRef = z.object({ id: z.string().uuid(), values: z.record(z.string().max(40), z.string().max(2000)) });
+const creativeRef = z.object({ requestId: z.string().max(60), directionId: z.string().max(40), imageUrl: creativeUrl, storyUrl: creativeUrl.optional(), landscapeUrl: creativeUrl.optional(), model: z.string().max(60).optional(), directionName: z.string().max(200).optional(), svgTemplate: svgTemplateRef.optional() });
 const captions = z.partialRecord(z.enum(CHANNELS), z.string().max(5000));
 
 const publicUser = (user: AuthUser) => ({ id: user.id, name: user.name, email: user.email, role: user.role, departmentId: user.departmentId, title: user.title, status: user.status, lastActiveAt: user.lastActiveAt });
@@ -22,17 +24,17 @@ const withMoves = (user: AuthUser) => <T extends ReturnType<typeof getContent>>(
 function fail(res: express.Response, error: unknown) {
   if (error instanceof WorkspaceError) return res.status(error.status).json({ error: error.message });
   if (error instanceof z.ZodError) return res.status(400).json({ error: 'البيانات غير صالحة.' });
-  return res.status(400).json({ error: error instanceof Error ? error.message : 'حصل خطأ.' });
+  return res.status(400).json({ error: error instanceof Error ? error.message : 'حدث خطأ.' });
 }
 
 export function registerAuthRoutes(app: express.Express) {
   app.post('/api/auth/login', (req, res) => {
     const parsed = z.object({ email: z.string().email().max(200), password: z.string().min(1).max(200) }).safeParse(req.body);
-    if (!parsed.success) return res.status(400).json({ error: 'اكتب الإيميل وكلمة المرور.' });
+    if (!parsed.success) return res.status(400).json({ error: 'اكتب البريد الإلكتروني وكلمة المرور.' });
     const key = `${parsed.data.email.toLowerCase()}|${req.ip}`;
-    if (loginBlocked(key)) return res.status(429).json({ error: 'محاولات كتير. استنى ربع ساعة وجرّب تاني.' });
+    if (loginBlocked(key)) return res.status(429).json({ error: 'محاولات كثيرة. انتظر ربع ساعة ثم حاول مرة أخرى.' });
     const user = authenticate(parsed.data.email, parsed.data.password);
-    if (!user) { recordFailedLogin(key); return res.status(401).json({ error: 'الإيميل أو كلمة المرور غلط.' }); }
+    if (!user) { recordFailedLogin(key); return res.status(401).json({ error: 'البريد الإلكتروني أو كلمة المرور غير صحيحة.' }); }
     clearFailedLogins(key);
     const session = createSession(user.id);
     res.cookie(SESSION_COOKIE, session.token, { httpOnly: true, sameSite: 'lax', secure: req.secure, path: '/', expires: new Date(session.expiresAt) });
@@ -67,14 +69,14 @@ export function registerWorkspaceRoutes(app: express.Express) {
       const input = userInput.parse(req.body);
       res.status(201).json(publicUser(createUser({ ...input, role: input.role as never, departmentId: input.departmentId as never })));
     } catch (error) {
-      if (error instanceof Error && /UNIQUE/.test(error.message)) return res.status(409).json({ error: 'الإيميل ده مستخدم قبل كده.' });
+      if (error instanceof Error && /UNIQUE/.test(error.message)) return res.status(409).json({ error: 'هذا البريد الإلكتروني مستخدم بالفعل.' });
       fail(res, error);
     }
   });
   app.patch('/api/users/:id', requireUser, requirePermission('users.manage'), (req, res) => {
     try {
       const patch = userInput.omit({ email: true }).partial().extend({ status: z.enum(['active', 'suspended']).optional() }).parse(req.body);
-      if (req.params.id === req.user!.id && (patch.status === 'suspended' || (patch.role && patch.role !== 'admin'))) return res.status(400).json({ error: 'مينفعش توقف أو تغيّر دور حسابك أنت.' });
+      if (req.params.id === req.user!.id && (patch.status === 'suspended' || (patch.role && patch.role !== 'admin'))) return res.status(400).json({ error: 'لا يمكنك إيقاف حسابك أو تغيير دوره.' });
       const user = updateUser(String(req.params.id), patch as never);
       if (!user) return res.status(404).json({ error: 'المستخدم غير موجود.' });
       res.json(publicUser(user));
@@ -87,8 +89,10 @@ export function registerWorkspaceRoutes(app: express.Express) {
   });
   app.post('/api/content', requireUser, requirePermission('content.create'), (req, res) => {
     try {
-      const input = z.object({ title: z.string().trim().min(2).max(300), channels: z.array(z.enum(CHANNELS)).min(1).max(6), captions: captions.default({}), creative: creativeRef.nullable(), templateId: z.string().max(80).nullable().optional() }).parse(req.body);
-      res.status(201).json(withMoves(req.user!)(createContent(req.user!, input)));
+      const input = z.object({ title: z.string().trim().min(2).max(300), channels: z.array(z.enum(CHANNELS)).min(1).max(7), captions: captions.default({}), creative: creativeRef.nullable(), templateId: z.string().max(80).nullable().optional() }).parse(req.body);
+      const item = createContent(req.user!, input);
+      notifyContent(req.user!, item, 'created');
+      res.status(201).json(withMoves(req.user!)(item));
     } catch (error) { fail(res, error); }
   });
   app.get('/api/content/:id', requireUser, (req, res) => {
@@ -99,14 +103,16 @@ export function registerWorkspaceRoutes(app: express.Express) {
   });
   app.patch('/api/content/:id', requireUser, (req, res) => {
     try {
-      const patch = z.object({ title: z.string().trim().min(2).max(300).optional(), channels: z.array(z.enum(CHANNELS)).min(1).max(6).optional(), captions: captions.optional() }).parse(req.body);
+      const patch = z.object({ title: z.string().trim().min(2).max(300).optional(), channels: z.array(z.enum(CHANNELS)).min(1).max(7).optional(), captions: captions.optional() }).parse(req.body);
       res.json(withMoves(req.user!)(updateContent(req.user!, String(req.params.id), patch)));
     } catch (error) { fail(res, error); }
   });
   app.post('/api/content/:id/transition', requireUser, (req, res) => {
     try {
       const input = z.object({ to: z.enum(CONTENT_STATUSES as [ContentStatus, ...ContentStatus[]]), note: z.string().max(2000).optional(), scheduledAt: z.iso.datetime().optional() }).parse(req.body);
-      res.json(withMoves(req.user!)(transition(req.user!, String(req.params.id), input.to, input)));
+      const item = transition(req.user!, String(req.params.id), input.to, input);
+      notifyContent(req.user!, item, input.to);
+      res.json(withMoves(req.user!)(item));
     } catch (error) { fail(res, error); }
   });
   app.post('/api/content/:id/comments', requireUser, (req, res) => {
@@ -120,7 +126,7 @@ export function registerWorkspaceRoutes(app: express.Express) {
     try {
       const item = getContent(String(req.params.id));
       if (!item || !canEdit(req.user!, item)) return res.status(404).json({ error: 'المحتوى غير موجود.' });
-      const input = z.object({ imageUrl: creativeUrl, storyUrl: creativeUrl.nullable().default(null), studio: z.unknown().optional(), note: z.string().max(300).default('Studio edit') }).parse(req.body);
+      const input = z.object({ imageUrl: creativeUrl, storyUrl: creativeUrl.nullable().default(null), studio: z.unknown().optional().refine((v) => !(v && typeof v === 'object' && 'svgTemplate' in v) || svgTemplateRef.safeParse((v as { svgTemplate: unknown }).svgTemplate).success), note: z.string().max(300).default('Studio edit') }).parse(req.body);
       res.status(201).json(addVersion(req.user!, item.id, { ...input, studio: input.studio ?? null }));
     } catch (error) { fail(res, error); }
   });

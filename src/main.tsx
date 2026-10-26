@@ -12,8 +12,10 @@ import './legacy/styles/legacy-base.css';
 import './legacy/styles/ui.css';
 import './legacy/styles/views.css';
 import './legacy/styles/calendar.css';
+import './legacy/styles/insights.css';
 import './styles/glass.css';
 import './styles/motion.css';
+import './styles/studio-ui.css';
 
 createRoot(document.getElementById('root')!).render(
   <React.StrictMode>

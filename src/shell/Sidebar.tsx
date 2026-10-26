@@ -59,13 +59,13 @@ export function Sidebar({ drawer }: { drawer?: boolean }) {
       </Link>
 
       {can('content.create') && (
-        <Link to="/" className="shell-create" title={collapsed ? t('New post', 'بوست جديد') : undefined} aria-label={collapsed ? t('New post', 'بوست جديد') : undefined} onClick={() => setMobileNavOpen(false)}>
+        <Link to="/" className="shell-create" title={collapsed ? t('New post', 'منشور جديد') : undefined} aria-label={collapsed ? t('New post', 'منشور جديد') : undefined} onClick={() => setMobileNavOpen(false)}>
           <span className="shell-create__icon">
             <Plus size={18} strokeWidth={2.4} aria-hidden />
           </span>
           {!collapsed && (
             <>
-              <span className="shell-create__text">{t('New post', 'بوست جديد')}</span>
+              <span className="shell-create__text">{t('New post', 'منشور جديد')}</span>
               <Sparkles size={15} className="shell-create__spark" aria-hidden />
             </>
           )}

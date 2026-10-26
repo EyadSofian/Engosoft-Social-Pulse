@@ -49,7 +49,10 @@ export function Ambient() {
       <span className="ambient__orb ambient__orb--b" />
       <span className="ambient__orb ambient__orb--c" />
       <span className="ambient__orb ambient__orb--d" />
+      <span className="ambient__aurora" />
       <span className="ambient__grid" />
+      <span className="ambient__dots" />
+      <span className="ambient__dots ambient__dots--far" />
       <span className="ambient__cursor" />
     </div>
   );
