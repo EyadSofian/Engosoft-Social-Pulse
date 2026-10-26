@@ -56,8 +56,6 @@
 .create-mode button[aria-selected='true'] { color: #fff; }
 .create-mode__pill { position: absolute; inset: 0; border-radius: inherit; background: var(--cta); background-size: 260% 100%; box-shadow: var(--cta-glow); animation: cta-flow 8s linear infinite; }
 .create-mode__label { position: relative; display: inline-flex; align-items: center; gap: 7px; }
-.create-mode__label i { font-style: normal; padding: 2px 7px; border-radius: 999px; background: var(--success-soft); color: var(--success-ink); font-size: 11px; }
-.create-mode button[aria-selected='true'] .create-mode__label i { background: rgb(255 255 255 / 0.22); color: #fff; }
 
 .create-layout { display: grid; grid-template-columns: minmax(0, 1fr) 320px; gap: 18px; align-items: start; }
 .create-layout--single { grid-template-columns: minmax(0, 1fr); }

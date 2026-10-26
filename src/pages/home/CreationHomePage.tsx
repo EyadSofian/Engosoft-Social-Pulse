@@ -140,12 +140,12 @@ export function CreationHomePage() {
       <div className="create-hero__titles">
         <span className="create-hero__eyebrow"><Sparkles size={14} /> Engosoft Creative Studio</span>
         <h1 className="create-hero__title">{t('What would you like to create?', 'ماذا تريد أن تنشئ؟')}</h1>
-        <p>{mode === 'ai' ? t('Describe the idea. We check Odoo, write the copy, design three directions and place the official logo.', 'اكتب الفكرة، وسنراجع بيانات Odoo ونكتب النص ونصمّم ثلاثة اتجاهات ونضع الشعار الرسمي.') : t('Pick a ready template, fill it by hand or from an Odoo event, and export instantly at no AI cost.', 'اختر قالبًا جاهزًا، واملأه يدويًا أو من فعالية في Odoo، ثم صدّره فورًا دون تكلفة ذكاء اصطناعي.')}</p>
+        <p>{mode === 'ai' ? t('Describe the idea. We check Odoo, write the copy, design three directions and place the official logo.', 'اكتب الفكرة، وسنراجع بيانات Odoo ونكتب النص ونصمّم ثلاثة اتجاهات ونضع الشعار الرسمي.') : t('Pick a ready template, fill it by hand or from an Odoo event, and export it instantly.', 'اختر قالبًا جاهزًا، واملأه يدويًا أو من فعالية في Odoo، ثم صدّره فورًا.')}</p>
       </div>
       <div className="create-mode" role="tablist" aria-label={t('How to create', 'طريقة الإنشاء')}>
         {(['ai', 'template'] as const).map((value) => <button key={value} type="button" role="tab" aria-selected={mode === value} onClick={() => setMode(value)}>
           {mode === value && <motion.span layoutId="create-mode-pill" className="create-mode__pill" transition={{ type: 'spring', stiffness: 420, damping: 34 }} />}
-          <span className="create-mode__label">{value === 'ai' ? <><Wand2 size={16} /> {t('Full AI design', 'تصميم كامل بالذكاء الاصطناعي')}</> : <><LayoutTemplate size={16} /> {t('From a template', 'من قالب جاهز')}<i>{t('no AI cost', 'دون تكلفة')}</i></>}</span>
+          <span className="create-mode__label">{value === 'ai' ? <><Wand2 size={16} /> {t('Full AI design', 'تصميم كامل بالذكاء الاصطناعي')}</> : <><LayoutTemplate size={16} /> {t('From a template', 'من قالب جاهز')}</>}</span>
         </button>)}
       </div>
     </header>
@@ -216,7 +216,7 @@ function TemplateMode({ initialId }: { initialId: string | null }) {
   if (!items) return <div className="board-loading"><span className="ui-btn__spinner" /></div>;
   if (template) return <TemplateComposer key={template.id} template={template} onClose={() => setSelected(null)} />;
   return <section className="u-stack">
-    {items.length ? <TemplateGrid items={items} onOpen={(item) => setSelected(item.id)} /> : <div className="library-empty glass"><LayoutTemplate size={22} /><p>{t('No templates yet. Design one with AI in the Library once, then reuse it for free.', 'لا توجد قوالب بعد. صمّم قالبًا بالذكاء الاصطناعي في المكتبة مرة واحدة، ثم أعد استخدامه دون تكلفة.')}</p></div>}
+    {items.length ? <TemplateGrid items={items} onOpen={(item) => setSelected(item.id)} /> : <div className="library-empty glass"><LayoutTemplate size={22} /><p>{t('No templates yet. Design one with AI in the Library once, then reuse it.', 'لا توجد قوالب بعد. صمّم قالبًا بالذكاء الاصطناعي في المكتبة مرة واحدة، ثم أعد استخدامه.')}</p></div>}
     <div><Button variant="secondary" onClick={() => navigate('/library')}><Wand2 size={15} /> {t('Design a new template', 'صمّم قالبًا جديدًا')}</Button></div>
   </section>;
 }

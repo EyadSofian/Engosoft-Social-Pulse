@@ -79,7 +79,7 @@ export function TemplateGenerator({ onCreated }: { onCreated: (template: SvgTemp
         <span className="tpl-generator__icon"><Wand2 size={20} /></span>
         <div>
           <h2>{t('Design a template with AI', 'صمّم قالبًا بالذكاء الاصطناعي')}</h2>
-          <p>{t('The AI designs it once (a few cents). Every post you make from it after that costs nothing: edit the text, swap the event date, export.', 'يصمّم الذكاء الاصطناعي القالب مرة واحدة بتكلفة زهيدة، ثم تُنشئ منه المنشورات دون أي تكلفة إضافية: عدّل النص، وغيّر موعد الفعالية، ثم صدّر.')}</p>
+          <p>{t('The AI designs the template once; then make posts from it: edit the text, change the event date, export.', 'يصمّم الذكاء الاصطناعي القالب مرة واحدة، ثم تُنشئ منه المنشورات: عدّل النص، وغيّر موعد الفعالية، ثم صدّر.')}</p>
         </div>
       </div>
       <AnimatePresence mode="wait">
@@ -244,7 +244,7 @@ export function TemplateComposer({ template, initialValues, contentId, initialCh
     <div className="tpl-composer">
       <div className="tpl-composer__stage">
         <TemplatePreview template={template} values={values} className="tpl-composer__preview" />
-        <p className="tpl-composer__size"><span dir="ltr">{template.width}×{template.height}</span> · {t(FORMAT_LABEL[template.format].en, FORMAT_LABEL[template.format].ar)} · {t('no AI cost', 'دون تكلفة ذكاء اصطناعي')}</p>
+        <p className="tpl-composer__size"><span dir="ltr">{template.width}×{template.height}</span> · {t(FORMAT_LABEL[template.format].en, FORMAT_LABEL[template.format].ar)}</p>
       </div>
       <div className="tpl-composer__panel glass">
         <div className="tpl-composer__title">
