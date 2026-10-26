@@ -1,203 +1,182 @@
 /*
- * Design tokens — "creator studio": violet → magenta → sunset-orange on soft, airy surfaces.
- * Light and dark redefine the same roles; dark is a warm plum night, not a trading-floor navy.
- * Surface variable names (--glass*) are kept for the components; their values are now near-solid cards.
+ * Engosoft Content Operations — design tokens.
+ *
+ * Semantic roles only: components read these, never raw hex values.
+ * Light is the primary operational theme; dark redefines the same roles.
+ * Brand blue marks actions, selection, links and focus. Orange is a sparse accent.
  */
 
 :root {
-  --font: 'Readex Pro', 'Cairo', system-ui, -apple-system, 'Segoe UI', sans-serif;
+  --font-sans: 'Plus Jakarta Sans', 'Almarai', system-ui, -apple-system, 'Segoe UI', sans-serif;
+  --font-ar: 'Almarai', 'Plus Jakarta Sans', system-ui, sans-serif;
+  --font-mono: ui-monospace, 'SF Mono', 'Cascadia Mono', Menlo, monospace;
 
-  --r-xs: 8px;
-  --r-sm: 12px;
-  --r-md: 16px;
-  --r-lg: 22px;
-  --r-xl: 28px;
-  --r-pill: 999px;
+  /* Type scale (px) */
+  --fs-xs: 12px;
+  --fs-sm: 13px;
+  --fs-md: 14px;
+  --fs-lg: 16px;
+  --fs-xl: 18px;
+  --fs-2xl: 22px;
+  --fs-3xl: 28px;
 
-  --gap: 18px;
-  --page: 1440px;
+  /* Spacing: 4px base */
+  --sp-1: 4px;
+  --sp-2: 8px;
+  --sp-3: 12px;
+  --sp-4: 16px;
+  --sp-5: 20px;
+  --sp-6: 24px;
+  --sp-8: 32px;
+  --sp-10: 40px;
 
-  --ease-out: cubic-bezier(0.22, 1, 0.36, 1);
-  --ease-in-out: cubic-bezier(0.65, 0, 0.35, 1);
-  --spring: cubic-bezier(0.3, 1.25, 0.5, 1);
-  --t-fast: 150ms;
-  --t-med: 240ms;
-  --t-slow: 460ms;
+  --radius-sm: 6px;
+  --radius-md: 8px;
+  --radius-lg: 12px;
+  --radius-xl: 16px;
+  --radius-pill: 999px;
+
+  --sidebar-w: 288px;
+  --sidebar-rail: 64px;
+  --header-h: 60px;
+  --page-max: 1480px;
+
+  --ease: cubic-bezier(0.2, 0, 0, 1);
+  --ease-out: cubic-bezier(0.16, 1, 0.3, 1);
+  --t-hover: 120ms;
+  --t-page: 180ms;
+  --t-drawer: 240ms;
 }
-
-@supports (transition-timing-function: linear(0, 1)) {
-  :root {
-    --spring: linear(
-      0, 0.006, 0.025 2.8%, 0.101 6.1%, 0.539 18.9%, 0.721 25.3%, 0.849 31.5%, 0.937 38.1%, 0.968 41.8%, 0.991 45.7%,
-      1.006 50.1%, 1.015 55%, 1.017 63.9%, 1.001 85.9%, 1
-    );
-  }
-}
-
-/* ── Light (default) ───────────────────────────────────────────────── */
 
 :root,
 :root[data-theme='light'] {
   color-scheme: light;
 
-  /* Canvas: a pastel wash that reads "social", with slow blobs of the brand hues. */
-  --canvas: #f7f5fc;
-  --canvas-gradient:
-    radial-gradient(90% 70% at 100% 0%, #fdeef7 0%, transparent 62%),
-    radial-gradient(80% 70% at 0% 8%, #efeafe 0%, transparent 60%),
-    linear-gradient(180deg, #fbfaff 0%, #f5f2fb 100%);
-  --orb-1: rgba(236, 72, 153, 0.15);
-  --orb-2: rgba(139, 92, 246, 0.17);
-  --orb-3: rgba(251, 146, 60, 0.15);
-  --grain: 0;
+  --brand: #0046ff;
+  --brand-hover: #003bd6;
+  --brand-active: #0033b8;
+  --brand-soft: #ebf0ff;
+  --brand-soft-strong: #d6e1ff;
+  --brand-ink: #0038cc;
+  --on-brand: #ffffff;
 
-  /* Ink: deep plum instead of neutral navy. */
-  --ink-1: #1f1633;
-  --ink-2: #4a4160;
-  --ink-3: #6b6383;
-  --ink-4: #a49db7;
-  --on-accent: #ffffff;
+  --accent: #ff6600;
+  --accent-soft: #fff1e6;
+  --accent-ink: #b84a00;
 
-  /* Surfaces */
-  --glass: #ffffff;
-  --glass-raised: #ffffff;
-  --glass-float: rgba(255, 255, 255, 0.88);
-  --glass-edge: rgba(31, 22, 51, 0.075);
-  --glass-shadow: 0 1px 2px rgba(31, 22, 51, 0.04), 0 14px 34px -20px rgba(76, 29, 149, 0.2);
-  --glass-inset: inset 0 1px 0 rgba(255, 255, 255, 0.9);
-  --float-shadow: 0 26px 60px -26px rgba(76, 29, 149, 0.3), 0 8px 20px -12px rgba(31, 22, 51, 0.14);
-  --blur: 22px;
-  --spot: rgba(139, 92, 246, 0.07);
+  --bg: #f6f8fb;
+  --surface: #ffffff;
+  --surface-subtle: #f8fafc;
+  --surface-hover: #f1f4f9;
+  --surface-active: #e9eef6;
+  --surface-inverse: #17191c;
 
-  --line: rgba(31, 22, 51, 0.08);
-  --line-strong: rgba(31, 22, 51, 0.15);
-  --wash: rgba(91, 33, 182, 0.035);
-  --wash-strong: rgba(91, 33, 182, 0.075);
-  --field: #ffffff;
-  --field-border: rgba(31, 22, 51, 0.14);
-  --scrim: rgba(31, 18, 54, 0.32);
-  --thumb: #ffffff;
+  --border: #e5e9f0;
+  --border-strong: #d6dce5;
+  --border-focus: var(--brand);
 
-  /* Brand */
-  --accent: #7c3aed;
-  --accent-ink: #6d28d9;
-  --accent-soft: rgba(124, 58, 237, 0.1);
-  --pink: #db2777;
-  --pink-ink: #be185d;
-  --pink-soft: rgba(219, 39, 119, 0.1);
-  --amber: #c27a00;
-  --amber-ink: #915c00;
-  --amber-soft: rgba(194, 122, 0, 0.12);
-  --brand: linear-gradient(120deg, #7c3aed 0%, #c026d3 46%, #e5397f 78%, #f2683a 112%);
-  --brand-soft: linear-gradient(120deg, rgba(124, 58, 237, 0.1), rgba(229, 57, 127, 0.1) 70%, rgba(242, 104, 58, 0.1));
-  --brand-glow: 0 14px 30px -14px rgba(192, 38, 211, 0.55);
-  --brand-glow-strong: 0 20px 38px -14px rgba(192, 38, 211, 0.7);
-  /* The story ring: today's date and live items wear it. */
-  --ring-gradient: linear-gradient(45deg, #f7b03c, #f3693a 30%, #e2337f 60%, #9b3bdb 85%, #6a4be6);
-  --focus: #7c3aed;
+  --text: #17191c;
+  --text-muted: #5f6b7d;
+  --text-subtle: #8a94a6;
+  --text-inverse: #ffffff;
 
-  /* Data ink: one hue for single-series charts; opacity steps make the sequential ramp. */
-  --data: #7c3aed;
-  --grid: rgba(31, 22, 51, 0.07);
-  --axis: rgba(31, 22, 51, 0.2);
-  --mark-gap: #ffffff;
+  --success: #32b771;
+  --success-ink: #13744a;
+  --success-soft: #e7f6ee;
+  --warning: #f5a524;
+  --warning-ink: #8a5300;
+  --warning-soft: #fef3e0;
+  --danger: #e5484d;
+  --danger-ink: #be2a30;
+  --danger-soft: #fdecec;
+  --info: #0090ff;
+  --info-ink: #0063b3;
+  --info-soft: #e6f4ff;
+  --neutral-soft: #eef1f5;
+  --violet: #6e56cf;
+  --violet-soft: #f0edfb;
+  --violet-ink: #5340b3;
 
-  /* Status — always paired with an icon and a label */
-  --ok: #0b7a4a;
-  --ok-soft: rgba(11, 122, 74, 0.1);
-  --info: #2f62c9;
-  --info-soft: rgba(47, 98, 201, 0.1);
-  --warn: #9a6400;
-  --warn-soft: rgba(201, 130, 0, 0.14);
-  --crit: #c8322b;
-  --crit-soft: rgba(200, 50, 43, 0.1);
-  --mute: #6b6383;
-  --mute-soft: rgba(31, 22, 51, 0.06);
+  --shadow-xs: 0 1px 2px rgb(16 24 40 / 0.05);
+  --shadow-sm: 0 1px 3px rgb(16 24 40 / 0.08), 0 1px 2px -1px rgb(16 24 40 / 0.06);
+  --shadow-md: 0 8px 24px -8px rgb(16 24 40 / 0.16), 0 2px 6px -2px rgb(16 24 40 / 0.06);
+  --shadow-lg: 0 24px 48px -16px rgb(16 24 40 / 0.22);
+  --scrim: rgb(15 20 30 / 0.36);
 
-  /* Platforms — validated as a categorical set in this display order (adjacent pairs, CVD-safe) */
-  --p-facebook: #2a78d6;
-  --p-instagram: #c2266d;
-  --p-tiktok: #0aa5a0;
-  --p-snapchat: #b58400;
-  --p-website: #7c4ddb;
-  --p-ink-mix: black 12%;
+  /* Platform marks: small icons and dots only, never large fills. */
+  --p-facebook: #1877f2;
+  --p-instagram: #c1357b;
+  --p-tiktok: #111111;
+  --p-snapchat: #d9b800;
+  --p-linkedin: #0a66c2;
+  --p-website: #6e56cf;
+
+  /* Charts */
+  --chart-1: #0046ff;
+  --chart-2: #8ea9ff;
+  --chart-grid: #edf0f5;
+  --chart-axis: #c8cfda;
 }
 
-/* ── Dark ──────────────────────────────────────────────────────────── */
-
+/* Dark: index.html resolves the saved choice or the system setting into data-theme before first paint. */
 :root[data-theme='dark'] {
   color-scheme: dark;
 
-  --canvas: #120e1a;
-  --canvas-gradient:
-    radial-gradient(90% 70% at 100% -6%, #2c1838 0%, transparent 58%),
-    radial-gradient(80% 70% at 0% 4%, #22183a 0%, transparent 60%),
-    linear-gradient(180deg, #15101f 0%, #0f0b16 100%);
-  --orb-1: rgba(236, 72, 153, 0.18);
-  --orb-2: rgba(139, 92, 246, 0.22);
-  --orb-3: rgba(249, 115, 22, 0.1);
-  --grain: 0;
+  --brand: #3d73ff;
+  --brand-hover: #5a88ff;
+  --brand-active: #2c63f0;
+  --brand-soft: rgb(61 115 255 / 0.16);
+  --brand-soft-strong: rgb(61 115 255 / 0.26);
+  --brand-ink: #9db8ff;
+  --on-brand: #ffffff;
 
-  --ink-1: #f7f3fc;
-  --ink-2: #d0c7df;
-  --ink-3: #a097b5;
-  --ink-4: #6a617f;
-  --on-accent: #ffffff;
+  --accent: #ff7a26;
+  --accent-soft: rgb(255 122 38 / 0.14);
+  --accent-ink: #ffab73;
 
-  --glass: linear-gradient(180deg, rgba(42, 33, 58, 0.82) 0%, rgba(32, 25, 45, 0.82) 100%);
-  --glass-raised: rgba(56, 45, 76, 0.95);
-  --glass-float: rgba(29, 22, 41, 0.84);
-  --glass-edge: linear-gradient(180deg, rgba(255, 255, 255, 0.13) 0%, rgba(255, 255, 255, 0.05) 40%, rgba(255, 255, 255, 0.04) 100%);
-  --glass-shadow: 0 24px 54px -34px rgba(0, 0, 0, 0.75), 0 6px 18px -12px rgba(0, 0, 0, 0.45);
-  --glass-inset: inset 0 1px 0 rgba(255, 255, 255, 0.04);
-  --float-shadow: 0 34px 80px -30px rgba(0, 0, 0, 0.8), 0 10px 26px -16px rgba(0, 0, 0, 0.55);
-  --spot: rgba(167, 139, 250, 0.09);
+  --bg: #0d1015;
+  --surface: #14181f;
+  --surface-subtle: #181d25;
+  --surface-hover: #1d232d;
+  --surface-active: #232a36;
+  --surface-inverse: #eef1f5;
 
-  --line: rgba(255, 255, 255, 0.075);
-  --line-strong: rgba(255, 255, 255, 0.14);
-  --wash: rgba(255, 255, 255, 0.045);
-  --wash-strong: rgba(255, 255, 255, 0.09);
-  --field: rgba(12, 8, 19, 0.5);
-  --field-border: rgba(255, 255, 255, 0.11);
-  --scrim: rgba(8, 5, 14, 0.62);
-  --thumb: rgba(255, 255, 255, 0.13);
+  --border: #252b36;
+  --border-strong: #323a48;
 
-  --accent: #a78bfa;
-  --accent-ink: #c4b5fd;
-  --accent-soft: rgba(167, 139, 250, 0.16);
-  --pink: #f472b6;
-  --pink-ink: #f9a8d4;
-  --pink-soft: rgba(244, 114, 182, 0.15);
-  --amber: #f5a623;
-  --amber-ink: #f7b84b;
-  --amber-soft: rgba(245, 166, 35, 0.15);
-  --brand: linear-gradient(120deg, #8b5cf6 0%, #c43be6 46%, #ec4899 78%, #fb7a45 112%);
-  --brand-soft: linear-gradient(120deg, rgba(139, 92, 246, 0.18), rgba(236, 72, 153, 0.16) 70%, rgba(251, 122, 69, 0.14));
-  --brand-glow: 0 14px 32px -14px rgba(217, 70, 239, 0.6);
-  --brand-glow-strong: 0 20px 40px -14px rgba(217, 70, 239, 0.78);
-  --ring-gradient: linear-gradient(45deg, #fbbf4a, #f97342 30%, #ec4899 60%, #b15cf2 85%, #7c6cf5);
-  --focus: #c4b5fd;
+  --text: #e9ecf1;
+  --text-muted: #a3acba;
+  --text-subtle: #7b8597;
+  --text-inverse: #0d1015;
 
-  --data: #a78bfa;
-  --grid: rgba(255, 255, 255, 0.07);
-  --axis: rgba(255, 255, 255, 0.17);
-  --mark-gap: #1d1628;
+  --success: #3ccb83;
+  --success-ink: #6fdca4;
+  --success-soft: rgb(60 203 131 / 0.13);
+  --warning: #f5b544;
+  --warning-ink: #f7c46b;
+  --warning-soft: rgb(245 181 68 / 0.13);
+  --danger: #f2555a;
+  --danger-ink: #ff8a8e;
+  --danger-soft: rgb(242 85 90 / 0.14);
+  --info: #3aa8ff;
+  --info-ink: #84c8ff;
+  --info-soft: rgb(58 168 255 / 0.13);
+  --neutral-soft: #1f2530;
+  --violet: #9b87f5;
+  --violet-soft: rgb(155 135 245 / 0.15);
+  --violet-ink: #bcaefa;
 
-  --ok: #3ddc97;
-  --ok-soft: rgba(61, 220, 151, 0.13);
-  --info: #8fb4ff;
-  --info-soft: rgba(143, 180, 255, 0.13);
-  --warn: #f7b84b;
-  --warn-soft: rgba(247, 184, 75, 0.14);
-  --crit: #ff7a7f;
-  --crit-soft: rgba(255, 122, 127, 0.14);
-  --mute: #a097b5;
-  --mute-soft: rgba(255, 255, 255, 0.07);
+  --shadow-xs: 0 1px 2px rgb(0 0 0 / 0.4);
+  --shadow-sm: 0 1px 3px rgb(0 0 0 / 0.5);
+  --shadow-md: 0 10px 28px -10px rgb(0 0 0 / 0.7), 0 0 0 1px var(--border);
+  --shadow-lg: 0 28px 56px -18px rgb(0 0 0 / 0.8), 0 0 0 1px var(--border);
+  --scrim: rgb(0 0 0 / 0.58);
 
-  --p-facebook: #3987e5;
-  --p-instagram: #c4407a;
-  --p-tiktok: #1aa5aa;
-  --p-snapchat: #c98500;
-  --p-website: #a070e8;
-  --p-ink-mix: white 46%;
+  --p-tiktok: #e9ecf1;
+  --p-snapchat: #f2d438;
+
+  --chart-1: #5a88ff;
+  --chart-2: #3a4f86;
+  --chart-grid: #202632;
+  --chart-axis: #3a4353;
 }

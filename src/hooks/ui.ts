@@ -1,33 +1,10 @@
 import { useCallback, useEffect, useLayoutEffect, useRef, useState, type RefObject } from 'react';
 
-/* ── Routing ───────────────────────────────────────────────────────── */
-
-export const ROUTE_IDS = ['overview', 'calendar', 'content', 'insights', 'connections'] as const;
-export type Route = (typeof ROUTE_IDS)[number];
-
-const readRoute = (): Route => {
-  const id = window.location.hash.replace(/^#\/?/, '').split('?')[0];
-  return (ROUTE_IDS as readonly string[]).includes(id) ? (id as Route) : 'overview';
-};
-
-export function useRoute() {
-  const [route, setRoute] = useState<Route>(readRoute);
-  useEffect(() => {
-    const onChange = () => setRoute(readRoute());
-    window.addEventListener('hashchange', onChange);
-    return () => window.removeEventListener('hashchange', onChange);
-  }, []);
-  const go = useCallback((next: Route) => {
-    window.location.hash = `/${next}`;
-  }, []);
-  return { route, go };
-}
-
 /* ── Theme ─────────────────────────────────────────────────────────── */
 
 export type Theme = 'dark' | 'light';
 const THEME_KEY = 'social-pulse-theme';
-const THEME_COLOR: Record<Theme, string> = { dark: '#120e1a', light: '#f7f5fc' };
+const THEME_COLOR: Record<Theme, string> = { dark: '#0d1015', light: '#f6f8fb' };
 
 export function useTheme() {
   const [theme, setTheme] = useState<Theme>(() => (document.documentElement.dataset.theme === 'dark' ? 'dark' : 'light'));
@@ -154,27 +131,4 @@ export function useOverlay(active: boolean, onClose: () => void) {
   }, [active]);
 
   return ref;
-}
-
-/** Tracks the pointer over glass surfaces so their highlight follows the cursor. */
-export function useSpotlight() {
-  useEffect(() => {
-    if (!window.matchMedia('(hover: hover)').matches) return;
-    let frame = 0;
-    const onMove = (event: PointerEvent) => {
-      const target = (event.target as Element | null)?.closest?.<HTMLElement>('[data-spot]');
-      if (!target) return;
-      cancelAnimationFrame(frame);
-      frame = requestAnimationFrame(() => {
-        const box = target.getBoundingClientRect();
-        target.style.setProperty('--mx', `${event.clientX - box.left}px`);
-        target.style.setProperty('--my', `${event.clientY - box.top}px`);
-      });
-    };
-    document.addEventListener('pointermove', onMove, { passive: true });
-    return () => {
-      cancelAnimationFrame(frame);
-      document.removeEventListener('pointermove', onMove);
-    };
-  }, []);
 }

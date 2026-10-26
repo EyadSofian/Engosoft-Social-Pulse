@@ -1,71 +1,44 @@
-import type { AnchorHTMLAttributes, ButtonHTMLAttributes, ReactNode } from 'react';
+import type { ButtonHTMLAttributes, ReactNode } from 'react';
+import { Link } from '../../app/router/router';
 
-type Variant = 'primary' | 'glass' | 'ghost' | 'danger';
-type Size = 'sm' | 'md';
+export type ButtonVariant = 'primary' | 'secondary' | 'ghost' | 'danger' | 'subtle';
+export type ButtonSize = 'sm' | 'md';
 
 interface Common {
-  variant?: Variant;
-  size?: Size;
+  variant?: ButtonVariant;
+  size?: ButtonSize;
   icon?: ReactNode;
+  /** Icon after the label, e.g. a chevron. */
+  trailing?: ReactNode;
   busy?: boolean;
 }
 
-const classes = (variant: Variant, size: Size, extra?: string) => `btn btn--${variant} btn--${size}${extra ? ` ${extra}` : ''}`;
+const cls = (variant: ButtonVariant, size: ButtonSize, extra?: string) => `ui-btn ui-btn--${variant} ui-btn--${size}${extra ? ` ${extra}` : ''}`;
 
-export function Button({
-  variant = 'glass',
-  size = 'md',
-  icon,
-  busy,
-  className,
-  children,
-  disabled,
-  type = 'button',
-  ...rest
-}: Common & ButtonHTMLAttributes<HTMLButtonElement>) {
+export function Button({ variant = 'secondary', size = 'md', icon, trailing, busy, className, children, disabled, type = 'button', ...rest }: Common & ButtonHTMLAttributes<HTMLButtonElement>) {
   return (
-    <button type={type} className={classes(variant, size, className)} disabled={disabled || busy} data-busy={busy || undefined} {...rest}>
-      {icon && <span className="btn__icon">{icon}</span>}
-      <span>{children}</span>
+    <button type={type} className={cls(variant, size, className)} disabled={disabled || busy} aria-busy={busy || undefined} {...rest}>
+      {busy ? <span className="ui-btn__spinner" aria-hidden /> : icon}
+      {children != null && <span className="ui-btn__label">{children}</span>}
+      {trailing}
     </button>
   );
 }
 
-export function LinkButton({
-  variant = 'glass',
-  size = 'md',
-  icon,
-  className,
-  children,
-  ...rest
-}: Common & AnchorHTMLAttributes<HTMLAnchorElement>) {
+export function ButtonLink({ variant = 'secondary', size = 'md', icon, trailing, className, children, to, ...rest }: Common & { to: string; className?: string; children?: ReactNode; title?: string }) {
   return (
-    <a className={classes(variant, size, className)} {...rest}>
-      {icon && <span className="btn__icon">{icon}</span>}
-      <span>{children}</span>
-    </a>
+    <Link to={to} className={cls(variant, size, className)} {...rest}>
+      {icon}
+      {children != null && <span className="ui-btn__label">{children}</span>}
+      {trailing}
+    </Link>
   );
 }
 
-export function IconButton({
-  label,
-  children,
-  className,
-  tone,
-  tip = 'center',
-  type = 'button',
-  ...rest
-}: { label: string; tone?: 'accent' | 'danger'; tip?: 'center' | 'start' | 'end' | 'none' } & ButtonHTMLAttributes<HTMLButtonElement>) {
+/** Icon-only control. `label` is the accessible name and the tooltip. */
+export function IconButton({ label, children, className, size = 'md', variant = 'ghost', type = 'button', ...rest }: { label: string; size?: ButtonSize; variant?: 'ghost' | 'secondary' } & ButtonHTMLAttributes<HTMLButtonElement>) {
   return (
-    <button
-      type={type}
-      className={`icon-btn${className ? ` ${className}` : ''}`}
-      aria-label={label}
-      data-tip={tip === 'none' ? undefined : label}
-      data-tip-align={tip}
-      data-tone={tone}
-      {...rest}
-    >
+    <button type={type} className={`ui-icon-btn ui-icon-btn--${size} ui-icon-btn--${variant}${className ? ` ${className}` : ''}`} aria-label={label} title={label} {...rest}>
       {children}
     </button>
   );

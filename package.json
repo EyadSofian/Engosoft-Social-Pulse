@@ -12,7 +12,8 @@
     "dev:web": "vite --host 127.0.0.1",
     "build": "tsc --noEmit && vite build",
     "start": "tsx server/index.ts",
-    "test": "node --import tsx --test tests/*.test.ts"
+    "test": "node --import tsx --test tests/*.test.ts",
+    "build:post-templates": "tsx scripts/build-post-templates.ts"
   },
   "dependencies": {
     "better-sqlite3": "^12.2.0",

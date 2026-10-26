@@ -13,10 +13,29 @@ import { saveOAuthAccessToken } from './connectors/tokens.js';
 import { syncTikTok } from './connectors/tiktok.js';
 import { randomBytes, timingSafeEqual } from 'node:crypto';
 import type { Platform } from './types.js';
+import { readOdooSchedule } from './odoo.js';
+import { generatePostImage, imageRequest } from './post-image.js';
 
 const app=express();const port=Number(process.env.PORT)||4100;const host=process.env.HOST||'127.0.0.1';
 app.disable('x-powered-by');app.use(express.json({limit:'1mb'}));
 app.get('/api/health',(_req,res)=>res.json({ok:true}));
+app.get('/api/odoo/schedule',async(_req,res)=>{
+ const result=await readOdooSchedule();
+ res.setHeader('Cache-Control','no-store');
+ res.status(result.status==='error'?502:200).json(result);
+});
+const imageCalls=new Map<string,number[]>();
+app.post('/api/ai/post-image',async(req,res)=>{
+ if(!['127.0.0.1','localhost','::1'].includes(host)&&process.env.POST_DESIGNER_PUBLIC_AI!=='true')return res.status(503).json({error:'فعّل مصادقة المستخدمين قبل إتاحة توليد الصور علنًا.'});
+ if(!process.env.OPENAI_API_KEY?.trim())return res.status(503).json({error:'أضف OPENAI_API_KEY على السيرفر لتوليد الصور.'});
+ const parsed=imageRequest.safeParse(req.body);
+ if(!parsed.success)return res.status(400).json({error:'وصف الصورة أو المقاس غير صالح.'});
+ const who=req.ip||'local';const now=Date.now();const recent=(imageCalls.get(who)||[]).filter(at=>now-at<10*60_000);
+ if(recent.length>=3)return res.status(429).json({error:'وصلت للحد المؤقت: 3 صور خلال 10 دقائق.'});
+ imageCalls.set(who,[...recent,now]);
+ try{res.json(await generatePostImage(parsed.data.subject,parsed.data.size));}
+ catch(error){res.status(502).json({error:error instanceof Error?error.message:'تعذّر توليد الصورة.'});}
+});
 app.get('/api/oauth/tiktok/start',(req,res)=>{
  const clientKey=process.env.TIKTOK_CLIENT_KEY?.trim();
  const redirectUri=process.env.TIKTOK_REDIRECT_URI?.trim();
@@ -39,7 +58,7 @@ app.get('/api/oauth/tiktok/callback',async(req,res)=>{
  const cookieMatches=state.length===cookie.length&&state.length>0&&timingSafeEqual(Buffer.from(state),Buffer.from(cookie));
  if(!cookieMatches||!consumeOAuthState(state))return res.status(400).send('انتهت محاولة ربط TikTok أو لم يمكن التحقق منها. ابدأ الربط من جديد.');
  const code=typeof req.query.code==='string'?req.query.code:'';
- if(!code||req.query.error)return res.redirect('/#/connections?tiktok=denied');
+ if(!code||req.query.error)return res.redirect('/connections?tiktok=denied');
  const clientKey=process.env.TIKTOK_CLIENT_KEY?.trim()||'';
  const clientSecret=process.env.TIKTOK_CLIENT_SECRET?.trim()||'';
  const redirectUri=process.env.TIKTOK_REDIRECT_URI?.trim()||'';
@@ -53,10 +72,10 @@ app.get('/api/oauth/tiktok/callback',async(req,res)=>{
   if(!grantedScopes.has('video.list')||!grantedScopes.has('user.info.basic'))throw new Error('حساب TikTok لم يمنح صلاحيتي user.info.basic وvideo.list.');
   saveOAuthAccessToken('tiktok',{accessToken:token.access_token,refreshToken:token.refresh_token,expiresAt:Date.now()+Math.max(60,Number(token.expires_in)||86400)*1000});
   const result=await syncTikTok();saveConnectorResult(result);
-  res.redirect(`/#/connections?tiktok=${result.status==='connected'?'connected':'sync_failed'}`);
+  res.redirect(`/connections?tiktok=${result.status==='connected'?'connected':'sync_failed'}`);
  }catch(e){
   console.error('TikTok OAuth callback failed:',e instanceof Error?e.message:'unknown error');
-  res.redirect('/#/connections?tiktok=failed');
+  res.redirect('/connections?tiktok=failed');
  }
 });
 app.get('/api/dashboard',(_req,res)=>{

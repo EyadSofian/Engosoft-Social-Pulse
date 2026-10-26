@@ -1,0 +1,180 @@
+/*
+ * Adapter for the legacy calendar (src/legacy). Its components read the old
+ * token names (--ink-1, --glass, --accent …); here they are mapped onto the
+ * Engosoft semantic tokens so the calendar matches the new product without
+ * rewriting it. Only elements inside `.lg` see these names.
+ */
+
+.lg {
+  --font: var(--font-sans);
+  --r-xs: 6px;
+  --r-sm: 8px;
+  --r-md: 12px;
+  --r-lg: 12px;
+  --r-xl: 16px;
+  --r-pill: 999px;
+  --gap: 16px;
+  --page: var(--page-max);
+  --ease-out: cubic-bezier(0.16, 1, 0.3, 1);
+  --ease-in-out: cubic-bezier(0.65, 0, 0.35, 1);
+  --spring: cubic-bezier(0.16, 1, 0.3, 1);
+  --t-fast: 120ms;
+  --t-med: 200ms;
+  --t-slow: 320ms;
+
+  --canvas: var(--bg);
+  --ink-1: var(--text);
+  --ink-2: var(--text);
+  --ink-3: var(--text-muted);
+  --ink-4: var(--text-subtle);
+  --on-accent: var(--on-brand);
+
+  --glass: var(--surface);
+  --glass-raised: var(--surface);
+  --glass-float: var(--surface);
+  --glass-edge: var(--border);
+  --glass-shadow: var(--shadow-xs);
+  --glass-inset: 0 0 0 transparent;
+  --float-shadow: var(--shadow-lg);
+  --blur: 0px;
+  --spot: transparent;
+
+  --line: var(--border);
+  --line-strong: var(--border-strong);
+  --wash: var(--surface-subtle);
+  --wash-strong: var(--surface-hover);
+  --field: var(--surface);
+  --field-border: var(--border-strong);
+  --thumb: var(--surface);
+
+  /* The legacy violet accent was the action colour: it becomes Engosoft blue. */
+  --accent: var(--brand);
+  --accent-ink: var(--brand-ink);
+  --accent-soft: var(--brand-soft);
+  --pink: #ff6600;
+  --pink-ink: #b84a00;
+  --pink-soft: #fff1e6;
+  --amber: var(--warning);
+  --amber-ink: var(--warning-ink);
+  --amber-soft: var(--warning-soft);
+  --brand: var(--brand-solid);
+  --brand-soft: var(--brand-soft-solid);
+  --brand-glow: 0 0 0 transparent;
+  --brand-glow-strong: 0 0 0 transparent;
+  --ring-gradient: linear-gradient(var(--brand-solid), var(--brand-solid));
+  --focus: var(--border-focus);
+
+  --data: var(--chart-1);
+  --grid: var(--chart-grid);
+  --axis: var(--chart-axis);
+  --mark-gap: var(--surface);
+
+  --ok: var(--success-ink);
+  --ok-soft: var(--success-soft);
+  --warn: var(--warning-ink);
+  --warn-soft: var(--warning-soft);
+  --crit: var(--danger-ink);
+  --crit-soft: var(--danger-soft);
+  --mute: var(--text-muted);
+  --mute-soft: var(--neutral-soft);
+  --info: var(--info-ink);
+  --info-soft: var(--info-soft);
+  --p-website: #6e56cf;
+  --p-ink-mix: black 12%;
+
+  font-family: var(--font-sans);
+  font-size: var(--fs-md);
+  line-height: 1.6;
+  color: var(--text);
+}
+
+/* `--brand` means a solid colour in the new tokens but a gradient in the legacy files; resolve it once outside the scope. */
+:root {
+  --brand-solid: #0046ff;
+  --brand-soft-solid: #ebf0ff;
+}
+
+:root[data-theme='dark'] {
+  --brand-solid: #3d73ff;
+  --brand-soft-solid: rgb(61 115 255 / 0.16);
+}
+
+:root[data-theme='dark'] .lg {
+  --pink-ink: #ffab73;
+  --pink-soft: rgb(255 122 38 / 0.14);
+  --p-ink-mix: white 46%;
+}
+
+@scope (.lg) {
+  .num {
+    font-variant-numeric: tabular-nums;
+  }
+
+  .muted {
+    color: var(--ink-3);
+  }
+
+  .link {
+    display: inline-flex;
+    align-items: center;
+    gap: 4px;
+    color: var(--accent-ink);
+    font-size: 13px;
+    font-weight: 600;
+    white-space: nowrap;
+    border-radius: 6px;
+  }
+
+  .link:hover {
+    color: var(--ink-1);
+  }
+
+  .today-tag {
+    display: inline-block;
+    margin-inline-start: 8px;
+    padding: 1px 9px;
+    border-radius: var(--r-pill);
+    background: var(--accent-soft);
+    color: var(--accent-ink);
+    font-size: 11.5px;
+    font-weight: 700;
+    vertical-align: middle;
+  }
+
+  em {
+    font-style: normal;
+  }
+}
+
+@keyframes spin {
+  to {
+    transform: rotate(360deg);
+  }
+}
+
+@keyframes shimmer {
+  to {
+    background-position: -200% 0;
+  }
+}
+
+@keyframes pulse-ring {
+  0% {
+    box-shadow: 0 0 0 0 color-mix(in oklab, currentColor 55%, transparent);
+  }
+  70%,
+  100% {
+    box-shadow: 0 0 0 7px transparent;
+  }
+}
+
+@keyframes shake {
+  20%,
+  60% {
+    transform: translateX(-6px);
+  }
+  40%,
+  80% {
+    transform: translateX(6px);
+  }
+}
