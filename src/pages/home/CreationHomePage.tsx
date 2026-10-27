@@ -20,6 +20,8 @@ import { useWorkspace } from '../../features/workspace/WorkspaceProvider';
 import { useI18n } from '../../i18n/I18nProvider';
 
 import { usePageMeta } from '../../shell/ShellContext';
+import { DesignSettings } from '../../features/creative-studio/DesignSettings';
+import { DEFAULT_ENGINE_SETTINGS, type EngineSettings } from '../../domain/design-engine';
 
 type Stage = 'compose' | 'generating';
 const OBJECTIVES: { value: Objective | 'auto'; ar: string; en: string }[] = [
@@ -112,6 +114,7 @@ export function CreationHomePage() {
       if (parts.length) setPrompt(parts.join(' — '));
     } catch { /* bad transient prefill ignored */ }
   }, [query, state.courses, state.templates]);
+  const [designSettings, setDesignSettings] = useState<EngineSettings>(DEFAULT_ENGINE_SETTINGS);
   const togglePlatform = (platform: CreativePlatform) => { setPlatformTouched(true); setPlatforms((current) => current.includes(platform) ? current.filter((value) => value !== platform) : [...current, platform]); };
   const addFiles = async (list: FileList | null) => {
     if (!list) return;
@@ -130,7 +133,7 @@ export function CreationHomePage() {
     try {
       // The master is a 4:5 feed post when any feed platform is selected; 9:16 and website versions are adapted from it.
       const format = masterFormat(platforms);
-      const response = await fetch('/api/ai/full-creative', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ prompt, format, directions: 2, ...(template ? { templateId: template.id } : {}) }) });
+      const response = await fetch('/api/ai/full-creative', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ prompt, format, directions: 2, settings: designSettings, ...(template ? { templateId: template.id } : {}) }) });
       const body = await response.json();
       if (!response.ok) throw new Error(body.error || t('Generation could not start.', 'تعذّر بدء التوليد.'));
       setJobId(body.jobId); setRequestId(body.requestId ?? ''); setStage('generating');
@@ -173,6 +176,7 @@ export function CreationHomePage() {
         }} /></div>}
         {references.length > 0 && <ul className="creative-home__references">{references.map((file, index) => <li key={`${file.name}-${index}`}>{file.mime.startsWith('image/') && file.dataUrl && <img src={file.dataUrl} alt="" />}<span>{file.name}</span><button type="button" onClick={() => setReferences((current) => current.filter((_, i) => i !== index))} aria-label={t(`Remove ${file.name}`, `احذف ${file.name}`)}>×</button></li>)}</ul>}
         <div className="creative-home__platforms" role="group" aria-label={t('Platforms', 'المنصات')}>{CREATIVE_PLATFORMS.map((platform) => <button key={platform} type="button" aria-pressed={platforms.includes(platform)} onClick={() => togglePlatform(platform)}><span className="creative-home__platform-icon"><ChannelIcon channel={platform} size={15} /></span>{PLATFORM_FORMATS[platform].label}</button>)}</div>
+        <DesignSettings value={designSettings} onChange={setDesignSettings} />
         <div className="creative-home__options"><label>{t('Objective', 'الهدف')}<select value={objective} onChange={(event) => setObjective(event.target.value as Objective | 'auto')}>{OBJECTIVES.map((entry) => <option key={entry.value} value={entry.value}>{t(entry.en, entry.ar)}</option>)}</select></label></div>
         <div className="creative-home__action"><p className="u-xs">{t('Images, PDF and text inform AI. DOCX is retained as a reference. Up to 6 files, 2 MB each.', 'تُرسَل الصور وملفات PDF والنصوص إلى الذكاء الاصطناعي، ويُحفظ ملف DOCX مرجعًا. حتى ٦ ملفات، ٢ ميجابايت لكل ملف.')}</p><Button variant="primary" className="cta-create" disabled={creating} busy={creating} onClick={() => void startFullCreative()}>{!creating && <Sparkles size={17} className="cta-create__spark" />}{creating ? t('Starting…', 'جارٍ البدء…') : t('Design the post', 'صمّم المنشور')}</Button></div>
       </>}

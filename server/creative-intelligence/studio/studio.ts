@@ -21,6 +21,8 @@ import type { LogoMark } from '../brand/design-language.js';
 import type { ContentZone } from '../logo-resolution/validator.js';
 import { measureText, outlineText, paragraphDirection } from '../typography/text-outline.js';
 import { analyzeForStudio, type StudioAnalysis } from './analyze.js';
+import { pasteInside } from '../generation/patch.js';
+export { pasteInside };
 import { clip, grow, keyGreen, liftDecor, measureShape, measureTextBox, renderedLines, toRaw, type InkLine, type TextMeasure } from './pixels.js';
 
 export type { StudioDoc } from '../../../src/domain/studio.js';
@@ -67,18 +69,6 @@ async function editRegions(base: Buffer, boxes: Box[], instruction: string, form
 }
 
 /** The edited image's pixels inside the boxes (soft 3px edge) over the base; everything else stays the base. */
-export async function pasteInside(base: Buffer, edited: Buffer, boxes: Box[]): Promise<Buffer> {
-  const { width = 0, height = 0 } = await sharp(base).metadata();
-  const back = await sharp(edited).resize(width, height, { fit: 'fill' }).removeAlpha().raw().toBuffer();
-  const boxSvg = Buffer.from(`<svg xmlns="http://www.w3.org/2000/svg" width="${width}" height="${height}"><rect width="${width}" height="${height}" fill="#000"/>${boxes.map((b) => `<rect x="${b.x}" y="${b.y}" width="${b.width}" height="${b.height}" fill="#fff"/>`).join('')}</svg>`);
-  const alpha = await sharp(boxSvg).blur(3).toColourspace('b-w').extractChannel(0).raw().toBuffer();
-  // Interleave the mask as the patch's alpha by hand: joinChannel with a raw buffer silently produced an
-  // opaque patch, which pasted the model's whole regenerated image over the design.
-  const rgba = Buffer.alloc(width * height * 4);
-  for (let p = 0; p < width * height; p++) { rgba[p * 4] = back[p * 3]; rgba[p * 4 + 1] = back[p * 3 + 1]; rgba[p * 4 + 2] = back[p * 3 + 2]; rgba[p * 4 + 3] = alpha[p]; }
-  const patch = await sharp(rgba, { raw: { width, height, channels: 4 } }).png().toBuffer();
-  return sharp(base).composite([{ input: patch }]).png().toBuffer();
-}
 
 /* ── Text fitting ──────────────────────────────────────────────────── */
 

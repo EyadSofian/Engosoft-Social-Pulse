@@ -8,13 +8,17 @@ import { api, errorMessage } from '../../lib/api';
 import type { CreativeJob, PublicResult, PublicRun } from '../../../server/creative-intelligence/generation/jobs';
 import { updateActiveCreative } from './activeCreative';
 import { extraFormats, type CreativeMaster, type CreativePlatform } from './platforms';
+import { useAuth } from '../auth/AuthProvider';
+import { DesignPlanPanel } from './DesignPlanPanel';
 
 const STAGES: Record<string, [string, string]> = {
   queued: ['Queued', 'في الانتظار'],
   context: ['Checking Odoo for the course', 'مراجعة الدورة في Odoo'],
-  planning: ['Writing the copy and creative directions', 'كتابة النص والاتجاهات الإبداعية'],
+  planning: ['Creative director, copy, hooks and themes', 'المدير الإبداعي والنص والهوك والثيمات'],
+  designing: ['Planning layout, type, light and colour', 'تخطيط التكوين والطباعة والإضاءة والألوان'],
   generating: ['Designing the full post', 'تصميم المنشور كاملًا'],
   inspecting: ['Checking text, faces and quality', 'مراجعة النص والوجوه والجودة'],
+  refining: ['Applying the critic’s repairs', 'تطبيق إصلاحات الناقد'],
   repairing: ['Clearing space for the logo', 'تهيئة مساحة للشعار'],
   logo: ['Placing the official logo', 'وضع الشعار الرسمي'],
   done: ['Done', 'اكتمل'],
@@ -34,6 +38,7 @@ async function poll(jobId: string, onUpdate: (job: CreativeJob) => void, signal:
 /** Follows a full-creative job: direction cards appear as soon as the brief exists, each image is revealed when it is ready. */
 export function FullCreativeJob({ jobId, requestId, platforms, prompt, onRestart }: { jobId: string; requestId?: string; platforms: CreativePlatform[]; prompt: string; onRestart: () => void }) {
   const { t } = useI18n();
+  const { can } = useAuth();
   const [job, setJob] = useState<CreativeJob | null>(null);
   const [run, setRun] = useState<PublicRun | null>(null);
   // Keyed "d1:story", "d2:landscape": one adaptation per direction and format.
@@ -114,6 +119,7 @@ export function FullCreativeJob({ jobId, requestId, platforms, prompt, onRestart
             <h3 dir="auto">{direction.name}</h3>
             <p dir="auto" className="u-xs u-muted">{direction.concept}</p>
             {result && <Details result={result} />}
+            {result && run && can('content.approve') && <DesignPlanPanel requestId={run.requestId} directionId={id} />}
             {result?.imageUrl && run && <ResultActions run={run} result={result} story={story} landscape={landscape} platforms={platforms} prompt={prompt} direction={direction} />}
             {result?.imageUrl && extras.filter((format) => !variants[format]).map((format) => {
               const key = `${id}:${format}`;
@@ -187,6 +193,7 @@ function Details({ result }: { result: PublicResult }) {
     <ul>
       <li>{t('Logo', 'الشعار')}: {logo.requiresCreativeRepair ? logo.reason : `${logo.variantId} · ${logo.placement.anchor} · ${logo.placement.width}px${logo.policy === 'engineering-default' ? t(' · outside guideline pairings, contrast-checked', ' · خارج الأزواج المعتمدة، متراجع التباين') : ''}`}{result.repaired ? t(' · corner repaired', ' · اتصلّح الركن') : ''}</li>
       <li>{t('Text', 'النص')}: {result.copyChecks.map((c) => `${c.field} ${t(VERDICT[c.verdict][0], VERDICT[c.verdict][1])}`).join(' · ')}</li>
+      {result.refinements && result.refinements.length > 0 && <li>{t('Repaired by the critic', 'أصلحه الناقد')}: {result.refinements.join(' · ')}</li>}
       <li>{t('Critic', 'المُقيّم')}: {t('design', 'تصميم')} {result.inspection.scores.design}/10 · {t('marketing', 'تسويق')} {result.inspection.scores.marketing}/10 · {t('image', 'صورة')} {result.inspection.scores.imageQuality}/10 · {t('brand', 'هوية')} {result.inspection.scores.brandFit}/10</li>
       {result.problems.map((problem) => <li key={problem} className="creative-job__problem">{problem}</li>)}
       <li className="u-muted">{result.model} · {(result.latencyMs / 1000).toFixed(0)}s</li>

@@ -19,6 +19,7 @@ import { generatePostImage, imageRequest } from './post-image.js';
 import { briefRequest, generateCreativeBrief } from './creative-brief.js';
 import { applyCreativeCommand, creativeEditRequest } from './creative-edit.js';
 import { adaptFullCreative, generateFullCreative, loadFullCreativeRun } from './creative-intelligence/generation/full-creative.js';
+import { THEME_IDS } from '../src/domain/design-engine.js';
 import { getJob, startJob, toPublicRun } from './creative-intelligence/generation/jobs.js';
 import { bootstrapAdmin, requirePermission, requireUser, userCan } from './auth.js';
 import { registerAuthRoutes, registerWorkspaceRoutes } from './workspace-routes.js';
@@ -91,7 +92,9 @@ app.post('/api/ai/post-image',requirePermission('content.create'),requireAiBudge
  catch(error){res.status(502).json({error:error instanceof Error?error.message:'تعذّر توليد الصورة.'});}
 });
 const fullCreativeCalls=new Map<string,number[]>();
-const fullCreativeRequest=z.object({prompt:z.string().trim().min(5).max(2000),format:z.enum(['feed','story','landscape']).default('feed'),directions:z.literal(2).default(2),templateId:z.string().uuid().optional()});
+const fullCreativeRequest=z.object({prompt:z.string().trim().min(5).max(2000),format:z.enum(['feed','story','landscape']).default('feed'),directions:z.literal(2).default(2),templateId:z.string().uuid().optional(),
+ settings:z.object({theme:z.enum(['auto',...THEME_IDS]).optional(),creativity:z.enum(['safe','balanced','experimental']).optional(),imageStyle:z.enum(['auto','photo','graphic']).optional(),detail:z.enum(['auto','minimal','detailed']).optional(),referenceStrength:z.enum(['loose','balanced','strong']).optional()}).optional(),
+ engine:z.enum(['skills','legacy']).optional()});
 const localOnly=(res:express.Response)=>{if(!process.env.OPENAI_API_KEY?.trim()){res.status(503).json({error:'أضف OPENAI_API_KEY على الخادم.'});return true;}return false;};
 const limited=(req:express.Request,res:express.Response)=>{const who=req.ip||'local';const now=Date.now();const recent=(fullCreativeCalls.get(who)||[]).filter(at=>now-at<10*60_000);if(recent.length>=6){res.status(429).json({error:'بلغت الحد المؤقت: 6 طلبات تصميم خلال 10 دقائق.'});return true;}fullCreativeCalls.set(who,[...recent,now]);return false;};
 app.post('/api/ai/full-creative',requirePermission('content.create'),requireAiBudget,async(req,res)=>{
@@ -113,6 +116,14 @@ app.post('/api/ai/full-creative/:requestId/adapt',requirePermission('content.cre
  res.status(202).json({jobId:job.id});
 });
 app.get('/api/ai/jobs/:id',(req,res)=>{const job=getJob(String(req.params.id));res.setHeader('Cache-Control','no-store');if(!job||job.ownerId!==req.user!.id)return res.status(404).json({error:'المهمة غير موجودة؛ ربما أعيد تشغيل الخادم.'});res.json(job);});
+/** Developer view of a run: every design decision, the compiled prompts, the critic and the repairs. Admins and approvers only. */
+app.get('/api/ai/runs/:requestId/design',(req,res)=>{
+ if(!userCan(req.user!,'content.approve'))return res.status(404).json({error:'التصميم غير موجود.'});
+ let run;try{run=loadFullCreativeRun(String(req.params.requestId));}catch{return res.status(404).json({error:'التصميم غير موجود.'});}
+ res.setHeader('Cache-Control','no-store');
+ res.json({versions:run.versions,engine:run.brief.engine??null,directions:run.brief.directions.map(d=>({id:d.id,name:d.name,theme:d.theme??null,logo:{mark:d.logoMark??null,corner:d.logoCorner??null},plan:d.engine??null})),
+  results:run.results.map(r=>({directionId:r.directionId,prompt:r.prompt,critique:r.inspection.critique??null,repairs:r.inspection.repairs??[],refinements:r.refinements??[],scores:r.inspection.scores,verdict:r.inspection.verdict,logo:r.logo,problems:r.problems}))});
+});
 /** A finished run, reopened from disk: after leaving the Create page, from a notification, or after a restart. */
 app.get('/api/ai/runs/:requestId',(req,res)=>{
  let run;try{run=loadFullCreativeRun(String(req.params.requestId));}catch{return res.status(404).json({error:'التصميم غير موجود.'});}

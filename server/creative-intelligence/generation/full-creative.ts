@@ -18,6 +18,9 @@ import { compositeLogo, verifyComposite } from '../logo-resolution/compositor.js
 import { reservedZoneBox, resolveLogo, type Corner, type LogoDecision, type NoLogoDecision } from '../logo-resolution/resolver.js';
 import type { SafeArea } from '../logo-resolution/validator.js';
 import { checkCopy, copyPasses, type CanonicalCopy, type CopyCheck } from '../typography-validation/copy-check.js';
+import { compileDesignPrompt, DEFAULT_SETTINGS, ENGINE_SKILL_VERSIONS, ENGINE_VERSION, planDesign, planStrategy, type DesignDecision, type EngineSettings, type ReferenceInput, type StrategyDecision } from '../skills/engine.js';
+import { THEMES, type ThemeId } from '../skills/themes.js';
+import { looksUnfilled, pasteInside } from './patch.js';
 import { openAIJson, OpenAIImageProvider, type CreativeImageProvider, type ImageQuality } from './provider.js';
 
 export const FULL_CREATIVE_VERSIONS = { director: 'creative-director:v2', compiler: 'full-creative-compiler:v2', pipeline: 'full-creative-pipeline:v1', designLanguage: DESIGN_LANGUAGE_VERSION } as const;
@@ -35,6 +38,9 @@ export interface CreativeDirectionPlan {
   /** Official logo treatment and corner chosen for this composition (older saved runs have neither). */
   logoMark?: LogoMark;
   logoCorner?: Corner;
+  /** Design-engine runs: the theme, the creative idea and every design decision for this direction. */
+  theme?: ThemeId;
+  engine?: { strategy: StrategyDecision['themeDirector']['directions'][number]; design: DesignDecision };
 }
 export interface CreativeBriefPlan {
   language: 'ar' | 'en';
@@ -45,6 +51,8 @@ export interface CreativeBriefPlan {
   /** Ready-to-post caption per platform. */
   captions: Record<'facebook' | 'instagram' | 'whatsapp' | 'linkedin' | 'tiktok' | 'snapchat' | 'website', string>;
   directions: CreativeDirectionPlan[];
+  /** Design-engine runs: the strategy decisions, references and skill versions behind the brief. */
+  engine?: { version: string; skills: Record<string, string>; settings: EngineSettings; strategy: StrategyDecision; references: ReferenceInput[] };
 }
 
 export interface FullCreativeRequest {
@@ -61,6 +69,10 @@ export interface FullCreativeRequest {
   requestId?: string;
   /** Who started it: only they (and approvers) can reopen the run. */
   ownerId?: string;
+  /** Advanced controls for the design engine (theme, creativity, photo vs graphic, detail, reference strength). */
+  settings?: Partial<EngineSettings>;
+  /** 'legacy' runs the previous single-prompt director (kept for A/B evaluation). */
+  engine?: 'skills' | 'legacy';
 }
 export interface FullCreativeResult {
   directionId: string;
@@ -71,6 +83,8 @@ export interface FullCreativeResult {
   rawImagePath: string;
   logo: LogoDecision | NoLogoDecision;
   repaired: boolean;
+  /** The critic's targeted repairs that were applied automatically (design-engine runs). */
+  refinements?: string[];
   copyChecks: CopyCheck[];
   inspection: CreativeInspection;
   prompt: string;
@@ -131,6 +145,46 @@ export async function planCreative(prompt: string, format: CreativeFormat, count
   return { ...plan, canonicalCopy: { ...plan.canonicalCopy, facts }, directions: plan.directions.slice(0, count) };
 }
 
+/**
+ * Design-engine planning: the strategy stage (idea, copy, hooks, captions, references, themes), then a design
+ * plan per direction (layout, weight, spacing, type, image, light, colour, brand, logo, compositing).
+ */
+export async function planCreativeWithEngine(prompt: string, format: CreativeFormat, count: number, context: VerifiedCourseContext | undefined, env: NodeJS.ProcessEnv, style: string | undefined, requested: Partial<EngineSettings> | undefined, onDesigning?: () => void): Promise<CreativeBriefPlan> {
+  const settings: EngineSettings = { ...DEFAULT_SETTINGS, ...requested };
+  const facts = factLines(context);
+  const factContext = context ? JSON.stringify({ course: context.facts.title.value, lines: facts, registration: context.facts.registrationUrl?.value ?? null }) : 'none — do not imply any date or schedule';
+  const spec = CREATIVE_FORMATS[format];
+  const { decision: strategy, references } = await planStrategy({ prompt, format: spec.label, count, facts, factContext, settings, style, env });
+  onDesigning?.();
+  const planned = strategy.themeDirector.directions;
+  const designs = await Promise.all(planned.map((direction) => planDesign({ strategy, direction, format: { label: spec.label, ...spec.output }, facts, settings, env })));
+  const copy = strategy.copywriter;
+  return {
+    language: strategy.creativeDirector.language, objective: strategy.creativeDirector.objective, audience: strategy.creativeDirector.audience,
+    canonicalCopy: { headline: copy.headline, subheadline: copy.subheadline, cta: copy.cta, facts },
+    caption: strategy.captionWriter.caption, captions: strategy.captionWriter.captions,
+    directions: planned.map((direction, i) => {
+      const design = designs[i];
+      const theme = THEMES[direction.theme] ?? THEMES['corporate-premium'];
+      return {
+        id: `d${i + 1}`, name: direction.name, concept: direction.idea, subject: design.imageArtDirector.subject,
+        composition: `${design.layoutDesigner.rationale} ${design.layoutDesigner.visualFlow}`, palette: `${design.colorDirector.harmony}: ${design.colorDirector.why}`,
+        typography: design.typographyDirector.emphasis, mood: theme.mood, theme: theme.id,
+        logoMark: design.logoDirector.mark, logoCorner: design.logoDirector.corner, engine: { strategy: direction, design },
+      };
+    }),
+    engine: { version: ENGINE_VERSION, skills: ENGINE_SKILL_VERSIONS, settings, strategy, references },
+  };
+}
+
+/** The image prompt for a direction: compiled from its design plan, or the previous director's prompt for older runs. */
+export function promptFor(brief: CreativeBriefPlan, direction: CreativeDirectionPlan, format: CreativeFormat, adaptation = false): string {
+  if (!brief.engine || !direction.engine) return compileFullCreativePrompt(brief, direction, format);
+  const plan = logoPlanOf(direction, format);
+  const design = { ...direction.engine.design, logoDirector: { ...direction.engine.design.logoDirector, mark: plan.mark, corner: plan.corner } };
+  return compileDesignPrompt({ strategy: brief.engine.strategy, direction: direction.engine.strategy, design, copy: brief.canonicalCopy, format: { label: CREATIVE_FORMATS[format].label, story: format === 'story' }, adaptation });
+}
+
 export function compileFullCreativePrompt(brief: CreativeBriefPlan, direction: CreativeDirectionPlan, format: CreativeFormat): string {
   const f = CREATIVE_FORMATS[format];
   const copy = brief.canonicalCopy;
@@ -164,9 +218,25 @@ export function logoPlanOf(direction: CreativeDirectionPlan, format: CreativeFor
   return { mark: direction.logoMark && LOGO_MARKS.includes(direction.logoMark) ? direction.logoMark : 'lockup', corner: direction.logoCorner && LOGO_CORNERS.includes(direction.logoCorner) ? direction.logoCorner : CREATIVE_FORMATS[format].reservedCorner };
 }
 
-/** Edit mask: opaque everywhere except the box to repaint, which is fully transparent. */
-function maskFor(width: number, height: number, box: { x: number; y: number; width: number; height: number }): Promise<Buffer> {
-  const hole = Buffer.from(`<svg xmlns="http://www.w3.org/2000/svg" width="${width}" height="${height}"><rect x="${box.x}" y="${box.y}" width="${box.width}" height="${box.height}" fill="#fff"/></svg>`);
+/**
+ * Repairs the pipeline can apply by itself: local image, lighting, colour, compositing or asset fixes that are
+ * critical or major, cover a modest region, and stay clear of text (the image model must not repaint type).
+ */
+export function localRepairs(inspection: CreativeInspection): NonNullable<CreativeInspection['repairs']> {
+  const overlap = (a: NormBox, b: NormBox) => Math.max(0, Math.min(a.x + a.width, b.x + b.width) - Math.max(a.x, b.x)) * Math.max(0, Math.min(a.y + a.height, b.y + b.height) - Math.max(a.y, b.y));
+  return (inspection.repairs ?? []).filter((r) => {
+    const area = r.region.width * r.region.height;
+    if (!['IMAGE_EDIT', 'LIGHTING_REPAIR', 'COLOR_REPAIR', 'COMPOSITING_REPAIR', 'ASSET_REPLACE'].includes(r.operation) || r.severity === 'minor') return false;
+    if (area < 0.004 || area > 0.45) return false;
+    const onText = inspection.texts.reduce((sum, t) => sum + overlap(r.region, t.box), 0);
+    return onText / area < 0.15;
+  }).slice(0, 2);
+}
+type NormBox = { x: number; y: number; width: number; height: number };
+
+/** Edit mask: opaque everywhere except the boxes to repaint, which are fully transparent. */
+function maskFor(width: number, height: number, ...boxes: { x: number; y: number; width: number; height: number }[]): Promise<Buffer> {
+  const hole = Buffer.from(`<svg xmlns="http://www.w3.org/2000/svg" width="${width}" height="${height}">${boxes.map((box) => `<rect x="${box.x}" y="${box.y}" width="${box.width}" height="${box.height}" fill="#fff"/>`).join('')}</svg>`);
   return sharp({ create: { width, height, channels: 4, background: { r: 0, g: 0, b: 0, alpha: 1 } } }).composite([{ input: hole, blend: 'dest-out' }]).png().toBuffer();
 }
 
@@ -175,7 +245,7 @@ async function toOutput(png: Buffer, format: CreativeFormat): Promise<Buffer> {
   return sharp(png).resize(width, height, { fit: 'cover', position: 'centre', kernel: 'lanczos3' }).png().toBuffer();
 }
 
-export type ProgressStage = 'context' | 'planning' | 'generating' | 'inspecting' | 'repairing' | 'logo' | 'done';
+export type ProgressStage = 'context' | 'planning' | 'designing' | 'generating' | 'inspecting' | 'refining' | 'repairing' | 'logo' | 'done';
 export type ProgressFn = (event: { stage: ProgressStage; directionId?: string; message?: string; brief?: CreativeBriefPlan }) => void;
 
 export async function produceDirection(input: {
@@ -190,8 +260,8 @@ export async function produceDirection(input: {
   const plan = logoPlanOf(direction, format);
   const started = Date.now();
   const prompt = sourceImage
-    ? `${compileFullCreativePrompt(brief, direction, format)}\n\nADAPTATION\nThe attached image is the approved master of this campaign. Recompose it for this format: same concept, subject, palette, typography style and exact text, re-laid-out for the new canvas. Do not simply stretch or crop it.`
-    : compileFullCreativePrompt(brief, direction, format);
+    ? `${promptFor(brief, direction, format, true)}\n\nMASTER\nThe attached image is the approved master of this campaign. Recompose it for this format: same concept, subject, palette, typography style and exact text, re-laid-out for the new canvas. Do not simply stretch or crop it.`
+    : promptFor(brief, direction, format);
   const problems: string[] = [];
   progress('generating');
   let [generated] = sourceImage
@@ -200,24 +270,51 @@ export async function produceDirection(input: {
   let raw = generated.png;
   writeFileSync(resolve(dir, `${direction.id}-raw.png`), raw);
   let output = await toOutput(raw, format);
-  const context = `${direction.name}: ${direction.concept} Copy: ${JSON.stringify(brief.canonicalCopy)}. Arabic right-to-left layout: a left-pointing arrow on the CTA is intended. Line breaks within the headline are a design choice.`;
+  const planned = direction.engine?.design;
+  const context = `${direction.name}: ${direction.concept} Copy: ${JSON.stringify(brief.canonicalCopy)}. Arabic right-to-left layout: a left-pointing arrow on the CTA is intended. Line breaks within the headline are a design choice.${planned ? ` Planned design — theme ${direction.theme}; first focal point: ${planned.layoutDesigner.primaryFocalPoint}; then ${planned.layoutDesigner.secondaryFocalPoint}; reading path ${planned.layoutDesigner.visualFlow}; headline lines ${JSON.stringify(planned.typographyDirector.headlineLines)}; lighting ${planned.lightingDirector.setup}, key ${planned.lightingDirector.keyDirection}; colour ${planned.colorDirector.harmony}.` : ''}`;
   progress('inspecting');
   const approvedCopy = [brief.canonicalCopy.headline, brief.canonicalCopy.subheadline, ...(brief.canonicalCopy.facts ?? []), brief.canonicalCopy.cta].filter((s): s is string => Boolean(s));
   let inspection = await inspectCreative(output, context, env, approvedCopy);
+  // Creative repair: apply the critic's local, non-text repairs in one masked edit, then look again.
+  const refinements: string[] = [];
+  const [gw, gh] = spec.generation.split('x').map(Number);
+  const local = brief.engine && inspection.verdict !== 'accept' ? localRepairs(inspection) : [];
+  if (local.length) {
+    progress('refining');
+    const boxes = local.map((r) => ({ x: Math.round(Math.max(0, r.region.x - 0.02) * gw), y: Math.round(Math.max(0, r.region.y - 0.02) * gh), width: Math.round(Math.min(1, r.region.width + 0.04) * gw), height: Math.round(Math.min(1, r.region.height + 0.04) * gh) }));
+    const [edited] = await provider.edit({
+      prompt: `Keep the complete existing composition, every piece of text and all typography exactly as they are. Only inside the transparent masked areas: ${local.map((r, i) => `(${i + 1}) ${r.instruction}`).join(' ')} Keep the lighting world, perspective, grain and colour grade consistent with the rest of the image. Preserve every other pixel.`,
+      size: spec.generation, quality, images: [{ data: raw, mime: 'image/png' }], mask: await maskFor(gw, gh, ...boxes),
+    });
+    const candidate = await pasteInside(raw, edited.png, boxes);
+    const blank = (await Promise.all(boxes.map((b) => looksUnfilled(candidate, b)))).some(Boolean);
+    if (!blank) {
+      raw = candidate;
+      refinements.push(...local.map((r) => `${r.operation}: ${r.instruction}`));
+      writeFileSync(resolve(dir, `${direction.id}-refined-raw.png`), raw);
+      output = await toOutput(raw, format);
+      inspection = await inspectCreative(output, context, env, approvedCopy);
+    }
+  }
   progress('logo');
   let logo = await resolveLogo({ creative: output, zones: zonesFromInspection(inspection, spec.output.width, spec.output.height), preferredCorner: plan.corner, preferredMark: plan.mark, safeArea: spec.safeArea });
   let repaired = false;
   if (logo.requiresCreativeRepair) {
     // Logo-first repair: repaint only the reserved corner so the official logo has clean space.
     progress('repairing');
-    const [gw, gh] = spec.generation.split('x').map(Number);
     const zone = reservedZoneBox(plan.corner, gw, gh, LOGO_ZONE[plan.mark]);
     if (format === 'story') zone.y = plan.corner.startsWith('top') ? Math.round(gh * 0.12) : Math.round(gh * 0.83) - zone.height;
-    const [edited] = await provider.edit({
-      prompt: 'Keep the complete existing composition exactly. Change only the transparent masked area: make it a calm, clean, uncluttered continuation of the surrounding background, with no text, faces, objects, logos or graphics. Preserve every other pixel, all typography, subject, lighting and colors.',
-      size: spec.generation, quality, images: [{ data: raw, mime: 'image/png' }], mask: await maskFor(gw, gh, zone),
-    });
-    raw = edited.png; repaired = true;
+    const clean = 'Keep the complete existing composition exactly. Change only the transparent masked area: make it a calm, clean, uncluttered continuation of the surrounding background, with no text, faces, objects, logos or graphics. Preserve every other pixel, all typography, subject, lighting and colors.';
+    // Only the corner is taken from the model: an edit may also shift colours elsewhere, and it sometimes
+    // leaves the hole unpainted (flat black). Then retry once, and give up rather than ship a black block.
+    let patched: Buffer | null = null;
+    for (let attempt = 0; attempt < 2 && !patched; attempt++) {
+      const [edited] = await provider.edit({ prompt: clean, size: spec.generation, quality, images: [{ data: raw, mime: 'image/png' }], mask: await maskFor(gw, gh, zone) });
+      const candidate = await pasteInside(raw, edited.png, [zone]);
+      if (!(await looksUnfilled(candidate, zone))) patched = candidate;
+    }
+    if (!patched) problems.push('Logo corner repair: the image model left the corner unpainted twice; kept the original.');
+    raw = patched ?? raw; repaired = Boolean(patched);
     writeFileSync(resolve(dir, `${direction.id}-repaired-raw.png`), raw);
     output = await toOutput(raw, format);
     inspection = await inspectCreative(output, context, env, approvedCopy);
@@ -238,7 +335,7 @@ export async function produceDirection(input: {
     writeFileSync(imagePath, image);
   }
   const status: FullCreativeResult['status'] = !imagePath ? 'failed' : problems.length ? 'needs_review' : 'ready';
-  return { directionId: direction.id, directionName: direction.name, status, problems, imagePath, rawImagePath: resolve(dir, `${direction.id}-raw.png`), logo, repaired, copyChecks, inspection, prompt, model: generated.model, latencyMs: Date.now() - started };
+  return { directionId: direction.id, directionName: direction.name, status, problems, imagePath, rawImagePath: resolve(dir, `${direction.id}-raw.png`), logo, repaired, refinements, copyChecks, inspection, prompt, model: generated.model, latencyMs: Date.now() - started };
 }
 
 export async function generateFullCreative(request: FullCreativeRequest, env = process.env, onProgress?: ProgressFn): Promise<FullCreativeRun> {
@@ -251,7 +348,9 @@ export async function generateFullCreative(request: FullCreativeRequest, env = p
   const odoo = request.skipOdoo ? { status: 'skipped' as const, message: 'Odoo lookup skipped' } : await resolveOdooContext(request.prompt).catch((error) => ({ status: 'unavailable' as const, message: error instanceof Error ? error.message : 'Odoo error' }));
   const context = odoo.status === 'matched' ? odoo.context : undefined;
   onProgress?.({ stage: 'planning' });
-  const brief = await planCreative(request.prompt, format, count, context, env, request.style);
+  const brief = request.engine === 'legacy'
+    ? await planCreative(request.prompt, format, count, context, env, request.style)
+    : await planCreativeWithEngine(request.prompt, format, count, context, env, request.style, request.settings, () => onProgress?.({ stage: 'designing' }));
   brief.directions = brief.directions.map((d, i) => ({ ...d, id: `d${i + 1}` }));
   onProgress?.({ stage: 'generating', brief });
   const provider = new OpenAIImageProvider(env.OPENAI_API_KEY ?? '', request.model ?? (env.OPENAI_IMAGE_MODEL?.trim() || 'gpt-image-2.5-flare'));
@@ -261,7 +360,7 @@ export async function generateFullCreative(request: FullCreativeRequest, env = p
     problems: [`Generation failed: ${entry.reason instanceof Error ? entry.reason.message : String(entry.reason)}`],
     rawImagePath: '', logo: { requiresCreativeRepair: true, reason: 'No image' }, repaired: false, copyChecks: [],
     inspection: { texts: [], faces: [], subjects: [], logosOrWatermarks: [], copyAudit: [], defects: [], scores: { design: 0, marketing: 0, imageQuality: 0, brandFit: 0 }, verdict: 'regenerate', summary: '' },
-    prompt: compileFullCreativePrompt(brief, brief.directions[index], format), model: provider.model, latencyMs: 0,
+    prompt: promptFor(brief, brief.directions[index], format), model: provider.model, latencyMs: 0,
   });
   const run: FullCreativeRun = {
     requestId, createdAt: new Date().toISOString(), request, brief, results, versions: FULL_CREATIVE_VERSIONS, outputDir,

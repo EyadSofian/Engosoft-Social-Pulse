@@ -7,6 +7,8 @@ description: The Engosoft art-direction standard for generated creatives — pre
 
 The target: a viewer should feel this came from an AI creative director inside a professional design studio — not an image generator and not a template.
 
+The runtime design engine that applies this standard stage by stage is described in `engosoft-design-engine`.
+
 Code (single source for director, image prompt and critic): `server/creative-intelligence/brand/design-language.ts` (`design-language:v1`). Change the rules there, then update this file; the director, `compileFullCreativePrompt` and the inspector all read the same constants.
 
 ## Standard

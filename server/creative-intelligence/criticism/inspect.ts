@@ -3,8 +3,11 @@ import sharp from 'sharp';
 import { openAIJson } from '../generation/provider.js';
 import type { ContentZone } from '../logo-resolution/validator.js';
 import { DESIGN_AVOID, DESIGN_STANDARD } from '../brand/design-language.js';
+import { photoshopCompositor } from '../skills/design.js';
+import { creativeRepair, visualCritic, type RepairOperation, type RubricKey } from '../skills/quality.js';
+import { stageInstructions } from '../skills/types.js';
 
-export const INSPECTOR_VERSION = 'creative-inspector:v2';
+export const INSPECTOR_VERSION = 'creative-inspector:v3';
 
 interface NormBox { x: number; y: number; width: number; height: number }
 export interface CreativeInspection {
@@ -18,13 +21,19 @@ export interface CreativeInspection {
   scores: { design: number; marketing: number; imageQuality: number; brandFit: number };
   verdict: 'accept' | 'repair' | 'regenerate';
   summary: string;
+  /** visual-critic: the professional rubric and what gives the image away as AI. */
+  critique?: { rubric: Record<RubricKey, number>; aiTells: string[]; compositingIssues: string[]; professionalTest: { designerWouldPublish: boolean; marketingWouldPublish: boolean; looksDesigned: boolean }; firstSeen: string };
+  /** creative-repair: the smallest targeted repairs, with the region they affect. */
+  repairs?: { operation: RepairOperation; instruction: string; region: NormBox; severity: 'critical' | 'major' | 'minor' }[];
 }
 
 const box = { type: 'object', additionalProperties: false, required: ['x', 'y', 'width', 'height'], properties: { x: { type: 'number' }, y: { type: 'number' }, width: { type: 'number' }, height: { type: 'number' } } };
 const schema = {
   type: 'object', additionalProperties: false,
-  required: ['texts', 'faces', 'subjects', 'logosOrWatermarks', 'copyAudit', 'defects', 'scores', 'verdict', 'summary'],
+  required: ['texts', 'faces', 'subjects', 'logosOrWatermarks', 'copyAudit', 'defects', 'scores', 'verdict', 'summary', 'critique', 'repairs'],
   properties: {
+    critique: visualCritic.schema,
+    repairs: (creativeRepair.schema as { properties: { repairs: object } }).properties.repairs,
     texts: { type: 'array', items: { type: 'object', additionalProperties: false, required: ['text', 'box'], properties: { text: { type: 'string' }, box } } },
     faces: { type: 'array', items: box },
     subjects: { type: 'array', items: { type: 'object', additionalProperties: false, required: ['label', 'box'], properties: { label: { type: 'string' }, box } } },
@@ -50,8 +59,10 @@ export async function inspectCreative(png: Buffer, context: string, env = proces
       'copyAudit: for each approved string given, find where it is rendered and compare letter by letter (ignore line breaks, diacritics, and where numbers sit within right-to-left text). rendered = exactly what the pixels show, including doubled, missing or swapped letters; exact = false on any letter difference. Image models often misspell Arabic (e.g. باحترارف for باحتراف): look closely.',
       `defects: concrete visible problems (deformed hands/faces, garbled text, fake UI, cut-off subject, clutter), and any of these cheap-looking patterns: ${DESIGN_AVOID.join('; ')}.`,
       `Scores 0-10, strict, against this standard: ${DESIGN_STANDARD.join(' ')} 8+ only for work a senior designer would publish.`,
+      'scores (design, marketing, imageQuality, brandFit) summarise the rubric for the overview.',
+      stageInstructions('Then judge it as the creative team: critique is the visual-critic, repairs are the creative-repair specialist (the photoshop-compositor rules tell you what integration to check).', [visualCritic, creativeRepair, photoshopCompositor]),
     ].join(' '),
-    content: [{ type: 'input_text', text: `Intended creative: ${context.slice(0, 2000)}\nApproved strings to audit: ${JSON.stringify(approvedCopy)}` }, { type: 'input_image', image_url: `data:image/jpeg;base64,${jpeg.toString('base64')}`, detail: 'high' }],
+    content: [{ type: 'input_text', text: `Intended creative: ${context.slice(0, 3000)}\nApproved strings to audit: ${JSON.stringify(approvedCopy)}` }, { type: 'input_image', image_url: `data:image/jpeg;base64,${jpeg.toString('base64')}`, detail: 'high' }],
   });
 }
 
