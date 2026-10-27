@@ -18,10 +18,11 @@ Code (planned, Phase 5): `server/creative-intelligence/{intent,strategy,art-dire
 
 1. Strategy first: objective, audience, primary message, message hierarchy, emotional direction, what to avoid. Colors come later.
 2. Facts only from `Fact<T>` records with provenance (Odoo, user, Social Pulse, uploaded document). Missing date, price, instructor or URL → omit it or ask; never invent.
-3. Directions differ in **idea**: subject strategy, composition mechanism, hierarchy, image strategy and mood. A new background color or a mirrored layout is not a new direction.
-4. Each direction plans the logo: preferred and avoid zones, so the image is generated with a clean brand-safe region.
+3. Directions differ in **idea**: subject strategy, composition mechanism, hierarchy, image strategy and mood. A new background color or a mirrored layout is not a new direction. Start from the three archetypes in `engosoft-design-language` (professional-focused premium, editorial course design, bold cinematic).
+4. Each direction plans the logo: `logoMark` (lockup or symbol, to suit the composition) and `logoCorner` (the calm corner), varied across directions, so the image is generated with a clean brand-safe region of the right size. See `engosoft-design-language`.
 5. References get explicit roles (composition, mood, color, photography, subject, lighting, typography, campaign language, content structure). Never "copy these references".
 6. CFM at Engosoft means Certified Facility Manager (إدارة المرافق), never cash-flow management.
 7. Show the user concise rationale ("Composition inspired by…"), not chain-of-thought.
+8. Every direction follows the design standard and avoid list in `engosoft-design-language` (premium launch feel, strong minimal typography, no paragraphs, no neon/particles/cyberpunk/template look).
 
 Details: [WORKFLOW.md](WORKFLOW.md) · [DIVERSITY.md](DIVERSITY.md) · [EXAMPLES.md](EXAMPLES.md)

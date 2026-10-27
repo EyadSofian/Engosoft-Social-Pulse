@@ -35,6 +35,8 @@ export async function resolveLogo(input: {
   zones: ContentZone[];
   /** Corner the art director reserved; it is tried first and preferred on ties. */
   preferredCorner?: Corner;
+  /** Mark the art director chose for this design; the other mark is only a fallback. Without one, both compete on fit. */
+  preferredMark?: 'lockup' | 'symbol';
   safeArea?: SafeArea;
 }): Promise<LogoDecision | NoLogoDecision> {
   const image = Buffer.isBuffer(input.creative) ? await decodeImage(input.creative) : input.creative;
@@ -58,8 +60,10 @@ export async function resolveLogo(input: {
           continue;
         }
         const m = result.measurements;
-        // Identity first (lockup), then official pairings, contrast, quiet background, and the reserved corner.
-        const score = (variant.kind === 'lockup' ? 3 : 1.5) * (result.policy === 'official' ? 1.4 : 1) * Math.min(m.meanContrast, 8) / 8
+        // The planned mark first (or a slight edge for the lockup when nothing was planned), then official
+        // pairings, contrast, quiet background, and the reserved corner.
+        const markWeight = input.preferredMark ? (variant.kind === input.preferredMark ? 3 : 1.5) : (variant.kind === 'lockup' ? 2.2 : 2);
+        const score = markWeight * (result.policy === 'official' ? 1.4 : 1) * Math.min(m.meanContrast, 8) / 8
           * (1 - m.region.complexity) * (corner === input.preferredCorner ? 1.25 : 1) * (fraction === fractions[0] ? 1.05 : 1);
         if (!best || score > best.score) {
           best = { score, decision: {

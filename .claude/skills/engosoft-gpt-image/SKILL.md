@@ -16,6 +16,8 @@ Two things never come from generated pixels:
 1. **The official logo.** The prompt reserves a clean brand-safe region and forbids logos, watermarks, brand names and fake lettering there. The exact asset is composited afterwards (see `engosoft-logo-resolver`).
 2. **Unverified exact facts.** Dates, prices, URLs, instructor names and times come from canonical copy and are checked after generation; wrong ones are repaired or overlaid as live text.
 
+The prompt carries the art-direction standard and avoid list from `engosoft-design-language`, and reserves the corner and size for the logo mark the director planned for that direction.
+
 ## Rules
 
 1. Never send the raw user prompt. The compiler takes intent, verified facts, strategy, direction, art direction, references with roles, brand context, platform, logo zones and canonical copy.

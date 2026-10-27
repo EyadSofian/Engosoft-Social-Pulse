@@ -9,7 +9,7 @@ Any one of these blocks acceptance:
 - Course information not backed by a verified fact
 - Major reference contamination (subject matter from a style-only reference)
 - Important subject cut off
-- Clearly amateur layout
+- Clearly amateur layout, or a cheap template look from the `engosoft-design-language` avoid list (neon everywhere, particle clutter, cyberpunk HUD, AI-brain cliché, childish mascot)
 - No valid region for any approved logo variant (send to logo-first repair)
 - Almost identical to another returned direction
 

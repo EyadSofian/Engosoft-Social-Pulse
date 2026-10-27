@@ -16,7 +16,8 @@ import { mediaDir } from '../../paths.js';
 import { flipTransform, rotateTransform, shapeShadow, strokeOf, STUDIO_FILE, STUDIO_VERSION, textShadow, type Box, type ImageLayer, type ShapeLayer, type StudioDoc, type StudioLayer, type TextLayer } from '../../../src/domain/studio.js';
 import { OpenAIImageProvider } from '../generation/provider.js';
 import { compositeLogo, verifyComposite } from '../logo-resolution/compositor.js';
-import { resolveLogo } from '../logo-resolution/resolver.js';
+import { resolveLogo, type Corner } from '../logo-resolution/resolver.js';
+import type { LogoMark } from '../brand/design-language.js';
 import type { ContentZone } from '../logo-resolution/validator.js';
 import { measureText, outlineText, paragraphDirection } from '../typography/text-outline.js';
 import { analyzeForStudio, type StudioAnalysis } from './analyze.js';
@@ -366,7 +367,7 @@ export function layersSvg(doc: StudioDoc): { svg: string; textHeights: Map<strin
 }
 
 /** Final image: background + every layer + the official logo placed on the result's pixels. */
-export async function renderStudio(doc: StudioDoc, safeArea?: { top: number; right: number; bottom: number; left: number }): Promise<{ file: string; doc: StudioDoc; problems: string[] }> {
+export async function renderStudio(doc: StudioDoc, safeArea?: { top: number; right: number; bottom: number; left: number }, logoPlan?: { mark: LogoMark; corner: Corner }): Promise<{ file: string; doc: StudioDoc; problems: string[] }> {
   const base = readFileSync(studioPath(doc.baseFile));
   const { svg, textHeights, problems } = layersSvg(doc);
   const composed = await sharp(base).composite([{ input: Buffer.from(svg) }]).png().toBuffer();
@@ -375,7 +376,7 @@ export async function renderStudio(doc: StudioDoc, safeArea?: { top: number; rig
     box: { x: l.x, y: l.y, width: l.width, height: l.kind === 'text' ? (textHeights.get(l.id) ?? 0) + l.size * 0.3 : l.height },
     label: l.kind === 'text' ? l.text.slice(0, 30) : l.name,
   }));
-  const logo = await resolveLogo({ creative: composed, zones: [...doc.zones, ...layerZones], preferredCorner: 'top-left', safeArea });
+  const logo = await resolveLogo({ creative: composed, zones: [...doc.zones, ...layerZones], preferredCorner: logoPlan?.corner ?? 'top-left', preferredMark: logoPlan?.mark, safeArea });
   if (logo.requiresCreativeRepair) {
     problems.push(`Logo: ${logo.reason}. Move a layer away from a corner or use AI edit to clear one.`);
     return { file: saveStudioImage(composed), doc: { ...doc, logo: null }, problems };

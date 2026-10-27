@@ -25,6 +25,7 @@ Scores are 0–10 per axis. Each problem names a location and a concrete fix.
 3. Copy accuracy is checked against canonical copy, word for word for critical facts. Arabic is never assumed correct.
 4. Compare directions against each other; near-duplicates fail originality.
 5. Use full-resolution input for final checks. Low-detail input is acceptable only for preview triage.
-6. Model scores are triage. The decisive question is human: would Engosoft marketing publish this without a designer rebuilding it?
+6. Score against the standard in `engosoft-design-language`; its avoid list (neon overload, particles, cyberpunk, AI-brain clichés, childish mascots, template look, paragraphs) are defects.
+7. Model scores are triage. The decisive question is human: would Engosoft marketing publish this without a designer rebuilding it?
 
 Rubric: [RUBRIC.md](RUBRIC.md)

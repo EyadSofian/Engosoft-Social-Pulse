@@ -2,8 +2,9 @@
 import sharp from 'sharp';
 import { openAIJson } from '../generation/provider.js';
 import type { ContentZone } from '../logo-resolution/validator.js';
+import { DESIGN_AVOID, DESIGN_STANDARD } from '../brand/design-language.js';
 
-export const INSPECTOR_VERSION = 'creative-inspector:v1';
+export const INSPECTOR_VERSION = 'creative-inspector:v2';
 
 interface NormBox { x: number; y: number; width: number; height: number }
 export interface CreativeInspection {
@@ -47,7 +48,8 @@ export async function inspectCreative(png: Buffer, context: string, env = proces
       'faces: every human face. subjects: important people, objects, devices or graphics a logo must not cover — never the background, environment or whole scene.',
       'logosOrWatermarks: any logo, brand mark, emblem, wordmark or watermark drawn in the image (the real logo is added later, so any here is a defect).',
       'copyAudit: for each approved string given, find where it is rendered and compare letter by letter (ignore line breaks, diacritics, and where numbers sit within right-to-left text). rendered = exactly what the pixels show, including doubled, missing or swapped letters; exact = false on any letter difference. Image models often misspell Arabic (e.g. باحترارف for باحتراف): look closely.',
-      'defects: concrete visible problems (deformed hands/faces, garbled text, fake UI, cut-off subject, clutter). Scores 0-10, strict: 8+ only for work a senior designer would publish.',
+      `defects: concrete visible problems (deformed hands/faces, garbled text, fake UI, cut-off subject, clutter), and any of these cheap-looking patterns: ${DESIGN_AVOID.join('; ')}.`,
+      `Scores 0-10, strict, against this standard: ${DESIGN_STANDARD.join(' ')} 8+ only for work a senior designer would publish.`,
     ].join(' '),
     content: [{ type: 'input_text', text: `Intended creative: ${context.slice(0, 2000)}\nApproved strings to audit: ${JSON.stringify(approvedCopy)}` }, { type: 'input_image', image_url: `data:image/jpeg;base64,${jpeg.toString('base64')}`, detail: 'high' }],
   });

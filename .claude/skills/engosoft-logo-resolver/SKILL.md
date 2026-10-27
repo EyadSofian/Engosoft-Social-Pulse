@@ -28,6 +28,7 @@ Code: `server/creative-intelligence/logo-resolution/`
 4. If no variant fits any zone: do **not** shrink below minimum, lower opacity, add a plate or overlap content. Set `requiresCreativeRepair` and issue a targeted edit that clears negative space (see [EXAMPLES.md](EXAMPLES.md)), then resolve again.
 5. A failed validation blocks export. Never show a failed placement as a success.
 6. Each platform variant resolves independently; the same campaign can use different variants per platform.
+7. The mark (lockup or symbol) and corner follow the design: the director plans them per direction and `resolveLogo({ preferredMark, preferredCorner })` tries them first; the other mark is a fallback only. Do not default every design to the lockup. Rules: `engosoft-design-language`.
 
 Details: [LOGO_MANIFEST.md](LOGO_MANIFEST.md) · [VALIDATION.md](VALIDATION.md) · [EXAMPLES.md](EXAMPLES.md)
 

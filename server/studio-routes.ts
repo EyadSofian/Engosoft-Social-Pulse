@@ -7,6 +7,8 @@ import { loadFullCreativeRun } from './creative-intelligence/generation/full-cre
 import { aiEdit, decompose, extractObject, originalWithoutLogo, outlineLayer, renderStudio, saveUpload, studioPath, studioUrl, type StudioDoc } from './creative-intelligence/studio/studio.js';
 import { HEX_COLOR, migrateStudioDoc, STUDIO_FILE, STUDIO_VERSION } from '../src/domain/studio.js';
 import { addVersion, canEdit, getContent, listVersions } from './workspace.js';
+import { markOfVariant, type LogoMark } from './creative-intelligence/brand/design-language.js';
+import type { Corner } from './creative-intelligence/logo-resolution/resolver.js';
 
 interface StudioJob { id: string; ownerId: string; status: 'running' | 'done' | 'failed'; doc?: StudioDoc; error?: string }
 const jobs = new Map<string, StudioJob>();
@@ -47,6 +49,20 @@ type StudioFormat = 'feed' | 'story' | 'landscape';
 const formatOf = (directionId: string): StudioFormat => directionId.endsWith('-story') ? 'story' : directionId.endsWith('-landscape') ? 'landscape' : 'feed';
 const sizeOf = (format: StudioFormat) => format === 'story' ? { width: 1080, height: 1920 } : format === 'landscape' ? { width: 1200, height: 630 } : { width: 1080, height: 1350 };
 const safeAreaOf = (format: StudioFormat) => format === 'story' ? { top: 230, right: 0, bottom: 330, left: 0 } : undefined;
+
+/**
+ * Keep the logo treatment the design already has: the one from the last Studio save, else the one the
+ * generator chose for this direction. Without either, the resolver picks by fit.
+ */
+function logoPlanFor(doc: StudioDoc, requestId: string, directionId: string): { mark: LogoMark; corner: Corner } | undefined {
+  const cornerAt = (x: number, y: number, w: number): Corner => `${y < doc.height / 2 ? 'top' : 'bottom'}-${x + w / 2 < doc.width / 2 ? 'left' : 'right'}` as Corner;
+  if (doc.logo) return { mark: markOfVariant(doc.logo.variantId), corner: cornerAt(doc.logo.x, doc.logo.y, doc.logo.width) };
+  try {
+    const logo = loadFullCreativeRun(requestId).results.find((r) => r.directionId === directionId)?.logo;
+    if (logo && !logo.requiresCreativeRepair) return { mark: markOfVariant(logo.variantId), corner: logo.placement.anchor };
+  } catch { /* run trace missing */ }
+  return undefined;
+}
 
 export function registerStudioRoutes(app: express.Express) {
   /** Latest saved layer document for the post, or null when it has not been made editable yet. */
@@ -114,7 +130,7 @@ export function registerStudioRoutes(app: express.Express) {
     const parsed = z.object({ doc, note: z.string().max(200).default('Studio edit') }).safeParse(req.body);
     if (!parsed.success) return res.status(400).json({ error: 'بيانات الطبقات غير صالحة.' });
     try {
-      const result = await renderStudio(parsed.data.doc as StudioDoc, safeAreaOf(formatOf(item.creative!.directionId)));
+      const result = await renderStudio(parsed.data.doc as StudioDoc, safeAreaOf(formatOf(item.creative!.directionId)), logoPlanFor(parsed.data.doc as StudioDoc, item.creative!.requestId, item.creative!.directionId));
       if (result.problems.some((p) => p.startsWith('Logo'))) return res.status(422).json({ error: result.problems.join(' '), problems: result.problems, previewUrl: studioUrl(result.file) });
       const version = await addVersion(req.user!, item.id, { imageUrl: studioUrl(result.file), storyUrl: item.creative!.storyUrl ?? null, studio: result.doc, note: parsed.data.note });
       res.json({ version, problems: result.problems });
