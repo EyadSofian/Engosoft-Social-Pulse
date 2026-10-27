@@ -83,3 +83,17 @@ test('a scheduled item becomes published when sync matches its plan to a real po
   assert.equal(proven.status, 'published');
   assert.equal(proven.published?.[0].metrics.views, 900);
 });
+
+test('withdrawing a scheduled post cancels its old plans before a new approval round', async () => {
+  const item = await ws.createContent(ops, { title: 'Withdraw schedule', channels: ['facebook'], captions: {}, creative });
+  await ws.transition(ops, item.id, 'ready_for_review', {});
+  await ws.transition(marketing, item.id, 'approved', {});
+  const scheduled = await ws.transition(marketing, item.id, 'scheduled', { scheduledAt: new Date(Date.now() + 3_600_000).toISOString() });
+  const withdrawn = await ws.transition(marketing, item.id, 'approved', {});
+  assert.equal(withdrawn.scheduledAt, null);
+  assert.deepEqual(withdrawn.planIds, []);
+  assert.equal((await store.getPlan(scheduled.planIds[0]))?.status, 'cancelled');
+  await assert.rejects(() => ws.updateContent(ops, item.id, { title: 'Unreviewed change' }), /المعتمد/);
+  await ws.transition(marketing, item.id, 'changes_requested', { note: 'Revise first' });
+  assert.equal((await ws.updateContent(ops, item.id, { title: 'Revised copy' })).title, 'Revised copy');
+});

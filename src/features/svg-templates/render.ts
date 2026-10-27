@@ -5,10 +5,21 @@
  */
 
 export type FieldType = 'text' | 'multiline' | 'date' | 'time' | 'url' | 'image';
-export type FieldSource = 'manual' | 'odoo.title' | 'odoo.date' | 'odoo.time' | 'odoo.location' | 'odoo.link';
+export type FieldSource = 'manual' | 'odoo.title' | 'odoo.date' | 'odoo.time' | 'odoo.location' | 'odoo.link' | 'course.objectives' | 'course.audience' | 'course.outcomes';
 export interface TemplateField { key: string; label: string; type: FieldType; source: FieldSource; sample: string; maxChars: number }
 export type TemplateFormat = 'feed' | 'square' | 'story' | 'landscape';
-export interface SvgTemplate { id: string; name: string; description: string; format: TemplateFormat; width: number; height: number; svg: string; fields: TemplateField[]; sourcePrompt: string; createdBy: string; usageCount: number; createdAt: string; updatedAt: string }
+/** What a template is for; the Operations team chooses the kind of post first. */
+export type TemplateKind = 'course' | 'event' | 'graduation' | 'announcement' | 'general';
+export const TEMPLATE_KINDS: TemplateKind[] = ['course', 'event', 'graduation', 'announcement', 'general'];
+export const KIND_LABEL: Record<TemplateKind, { en: string; ar: string; hint: { en: string; ar: string } }> = {
+  course: { en: 'Course', ar: 'دورة', hint: { en: 'Launch, dates, goals and registration of a course', ar: 'إعلان دورة: موعدها وأهدافها والتسجيل فيها' } },
+  event: { en: 'Event', ar: 'فعالية', hint: { en: 'Webinars, workshops, occasions and reminders', ar: 'ندوات وورش ومناسبات وتذكيرات' } },
+  graduation: { en: 'Graduation', ar: 'تخريج وإنجاز', hint: { en: 'Graduates, certificates and achievements', ar: 'خريجون وشهادات وإنجازات' } },
+  announcement: { en: 'Announcement', ar: 'إعلان', hint: { en: 'Support, offers and service notices', ar: 'دعم فني وعروض وإعلانات الخدمة' } },
+  general: { en: 'General', ar: 'عام', hint: { en: 'Anything else', ar: 'أي شيء آخر' } },
+};
+export interface CourseProfile { courseId: string; courseName: string; objectives: string[]; outcomes: string[]; audience: string; notes: string; updatedAt: string }
+export interface SvgTemplate { id: string; name: string; description: string; kind: TemplateKind; format: TemplateFormat; width: number; height: number; svg: string; fields: TemplateField[]; sourceImage?: string; sourcePrompt: string; createdBy: string; usageCount: number; createdAt: string; updatedAt: string }
 
 export const FORMAT_LABEL: Record<TemplateFormat, { en: string; ar: string; size: string }> = {
   feed: { en: 'Feed 4:5', ar: 'فيد 4:5', size: '1080×1350' },
@@ -157,8 +168,15 @@ export async function exportPng(template: Pick<SvgTemplate, 'svg' | 'width' | 'h
   await loadBrandFonts();
   const logos = Object.fromEntries(await Promise.all(Object.entries(LOGO_FILES).map(async ([variant, url]) => [variant, await embed(url)] as const)));
   const filled = fillSvg(template.svg, values, (variant) => logos[variant] ?? logos['lockup-reversed']);
+  // SVGs loaded as images cannot fetch nested images. Embed photo assets as well as logos before rasterising.
+  const doc = new DOMParser().parseFromString(filled, 'image/svg+xml');
+  await Promise.all([...doc.querySelectorAll('image')].map(async (el) => {
+    const href = el.getAttribute('href');
+    if (href && !href.startsWith('data:')) el.setAttribute('href', await embed(href));
+  }));
+  const embedded = new XMLSerializer().serializeToString(doc.documentElement);
   const fontCss = (await Promise.all(FONT_FILES.map(async (font) => `@font-face{font-family:'${font.family}';font-weight:${font.weight};src:url(${await embed(font.url)}) format('truetype');}`))).join('');
-  const withFonts = filled.replace(/<svg([^>]*)>/, `<svg$1><style>${fontCss}</style>`);
+  const withFonts = embedded.replace(/<svg([^>]*)>/, `<svg$1><style>${fontCss}</style>`);
   const blob = new Blob([withFonts], { type: 'image/svg+xml;charset=utf-8' });
   const url = URL.createObjectURL(blob);
   try {
@@ -187,10 +205,18 @@ export function odooValues(event: OdooEvent, fields: TemplateField[]): Record<st
   const date = start.toLocaleDateString('ar-EG-u-nu-latn', { weekday: 'long', day: 'numeric', month: 'long', year: 'numeric', timeZone: 'Africa/Cairo' });
   const time = start.toLocaleTimeString('ar-EG-u-nu-latn', { hour: 'numeric', minute: '2-digit', timeZone: 'Africa/Cairo' });
   const bySource: Record<FieldSource, string | undefined> = {
-    manual: undefined, 'odoo.title': event.title, 'odoo.date': date, 'odoo.time': time, 'odoo.location': event.location, 'odoo.link': event.registrationUrl,
+    manual: undefined, 'course.objectives': undefined, 'course.audience': undefined, 'course.outcomes': undefined, 'odoo.title': event.title, 'odoo.date': date, 'odoo.time': time, 'odoo.location': event.location, 'odoo.link': event.registrationUrl,
   };
   return Object.fromEntries(fields.flatMap((field) => {
     const value = bySource[field.source];
     return value ? [[field.key, value]] : [];
   }));
+}
+
+/** Fills the `course.*` fields from the course's profile. Fields with nothing recorded stay empty rather than invented. */
+export function courseValues(profile: CourseProfile | undefined, fields: TemplateField[]): Record<string, string> {
+  const bySource: Partial<Record<FieldSource, string>> = {
+    'course.objectives': profile?.objectives.join('\n') ?? '', 'course.outcomes': profile?.outcomes.join('\n') ?? '', 'course.audience': profile?.audience ?? '',
+  };
+  return Object.fromEntries(fields.flatMap((field) => (field.source.startsWith('course.') ? [[field.key, bySource[field.source] ?? '']] : [])));
 }

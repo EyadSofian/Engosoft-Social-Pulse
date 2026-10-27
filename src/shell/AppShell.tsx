@@ -110,11 +110,12 @@ const BOTTOM: { id: NavId; icon: typeof House }[] = [
 /** Phones: the five daily destinations stay one tap away; everything else is in the menu. */
 function BottomNav() {
   const { path } = useRouter();
+  const { me } = useWorkspace();
   const { tx, t } = useI18n();
   const active = activeNav(path);
   return (
     <nav className="shell-bottom-nav" aria-label={t('Quick navigation', 'تنقل سريع')}>
-      {BOTTOM.map(({ id, icon: Icon }) => {
+      {BOTTOM.filter(({ id }) => navItem(id).visible(me)).map(({ id, icon: Icon }) => {
         const item = navItem(id);
         return (
           <Link key={id} to={item.path} className="shell-bottom-nav__item" data-create={id === 'home' || undefined} aria-current={active === id ? 'page' : undefined}>

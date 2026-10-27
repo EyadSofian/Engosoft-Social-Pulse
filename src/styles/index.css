@@ -26,6 +26,7 @@
 @import './features/auth.css';
 @import './features/generation.css';
 @import './features/content-board.css';
+@import './features/calendar.css';
 @import './features/studio.css';
 @import './features/library.css';
 @import './features/settings.css';
@@ -38,3 +39,4 @@
 @import './features/usage.css';
 @import './features/notifications.css';
 @import './features/course-picker.css';
+@import './features/course-profiles.css';

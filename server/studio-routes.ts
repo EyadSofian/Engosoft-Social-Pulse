@@ -1,12 +1,12 @@
 import { randomUUID } from 'node:crypto';
 import express from 'express';
 import { z } from 'zod';
-import { requireUser } from './auth.js';
+import { requirePermission, requireUser } from './auth.js';
 import { requireAiBudget } from './usage.js';
 import { loadFullCreativeRun } from './creative-intelligence/generation/full-creative.js';
 import { aiEdit, decompose, extractObject, originalWithoutLogo, outlineLayer, renderStudio, saveUpload, studioPath, studioUrl, type StudioDoc } from './creative-intelligence/studio/studio.js';
 import { HEX_COLOR, migrateStudioDoc, STUDIO_FILE, STUDIO_VERSION } from '../src/domain/studio.js';
-import { addVersion, canEdit, getContent, listVersions } from './workspace.js';
+import { addVersion, canEdit, contentIsMutable, getContent, listVersions } from './workspace.js';
 import { markOfVariant, type LogoMark } from './creative-intelligence/brand/design-language.js';
 import type { Corner } from './creative-intelligence/logo-resolution/resolver.js';
 
@@ -41,6 +41,7 @@ const doc = z.preprocess((value) => migrateStudioDoc(value) ?? value, z.object({
 async function editableItem(req: express.Request, res: express.Response) {
   const item = await getContent(String(req.params.contentId));
   if (!item || !canEdit(req.user!, item)) { res.status(404).json({ error: 'المحتوى غير موجود أو غير متاح للتعديل.' }); return null; }
+  if (!contentIsMutable(item)) { res.status(409).json({ error: 'أعد المنشور للتعديل قبل تغيير التصميم المعتمد.' }); return null; }
   if (!item.creative) { res.status(400).json({ error: 'لا يحتوي هذا المنشور على تصميم.' }); return null; }
   if (item.creative.svgTemplate || !/^[0-9a-f-]{36}$/.test(item.creative.requestId)) { res.status(400).json({ error: 'أُنشئ هذا المنشور من قالب SVG؛ عدّله من القالب.', code: 'svg_template' }); return null; }
   return item;
@@ -66,14 +67,14 @@ function logoPlanFor(doc: StudioDoc, requestId: string, directionId: string): { 
 
 export function registerStudioRoutes(app: express.Express) {
   /** Latest saved layer document for the post, or null when it has not been made editable yet. */
-  app.get('/api/studio/:contentId/doc', requireUser, async (req, res) => {
+  app.get('/api/studio/:contentId/doc', requireUser, requirePermission('design.free'), async (req, res) => {
     const item = await editableItem(req, res);
     if (!item) return;
     const saved = (await listVersions(item.id)).find((v) => v.studio);
     res.setHeader('Cache-Control', 'no-store');
     res.json({ doc: migrateStudioDoc(saved?.studio), format: formatOf(item.creative!.directionId), imageUrl: item.creative!.imageUrl });
   });
-  app.post('/api/studio/:contentId/decompose', requireUser, requireAiBudget, async (req, res) => {
+  app.post('/api/studio/:contentId/decompose', requireUser, requirePermission('design.free'), requireAiBudget, async (req, res) => {
     const item = await editableItem(req, res);
     if (!item || !process.env.OPENAI_API_KEY?.trim()) { if (item) res.status(503).json({ error: 'أضف OPENAI_API_KEY على الخادم.' }); return; }
     const { requestId, directionId } = item.creative!;
@@ -86,7 +87,7 @@ export function registerStudioRoutes(app: express.Express) {
     });
     res.status(202).json({ jobId: job.id });
   });
-  app.post('/api/studio/:contentId/ai-edit', requireUser, requireAiBudget, async (req, res) => {
+  app.post('/api/studio/:contentId/ai-edit', requireUser, requirePermission('design.free'), requireAiBudget, async (req, res) => {
     const item = await editableItem(req, res);
     if (!item) return;
     const parsed = z.object({ doc, box, instruction: z.string().trim().min(3).max(600) }).safeParse(req.body);
@@ -94,7 +95,7 @@ export function registerStudioRoutes(app: express.Express) {
     const job = startStudioJob(req.user!.id, () => aiEdit(parsed.data.doc as StudioDoc, parsed.data.box, parsed.data.instruction, formatOf(item.creative!.directionId)));
     res.status(202).json({ jobId: job.id });
   });
-  app.post('/api/studio/:contentId/extract', requireUser, requireAiBudget, async (req, res) => {
+  app.post('/api/studio/:contentId/extract', requireUser, requirePermission('design.free'), requireAiBudget, async (req, res) => {
     const item = await editableItem(req, res);
     if (!item) return;
     const parsed = z.object({ doc, box, label: z.string().trim().min(1).max(60), objectId: z.string().max(24).optional() }).safeParse(req.body);
@@ -104,7 +105,7 @@ export function registerStudioRoutes(app: express.Express) {
     res.status(202).json({ jobId: job.id });
   });
   /** A picture the user adds as a layer: a data URL of a PNG, JPEG or WebP image. */
-  app.post('/api/studio/:contentId/upload', requireUser, async (req, res) => {
+  app.post('/api/studio/:contentId/upload', requireUser, requirePermission('design.free'), async (req, res) => {
     const item = await editableItem(req, res);
     if (!item) return;
     const parsed = z.object({ data: z.string().max(16_000_000).regex(/^data:image\/(png|jpeg|webp);base64,/) }).safeParse(req.body);
@@ -113,18 +114,18 @@ export function registerStudioRoutes(app: express.Express) {
     catch { res.status(400).json({ error: 'تعذّر قراءة الصورة.' }); }
   });
   /** Brand-font outlines of text layers at the origin, so the editor shows exactly what the render will. */
-  app.post('/api/studio/outline', requireUser, (req, res) => {
+  app.post('/api/studio/outline', requireUser, requirePermission('design.free'), (req, res) => {
     const parsed = z.object({ layers: z.array(z.object({ id: z.string().max(24), ...textFields })).max(150) }).safeParse(req.body);
     if (!parsed.success) return res.status(400).json({ error: 'Invalid text layers' });
     res.json(Object.fromEntries(parsed.data.layers.map((l) => [l.id, outlineLayer(l)])));
   });
-  app.get('/api/studio/jobs/:id', requireUser, async (req, res) => {
+  app.get('/api/studio/jobs/:id', requireUser, requirePermission('design.free'), async (req, res) => {
     const job = jobs.get(String(req.params.id));
     res.setHeader('Cache-Control', 'no-store');
     if (!job || job.ownerId !== req.user!.id) return res.status(404).json({ error: 'المهمة غير موجودة.' });
     res.json(job);
   });
-  app.post('/api/studio/:contentId/render', requireUser, async (req, res) => {
+  app.post('/api/studio/:contentId/render', requireUser, requirePermission('design.free'), async (req, res) => {
     const item = await editableItem(req, res);
     if (!item) return;
     const parsed = z.object({ doc, note: z.string().max(200).default('Studio edit') }).safeParse(req.body);

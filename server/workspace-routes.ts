@@ -8,18 +8,29 @@ import {
   readCookie, recordFailedLogin, requirePermission, requireUser, SESSION_COOKIE, updateUser, userCan, type AuthUser,
 } from './auth.js';
 import {
-  addComment, addVersion, allowedMoves, canEdit, canSee, createContent, getContent, listContent, listEvents, listVersions, transition, updateContent, WorkspaceError, type StoredContent,
+  addComment, addVersion, allowedMoves, canEdit, canSee, contentIsMutable, createContent, getContent, listContent, listEvents, listVersions, transition, updateContent, WorkspaceError, type StoredContent,
 } from './workspace.js';
 import { notifyContent } from './notify.js';
+import { getTemplate } from './svg-templates.js';
 
 const CHANNELS = ['facebook', 'instagram', 'whatsapp', 'linkedin', 'tiktok', 'snapchat', 'website'] as const;
 const creativeUrl = z.string().regex(/^\/api\/creatives\/[0-9a-f-]{36}\/[a-z0-9.-]+\.png$|^\/api\/studio\/[0-9a-f-]{36}\.png$|^\/api\/uploads\/[0-9a-f-]{36}\.png$/);
-const svgTemplateRef = z.object({ id: z.string().uuid(), values: z.record(z.string().max(40), z.string().max(2000)) });
+const svgTemplateRef = z.object({ id: z.string().uuid(), values: z.record(z.string().max(40), z.string().max(2000)), format: z.enum(['feed', 'square', 'story', 'landscape']).optional(), context: z.string().max(800).optional() });
 const creativeRef = z.object({ requestId: z.string().max(60), directionId: z.string().max(40), imageUrl: creativeUrl, storyUrl: creativeUrl.optional(), landscapeUrl: creativeUrl.optional(), model: z.string().max(60).optional(), directionName: z.string().max(200).optional(), svgTemplate: svgTemplateRef.optional() });
 const captions = z.partialRecord(z.enum(CHANNELS), z.string().max(5000));
 
 const publicUser = (user: AuthUser) => ({ id: user.id, name: user.name, email: user.email, role: user.role, departmentId: user.departmentId, title: user.title, status: user.status, lastActiveAt: user.lastActiveAt });
-const withMoves = (user: AuthUser) => (item: StoredContent) => ({ ...item, moves: allowedMoves(user, item), editable: canEdit(user, item) });
+const withMoves = (user: AuthUser) => (item: StoredContent) => ({ ...item, moves: allowedMoves(user, item), editable: canEdit(user, item) && contentIsMutable(item) });
+
+async function checkTemplate(ref: z.infer<typeof svgTemplateRef>) {
+  const template = await getTemplate(ref.id);
+  if (!template) throw new WorkspaceError(400, 'القالب غير موجود؛ اختر قالبًا من المكتبة.');
+  if (Object.keys(ref.values).some((key) => !template.fields.some((field) => field.key === key))) throw new WorkspaceError(400, 'حقول القالب غير صالحة.');
+  for (const field of template.fields.filter((f) => f.type === 'image')) {
+    const value = ref.values[field.key];
+    if (value && !/^\/post-assets\/[a-z0-9-]+\.(jpg|png|webp)$|^\/api\/uploads\/[a-f0-9-]{36}\.png$/.test(value)) throw new WorkspaceError(400, 'استخدم صورة مرفوعة داخل القالب.');
+  }
+}
 
 function fail(res: express.Response, error: unknown) {
   if (error instanceof WorkspaceError) return res.status(error.status).json({ error: error.message });
@@ -90,6 +101,8 @@ export function registerWorkspaceRoutes(app: express.Express) {
   app.post('/api/content', requireUser, requirePermission('content.create'), async (req, res) => {
     try {
       const input = z.object({ title: z.string().trim().min(2).max(300), channels: z.array(z.enum(CHANNELS)).min(1).max(7), captions: captions.default({}), creative: creativeRef.nullable(), templateId: z.string().max(80).nullable().optional() }).parse(req.body);
+      if (!userCan(req.user!, 'design.free') && !input.creative?.svgTemplate) return res.status(403).json({ error: 'تصمّم من القوالب المعتمدة فقط.', code: 'forbidden' });
+      if (input.creative?.svgTemplate) await checkTemplate(input.creative.svgTemplate);
       const item = await createContent(req.user!, input);
       void notifyContent(req.user!, item, 'created');
       res.status(201).json(withMoves(req.user!)(item));
@@ -127,6 +140,8 @@ export function registerWorkspaceRoutes(app: express.Express) {
       const item = await getContent(String(req.params.id));
       if (!item || !canEdit(req.user!, item)) return res.status(404).json({ error: 'المحتوى غير موجود.' });
       const input = z.object({ imageUrl: creativeUrl, storyUrl: creativeUrl.nullable().default(null), studio: z.unknown().optional().refine((v) => !(v && typeof v === 'object' && 'svgTemplate' in v) || svgTemplateRef.safeParse((v as { svgTemplate: unknown }).svgTemplate).success), note: z.string().max(300).default('Studio edit') }).parse(req.body);
+      if (!userCan(req.user!, 'design.free') && !(input.studio && typeof input.studio === 'object' && 'svgTemplate' in input.studio)) return res.status(403).json({ error: 'تعدّل من القوالب المعتمدة فقط.', code: 'forbidden' });
+      if (input.studio && typeof input.studio === 'object' && 'svgTemplate' in input.studio) await checkTemplate(svgTemplateRef.parse(input.studio.svgTemplate));
       res.status(201).json(await addVersion(req.user!, item.id, { ...input, studio: input.studio ?? null }));
     } catch (error) { fail(res, error); }
   });

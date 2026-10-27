@@ -13,7 +13,8 @@ import { TEMPLATE_PREFILL_KEY, type AiTemplate } from '../../features/ai-templat
 import { usePipeline } from '../../features/content-pipeline/usePipeline';
 import { CoursePicker, runOf } from '../../features/creative-studio/CoursePicker';
 import { clearActiveCreative, getActiveCreative, setActiveCreative } from '../../features/creative-studio/activeCreative';
-import { TemplateComposer, TemplateGrid, useSvgTemplates } from '../../features/svg-templates/SvgTemplates';
+import { TemplateComposer, TemplateGrid, KindPicker, useSvgTemplates } from '../../features/svg-templates/SvgTemplates';
+import { KIND_LABEL, type TemplateKind } from '../../features/svg-templates/render';
 import { ChannelIcon } from '../../components/data-display/ChannelIcon';
 import { CREATIVE_PLATFORMS, masterFormat, PLATFORM_FORMATS, type CreativePlatform } from '../../features/creative-studio/platforms';
 import { useWorkspace } from '../../features/workspace/WorkspaceProvider';
@@ -69,6 +70,9 @@ export function CreationHomePage() {
   const { t } = useI18n();
   const { query } = useRouter();
   const { state } = useWorkspace();
+  const { can } = useAuth();
+  // Without free design the person works from approved templates only: no AI mode, no authoring.
+  const free = can('design.free');
   const upload = useRef<HTMLInputElement>(null);
   const [prompt, setPrompt] = useState(() => getActiveCreative()?.prompt ?? '');
   const [objective, setObjective] = useState<Objective | 'auto'>('auto');
@@ -77,7 +81,7 @@ export function CreationHomePage() {
   const [references, setReferences] = useState<CreativeReference[]>([]);
   const [message, setMessage] = useState('');
   const [creating, setCreating] = useState(false);
-  const [mode, setMode] = useState<'ai' | 'template'>(() => (query.has('svgTemplate') ? 'template' : 'ai'));
+  const [mode, setMode] = useState<'ai' | 'template'>(() => (free && query.has('creative') ? 'ai' : 'template'));
   // A run in progress (or just finished) survives leaving the page; ?creative= opens one from a notification.
   const active = getActiveCreative();
   const opened = query.get('creative');
@@ -145,15 +149,15 @@ export function CreationHomePage() {
     <header className="create-hero">
       <div className="create-hero__titles">
         <span className="create-hero__eyebrow"><Sparkles size={14} /> Engosoft Creative Studio</span>
-        <h1 className="create-hero__title">{t('What would you like to create?', 'ماذا تريد أن تنشئ؟')}</h1>
-        <p>{mode === 'ai' ? t('Describe the idea. We check Odoo, write the copy, design two directions and place the official logo.', 'اكتب الفكرة، وسنراجع بيانات Odoo ونكتب النص ونصمّم اتجاهين ونضع الشعار الرسمي.') : t('Pick a ready template, fill it by hand or from an Odoo event, and export it instantly.', 'اختر قالبًا جاهزًا، واملأه يدويًا أو من فعالية في Odoo، ثم صدّره فورًا.')}</p>
+        <h1 className="create-hero__title">{free ? t('What would you like to create?', 'ماذا تريد أن تنشئ؟') : t('What kind of post is it?', 'ما نوع المنشور؟')}</h1>
+        <p>{mode === 'ai' ? t('Describe the idea. We check Odoo, write the copy, design two directions and place the official logo.', 'اكتب الفكرة، وسنراجع بيانات Odoo ونكتب النص ونصمّم اتجاهين ونضع الشعار الرسمي.') : t('Choose a post type and visual reference. Create new artwork in the same visual family, then send it for approval.', 'اختر نوع المنشور ومرجعه البصري. ولّد تصميمًا جديدًا من نفس العائلة، ثم أرسله للاعتماد.')}</p>
       </div>
-      <div className="create-mode" role="tablist" aria-label={t('How to create', 'طريقة الإنشاء')}>
+      {free && <div className="create-mode" role="tablist" aria-label={t('How to create', 'طريقة الإنشاء')}>
         {(['ai', 'template'] as const).map((value) => <button key={value} type="button" role="tab" aria-selected={mode === value} onClick={() => setMode(value)}>
           {mode === value && <motion.span layoutId="create-mode-pill" className="create-mode__pill" transition={{ type: 'spring', stiffness: 420, damping: 34 }} />}
-          <span className="create-mode__label">{value === 'ai' ? <><Wand2 size={16} /> {t('Full AI design', 'تصميم كامل بالذكاء الاصطناعي')}</> : <><LayoutTemplate size={16} /> {t('From a template', 'من قالب جاهز')}</>}</span>
+          <span className="create-mode__label">{value === 'ai' ? <><Wand2 size={16} /> {t('Full AI design', 'تصميم كامل بالذكاء الاصطناعي')}</> : <><LayoutTemplate size={16} /> {t('From an approved reference', 'من مرجع معتمد')}</>}</span>
         </button>)}
-      </div>
+      </div>}
     </header>
     {mode === 'template' ? <TemplateMode initialId={query.get('svgTemplate')} /> : <div className={stage === 'compose' ? 'create-layout' : 'create-layout create-layout--single'}>
     <div className="creative-home__hero">
@@ -219,17 +223,30 @@ function PlatformPreview({ platforms }: { platforms: CreativePlatform[] }) {
   </aside>;
 }
 
-/** Ready templates: choose one, fill it (or let an Odoo event fill it) and export without any image-model cost. */
+/** Ready templates: pick the kind of post, then a template, fill it and export without any image-model cost. */
 function TemplateMode({ initialId }: { initialId: string | null }) {
   const { t } = useI18n();
   const { navigate } = useRouter();
-  const { items } = useSvgTemplates();
+  const { can } = useAuth();
+  const free = can('design.free');
+  const { items, error, reload } = useSvgTemplates();
   const [selected, setSelected] = useState<string | null>(initialId);
+  const [kind, setKind] = useState<TemplateKind | 'all'>('all');
   const template = items?.find((item) => item.id === selected);
+  if (error) return <div className="library-empty glass" role="alert"><p>{error}</p><Button variant="secondary" onClick={() => void reload()}>{t('Retry', 'أعد المحاولة')}</Button></div>;
   if (!items) return <div className="board-loading"><span className="ui-btn__spinner" /></div>;
   if (template) return <TemplateComposer key={template.id} template={template} onClose={() => setSelected(null)} />;
+  const shown = kind === 'all' ? items : items.filter((item) => item.kind === kind);
+  const kinds = (Object.keys(KIND_LABEL) as TemplateKind[]).filter((value) => items.some((item) => item.kind === value));
   return <section className="u-stack">
-    {items.length ? <TemplateGrid items={items} onOpen={(item) => setSelected(item.id)} /> : <div className="library-empty glass"><LayoutTemplate size={22} /><p>{t('No templates yet. Design one with AI in the Library once, then reuse it.', 'لا توجد قوالب بعد. صمّم قالبًا بالذكاء الاصطناعي في المكتبة مرة واحدة، ثم أعد استخدامه.')}</p></div>}
-    <div><Button variant="secondary" onClick={() => navigate('/library')}><Wand2 size={15} /> {t('Design a new template', 'صمّم قالبًا جديدًا')}</Button></div>
+    {items.length > 0 && !free && kind === 'all' && kinds.length > 1
+      ? <div className="kind-cards">{kinds.map((value) => <button key={value} type="button" className="kind-card glass" data-kind={value} onClick={() => setKind(value)}>
+        <b>{t(KIND_LABEL[value].en, KIND_LABEL[value].ar)}</b><small>{t(KIND_LABEL[value].hint.en, KIND_LABEL[value].hint.ar)}</small><i className="u-tnum">{items.filter((item) => item.kind === value).length}</i>
+      </button>)}</div>
+      : <>
+        {items.length > 0 && <KindPicker items={items} value={kind} onChange={setKind} />}
+        {shown.length ? <TemplateGrid items={shown} onOpen={(item) => setSelected(item.id)} /> : <div className="library-empty glass"><LayoutTemplate size={22} /><p>{free ? t('No templates yet. Design one with AI in the Library once, then reuse it.', 'لا توجد قوالب بعد. صمّم قالبًا بالذكاء الاصطناعي في المكتبة مرة واحدة، ثم أعد استخدامه.') : t('No templates are ready yet. Ask marketing to add them.', 'لا توجد قوالب جاهزة بعد. اطلب من التسويق إضافتها.')}</p></div>}
+      </>}
+    {free && <div><Button variant="secondary" onClick={() => navigate('/library')}><Wand2 size={15} /> {t('Design a new template', 'صمّم قالبًا جديدًا')}</Button></div>}
   </section>;
 }

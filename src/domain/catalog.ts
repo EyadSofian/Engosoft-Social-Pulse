@@ -14,6 +14,7 @@ export const ROLES: Record<RoleId, Role> = {
     name: { en: 'Marketing Manager', ar: 'مدير التسويق' },
     description: { en: 'Final review, approval and publishing for every department.', ar: 'المراجعة النهائية والاعتماد والنشر لكل الأقسام.' },
     permissions: [
+      'design.free',
       'content.create',
       'content.edit_own',
       'content.edit_department',
@@ -36,6 +37,7 @@ export const ROLES: Record<RoleId, Role> = {
     name: { en: 'Publisher', ar: 'مسؤول النشر' },
     description: { en: 'Schedules approved content and confirms publishing.', ar: 'يجدول المحتوى المعتمد ويؤكد النشر.' },
     permissions: [
+      'design.free',
       'content.create',
       'content.edit_own',
       'content.edit_any',
@@ -52,41 +54,47 @@ export const ROLES: Record<RoleId, Role> = {
     id: 'department_manager',
     name: { en: 'Department Manager', ar: 'مدير قسم' },
     description: { en: 'Plans and creates the department’s content, assigns its tasks.', ar: 'يخطط محتوى القسم وينشئه ويسند مهامه.' },
-    permissions: ['content.create', 'content.edit_own', 'content.edit_department', 'task.assign', 'analytics.view', 'credits.view'],
+    permissions: ['design.free', 'content.create', 'content.edit_own', 'content.edit_department', 'task.assign', 'analytics.view', 'credits.view'],
   },
   employee: {
     id: 'employee',
     name: { en: 'Employee', ar: 'موظف' },
     description: { en: 'Creates content and completes assigned tasks.', ar: 'ينشئ المحتوى وينفذ المهام المسندة.' },
-    permissions: ['content.create', 'content.edit_own', 'analytics.view'],
+    permissions: ['design.free', 'content.create', 'content.edit_own', 'analytics.view'],
   },
   designer: {
     id: 'designer',
     name: { en: 'Designer', ar: 'مصمم' },
     description: { en: 'Delivers design tasks and revisions.', ar: 'ينفذ مهام التصميم والتعديلات.' },
-    permissions: ['content.edit_own'],
+    permissions: ['design.free', 'content.edit_own'],
   },
   media_editor: {
     id: 'media_editor',
     name: { en: 'Media Editor', ar: 'محرر فيديو' },
     description: { en: 'Edits video and captures for content items.', ar: 'يمنتج الفيديو واللقطات لعناصر المحتوى.' },
-    permissions: ['content.edit_own'],
+    permissions: ['design.free', 'content.edit_own'],
   },
   lecturer: {
     id: 'lecturer',
     name: { en: 'Lecturer', ar: 'محاضر' },
     description: { en: 'Contributes course and educational content.', ar: 'يساهم بمحتوى الدورات والمحتوى التعليمي.' },
-    permissions: ['content.create', 'content.edit_own'],
+    permissions: ['design.free', 'content.create', 'content.edit_own'],
   },
   freelancer: {
     id: 'freelancer',
     name: { en: 'Freelancer', ar: 'مستقل' },
     description: { en: 'Writes assigned content; sees only their own work.', ar: 'يكتب المحتوى المسند؛ يرى عمله فقط.' },
+    permissions: ['design.free', 'content.create', 'content.edit_own'],
+  },
+  operations: {
+    id: 'operations',
+    name: { en: 'Operations Team', ar: 'فريق العمليات' },
+    description: { en: 'Creates new posts from approved visual references and templates, then sends them for review.', ar: 'ينشئ منشورات جديدة من المراجع البصرية والقوالب المعتمدة، ثم يرسلها للمراجعة.' },
     permissions: ['content.create', 'content.edit_own'],
   },
 };
 
-export const ROLE_ORDER: RoleId[] = ['admin', 'marketing_manager', 'publisher', 'department_manager', 'employee', 'designer', 'media_editor', 'lecturer', 'freelancer'];
+export const ROLE_ORDER: RoleId[] = ['admin', 'marketing_manager', 'publisher', 'department_manager', 'employee', 'designer', 'media_editor', 'lecturer', 'freelancer', 'operations'];
 
 export const can = (role: RoleId, permission: Permission) => ROLES[role].permissions.includes(permission);
 

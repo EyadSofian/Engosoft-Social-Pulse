@@ -30,6 +30,9 @@ import { mediaDir } from './paths.js';
 import { registerUsageRoutes, requireAiBudget } from './usage.js';
 import { registerNotifyRoutes } from './notify.js';
 import { registerSvgTemplateRoutes } from './svg-templates.js';
+import { registerCourseProfileRoutes } from './course-profiles.js';
+import { seedBuiltinTemplates } from './builtin-templates.js';
+import { recoverReferenceJobs, registerReferenceDesignRoutes } from './reference-designs.js';
 
 const app=express();const port=Number(process.env.PORT)||4100;const host=process.env.HOST||'127.0.0.1';
 app.disable('x-powered-by');app.set('trust proxy',1);app.use('/api/ai',express.json({limit:'18mb'}));app.use('/api/studio',express.json({limit:'18mb'}));app.use('/api/svg-templates',express.json({limit:'16mb'}));app.use('/api/uploads',express.json({limit:'16mb'}));app.use(express.json({limit:'1mb'}));
@@ -44,6 +47,8 @@ registerStudioRoutes(app);
 registerUsageRoutes(app);
 registerNotifyRoutes(app);
 registerSvgTemplateRoutes(app);
+registerReferenceDesignRoutes(app);
+registerCourseProfileRoutes(app);
 app.get('/api/odoo/schedule',async(_req,res)=>{
  const result=await readOdooSchedule();
  res.setHeader('Cache-Control','no-store');
@@ -63,7 +68,7 @@ app.get('/api/odoo/courses',async(req,res)=>{
 });
 const imageCalls=new Map<string,number[]>();
 const briefCalls=new Map<string,number[]>();
-app.post('/api/ai/creative-brief',requirePermission('content.create'),requireAiBudget,async(req,res)=>{
+app.post('/api/ai/creative-brief',requirePermission('design.free'),requireAiBudget,async(req,res)=>{
  const parsed=briefRequest.safeParse(req.body);
  if(!parsed.success)return res.status(400).json({error:'طلب المحتوى أو المراجع غير صالحة.'});
  const who=req.ip||'local';const now=Date.now();const recent=(briefCalls.get(who)||[]).filter(at=>now-at<10*60_000);
@@ -72,7 +77,7 @@ app.post('/api/ai/creative-brief',requirePermission('content.create'),requireAiB
  try{res.json(await generateCreativeBrief(parsed.data));}
  catch(error){res.status(502).json({error:error instanceof Error?error.message:'تعذّر إعداد المحتوى.'});}
 });
-app.post('/api/ai/creative-edit',requirePermission('content.create'),requireAiBudget,async(req,res)=>{
+app.post('/api/ai/creative-edit',requirePermission('design.free'),requireAiBudget,async(req,res)=>{
  const parsed=creativeEditRequest.safeParse(req.body);
  if(!parsed.success)return res.status(400).json({error:'طلب التعديل غير صالح.'});
  const who=req.ip||'local';const now=Date.now();const recent=(briefCalls.get(who)||[]).filter(at=>now-at<10*60_000);
@@ -81,7 +86,7 @@ app.post('/api/ai/creative-edit',requirePermission('content.create'),requireAiBu
  try{res.json(await applyCreativeCommand(parsed.data));}
  catch(error){res.status(502).json({error:error instanceof Error?error.message:'تعذّر تعديل التصميم.'});}
 });
-app.post('/api/ai/post-image',requirePermission('content.create'),requireAiBudget,async(req,res)=>{
+app.post('/api/ai/post-image',requirePermission('design.free'),requireAiBudget,async(req,res)=>{
  if(!process.env.OPENAI_API_KEY?.trim())return res.status(503).json({error:'أضف OPENAI_API_KEY على الخادم لتوليد الصور.'});
  const parsed=imageRequest.safeParse(req.body);
  if(!parsed.success)return res.status(400).json({error:'وصف الصورة أو المقاس غير صالح.'});
@@ -97,7 +102,7 @@ const fullCreativeRequest=z.object({prompt:z.string().trim().min(5).max(2000),fo
  engine:z.enum(['skills','legacy']).optional()});
 const localOnly=(res:express.Response)=>{if(!process.env.OPENAI_API_KEY?.trim()){res.status(503).json({error:'أضف OPENAI_API_KEY على الخادم.'});return true;}return false;};
 const limited=(req:express.Request,res:express.Response)=>{const who=req.ip||'local';const now=Date.now();const recent=(fullCreativeCalls.get(who)||[]).filter(at=>now-at<10*60_000);if(recent.length>=6){res.status(429).json({error:'بلغت الحد المؤقت: 6 طلبات تصميم خلال 10 دقائق.'});return true;}fullCreativeCalls.set(who,[...recent,now]);return false;};
-app.post('/api/ai/full-creative',requirePermission('content.create'),requireAiBudget,async(req,res)=>{
+app.post('/api/ai/full-creative',requirePermission('design.free'),requireAiBudget,async(req,res)=>{
  if(localOnly(res))return;
  const parsed=fullCreativeRequest.safeParse(req.body);if(!parsed.success)return res.status(400).json({error:'اكتب وصف المنشور (5 أحرف على الأقل).'});
  if(limited(req,res))return;
@@ -106,7 +111,7 @@ app.post('/api/ai/full-creative',requirePermission('content.create'),requireAiBu
  const job=startJob('generate',req.user!.id,(setStage)=>generateFullCreative({...parsed.data,style:template?.style,requestId,ownerId:req.user!.id},process.env,setStage),requestId);
  res.status(202).json({jobId:job.id,requestId});
 });
-app.post('/api/ai/full-creative/:requestId/adapt',requirePermission('content.create'),requireAiBudget,(req,res)=>{
+app.post('/api/ai/full-creative/:requestId/adapt',requirePermission('design.free'),requireAiBudget,(req,res)=>{
  if(localOnly(res))return;
  const parsed=z.object({directionId:z.string().regex(/^d\d$/),format:z.enum(['feed','story','landscape'])}).safeParse(req.body);if(!parsed.success)return res.status(400).json({error:'طلب التحويل غير صالح.'});
  let run;try{run=loadFullCreativeRun(String(req.params.requestId));}catch{return res.status(404).json({error:'التصميم غير موجود.'});}
@@ -192,7 +197,7 @@ const planSchema=z.object({
 });
 const planPatchSchema=z.object({scheduledAt:z.iso.datetime().optional(),status:planStatus.optional(),permalink:z.string().max(1000).optional(),externalId:z.string().max(200).optional()}).strict();
 const PROOF_REQUIRED='أضف رابط المنشور أو معرّفه لتأكيد النشر.';
-app.post('/api/plans',async(req,res)=>{
+app.post('/api/plans',requirePermission('content.schedule'),async(req,res)=>{
  const parsed=planSchema.safeParse(req.body);if(!parsed.success)return res.status(400).json({error:'بيانات المنشور غير صالحة.',issues:parsed.error.issues});
  if(missingPublishProof(parsed.data))return res.status(400).json({error:PROOF_REQUIRED});
  const old=parsed.data.id?await getPlan(parsed.data.id):undefined;
@@ -201,7 +206,7 @@ app.post('/api/plans',async(req,res)=>{
  await checkAlerts();
  res.json(saved);
 });
-app.patch('/api/plans/:id',async(req,res)=>{
+app.patch('/api/plans/:id',requirePermission('content.schedule'),async(req,res)=>{
  const parsed=planPatchSchema.safeParse(req.body);if(!parsed.success)return res.status(400).json({error:'تعديل غير صالح.',issues:parsed.error.issues});
  const old=await getPlan(String(req.params.id));if(!old)return res.status(404).json({error:'المنشور غير موجود؛ ربما حُذف.'});
  const plan=applyPlanPatch(old,parsed.data);
@@ -211,7 +216,7 @@ app.patch('/api/plans/:id',async(req,res)=>{
  res.json(saved);
 });
 app.delete('/api/plans/:id',requirePermission('content.schedule'),async(req,res)=>res.json({deleted:await deletePlan(String(req.params.id))}));
-app.post('/api/calendar/import',express.raw({type:'application/octet-stream',limit:'8mb'}),async(req,res)=>{
+app.post('/api/calendar/import',requirePermission('content.schedule'),express.raw({type:'application/octet-stream',limit:'8mb'}),async(req,res)=>{
  try{
   const filename=String(req.header('X-Filename')||'calendar.csv').slice(0,120);
   const data=await parseCalendar(req.body as Buffer,filename);
@@ -231,6 +236,8 @@ const dist=resolve('dist');if(existsSync(dist)){
 }
 // Tables first, then the first admin, then traffic: nothing reads the database before it is ready.
 await initDb();
+await seedBuiltinTemplates();
+await recoverReferenceJobs();
 const admin=await bootstrapAdmin();if(admin)console.log(`Created first admin ${admin.email}`);
 app.listen(port,host,()=>console.log(`Mobde3 listening on http://${host}:${port} (${db.kind === 'pg' ? 'Postgres' : 'SQLite'})`));
 setTimeout(()=>{void runSync().catch(()=>{});},1500);

@@ -1,0 +1,54 @@
+[
+  {
+    "file": "design-references/artists-day.jpg",
+    "sha256": "969c58d4d15c03d89bb1778cf091d8d8585423a6fb796db0300ba59acc24015a"
+  },
+  {
+    "file": "design-references/automotive-enroll.jpg",
+    "sha256": "34b39530ebb2867abf0828e33c33114758d778c2bce4e2e40744a21f82bbec94"
+  },
+  {
+    "file": "design-references/automotive-graduation.jpg",
+    "sha256": "c4dabb3ef5d4bb7a911c5196642767688ecb3935e449e82d01b0d904d0ccb04e"
+  },
+  {
+    "file": "design-references/automotive-hero.jpg",
+    "sha256": "676d59bcd5f73e17bf5bdefa4a2f5122da1381c547fedbbf7dcaae291147ff6b"
+  },
+  {
+    "file": "design-references/awareness.jpg",
+    "sha256": "9d3b8f23c0f9a9bca2ddba2c25fb3d22ad59ff1a60a88c57b14259da1e47475b"
+  },
+  {
+    "file": "design-references/majed-ai.jpg",
+    "sha256": "0d4d6d78a7418e7a05e395324cd9130d260b054bd68c6714d71ccb14104265c2"
+  },
+  {
+    "file": "design-references/participation.jpg",
+    "sha256": "1e4fdb5260be836a89ff5d951083f2984f907f2f77784945a8113255edbaa096"
+  },
+  {
+    "file": "design-references/revit-mep.png",
+    "sha256": "37af1f5a08bcdc9ad93d15e027f65d235a1c4da8606d37153dd12053bc083e7e"
+  },
+  {
+    "file": "design-references/student-ahmed.jpg",
+    "sha256": "ec9ebd0f1997517668014a6db47422f21ea72194e2cc9a889088191a497a8c91"
+  },
+  {
+    "file": "design-references/student-esra.jpg",
+    "sha256": "4c800e6fa35256dfca54eb5b52a79184dba7e681dc5edcc90b412aab3e703235"
+  },
+  {
+    "file": "design-references/student-lighting.jpg",
+    "sha256": "24c11df5beb564dd775a159500b97fc8fdd2741a69f6b15faf020b7e77418ccb"
+  },
+  {
+    "file": "design-references/student-power.jpg",
+    "sha256": "3faa338c87f0db8f58ec6eb21da75a56acca76fde2b62e0e381dc89131167d89"
+  },
+  {
+    "file": "design-references/support.jpg",
+    "sha256": "ea4ee1ace4ecc5715bdeaeeee6225253b2893a2d560a399f842dca92d1d97356"
+  }
+]

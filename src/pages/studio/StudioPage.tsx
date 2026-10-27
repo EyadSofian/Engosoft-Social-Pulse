@@ -14,6 +14,8 @@ import { useHistory } from '../../features/studio/useHistory';
 import { useOutlines } from '../../features/studio/useOutlines';
 import { useI18n } from '../../i18n/I18nProvider';
 import { api, errorMessage } from '../../lib/api';
+import { EmptyState } from '../../components/feedback/States';
+import { useAuth } from '../../features/auth/AuthProvider';
 import { usePageMeta } from '../../shell/ShellContext';
 
 async function waitForJob(jobId: string): Promise<StudioDoc> {
@@ -39,6 +41,13 @@ function readDraft(id: string): Draft | null {
 const dropDraft = (id: string) => { try { localStorage.removeItem(draftKey(id)); } catch { /* storage unavailable */ } };
 
 export function StudioPage({ id }: { id: string }) {
+  const { t } = useI18n();
+  const { can } = useAuth();
+  if (!can('design.free')) return <EmptyState title={t('Free editing is not part of your role.', 'التعديل الحر ليس ضمن دورك.')} text={t('Use a template from Create to make or change a post.', 'استخدم قالبًا من صفحة الإنشاء لعمل منشور أو تعديله.')} />;
+  return <StudioEditor id={id} />;
+}
+
+function StudioEditor({ id }: { id: string }) {
   const { t } = useI18n();
   const toast = useToast();
   const { navigate } = useRouter();

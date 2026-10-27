@@ -30,7 +30,7 @@ const input = z.object({
 
 export function registerAiTemplateRoutes(app: express.Express) {
   app.get('/api/ai-templates', requireUser, async (_req, res) => res.json(await listTemplates()));
-  app.post('/api/ai-templates', requireUser, requirePermission('content.create'), async (req, res) => {
+  app.post('/api/ai-templates', requireUser, requirePermission('design.free'), async (req, res) => {
     const parsed = input.safeParse(req.body);
     if (!parsed.success) return res.status(400).json({ error: 'اكتب اسم القالب والطلب.' });
     const t = parsed.data, id = randomUUID();

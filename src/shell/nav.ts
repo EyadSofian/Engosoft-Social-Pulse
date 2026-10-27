@@ -30,7 +30,7 @@ export const NAV: NavGroup[] = [
     label: { en: 'Workspace', ar: 'مساحة العمل' },
     items: [
       { id: 'home', path: '/', label: { en: 'Create', ar: 'إنشاء' }, icon: WandSparkles, visible: (user) => hasPermission(user, 'content.create') },
-      { id: 'content', path: '/content', label: { en: 'Content', ar: 'المحتوى' }, icon: Layers, visible: everyone },
+      { id: 'content', path: '/content', label: { en: 'Content & approval', ar: 'المحتوى والاعتماد' }, icon: Layers, visible: everyone },
       { id: 'calendar', path: '/calendar', label: { en: 'Calendar', ar: 'التقويم' }, icon: CalendarDays, visible: everyone },
       { id: 'library', path: '/library', label: { en: 'Library', ar: 'المكتبة' }, icon: Library, visible: everyone },
     ],
@@ -49,8 +49,8 @@ export const NAV: NavGroup[] = [
     id: 'system',
     label: { en: 'System', ar: 'النظام' },
     items: [
-      { id: 'usage', path: '/usage', label: { en: 'AI usage', ar: 'الاستهلاك' }, icon: Wallet, visible: (user) => hasPermission(user, 'content.create') || hasPermission(user, 'users.manage') },
-      { id: 'settings', path: '/settings', label: { en: 'Settings', ar: 'الإعدادات' }, icon: Settings, visible: (user) => hasPermission(user, 'users.manage') || hasPermission(user, 'connections.manage') },
+      { id: 'usage', path: '/usage', label: { en: 'AI usage', ar: 'الاستهلاك' }, icon: Wallet, visible: (user) => hasPermission(user, 'design.free') || hasPermission(user, 'users.manage') },
+      { id: 'settings', path: '/settings', label: { en: 'Settings', ar: 'الإعدادات' }, icon: Settings, visible: (user) => hasPermission(user, 'users.manage') || hasPermission(user, 'connections.manage') || hasPermission(user, 'templates.manage') },
     ],
   },
 ];

@@ -21,7 +21,8 @@ export type RoleId =
   | 'designer'
   | 'media_editor'
   | 'lecturer'
-  | 'freelancer';
+  | 'freelancer'
+  | 'operations';
 
 export type Permission =
   | 'content.create'
@@ -31,6 +32,8 @@ export type Permission =
   | 'content.approve'
   | 'content.schedule'
   | 'content.publish'
+  /** AI design, the free Studio editor and template authoring. Without it a person builds posts from approved templates only. */
+  | 'design.free'
   | 'task.assign'
   | 'users.manage'
   | 'templates.manage'
@@ -82,6 +85,7 @@ export const ALL_PERMISSIONS: Permission[] = [
   'content.approve',
   'content.schedule',
   'content.publish',
+  'design.free',
   'task.assign',
   'users.manage',
   'templates.manage',

@@ -34,7 +34,7 @@ export type Channel = 'facebook' | 'instagram' | 'whatsapp' | 'linkedin' | 'tikt
 /** Channels the sync can prove published; the others are tracked by status only. */
 const TRACKED: Partial<Record<Channel, Platform>> = { facebook: 'facebook', instagram: 'instagram', tiktok: 'tiktok', snapchat: 'snapchat' };
 
-export interface CreativeRef { requestId: string; directionId: string; imageUrl: string; storyUrl?: string; landscapeUrl?: string; model?: string; directionName?: string; svgTemplate?: { id: string; values: Record<string, string> } }
+export interface CreativeRef { requestId: string; directionId: string; imageUrl: string; storyUrl?: string; landscapeUrl?: string; model?: string; directionName?: string; svgTemplate?: { id: string; values: Record<string, string>; format?: 'feed' | 'square' | 'story' | 'landscape'; context?: string } }
 export interface StoredContent {
   id: string; title: string; status: ContentStatus; departmentId: string | null; ownerId: string;
   channels: Channel[]; captions: Partial<Record<Channel, string>>; creative: CreativeRef | null;
@@ -69,6 +69,12 @@ export function canEdit(user: AuthUser, item: StoredContent): boolean {
   if (userCan(user, 'content.edit_any')) return true;
   if (item.ownerId === user.id) return userCan(user, 'content.edit_own');
   return userCan(user, 'content.edit_department') && item.departmentId === user.departmentId;
+}
+
+/** Approval covers the exact copy and image; marketing must return decided work before it changes. */
+export const contentIsMutable = (item: StoredContent) => !['approved', 'scheduled', 'published', 'archived', 'cancelled'].includes(item.status);
+function requireMutable(item: StoredContent) {
+  if (!contentIsMutable(item)) throw new WorkspaceError(409, 'أعد المنشور للتعديل قبل تغيير التصميم أو النص المعتمد.');
 }
 
 /** Scheduled items whose plans the sync has matched to a real post become Published, with live metrics. */
@@ -116,7 +122,7 @@ export async function updateContent(user: AuthUser, id: string, patch: { title?:
   const item = await getContent(id);
   if (!item) throw new WorkspaceError(404, 'المحتوى غير موجود.');
   if (!canEdit(user, item)) throw new WorkspaceError(403, 'لا تملك صلاحية تعديل هذا المحتوى.');
-  if (['published', 'archived', 'cancelled'].includes(item.status)) throw new WorkspaceError(409, 'هذا المحتوى مُغلق.');
+  requireMutable(item);
   await db.run('UPDATE content_items SET title=?, channels_json=?, captions_json=?, creative_json=?, updated_at=? WHERE id=?', [
     patch.title ?? item.title, JSON.stringify(patch.channels ?? item.channels), JSON.stringify(patch.captions ?? item.captions),
     JSON.stringify(patch.creative ?? item.creative), new Date().toISOString(), id]);
@@ -125,6 +131,9 @@ export async function updateContent(user: AuthUser, id: string, patch: { title?:
 }
 
 export async function addVersion(user: AuthUser, contentId: string, input: { imageUrl: string; storyUrl: string | null; studio: unknown; note: string }): Promise<ContentVersion> {
+  const current = await getContent(contentId);
+  if (!current || !canEdit(user, current)) throw new WorkspaceError(403, 'لا تملك صلاحية تعديل هذا المحتوى.');
+  requireMutable(current);
   const version: ContentVersion = { id: randomUUID(), contentId, imageUrl: input.imageUrl, storyUrl: input.storyUrl, studio: input.studio, note: input.note, createdBy: user.id, createdAt: new Date().toISOString() };
   await db.run('INSERT INTO content_versions (id,content_id,image_url,story_url,studio_json,note,created_by,created_at) VALUES (?,?,?,?,?,?,?,?)',
     [version.id, contentId, version.imageUrl, version.storyUrl, input.studio ? JSON.stringify(input.studio) : null, version.note, user.id, version.createdAt]);
@@ -132,7 +141,7 @@ export async function addVersion(user: AuthUser, contentId: string, input: { ima
   const item = row ? toContent(row) : undefined;
   // A template post's version carries the field values it was exported with, so reopening it edits the latest copy.
   const svgTemplate = (input.studio as { svgTemplate?: CreativeRef['svgTemplate'] } | null)?.svgTemplate;
-  if (item) await db.run('UPDATE content_items SET creative_json=?, updated_at=? WHERE id=?', [JSON.stringify({ ...(item.creative ?? { requestId: '', directionId: '' }), ...(svgTemplate ? { svgTemplate } : {}), imageUrl: version.imageUrl, ...(version.storyUrl ? { storyUrl: version.storyUrl } : {}) }), version.createdAt, contentId]);
+  if (item) await db.run('UPDATE content_items SET creative_json=?, updated_at=? WHERE id=?', [JSON.stringify({ ...(item.creative ?? { requestId: '', directionId: '' }), ...(svgTemplate ? { svgTemplate, ...(svgTemplate.format ? { directionId: svgTemplate.format } : {}) } : {}), imageUrl: version.imageUrl, ...(version.storyUrl ? { storyUrl: version.storyUrl } : {}) }), version.createdAt, contentId]);
   await log(contentId, user.id, 'version', input.note);
   return version;
 }
@@ -164,6 +173,13 @@ export async function transition(user: AuthUser, id: string, to: ContentStatus, 
   if (move.needsNote && !input.note?.trim()) throw new WorkspaceError(400, 'اكتب سبب أو ملاحظة.');
   if (to === 'ready_for_review' && !item.creative) throw new WorkspaceError(400, 'أضف التصميم أولًا قبل إرساله للمراجعة.');
   let planIds = item.planIds;
+  if (item.status === 'scheduled' && to === 'approved') {
+    for (const planId of item.planIds) {
+      const plan = await getPlan(planId);
+      if (plan) await savePlan({ ...plan, status: 'cancelled' });
+    }
+    await db.run('UPDATE content_items SET scheduled_at=NULL, plan_ids_json=? WHERE id=?', ['[]', id]);
+  }
   if (to === 'scheduled') {
     const when = input.scheduledAt ? new Date(input.scheduledAt) : null;
     if (!when || Number.isNaN(when.getTime()) || when.getTime() < Date.now() - 60_000) throw new WorkspaceError(400, 'اختر موعد نشر في المستقبل.');

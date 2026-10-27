@@ -3,9 +3,11 @@ import { motion } from 'motion/react';
 import { Download, LayoutTemplate, Sparkles } from 'lucide-react';
 import { useRouter } from '../../app/router/router';
 import { Button } from '../../components/ui/Button';
+import { useAuth } from '../../features/auth/AuthProvider';
 import { STATUS_LABEL, type PipelineItem } from '../../features/content-pipeline/types';
 import { AiTemplatesPanel } from '../../features/ai-templates/AiTemplatesPanel';
-import { TemplateGenerator, TemplateGrid, useSvgTemplates } from '../../features/svg-templates/SvgTemplates';
+import { KindPicker, TemplateGenerator, TemplateGrid, useSvgTemplates } from '../../features/svg-templates/SvgTemplates';
+import type { TemplateFormat, TemplateKind } from '../../features/svg-templates/render';
 import logos from '../../../brand/logos.json';
 import { useI18n } from '../../i18n/I18nProvider';
 import { api } from '../../lib/api';
@@ -15,21 +17,32 @@ import { usePageMeta } from '../../shell/ShellContext';
 /** AI-designed SVG templates: generate from a prompt or reference, then make posts from them at no image cost. */
 function SvgTemplateSection() {
   const { t } = useI18n();
+  const { can } = useAuth();
   const { navigate } = useRouter();
-  const { items, setItems } = useSvgTemplates();
+  const { items, setItems, error, reload } = useSvgTemplates();
+  const [kind, setKind] = useState<TemplateKind | 'all'>('all');
+  const [format, setFormat] = useState<TemplateFormat | 'all'>('all');
+  const shown = (items ?? []).filter((item) => (kind === 'all' || item.kind === kind) && (format === 'all' || item.format === format));
   return <section className="library-section">
     <div className="library-section__head">
-      <h2><LayoutTemplate size={18} /> {t('Editable templates', 'قوالب قابلة للتعديل')}</h2>
+      <h2><LayoutTemplate size={18} /> {t('Design references & templates', 'مراجع التصميم والقوالب')}</h2>
       {items && items.length > 0 && <small className="u-muted">{t(`${items.length} templates`, `${items.length} قالب`)}</small>}
     </div>
-    <TemplateGenerator onCreated={(template) => { setItems((current) => [template, ...(current ?? [])]); navigate(`/library/templates/${template.id}`); }} />
-    {items && items.length > 0 && <TemplateGrid items={items} onOpen={(template) => navigate(`/library/templates/${template.id}`)} />}
+    {can('design.free') && <TemplateGenerator onCreated={(template) => { setItems((current) => [template, ...(current ?? [])]); navigate(`/library/templates/${template.id}`); }} />}
+    {error && <div role="alert">{error}<Button onClick={() => void reload()}>{t('Retry', 'أعد المحاولة')}</Button></div>}
+    {!items && !error && <p role="status" className="u-muted">{t('Loading templates…', 'جارٍ تحميل القوالب…')}</p>}
+    {items && items.length > 0 && <>
+      <div className="tpl-library-filters"><KindPicker items={items} value={kind} onChange={setKind} /><select className="mc-select" aria-label={t('Template size', 'مقاس القالب')} value={format} onChange={(e) => setFormat(e.target.value as TemplateFormat | 'all')}><option value="all">{t('All sizes', 'كل المقاسات')}</option><option value="feed">4:5</option><option value="square">1:1</option><option value="story">9:16</option><option value="landscape">1.91:1</option></select></div>
+      <TemplateGrid items={shown} onOpen={(template) => navigate(`/library/templates/${template.id}`)} />
+      {shown.length === 0 && <p className="u-muted">{t('No templates match these filters.', 'لا توجد قوالب تطابق هذه الفلاتر.')}</p>}
+    </>}
   </section>;
 }
 
 /** Reusable material: approved creatives, AI templates and the official brand assets. */
 export function LibraryPage() {
   const { t, tx } = useI18n();
+  const { can } = useAuth();
   const { navigate } = useRouter();
   usePageMeta(t('Library', 'المكتبة'), [{ label: t('Library', 'المكتبة') }]);
   const [items, setItems] = useState<PipelineItem[]>([]);
@@ -39,7 +52,7 @@ export function LibraryPage() {
   return <div className="u-stack u-stack--lg">
     <PageHeader title={t('Library', 'المكتبة')} description={t('Editable templates, approved designs, AI recipes and the official Engosoft logos.', 'قوالب قابلة للتعديل، وتصاميم معتمدة، ووصفات الذكاء الاصطناعي، وشعارات إنجوسوفت الرسمية.')} />
     <SvgTemplateSection />
-    <AiTemplatesPanel />
+    {can('design.free') && <AiTemplatesPanel />}
     <section className="library-section">
       <h2>{t('Approved designs', 'تصميمات معتمدة')}</h2>
       {approved.length ? <div className="library-grid">{approved.map((item, index) => <motion.button key={item.id} type="button" className="library-card glass" onClick={() => navigate(`/content/${item.id}`)}

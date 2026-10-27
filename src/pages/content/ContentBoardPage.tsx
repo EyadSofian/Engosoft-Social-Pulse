@@ -1,82 +1,125 @@
 import { useCallback, useEffect, useMemo, useState } from 'react';
+import { DateTime } from 'luxon';
 import { AnimatePresence, LayoutGroup, motion } from 'motion/react';
-import { Clock3, ExternalLink, Image as ImageIcon, Loader2, MessageSquare, Paintbrush, Search, Send, X } from 'lucide-react';
+import { Check, CheckCircle2, Clock3, ExternalLink, Image as ImageIcon, Loader2, MessageSquare, Paintbrush, Search, Send, X } from 'lucide-react';
 import { useRouter } from '../../app/router/router';
 import { Button } from '../../components/ui/Button';
 import { useAuth } from '../../features/auth/AuthProvider';
-import { CHANNEL_LABEL, COLUMNS, MOVE_LABEL, STATUS_LABEL, type Channel, type PipelineDetail, type PipelineItem, type TeamMember } from '../../features/content-pipeline/types';
+import { CHANNEL_LABEL, MOVE_LABEL, STATUS_LABEL, type Channel, type PipelineDetail, type PipelineItem, type TeamMember } from '../../features/content-pipeline/types';
 import type { ContentStatus } from '../../domain/content';
 import { useI18n } from '../../i18n/I18nProvider';
 import { api, errorMessage } from '../../lib/api';
 import { PageHeader } from '../../shell/Header';
 import { usePageMeta } from '../../shell/ShellContext';
+import { useOverlay } from '../../hooks/ui';
+import { businessZone } from '../../lib/format';
 
 type Scope = 'all' | 'mine' | 'department';
+type Tab = 'all' | 'review' | 'approved' | 'rejected' | 'drafts';
+
+/** Content grouped by where it stands with marketing: waiting, approved (incl. scheduled and live), not approved, still being made. */
+const TABS: { id: Tab; statuses: ContentStatus[]; en: string; ar: string; tone: string }[] = [
+  { id: 'all', statuses: [], en: 'All', ar: 'الكل', tone: 'neutral' },
+  { id: 'review', statuses: ['ready_for_review'], en: 'Needs approval', ar: 'بانتظار الاعتماد', tone: 'brand' },
+  { id: 'approved', statuses: ['approved', 'scheduled', 'published'], en: 'Approved', ar: 'معتمد', tone: 'success' },
+  { id: 'rejected', statuses: ['changes_requested', 'cancelled'], en: 'Not approved', ar: 'غير معتمد', tone: 'warning' },
+  { id: 'drafts', statuses: ['idea', 'draft', 'in_production'], en: 'Drafts', ar: 'مسودات', tone: 'neutral' },
+];
+const tabOf = (status: ContentStatus): Tab => TABS.find((tab) => tab.statuses.includes(status))?.id ?? 'all';
 
 export function ContentBoardPage({ openId }: { openId?: string }) {
-  const { t, tx } = useI18n();
-  const { user, departments } = useAuth();
+  const { t, tx, date } = useI18n();
+  const { user, departments, can } = useAuth();
   const { navigate } = useRouter();
-  usePageMeta(t('Content', 'المحتوى'), [{ label: t('Content', 'المحتوى') }]);
+  usePageMeta(t('Content approval', 'اعتماد المحتوى'), [{ label: t('Content approval', 'اعتماد المحتوى') }]);
   const [items, setItems] = useState<PipelineItem[] | null>(null);
   const [team, setTeam] = useState<TeamMember[]>([]);
   const [error, setError] = useState('');
   const [scope, setScope] = useState<Scope>('all');
+  const [tab, setTab] = useState<Tab | null>(null);
   const [query, setQuery] = useState('');
+  const [busyId, setBusyId] = useState('');
 
-  const load = useCallback(() => api<PipelineItem[]>('/api/content').then(setItems).catch((e) => setError(errorMessage(e, t('Could not load content.', 'تعذّر تحميل المحتوى.')))), [t]);
+  const load = useCallback(() => api<PipelineItem[]>('/api/content').then((data) => { setItems(data); setError(''); }).catch((e) => setError(errorMessage(e, t('Could not load content.', 'تعذّر تحميل المحتوى.')))), [t]);
   useEffect(() => { void load(); void api<TeamMember[]>('/api/users').then(setTeam).catch(() => {}); }, [load]);
 
-  const visible = useMemo(() => (items ?? []).filter((item) =>
+  const scoped = useMemo(() => (items ?? []).filter((item) =>
     (scope === 'all' || (scope === 'mine' ? item.ownerId === user.id : item.departmentId === user.departmentId))
     && (!query.trim() || item.title.toLowerCase().includes(query.trim().toLowerCase()))), [items, scope, query, user]);
+  const counts = (id: Tab) => id === 'all' ? scoped.filter((item) => !['archived'].includes(item.status)).length : scoped.filter((item) => tabOf(item.status) === id).length;
+  // Approvers land on what waits for them; everyone else on the full list.
+  const active: Tab = tab ?? (can('content.approve') ? 'review' : 'all');
+  const current = TABS.find((entry) => entry.id === active)!;
+  const shown = scoped.filter((item) => active === 'all' ? item.status !== 'archived' : current.statuses.includes(item.status));
   const nameOf = (id: string) => team.find((m) => m.id === id)?.name ?? (id === 'system' ? t('Sync', 'المزامنة') : '—');
   const deptOf = (id: string | null) => departments.find((d) => d.id === id);
 
+  const approve = async (item: PipelineItem) => {
+    setBusyId(item.id); setError('');
+    try { await api(`/api/content/${item.id}/transition`, { body: { to: 'approved' } }); await load(); }
+    catch (e) { setError(errorMessage(e, t('That did not work.', 'لم تنجح العملية.'))); }
+    setBusyId('');
+  };
+
   return <div className="u-stack u-stack--lg board-page">
-    <PageHeader title={t('Content', 'المحتوى')} description={t('Every department’s posts, from draft to published. Marketing reviews, approves and schedules; publishing is confirmed by the platform sync.', 'منشورات جميع الأقسام من المسودة حتى النشر. يراجع التسويق ويعتمد ويجدول، ويُتحقق من النشر عبر مزامنة المنصات.')} />
-    <div className="board-toolbar glass">
-      <div className="board-scope" role="group" aria-label={t('Show', 'اعرض')}>
-        {(['all', 'mine', 'department'] as Scope[]).map((value) => <button key={value} type="button" aria-pressed={scope === value} onClick={() => setScope(value)}>
-          {value === 'all' ? t('All I can see', 'كل ما يخصني') : value === 'mine' ? t('Mine', 'منشوراتي') : t('My department', 'قسمي')}
+    <PageHeader title={t('Content approval', 'اعتماد المحتوى')} description={t('Preview the design, review the copy, and decide what is ready to publish.', 'عاين التصميم، وراجع النص، وحدّد المنشورات الجاهزة للنشر.')} />
+    <div className="ca-bar glass">
+      <div className="ca-tabs" role="tablist" aria-label={t('Approval', 'الاعتماد')}>
+        {TABS.map((entry) => <button key={entry.id} type="button" role="tab" aria-selected={active === entry.id} data-tone={entry.tone} onClick={() => setTab(entry.id)}>
+          {t(entry.en, entry.ar)}<i className="u-tnum">{counts(entry.id)}</i>
         </button>)}
       </div>
-      <label className="board-search"><Search size={15} /><input value={query} onChange={(e) => setQuery(e.target.value)} placeholder={t('Search posts', 'ابحث في المنشورات')} /></label>
-      <Button variant="primary" onClick={() => navigate('/')}>{t('New post', 'منشور جديد')}</Button>
+      <div className="ca-bar__tools">
+        <div className="board-scope" role="group" aria-label={t('Show', 'اعرض')}>
+          {(['all', 'mine', 'department'] as Scope[]).map((value) => <button key={value} type="button" aria-pressed={scope === value} onClick={() => setScope(value)}>
+            {value === 'all' ? t('Everyone', 'الكل') : value === 'mine' ? t('Mine', 'منشوراتي') : t('My department', 'قسمي')}
+          </button>)}
+        </div>
+        <label className="board-search"><Search size={15} /><input aria-label={t('Search posts', 'ابحث في المنشورات')} value={query} onChange={(e) => setQuery(e.target.value)} placeholder={t('Search posts', 'ابحث في المنشورات')} /></label>
+        {can('content.create') && <Button variant="primary" onClick={() => navigate('/')}>{t('New post', 'منشور جديد')}</Button>}
+      </div>
     </div>
-    {error && <p role="alert" className="creative-home__error">{error}</p>}
+    {items && <div className="ca-summary"><span>{t(current.en, current.ar)} <b className="u-tnum">{shown.length}</b></span><small>{can('content.approve') ? t('Open a preview to review captions and leave feedback.', 'افتح المعاينة لمراجعة النص وكتابة ملاحظاتك.') : t('Follow the approval status of your team’s posts.', 'تابع حالة اعتماد منشورات فريقك.')}</small></div>}
+    {error && <div role="alert" className="creative-home__error">{error} <Button variant="secondary" size="sm" onClick={() => void load()}>{t('Retry', 'أعد المحاولة')}</Button></div>}
     {!items && !error && <div className="board-loading"><Loader2 className="creative-job__spin" size={22} /></div>}
     {items && <LayoutGroup>
-      <div className="board-columns">
-        {COLUMNS.map((column) => {
-          const cards = visible.filter((item) => column.statuses.includes(item.status));
-          return <section key={column.id} className="board-column glass" data-tone={column.tone}>
-            <header><h2>{tx(column.label)}</h2><span className="u-tnum">{cards.length}</span></header>
-            <div className="board-column__cards">
-              <AnimatePresence initial={false}>
-                {cards.map((item) => <motion.button layout layoutId={`card-${item.id}`} key={item.id} type="button" className="board-card" onClick={() => navigate(`/content/${item.id}`)}
-                  initial={{ opacity: 0, y: 8 }} animate={{ opacity: 1, y: 0 }} exit={{ opacity: 0, scale: 0.96 }} transition={{ type: 'spring', stiffness: 420, damping: 34 }}>
-                  {item.creative?.imageUrl ? <img src={item.creative.imageUrl} alt="" loading="lazy" /> : <span className="board-card__placeholder"><ImageIcon size={20} /></span>}
-                  <span className="board-card__body">
-                    <b dir="auto">{item.title}</b>
-                    <small>{nameOf(item.ownerId)}{deptOf(item.departmentId) ? ` · ${tx(deptOf(item.departmentId)!.name)}` : ''}</small>
+      {shown.length > 0
+        ? <div className="ca-grid">
+          <AnimatePresence initial={false}>
+            {shown.map((item) => {
+              const canApprove = item.moves.some((m) => m.to === 'approved');
+              return <motion.article layout key={item.id} className="ca-card glass" data-status={item.status}
+                initial={{ opacity: 0, y: 10 }} animate={{ opacity: 1, y: 0 }} exit={{ opacity: 0, scale: 0.96 }} transition={{ type: 'spring', stiffness: 420, damping: 34 }}>
+                <button type="button" className="ca-card__media" onClick={() => navigate(`/content/${item.id}`)} aria-label={item.title}>
+                  {item.creative?.imageUrl ? <img src={item.creative.imageUrl} alt="" loading="lazy" /> : <span className="board-card__placeholder"><ImageIcon size={26} /></span>}
+                  <span className="content-status ca-card__status" data-status={item.status}>{tx(STATUS_LABEL[item.status])}</span>
+                </button>
+                <div className="ca-card__body">
+                  <b dir="auto">{item.title}</b>
+                  <small>{nameOf(item.ownerId)}{deptOf(item.departmentId) ? ` · ${tx(deptOf(item.departmentId)!.name)}` : ''}</small>
+                  <span className="ca-card__meta">
                     <span className="board-card__chips">{item.channels.map((c) => <i key={c}>{CHANNEL_LABEL[c]}</i>)}</span>
-                    {item.scheduledAt && <small className="board-card__when"><Clock3 size={12} />{new Date(item.scheduledAt).toLocaleString()}</small>}
+                    <small className="board-card__when"><Clock3 size={12} />{date(item.scheduledAt ?? item.createdAt, 'dayShort')}</small>
                   </span>
-                </motion.button>)}
-              </AnimatePresence>
-              {!cards.length && <p className="board-empty">{t('Nothing here', 'لا يوجد شيء هنا')}</p>}
-            </div>
-          </section>;
-        })}
-      </div>
+                </div>
+                {item.status === 'ready_for_review' && canApprove && <div className="ca-card__actions">
+                  <Button variant="primary" size="sm" busy={busyId === item.id} disabled={Boolean(busyId)} onClick={() => void approve(item)}><Check size={14} /> {t('Approve', 'اعتمد')}</Button>
+                  <Button variant="secondary" size="sm" onClick={() => navigate(`/content/${item.id}`)}>{t('Request changes', 'اطلب تعديلًا')}</Button>
+                </div>}
+              </motion.article>;
+            })}
+          </AnimatePresence>
+        </div>
+        : <div className="ca-empty glass"><CheckCircle2 size={26} /><b>{active === 'review' ? t('Nothing is waiting for approval.', 'لا شيء بانتظار الاعتماد.') : t('No posts here.', 'لا توجد منشورات هنا.')}</b><p>{t('Posts move between these tabs as they are sent, approved or returned.', 'تنتقل المنشورات بين هذه التابات عند إرسالها أو اعتمادها أو إعادتها.')}</p></div>}
     </LayoutGroup>}
     <AnimatePresence>{openId && <ContentDrawer key={openId} id={openId} team={team} onClose={() => navigate('/content')} onChanged={load} />}</AnimatePresence>
   </div>;
 }
 
 function ContentDrawer({ id, team, onClose, onChanged }: { id: string; team: TeamMember[]; onClose: () => void; onChanged: () => void }) {
-  const { t, tx, dir } = useI18n();
+  const { t, tx, dir, date } = useI18n();
+  const overlay = useOverlay(true, onClose);
+  const { can } = useAuth();
   const { navigate } = useRouter();
   const [item, setItem] = useState<PipelineDetail | null>(null);
   const [error, setError] = useState('');
@@ -96,13 +139,13 @@ function ContentDrawer({ id, team, onClose, onChanged }: { id: string; team: Tea
     catch (e) { setError(errorMessage(e, t('That did not work.', 'لم تنجح العملية.'))); }
     setBusy(false);
   };
-  const move = (to: ContentStatus) => act(() => api(`/api/content/${id}/transition`, { body: { to, ...(note.trim() ? { note } : {}), ...(to === 'scheduled' && when ? { scheduledAt: new Date(when).toISOString() } : {}) } }));
+  const move = (to: ContentStatus) => act(() => api(`/api/content/${id}/transition`, { body: { to, ...(note.trim() ? { note } : {}), ...(to === 'scheduled' && when ? { scheduledAt: DateTime.fromISO(when, { zone: businessZone() }).toUTC().toISO() } : {}) } }));
   const captionsChanged = item && JSON.stringify(captions) !== JSON.stringify(item.captions);
   const image = preview ?? item?.creative?.imageUrl;
 
   return <div className="ui-overlay">
     <motion.div className="ui-overlay__scrim" initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }} onClick={onClose} />
-    <motion.aside role="dialog" aria-modal="true" aria-label={item?.title ?? ''} className="content-drawer glass"
+    <motion.aside ref={overlay} tabIndex={-1} role="dialog" aria-modal="true" aria-label={item?.title ?? t('Post preview', 'معاينة المنشور')} className="content-drawer glass"
       initial={{ x: dir === 'rtl' ? -40 : 40, opacity: 0 }} animate={{ x: 0, opacity: 1 }} exit={{ x: dir === 'rtl' ? -40 : 40, opacity: 0 }} transition={{ type: 'spring', stiffness: 380, damping: 36 }}>
       <header className="content-drawer__head">
         <div>{item && <span className="content-status" data-status={item.status}>{tx(STATUS_LABEL[item.status])}</span>}<h2 dir="auto">{item?.title ?? '…'}</h2></div>
@@ -115,7 +158,7 @@ function ContentDrawer({ id, team, onClose, onChanged }: { id: string; team: Tea
           {image ? <img src={image} alt={item.title} /> : <span className="board-card__placeholder"><ImageIcon size={26} /></span>}
           {item.creative?.storyUrl && <img className="content-drawer__story" src={item.creative.storyUrl} alt="9:16" />}
         </div>
-        {item.editable && item.creative && !['published', 'archived', 'cancelled'].includes(item.status) && <Button variant="secondary" onClick={() => navigate(item.creative!.svgTemplate ? `/library/templates/${item.creative!.svgTemplate.id}?content=${item.id}` : `/studio/${item.id}`)}><Paintbrush size={15} /> {item.creative.svgTemplate ? t('Edit the template', 'عدّل في القالب') : t('Open in Studio', 'افتح في الاستوديو')}</Button>}
+        {item.editable && item.creative && (can('design.free') || item.creative.svgTemplate) && !['published', 'archived', 'cancelled'].includes(item.status) && <Button variant="secondary" onClick={() => navigate(item.creative!.svgTemplate ? `/library/templates/${item.creative!.svgTemplate.id}?content=${item.id}` : `/studio/${item.id}`)}><Paintbrush size={15} /> {item.creative.requestId === 'reference-design' ? t('Generate a new version from the reference', 'ولّد نسخة جديدة من المرجع') : item.creative.svgTemplate ? t('Edit the template', 'عدّل في القالب') : t('Open in Studio', 'افتح في الاستوديو')}</Button>}
 
         {item.published?.length ? <section className="content-drawer__section"><h3>{t('Live results', 'النتائج على المنصات')}</h3>
           {item.published.map((p) => <a key={p.permalink} href={p.permalink} target="_blank" rel="noreferrer" className="content-live">{p.platform} · {t('views', 'مشاهدات')} {p.metrics.views ?? '—'} · {t('reach', 'وصول')} {p.metrics.reach ?? '—'} <ExternalLink size={13} /></a>)}
@@ -123,7 +166,7 @@ function ContentDrawer({ id, team, onClose, onChanged }: { id: string; team: Tea
 
         {item.moves.length > 0 && <section className="content-drawer__section content-drawer__actions"><h3>{t('Next step', 'الخطوة التالية')}</h3>
           {item.moves.some((m) => m.needsNote) && <textarea rows={2} value={note} onChange={(e) => setNote(e.target.value)} placeholder={t('Note for the owner (required to request changes or cancel)', 'ملاحظة لصاحب المنشور (مطلوبة عند طلب التعديل أو الإلغاء)')} dir="auto" />}
-          {item.moves.some((m) => m.to === 'scheduled') && <label>{t('Publish at', 'ميعاد النشر')}<input type="datetime-local" value={when} onChange={(e) => setWhen(e.target.value)} /></label>}
+          {item.moves.some((m) => m.to === 'scheduled') && <label>{t('Publish at', 'ميعاد النشر')} · {businessZone()}<input type="datetime-local" value={when} onChange={(e) => setWhen(e.target.value)} /></label>}
           <div className="content-drawer__buttons">{item.moves.map((m) => <Button key={m.to} variant={m.to === 'approved' || m.to === 'ready_for_review' || m.to === 'scheduled' ? 'primary' : 'secondary'} disabled={busy || (m.needsNote && !note.trim()) || (m.to === 'scheduled' && !when)} onClick={() => void move(m.to)}>{tx(MOVE_LABEL[m.to] ?? STATUS_LABEL[m.to])}</Button>)}</div>
         </section>}
 
@@ -142,7 +185,7 @@ function ContentDrawer({ id, team, onClose, onChanged }: { id: string; team: Tea
         <section className="content-drawer__section"><h3><MessageSquare size={15} /> {t('Activity', 'السجل')}</h3>
           <ol className="content-timeline">{item.events.map((e) => <li key={e.id} data-kind={e.kind}>
             <b>{nameOf(e.actorId)}</b> <span>{e.kind === 'transition' && e.to ? `→ ${tx(STATUS_LABEL[e.to as ContentStatus] ?? { en: e.to, ar: e.to })}` : e.kind === 'comment' ? '' : e.kind === 'created' ? t('created', 'أنشأ') : e.kind === 'version' ? t('new version', 'نسخة جديدة') : t('edited captions', 'عدّل النص المرافق')}</span>
-            {e.body && <p dir="auto">{e.body}</p>}<time>{new Date(e.createdAt).toLocaleString()}</time>
+            {e.body && <p dir="auto">{e.body}</p>}<time>{date(e.createdAt, 'dateTime')}</time>
           </li>)}</ol>
           <div className="content-comment"><input value={comment} onChange={(e) => setComment(e.target.value)} placeholder={t('Write a comment', 'اكتب تعليقًا')} dir="auto" /><Button variant="secondary" disabled={busy || !comment.trim()} onClick={() => void act(() => api(`/api/content/${id}/comments`, { body: { body: comment } }))}><Send size={14} /></Button></div>
         </section>

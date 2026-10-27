@@ -115,11 +115,21 @@ const schema: string[] = [];
 /** Modules declare their tables here (SQLite syntax); `initDb` creates them in declaration order. */
 export const defineSchema = (sql: string) => { schema.push(sql); };
 
+const columns: { table: string; column: string; ddl: string }[] = [];
+/** Adds a column to a table that may already exist in production (`CREATE TABLE IF NOT EXISTS` never alters one). */
+export const defineColumn = (table: string, column: string, ddl: string) => { columns.push({ table, column, ddl }); };
+
+async function hasColumn(table: string, column: string): Promise<boolean> {
+  if (db.kind === 'pg') return Boolean(await db.get('SELECT 1 AS ok FROM information_schema.columns WHERE table_name=? AND column_name=?', [table, column]));
+  return (await db.all<{ name: string }>(`PRAGMA table_info(${table})`)).some((row) => row.name === column);
+}
+
 let ready: Promise<void> | null = null;
 /** Creates every declared table and index. Await once before serving requests (and in tests). */
 export function initDb(): Promise<void> {
   ready ??= (async () => {
     for (const sql of schema) await db.exec(db.kind === 'pg' ? toPgDdl(sql) : sql);
+    for (const { table, column, ddl } of columns) if (!(await hasColumn(table, column))) await db.exec(`ALTER TABLE ${table} ADD COLUMN ${column} ${db.kind === 'pg' ? toPgDdl(ddl) : ddl}`);
   })();
   return ready;
 }

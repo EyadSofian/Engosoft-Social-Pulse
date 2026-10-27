@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useState, type FormEvent } from 'react';
 import { motion } from 'motion/react';
-import { BellRing, KeyRound, Mail, Plug, Send, UserPlus, Users } from 'lucide-react';
+import { BellRing, GraduationCap, KeyRound, Mail, Plug, Send, UserPlus, Users } from 'lucide-react';
+import { CourseProfilesPanel } from '../../features/course-profiles/CourseProfilesPanel';
 import { Button } from '../../components/ui/Button';
 import { useAuth, type SessionUser } from '../../features/auth/AuthProvider';
 import type { DepartmentId, RoleId } from '../../domain/users';
@@ -10,20 +11,21 @@ import { PageHeader } from '../../shell/Header';
 import { usePageMeta } from '../../shell/ShellContext';
 import { ConnectionsPage } from '../connections/ConnectionsPage';
 
-export function SettingsPage({ initialTab }: { initialTab?: 'team' | 'notifications' | 'connections' } = {}) {
+export function SettingsPage({ initialTab }: { initialTab?: 'team' | 'notifications' | 'courses' | 'connections' } = {}) {
   const { t } = useI18n();
   const { can } = useAuth();
-  const [tab, setTab] = useState<'team' | 'notifications' | 'connections'>(initialTab && (initialTab === 'connections' ? can('connections.manage') : can('users.manage')) ? initialTab : can('users.manage') ? 'team' : 'connections');
+  const [tab, setTab] = useState<'team' | 'notifications' | 'courses' | 'connections'>(initialTab && (initialTab === 'connections' ? can('connections.manage') : initialTab === 'courses' ? can('templates.manage') : can('users.manage')) ? initialTab : can('users.manage') ? 'team' : can('templates.manage') ? 'courses' : 'connections');
   usePageMeta(t('Settings', 'الإعدادات'), [{ label: t('Settings', 'الإعدادات') }]);
   return <div className="u-stack u-stack--lg">
     <PageHeader title={t('Settings', 'الإعدادات')} description={t('People, roles and platform connections.', 'الفريق والصلاحيات وربط المنصات.')} />
     <div className="board-scope settings-tabs" role="tablist">
       {can('users.manage') && <button type="button" role="tab" aria-selected={tab === 'team'} aria-pressed={tab === 'team'} onClick={() => setTab('team')}><Users size={15} /> {t('Team', 'الفريق')}</button>}
       {can('users.manage') && <button type="button" role="tab" aria-selected={tab === 'notifications'} aria-pressed={tab === 'notifications'} onClick={() => setTab('notifications')}><BellRing size={15} /> {t('Notifications', 'الإشعارات')}</button>}
+      {can('templates.manage') && <button type="button" role="tab" aria-selected={tab === 'courses'} aria-pressed={tab === 'courses'} onClick={() => setTab('courses')}><GraduationCap size={15} /> {t('Course goals', 'أهداف الدورات')}</button>}
       {can('connections.manage') && <button type="button" role="tab" aria-selected={tab === 'connections'} aria-pressed={tab === 'connections'} onClick={() => setTab('connections')}><Plug size={15} /> {t('Connections', 'ربط المنصات')}</button>}
     </div>
     <motion.div key={tab} initial={{ opacity: 0, y: 6 }} animate={{ opacity: 1, y: 0 }} transition={{ duration: 0.2 }}>
-      {tab === 'team' ? <TeamSettings /> : tab === 'notifications' ? <NotificationSettings /> : <ConnectionsPage />}
+      {tab === 'team' ? <TeamSettings /> : tab === 'notifications' ? <NotificationSettings /> : tab === 'courses' ? <CourseProfilesPanel /> : <ConnectionsPage />}
     </motion.div>
   </div>;
 }
@@ -34,7 +36,7 @@ function TeamSettings() {
   const [users, setUsers] = useState<SessionUser[]>([]);
   const [error, setError] = useState('');
   const [notice, setNotice] = useState('');
-  const [form, setForm] = useState({ name: '', email: '', role: 'employee' as RoleId, departmentId: 'operations' as DepartmentId | '', password: '' });
+  const [form, setForm] = useState({ name: '', email: '', role: 'operations' as RoleId, departmentId: 'operations' as DepartmentId | '', password: '' });
   const load = useCallback(() => api<SessionUser[]>('/api/users').then(setUsers).catch((e) => setError(errorMessage(e, ''))), []);
   useEffect(() => { void load(); }, [load]);
 
