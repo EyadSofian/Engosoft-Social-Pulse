@@ -46,11 +46,6 @@ function detectPlatforms(prompt: string): CreativePlatform[] {
   if (/الموقع|ويب ?سايت|website|blog|مدونة/.test(text)) found.push('website');
   return found;
 }
-function dateMention(prompt: string): { day: number; month: number } | null {
-  const months: Record<string, number> = { يناير: 1, فبراير: 2, مارس: 3, أبريل: 4, ابريل: 4, مايو: 5, يونيو: 6, يوليو: 7, أغسطس: 8, اغسطس: 8, سبتمبر: 9, أكتوبر: 10, اكتوبر: 10, نوفمبر: 11, ديسمبر: 12, january: 1, february: 2, march: 3, april: 4, may: 5, june: 6, july: 7, august: 8, september: 9, october: 10, november: 11, december: 12 };
-  const match = prompt.toLowerCase().match(/(\d{1,2})\s+(يناير|فبراير|مارس|أبريل|ابريل|مايو|يونيو|يوليو|أغسطس|اغسطس|سبتمبر|أكتوبر|اكتوبر|نوفمبر|ديسمبر|january|february|march|april|may|june|july|august|september|october|november|december)/i);
-  return match ? { day: Number(match[1]), month: months[match[2].toLowerCase()] } : null;
-}
 /** The signed-in person's posts that still need work: drafts and change requests first. */
 function RecentContent() {
   const { t, tx } = useI18n();

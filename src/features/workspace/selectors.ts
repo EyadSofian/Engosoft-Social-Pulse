@@ -75,11 +75,6 @@ export function scheduledThisWeek(items: ContentItem[], nowMs: number) {
   return items.filter((item) => item.status === 'scheduled' && ms(item.publishAt) >= start && ms(item.publishAt) < end).sort((a, b) => ms(a.publishAt) - ms(b.publishAt));
 }
 
-export function upcomingScheduled(items: ContentItem[], nowMs: number, days = 14) {
-  const end = nowMs + days * 86_400_000;
-  return items.filter((item) => item.status === 'scheduled' && ms(item.publishAt) >= nowMs - 3_600_000 && ms(item.publishAt) < end).sort((a, b) => ms(a.publishAt) - ms(b.publishAt));
-}
-
 /* ── Monthly plans ─────────────────────────────────────────────────── */
 
 export interface TargetProgress {
@@ -153,23 +148,6 @@ export interface Workload {
   content: number;
 }
 
-export function teamWorkload(state: WorkspaceState, nowMs: number, users: User[] = state.users): Workload[] {
-  return users
-    .filter((user) => user.status === 'active')
-    .map((user) => {
-      const tasks = state.tasks.filter((task) => task.assigneeId === user.id && isTaskOpen(task));
-      return {
-        user,
-        open: tasks.length,
-        overdue: tasks.filter((task) => isTaskOverdue(task, nowMs)).length,
-        dueToday: tasks.filter((task) => sameDay(task.dueAt, nowMs) && !isTaskOverdue(task, nowMs)).length,
-        content: state.content.filter((item) => item.assigneeId === user.id && isOpen(item)).length,
-      };
-    })
-    .filter((entry) => entry.open + entry.content > 0)
-    .sort((a, b) => b.overdue - a.overdue || b.open - a.open);
-}
-
 export interface OperationalKpis {
   tasksCompleted: number;
   tasksOnTime: number | null;
@@ -177,27 +155,6 @@ export interface OperationalKpis {
   postsOnTime: number | null;
   reviewsCompleted: number;
   openOverdue: number;
-}
-
-/** Delivery measures for a person or department this month. Reach is deliberately absent. */
-export function operationalKpis(state: WorkspaceState, nowMs: number, scope: { userId?: string; departmentId?: DepartmentId }): OperationalKpis {
-  const month = monthKey(nowMs);
-  const inMonth = (iso: string | null) => Boolean(iso) && DateTime.fromISO(iso!, { zone: businessZone() }).toFormat('yyyy-LL') === month;
-  const tasks = state.tasks.filter((task) => (scope.userId ? task.assigneeId === scope.userId : true) && (scope.departmentId ? task.departmentId === scope.departmentId : true));
-  const done = tasks.filter((task) => task.status === 'done' && inMonth(task.completedAt));
-  const onTime = done.filter((task) => !task.dueAt || ms(task.completedAt) <= ms(task.dueAt) + 3_600_000);
-  const items = state.content.filter((item) => (scope.userId ? item.ownerId === scope.userId : true) && (scope.departmentId ? item.departmentId === scope.departmentId : true));
-  const published = items.filter((item) => item.status === 'published' && inMonth(item.publishAt));
-  const publishedOnTime = published.filter((item) => !item.dueAt || ms(item.publishAt) <= ms(item.dueAt) + 86_400_000);
-  const reviews = state.approvals.filter((approval) => approval.decidedAt && inMonth(approval.decidedAt) && (scope.userId ? approval.decidedById === scope.userId : true));
-  return {
-    tasksCompleted: done.length,
-    tasksOnTime: done.length ? (onTime.length / done.length) * 100 : null,
-    postsPublished: published.length,
-    postsOnTime: published.length ? (publishedOnTime.length / published.length) * 100 : null,
-    reviewsCompleted: scope.departmentId && scope.departmentId !== 'marketing' && !scope.userId ? 0 : reviews.length,
-    openOverdue: tasks.filter((task) => isTaskOverdue(task, nowMs)).length + items.filter((item) => isOverdue(item, nowMs)).length,
-  };
 }
 
 /* ── Credits ───────────────────────────────────────────────────────── */
@@ -209,18 +166,6 @@ export interface CreditUsage {
   available: number;
   share: number;
   byKind: Record<CreditKind, number>;
-}
-
-export function creditUsage(state: WorkspaceState, nowMs: number): CreditUsage[] {
-  const month = monthKey(nowMs);
-  return state.wallets
-    .filter((wallet) => wallet.month === month)
-    .map((wallet) => {
-      const byKind: Record<CreditKind, number> = { text: 0, image: 0, video: 0 };
-      for (const tx of state.transactions) if (tx.departmentId === wallet.departmentId && DateTime.fromISO(tx.at, { zone: businessZone() }).toFormat('yyyy-LL') === month) byKind[tx.kind] += tx.amount;
-      const used = byKind.text + byKind.image + byKind.video;
-      return { departmentId: wallet.departmentId, budget: wallet.budget, used, available: Math.max(0, wallet.budget - used), share: wallet.budget ? (used / wallet.budget) * 100 : 0, byKind };
-    });
 }
 
 /* ── Course lifecycle ──────────────────────────────────────────────── */
@@ -235,23 +180,3 @@ export interface CourseSignals {
   evaluationNeeded: Course[];
   missingInfo: Course[];
 }
-
-export function courseSignals(state: WorkspaceState, nowMs: number): CourseSignals {
-  const today = zoned(nowMs).toISODate() ?? '';
-  const inDays = (days: number) => zoned(nowMs).plus({ days }).toISODate() ?? '';
-  const hasContent = (course: Course, templates: string[], publishedOnly = false) =>
-    state.content.some((item) => item.courseId === course.id && item.templateId && templates.includes(item.templateId) && (publishedOnly ? item.status === 'published' : item.status !== 'cancelled'));
-  const courses = [...state.courses].sort((a, b) => a.startDate.localeCompare(b.startDate));
-  return {
-    startingSoon: courses.filter((course) => course.startDate > today && course.startDate <= inDays(7)),
-    startingToday: courses.filter((course) => course.startDate === today),
-    endingToday: courses.filter((course) => course.endDate === today),
-    running: courses.filter((course) => course.startDate <= today && course.endDate >= today),
-    firstSessionNeeded: courses.filter((course) => course.startDate >= today && course.startDate <= inDays(7) && !hasContent(course, ['t-first-session'])),
-    // Ended in the last two weeks and the evaluation/finished post is not live yet.
-    evaluationNeeded: courses.filter((course) => course.endDate <= today && course.endDate >= inDays(-14) && !hasContent(course, ['t-course-finished', 't-evaluation-video'], true)),
-    missingInfo: courses.filter((course) => course.endDate >= today && (course.studentCount == null || !course.lecturerId)),
-  };
-}
-
-export const userById = (state: WorkspaceState, id: string | null | undefined) => (id ? state.users.find((user) => user.id === id) ?? null : null);

@@ -180,3 +180,93 @@
   --chart-grid: #202632;
   --chart-axis: #3a4353;
 }
+
+/* ── Glass surfaces ───────────────────────────────────────────────── */
+
+:root,
+:root[data-theme='light'] {
+  --glass-bg: rgb(255 255 255 / 0.68);
+  --glass-bg-strong: rgb(255 255 255 / 0.86);
+  --glass-border: rgb(255 255 255 / 0.7);
+  --glass-edge: rgb(15 35 90 / 0.08);
+  --glass-shadow: 0 1px 0 rgb(255 255 255 / 0.6) inset, 0 12px 40px -12px rgb(8 27 83 / 0.18);
+  --glass-blur: 18px;
+  --backdrop: radial-gradient(1100px 620px at 85% -10%, rgb(0 70 255 / 0.16), transparent 60%),
+    radial-gradient(900px 560px at 0% 30%, rgb(0 27 183 / 0.1), transparent 60%),
+    radial-gradient(700px 480px at 70% 110%, rgb(255 102 0 / 0.1), transparent 60%),
+    linear-gradient(180deg, #f5f8ff 0%, #eef2fb 100%);
+}
+
+:root[data-theme='dark'] {
+  --glass-bg: rgb(16 22 40 / 0.62);
+  --glass-bg-strong: rgb(16 22 40 / 0.84);
+  --glass-border: rgb(255 255 255 / 0.09);
+  --glass-edge: rgb(255 255 255 / 0.06);
+  --glass-shadow: 0 1px 0 rgb(255 255 255 / 0.05) inset, 0 16px 48px -16px rgb(0 0 0 / 0.6);
+  --backdrop: radial-gradient(1100px 620px at 85% -10%, rgb(0 70 255 / 0.32), transparent 60%),
+    radial-gradient(900px 560px at 0% 30%, rgb(0 27 183 / 0.28), transparent 62%),
+    radial-gradient(700px 480px at 70% 110%, rgb(255 102 0 / 0.12), transparent 60%),
+    linear-gradient(180deg, #070b18 0%, #0a1024 100%);
+}
+
+@media (prefers-color-scheme: dark) {
+  :root:not([data-theme='light']) {
+    --glass-bg: rgb(16 22 40 / 0.62);
+    --glass-bg-strong: rgb(16 22 40 / 0.84);
+    --glass-border: rgb(255 255 255 / 0.09);
+    --glass-edge: rgb(255 255 255 / 0.06);
+    --glass-shadow: 0 1px 0 rgb(255 255 255 / 0.05) inset, 0 16px 48px -16px rgb(0 0 0 / 0.6);
+    --backdrop: radial-gradient(1100px 620px at 85% -10%, rgb(0 70 255 / 0.32), transparent 60%),
+      radial-gradient(900px 560px at 0% 30%, rgb(0 27 183 / 0.28), transparent 62%),
+      radial-gradient(700px 480px at 70% 110%, rgb(255 102 0 / 0.12), transparent 60%),
+      linear-gradient(180deg, #070b18 0%, #0a1024 100%);
+  }
+}
+
+/* ── Cards, backdrop and the create call-to-action ────────────────── */
+
+:root,
+:root[data-theme='light'] {
+  --orb-a: rgb(0 70 255 / 0.34);
+  --orb-b: rgb(86 161 255 / 0.42);
+  --orb-c: rgb(255 122 38 / 0.26);
+  --orb-d: rgb(124 92 255 / 0.28);
+  --grid-line: rgb(15 35 90 / 0.07);
+  --cursor-glow: rgb(0 70 255 / 0.12);
+  --dot: rgb(0 70 255 / 0.35);
+
+  --card-bg: rgb(255 255 255 / 0.74);
+  --card-bg-hover: rgb(255 255 255 / 0.9);
+  --card-border: rgb(255 255 255 / 0.9);
+  --card-edge: rgb(15 35 90 / 0.07);
+  --card-shadow: 0 1px 0 rgb(255 255 255 / 0.8) inset, 0 0 0 1px var(--card-edge), 0 10px 30px -18px rgb(8 27 83 / 0.28);
+  --card-shadow-hover: 0 1px 0 rgb(255 255 255 / 0.8) inset, 0 0 0 1px rgb(0 70 255 / 0.16), 0 22px 44px -20px rgb(0 47 180 / 0.35);
+  --spot: rgb(0 70 255 / 0.07);
+  --spot-edge: rgb(0 70 255 / 0.5);
+
+  --cta: linear-gradient(120deg, #0046ff 0%, #2f6bff 35%, #6a4dff 65%, #0046ff 100%);
+  --cta-glow: 0 10px 28px -10px rgb(0 70 255 / 0.75);
+  --icon-tile: rgb(15 35 90 / 0.05);
+}
+
+:root[data-theme='dark'] {
+  --orb-a: rgb(0 70 255 / 0.42);
+  --orb-b: rgb(30 60 190 / 0.4);
+  --orb-c: rgb(255 102 0 / 0.16);
+  --orb-d: rgb(120 90 255 / 0.22);
+  --grid-line: rgb(255 255 255 / 0.035);
+  --cursor-glow: rgb(61 115 255 / 0.12);
+  --dot: rgb(160 190 255 / 0.5);
+
+  --card-bg: rgb(18 24 42 / 0.66);
+  --card-bg-hover: rgb(22 30 52 / 0.8);
+  --card-border: rgb(255 255 255 / 0.07);
+  --card-edge: rgb(255 255 255 / 0.03);
+  --card-shadow: 0 1px 0 rgb(255 255 255 / 0.05) inset, 0 0 0 1px var(--card-edge), 0 14px 36px -20px rgb(0 0 0 / 0.75);
+  --card-shadow-hover: 0 1px 0 rgb(255 255 255 / 0.07) inset, 0 0 0 1px rgb(90 136 255 / 0.28), 0 24px 48px -20px rgb(0 0 0 / 0.8), 0 0 40px -18px rgb(61 115 255 / 0.5);
+  --spot: rgb(90 136 255 / 0.1);
+  --spot-edge: rgb(120 160 255 / 0.65);
+
+  --cta-glow: 0 10px 30px -8px rgb(61 115 255 / 0.7);
+  --icon-tile: rgb(255 255 255 / 0.05);
+}

@@ -1,0 +1,28 @@
+/*
+ * Glass surfaces: the translucent card, the shell panels on glass, and the shared glass keyframes.
+ */
+
+.glass {
+  background: var(--glass-bg);
+  border: 1px solid var(--glass-border);
+  box-shadow: var(--glass-shadow), 0 0 0 1px var(--glass-edge);
+  -webkit-backdrop-filter: blur(var(--glass-blur)) saturate(150%);
+  backdrop-filter: blur(var(--glass-blur)) saturate(150%);
+  border-radius: var(--radius-xl);
+}
+@supports not ((backdrop-filter: blur(1px)) or (-webkit-backdrop-filter: blur(1px))) { .glass { background: var(--glass-bg-strong); } }
+
+/* Shell on glass */
+.shell-aside { -webkit-backdrop-filter: blur(var(--glass-blur)) saturate(150%); backdrop-filter: blur(var(--glass-blur)) saturate(150%); border-inline-end: 1px solid var(--glass-border); }
+.shell-header { -webkit-backdrop-filter: blur(var(--glass-blur)); backdrop-filter: blur(var(--glass-blur)); }
+.shell-nav__item { transition: background var(--t-hover) var(--ease), transform 160ms var(--ease-out); }
+.shell-nav__item:hover { transform: translateX(calc(var(--dir-sign, 1) * -2px)); }
+.shell-bottom-nav { background: var(--glass-bg-strong); -webkit-backdrop-filter: blur(var(--glass-blur)); backdrop-filter: blur(var(--glass-blur)); }
+.creative-home__hero { background: var(--glass-bg); border: 1px solid var(--glass-border); box-shadow: var(--glass-shadow); -webkit-backdrop-filter: blur(var(--glass-blur)); backdrop-filter: blur(var(--glass-blur)); }
+
+@keyframes glass-spin { to { transform: rotate(360deg); } }
+@keyframes glass-float { to { transform: translate(40px, 30px) scale(1.08); } }
+@keyframes glass-drift { to { transform: translate(12%, 8%) rotate(18deg); } }
+@keyframes glass-sheen { from { background-position: 120% 0; } to { background-position: -120% 0; } }
+@keyframes glass-scan { from { background-position: 0 120%; } to { background-position: 0 -120%; } }
+@keyframes glass-pulse { 50% { background: rgb(255 102 0 / 0.28); } }

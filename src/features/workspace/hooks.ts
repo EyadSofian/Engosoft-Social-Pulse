@@ -36,5 +36,3 @@ export function useAct() {
     [toast, t],
   );
 }
-
-export const actionErrorText = (error: ActionError, t: (en: string, ar: string) => string) => t(...ERRORS[error]);

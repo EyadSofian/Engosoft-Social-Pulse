@@ -52,16 +52,3 @@ export function SourceLine({ source, now, extra }: { source: MetricSource | Metr
     </p>
   );
 }
-
-/** Origin line for workspace numbers: computed from demo records, not from an external source. */
-export function DemoSourceLine({ basis }: { basis: string }) {
-  const { t } = useI18n();
-  return (
-    <p className="ui-source ui-source--demo">
-      <Info size={12} aria-hidden />
-      <span>
-        {t('Computed from demo workspace records', 'محسوب من سجلات المساحة التجريبية')} · {basis}
-      </span>
-    </p>
-  );
-}

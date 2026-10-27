@@ -1,0 +1,17 @@
+/*
+ * Settings: users and the add forms.
+ */
+
+/* Settings */
+.settings-tabs { justify-self: start; }
+.settings-add { display: grid; grid-template-columns: repeat(auto-fit, minmax(170px, 1fr)); gap: 10px; align-items: end; padding: 16px; }
+.settings-add h2 { grid-column: 1 / -1; display: flex; align-items: center; gap: 8px; margin: 0; font-size: 16px; }
+.settings-notice { margin: 0; padding: 10px 12px; border-radius: 10px; background: var(--success-soft); color: var(--success-ink); font-size: 13px; }
+.settings-users { overflow-x: auto; padding: 6px; }
+.settings-users table { width: 100%; border-collapse: collapse; font-size: 13px; }
+.settings-users th { padding: 10px; text-align: start; color: var(--text-muted); font-size: 12px; }
+.settings-users td { padding: 10px; border-top: 1px solid var(--border); vertical-align: middle; }
+.settings-users td b, .settings-users td small { display: block; }
+.settings-users td small { color: var(--text-muted); font-size: 11px; }
+.settings-users tr[data-suspended] td { opacity: 0.55; }
+.settings-users__actions { display: flex; gap: 12px; white-space: nowrap; }

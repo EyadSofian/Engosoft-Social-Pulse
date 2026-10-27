@@ -1977,8 +1977,14 @@ kbd {
     font-size: 17px;
   }
 
-  .seg--sm .seg__item span {
-    display: none;
+  /* The calendar's view switcher shows icons only; the label stays for screen readers. */
+  .cal__views .seg__item span {
+    position: absolute;
+    width: 1px;
+    height: 1px;
+    overflow: hidden;
+    clip-path: inset(50%);
+    white-space: nowrap;
   }
 
   .month__grid {

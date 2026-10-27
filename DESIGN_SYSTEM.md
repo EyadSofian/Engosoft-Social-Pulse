@@ -6,12 +6,24 @@ Files:
 
 | File | Contents |
 | --- | --- |
-| `src/styles/tokens.css` | All design tokens, light and dark |
+| `src/styles/index.css` | The manifest. Its import order is the cascade; `main.tsx` imports only this file |
+| `src/styles/tokens.css` | All design tokens, light and dark, including the glass, card, backdrop and CTA tokens |
 | `src/styles/base.css` | Reset, typography, focus, `u-*` utilities, keyframes, reduced motion |
 | `src/styles/components.css` | Shared components (`ui-*`) |
 | `src/styles/shell.css` | Sidebar, header, page header, bottom navigation, command palette, notification center |
-| `src/styles/pages.css` | Lists, boards, calendars and page-specific layouts |
-| `src/legacy/styles/*` | The legacy publishing calendar, scoped with `@scope (.lg)` and re-coloured through a token adapter |
+| `src/styles/pages.css` | Lists, toolbars, the content-plan calendar, analytics and connections layouts |
+| `src/styles/creation-home.css` | Base layout of the Create page (refined later by `features/create.css`) |
+| `src/legacy/styles/*` | The legacy publishing calendar and tracking views, scoped with `@scope (.lg)` and re-coloured through a token adapter |
+| `src/styles/theme/glass.css` | The `.glass` surface and the shell panels on glass |
+| `src/styles/features/*.css` | One file per feature: auth, generation, content-board, studio, library, settings, create, svg-templates, usage, notifications, course-picker |
+| `src/styles/theme/effects.css` | Effects over every component (backdrop, pointer-light cards, button and input polish, entrances). Loaded after the first feature group on purpose |
+| `src/styles/theme/ambient.css` | Aurora and particle backdrop layers |
+
+Rules for adding CSS:
+
+- Put a new feature in its own `features/<name>.css`, namespaced with one BEM block (`.studio__…`), and add it to `index.css` in the block it belongs to.
+- Never redefine another file's selector to override it. Change the original rule, or add a modifier class.
+- Icons are lucide `<svg class="lucide">` and sit inline with text; `.ui-btn__label` lays out an icon passed inside the children.
 
 Components read semantic tokens only. A raw hex value in a component is a bug, except for the legacy calendar's adapter and the brand swatches on the Admin page.
 

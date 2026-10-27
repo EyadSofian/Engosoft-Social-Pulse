@@ -40,8 +40,6 @@
   inset-block-start: 0;
   height: 100dvh;
   min-width: 0;
-  background: var(--surface);
-  border-inline-end: 1px solid var(--border);
   z-index: 30;
 }
 
@@ -141,16 +139,10 @@
   position: relative;
   display: flex;
   align-items: center;
-  gap: 10px;
-  height: 36px;
   padding-inline: 10px;
-  border-radius: var(--radius-md);
   color: var(--text-muted);
   font-size: var(--fs-sm);
   font-weight: 600;
-  transition:
-    background-color var(--t-hover) var(--ease),
-    color var(--t-hover) var(--ease);
 }
 
 .shell-nav__item svg {
@@ -160,15 +152,6 @@
 .shell-nav__item:hover {
   background: var(--surface-hover);
   color: var(--text);
-}
-
-.shell-nav__item[aria-current='page'] {
-  background: var(--brand-soft);
-  color: var(--brand-ink);
-}
-
-.shell-nav__item[aria-current='page'] svg {
-  color: var(--brand);
 }
 
 .shell-nav__text {
@@ -293,18 +276,6 @@
   font-size: var(--fs-xs);
 }
 
-.shell-user__option {
-  display: flex;
-  align-items: center;
-  gap: 8px;
-  min-width: 0;
-}
-
-.shell-user__option svg {
-  flex: none;
-  color: var(--brand);
-}
-
 /* ── Main column & header ──────────────────────────────────────────── */
 
 .shell-main {
@@ -322,9 +293,7 @@
   gap: var(--sp-2);
   height: var(--header-h);
   padding-inline: var(--sp-4) var(--sp-5);
-  background: color-mix(in srgb, var(--bg) 92%, transparent);
   border-block-end: 1px solid var(--border);
-  backdrop-filter: saturate(1.2) blur(6px);
 }
 
 .shell-header__menu {

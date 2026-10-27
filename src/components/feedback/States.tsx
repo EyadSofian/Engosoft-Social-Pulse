@@ -70,5 +70,3 @@ export function ProgressBar({ value, tone = 'brand', label }: { value: number | 
     </span>
   );
 }
-
-export const progressTone = (value: number | null): 'brand' | 'success' | 'warning' | 'danger' => (value == null ? 'brand' : value >= 100 ? 'success' : value >= 70 ? 'brand' : value >= 50 ? 'warning' : 'danger');

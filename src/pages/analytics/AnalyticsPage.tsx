@@ -24,7 +24,7 @@ import { sourceOf } from '../../services/adapters/live';
 import type { Post } from '../../types';
 import { PageHeader } from '../../shell/Header';
 import { usePageMeta } from '../../shell/ShellContext';
-import { LiveGate } from '../home/widgets';
+import { LiveGate } from '../../components/feedback/LiveGate';
 
 type Tab = 'executive' | 'content' | 'platforms' | 'departments' | 'team' | 'learning';
 const TABS: Tab[] = ['executive', 'content', 'platforms', 'departments', 'team', 'learning'];

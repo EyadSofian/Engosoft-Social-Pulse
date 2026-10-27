@@ -1,0 +1,34 @@
+/*
+ * Extra backdrop layers: the aurora ribbon and drifting particles.
+ */
+
+/* ── Backdrop: aurora ribbon and drifting particles ───────────────── */
+
+.ambient__aurora {
+  position: absolute;
+  inset: -30vmax;
+  background: conic-gradient(from 90deg at 50% 50%, transparent 0deg, var(--orb-a) 50deg, transparent 110deg, var(--orb-d) 170deg, transparent 230deg, var(--orb-b) 290deg, transparent 360deg);
+  filter: blur(90px);
+  opacity: 0.55;
+  animation: aurora-turn 60s linear infinite;
+  will-change: transform;
+}
+.ambient__dots {
+  position: absolute;
+  inset: -40% 0 -40% 0;
+  background-image: radial-gradient(circle, var(--dot) 1.2px, transparent 1.6px), radial-gradient(circle, var(--dot) 1px, transparent 1.4px);
+  background-size: 140px 140px, 90px 90px;
+  background-position: 0 0, 45px 60px;
+  -webkit-mask: radial-gradient(ellipse 70% 60% at 50% 40%, #000 20%, transparent 80%);
+  mask: radial-gradient(ellipse 70% 60% at 50% 40%, #000 20%, transparent 80%);
+  opacity: 0.55;
+  animation: dots-rise 38s linear infinite;
+  will-change: transform;
+}
+.ambient__dots--far { background-size: 210px 210px, 160px 160px; opacity: 0.35; animation-duration: 64s; }
+@keyframes aurora-turn { to { transform: rotate(360deg); } }
+@keyframes dots-rise { to { transform: translate3d(0, -140px, 0); } }
+
+@media (prefers-reduced-motion: reduce) {
+  .ambient__aurora, .ambient__dots { animation: none !important; }
+}

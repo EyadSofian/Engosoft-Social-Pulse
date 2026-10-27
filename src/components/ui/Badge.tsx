@@ -1,17 +1,12 @@
 import type { ReactNode } from 'react';
 import type { ContentStatus } from '../../domain/content';
 import type { Priority } from '../../domain/shared';
-import type { ApprovalStatus, TaskStatus } from '../../domain/workflow';
 import { useI18n } from '../../i18n/I18nProvider';
 import {
-  approvalStatusLabel,
-  approvalStatusTone,
   contentStatusLabel,
   contentStatusTone,
   priorityLabel,
   priorityTone,
-  taskStatusLabel,
-  taskStatusTone,
   type Tone,
 } from '../../i18n/labels';
 
@@ -29,24 +24,6 @@ export function ContentStatusBadge({ status }: { status: ContentStatus }) {
   return (
     <Badge tone={contentStatusTone[status]} dot>
       {tx(contentStatusLabel[status])}
-    </Badge>
-  );
-}
-
-export function TaskStatusBadge({ status }: { status: TaskStatus }) {
-  const { tx } = useI18n();
-  return (
-    <Badge tone={taskStatusTone[status]} dot>
-      {tx(taskStatusLabel[status])}
-    </Badge>
-  );
-}
-
-export function ApprovalBadge({ status }: { status: ApprovalStatus }) {
-  const { tx } = useI18n();
-  return (
-    <Badge tone={approvalStatusTone[status]} dot>
-      {tx(approvalStatusLabel[status])}
     </Badge>
   );
 }

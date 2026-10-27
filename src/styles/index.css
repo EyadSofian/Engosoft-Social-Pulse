@@ -1,0 +1,40 @@
+/*
+ * Stylesheet manifest. The order below IS the cascade: later files may refine
+ * earlier ones, never the reverse. Add new feature styles to features/, in the
+ * features block, and read DESIGN_SYSTEM.md before adding a new layer.
+ */
+
+/* Foundation: tokens (light/dark), reset, typography, utilities */
+@import './tokens.css';
+@import './base.css';
+
+/* Shared components (ui-*), app shell, shared page layouts */
+@import './components.css';
+@import './shell.css';
+@import './pages.css';
+@import './creation-home.css';
+
+/* The legacy publishing calendar and tracking views, scoped to .lg */
+@import '../legacy/styles/legacy-base.css';
+@import '../legacy/styles/ui.css';
+@import '../legacy/styles/views.css';
+@import '../legacy/styles/calendar.css';
+@import '../legacy/styles/insights.css';
+
+/* Glass surfaces and the workspace features */
+@import './theme/glass.css';
+@import './features/auth.css';
+@import './features/generation.css';
+@import './features/content-board.css';
+@import './features/studio.css';
+@import './features/library.css';
+@import './features/settings.css';
+
+/* Theme effects over every component, then the features designed on top of them */
+@import './theme/effects.css';
+@import './theme/ambient.css';
+@import './features/create.css';
+@import './features/svg-templates.css';
+@import './features/usage.css';
+@import './features/notifications.css';
+@import './features/course-picker.css';

@@ -445,40 +445,6 @@
   }
 }
 
-
-.summary {
-  display: grid;
-  grid-template-columns: repeat(4, minmax(0, 1fr));
-  gap: var(--gap);
-}
-
-.summary__item {
-  display: flex;
-  flex-direction: column;
-  gap: 2px;
-  padding: 16px 20px 17px;
-  border-radius: 20px;
-}
-
-.summary__item > span:first-child {
-  font-size: 13px;
-  font-weight: 600;
-  color: var(--ink-3);
-}
-
-.summary__item > b {
-  font-size: 27px;
-  font-weight: 600;
-  line-height: 1.35;
-}
-
-.summary__item > small {
-  font-size: 12.5px;
-  color: var(--ink-3);
-}
-@media (max-width: 760px) { .summary { grid-template-columns: repeat(2, minmax(0, 1fr)); } }
-@media (max-width: 520px) { .summary__item > b { font-size: 22px; } .summary__item { padding: 14px 16px; } }
-
 .view-head {
   display: flex;
   align-items: flex-end;
@@ -562,6 +528,9 @@
   font-size: 12.5px;
   color: var(--ink-3);
 }
+/* Phones: two stat cards per row. Kept after the base rules so it wins. */
+@media (max-width: 760px) { .summary { grid-template-columns: repeat(2, minmax(0, 1fr)); } }
+@media (max-width: 520px) { .summary__item > b { font-size: 22px; } .summary__item { padding: 14px 16px; } }
 
 .more {
   display: flex;

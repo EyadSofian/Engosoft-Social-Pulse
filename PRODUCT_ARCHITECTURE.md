@@ -39,20 +39,19 @@ The sidebar has three groups. Items are hidden when the current role cannot use 
 
 | Group | Page | Route | Who sees it |
 | --- | --- | --- | --- |
-| Main | Home | `/` | Everyone (the content changes by role) |
-| | My Work | `/my-work` | Everyone |
-| | Content | `/content`, `/content/:id` | Everyone (the list is filtered by visibility) |
+| Workspace | Create | `/` | Roles with `content.create` |
+| | Content | `/content`, `/content/:id` (drawer) | Everyone |
+| | Studio | `/studio/:id` (opened from a content item) | Everyone who can open the item |
 | | Calendar | `/calendar` (`?view=live` for the publishing calendar) | Everyone |
-| | Tasks & Approvals | `/tasks` | Everyone |
-| | Templates | `/templates`, `/templates/:id` | Everyone |
-| | AI Studio | `/ai-studio` | Roles that can create content |
-| | Media Library | `/media` | Everyone |
-| | Hall of Fame | `/achievements` | Operations, Marketing, Admin |
-| Management | Departments | `/departments`, `/departments/:id` | Everyone except freelancers |
+| | Library | `/library`, `/library/templates/:id` | Everyone |
+| Tracking | Overview | `/overview` | Roles with `analytics.view` |
+| | Content performance | `/tracking` | Roles with `analytics.view` |
 | | Analytics | `/analytics` | Roles with `analytics.view` |
-| | Credits & Usage | `/credits` | Roles with `credits.view` |
-| | Connections | `/connections` | Marketing roles and Admin |
-| System | Admin | `/admin` | Admin |
+| | Team performance | `/performance` | Roles with `analytics.view` |
+| System | AI usage | `/usage` | Roles with `content.create` or `users.manage` |
+| | Settings | `/settings`, `/connections` | Roles with `users.manage` or `connections.manage` |
+
+The routes live in `src/app/routes.tsx`; any other path shows a not-found page. The earlier demo-workspace pages (My Work, Tasks, Templates, AI Studio, Media, Hall of Fame, Departments, Credits, Admin) were removed on 2026-10-27: they ran only on the in-memory demo seed and had no route.
 
 Global tools: the header search opens the command palette (`Cmd/Ctrl + K`). It searches content, tasks, campaigns, templates, courses, students, media and people. The bell opens the notification center, where related events are grouped.
 

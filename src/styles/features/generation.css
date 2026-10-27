@@ -1,0 +1,24 @@
+/*
+ * Generation progress: the orbit and the forming preview while a design is made.
+ */
+
+/* Generation motion */
+.creative-orbit { position: relative; width: 64px; height: 64px; }
+.creative-orbit span { position: absolute; inset: 0; border-radius: 50%; border: 2px solid transparent; border-top-color: var(--brand); animation: glass-spin 1.4s cubic-bezier(0.5, 0, 0.5, 1) infinite; }
+.creative-orbit span:nth-child(2) { inset: 8px; border-top-color: #ff6600; animation-duration: 1.9s; animation-direction: reverse; }
+.creative-orbit span:nth-child(3) { inset: 16px; border-top-color: #56a1ff; animation-duration: 2.4s; }
+.creative-job--progress { border-style: solid; }
+.creative-job__card { overflow: hidden; padding: 0; }
+.creative-job__frame { position: relative; aspect-ratio: 4 / 5; overflow: hidden; background: var(--surface-subtle); }
+.creative-job__frame > img { position: absolute; inset: 0; width: 100%; height: 100%; object-fit: cover; }
+.creative-forming { position: absolute; inset: 0; display: grid; place-items: end center; padding: 18px; overflow: hidden;
+  background: conic-gradient(from 180deg at 50% 50%, #0b2a8f, #0046ff, #56a1ff, #ff8a3d, #0b2a8f); filter: saturate(120%); }
+.creative-forming::before { content: ''; position: absolute; inset: -40%; background: radial-gradient(circle at 30% 30%, rgb(255 255 255 / 0.5), transparent 40%), radial-gradient(circle at 70% 60%, rgb(255 102 0 / 0.5), transparent 45%); filter: blur(40px); animation: glass-drift 6s ease-in-out infinite alternate; }
+.creative-forming::after { content: ''; position: absolute; inset: 0; background-image: radial-gradient(rgb(255 255 255 / 0.12) 1px, transparent 1px); background-size: 4px 4px; mix-blend-mode: overlay; }
+.creative-forming__glow { position: absolute; inset: 0; background: linear-gradient(110deg, transparent 30%, rgb(255 255 255 / 0.28) 50%, transparent 70%); background-size: 250% 100%; animation: glass-sheen 2.4s ease-in-out infinite; }
+.creative-forming__label { position: relative; z-index: 1; padding: 7px 12px; border-radius: 999px; background: rgb(0 0 0 / 0.35); color: #fff; font-size: 12px; font-weight: 700; -webkit-backdrop-filter: blur(8px); backdrop-filter: blur(8px); }
+.creative-job__body { padding: 16px; }
+.creative-job__actions .ui-btn { white-space: nowrap; }
+@media (prefers-reduced-motion: reduce) {
+  .creative-orbit span, .creative-forming::before, .creative-forming__glow { animation: none !important; }
+}

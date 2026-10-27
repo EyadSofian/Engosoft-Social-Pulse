@@ -52,7 +52,7 @@ export function LibraryPage() {
       <h2>{t('Official logos', 'الشعارات الرسمية')}</h2>
       <p className="u-sm u-muted">{t('Exact files from the brand guidelines. The system places them automatically; download only for external use.', 'الملفات الأصلية من دليل الهوية. يضيفها النظام تلقائيًا؛ نزّلها للاستخدام الخارجي فقط.')}</p>
       <div className="library-logos">{logos.variants.map((v) => <a key={v.id} className="library-logo glass" data-surface={v.id.endsWith('reversed') ? 'dark' : 'light'} href={v.publicPath} download>
-        <img src={v.publicPath} alt={v.label} /><small>{v.label}</small><Download size={14} />
+        <img src={v.publicPath} alt={v.label} /><span className="library-logo__label"><small>{v.label}</small><Download size={14} aria-hidden /></span>
       </a>)}</div>
     </section>
   </div>;

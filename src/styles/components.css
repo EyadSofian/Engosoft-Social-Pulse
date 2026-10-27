@@ -15,18 +15,12 @@
   height: 36px;
   padding-inline: 14px;
   border: 1px solid transparent;
-  border-radius: var(--radius-md);
   font-size: var(--fs-sm);
   font-weight: 600;
   line-height: 1;
   white-space: nowrap;
   cursor: pointer;
   user-select: none;
-  transition:
-    background-color var(--t-hover) var(--ease),
-    border-color var(--t-hover) var(--ease),
-    color var(--t-hover) var(--ease),
-    box-shadow var(--t-hover) var(--ease);
 }
 
 .ui-btn--sm {
@@ -49,13 +43,7 @@
 }
 
 .ui-btn--primary {
-  background: var(--brand);
   color: var(--on-brand);
-  box-shadow: var(--shadow-xs);
-}
-
-.ui-btn--primary:hover:not(:disabled) {
-  background: var(--brand-hover);
 }
 
 .ui-btn--primary:active:not(:disabled) {
@@ -63,8 +51,6 @@
 }
 
 .ui-btn--secondary {
-  background: var(--surface);
-  border-color: var(--border-strong);
   color: var(--text);
   box-shadow: var(--shadow-xs);
 }
@@ -108,8 +94,14 @@
   box-shadow: none;
 }
 
-/* No overflow clipping: Arabic final letters overhang their advance width. */
+/*
+ * The label is a row too: callers often pass the icon inside the children.
+ * No overflow clipping: Arabic final letters overhang their advance width.
+ */
 .ui-btn__label {
+  display: inline-flex;
+  align-items: center;
+  gap: inherit;
   min-width: 0;
 }
 
@@ -157,6 +149,9 @@
 }
 
 .ui-link {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
   color: var(--brand-ink);
   font-weight: 600;
   cursor: pointer;
@@ -366,12 +361,6 @@
   font-weight: 700;
 }
 
-.ui-card__icon {
-  display: inline-grid;
-  place-items: center;
-  color: var(--text-subtle);
-}
-
 .ui-card__count {
   min-width: 22px;
   height: 20px;
@@ -510,31 +499,8 @@
 .ui-stat__icon {
   display: inline-grid;
   place-items: center;
-  width: 28px;
-  height: 28px;
-  border-radius: var(--radius-md);
   background: var(--neutral-soft);
   color: var(--text-muted);
-}
-
-.ui-stat--brand .ui-stat__icon {
-  background: var(--brand-soft);
-  color: var(--brand-ink);
-}
-
-.ui-stat--danger .ui-stat__icon {
-  background: var(--danger-soft);
-  color: var(--danger-ink);
-}
-
-.ui-stat--warning .ui-stat__icon {
-  background: var(--warning-soft);
-  color: var(--warning-ink);
-}
-
-.ui-stat--success .ui-stat__icon {
-  background: var(--success-soft);
-  color: var(--success-ink);
 }
 
 .ui-stat__value {
@@ -618,7 +584,6 @@
   height: 2px;
   border-radius: 2px;
   background: transparent;
-  transition: background-color var(--t-hover) var(--ease);
 }
 
 .ui-tabs__tab:hover {
@@ -627,10 +592,6 @@
 
 .ui-tabs__tab[aria-selected='true'] {
   color: var(--text);
-}
-
-.ui-tabs__tab[aria-selected='true']::after {
-  background: var(--brand);
 }
 
 .ui-tabs__tab:focus-visible {
@@ -662,8 +623,6 @@
   padding: 2px;
   gap: 2px;
   border: 1px solid var(--border);
-  border-radius: var(--radius-md);
-  background: var(--surface-subtle);
 }
 
 .ui-segmented__item {
@@ -674,14 +633,10 @@
   height: 28px;
   min-width: 30px;
   padding-inline: 10px;
-  border-radius: 6px;
   color: var(--text-muted);
   font-size: var(--fs-xs);
   font-weight: 600;
   white-space: nowrap;
-  transition:
-    background-color var(--t-hover) var(--ease),
-    color var(--t-hover) var(--ease);
 }
 
 .ui-segmented__item:hover {
@@ -691,7 +646,6 @@
 .ui-segmented__item[aria-checked='true'] {
   background: var(--surface);
   color: var(--text);
-  box-shadow: var(--shadow-xs), 0 0 0 1px var(--border);
 }
 
 /* ── Menu ──────────────────────────────────────────────────────────── */
@@ -1535,6 +1489,11 @@
 
 .ui-card .ui-table-scroll {
   max-height: none;
+}
+
+/* On phones a table scrolls sideways instead of crushing every cell to one word per line. */
+.ui-table-scroll > table {
+  min-width: 560px;
 }
 
 .ui-table {

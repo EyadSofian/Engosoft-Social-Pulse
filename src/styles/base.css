@@ -18,7 +18,6 @@ body {
   margin: 0;
   min-width: 320px;
   min-height: 100dvh;
-  background: var(--bg);
   color: var(--text);
   font-family: var(--font-sans);
   font-size: var(--fs-md);
@@ -108,6 +107,17 @@ svg {
   display: block;
 }
 
+/*
+ * Icons (lucide) sit on the text line, so an icon and its label stay side by
+ * side even inside an inline wrapper: a button label, a link, a heading.
+ * Flex and grid parents blockify them as before; charts stay block.
+ */
+svg.lucide {
+  display: inline-block;
+  flex: none;
+  vertical-align: middle;
+}
+
 table {
   border-collapse: collapse;
   border-spacing: 0;
@@ -116,10 +126,6 @@ table {
 :focus-visible {
   outline: 2px solid var(--border-focus);
   outline-offset: 2px;
-}
-
-::selection {
-  background: var(--brand-soft-strong);
 }
 
 ::-webkit-scrollbar {
@@ -156,10 +162,6 @@ table {
   color: var(--text-muted);
 }
 
-.u-subtle {
-  color: var(--text-subtle);
-}
-
 .u-sm {
   font-size: var(--fs-sm);
 }
@@ -179,11 +181,6 @@ table {
   min-width: 0;
 }
 
-.u-ltr {
-  direction: ltr;
-  unicode-bidi: isolate;
-}
-
 /* A directional icon points the reading direction. */
 :root[dir='rtl'] .u-flip {
   transform: scaleX(-1);
@@ -198,10 +195,6 @@ table {
 
 .u-stack--xs {
   gap: var(--sp-1);
-}
-
-.u-stack--sm {
-  gap: var(--sp-2);
 }
 
 .u-stack--lg {
@@ -223,10 +216,6 @@ table {
   justify-content: space-between;
 }
 
-.u-row--top {
-  align-items: flex-start;
-}
-
 .u-grow {
   flex: 1;
   min-width: 0;
@@ -246,40 +235,8 @@ table {
   grid-template-columns: repeat(2, minmax(0, 1fr));
 }
 
-.u-grid--3 {
-  grid-template-columns: repeat(3, minmax(0, 1fr));
-}
-
-.u-grid--4 {
-  grid-template-columns: repeat(4, minmax(0, 1fr));
-}
-
-.u-grid--main-side {
-  grid-template-columns: minmax(0, 1fr) 360px;
-  align-items: start;
-}
-
-@media (max-width: 1180px) {
-  .u-grid--4 {
-    grid-template-columns: repeat(2, minmax(0, 1fr));
-  }
-  .u-grid--3 {
-    grid-template-columns: repeat(2, minmax(0, 1fr));
-  }
-  .u-grid--main-side {
-    grid-template-columns: minmax(0, 1fr);
-  }
-}
-
 @media (max-width: 720px) {
-  .u-grid--2,
-  .u-grid--3 {
-    grid-template-columns: minmax(0, 1fr);
-  }
-}
-
-@media (max-width: 420px) {
-  .u-grid--4 {
+  .u-grid--2 {
     grid-template-columns: minmax(0, 1fr);
   }
 }
