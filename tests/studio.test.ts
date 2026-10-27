@@ -95,3 +95,67 @@ test('a shape fill is its dominant color even when white text covers much of it'
   const shape = measureShape(await toRaw(image), { x: 55, y: 62, width: 290, height: 76 }, []);
   assert.equal(shape.fill, '#F75913');
 });
+
+test('text-only extraction keeps badge artwork and the original lettering instead of rebuilding shapes', async () => {
+  const { planLayers, studioPath } = await import('../server/creative-intelligence/studio/studio');
+  const { readFileSync } = await import('node:fs');
+  const { originalTextAppearance } = await import('../src/domain/studio');
+  const lettering = outlineText({ text:'CFM', x:200, y:195, width:300, align:'center', style:{size:62,weight:800,color:'#102048'} });
+  const original = await png(`<svg xmlns="http://www.w3.org/2000/svg" width="600" height="400"><rect width="600" height="400" fill="#F4F7FB"/><rect x="50" y="180" width="500" height="105" rx="50" fill="#FFFFFF"/><circle cx="105" cy="232" r="35" fill="#0046FF"/>${lettering.svg}</svg>`);
+  const analysis: import('../server/creative-intelligence/studio/analyze').StudioAnalysis = {texts:[{text:'CFM',approved:'CFM',box:{x:.34,y:.49,width:.48,height:.2},align:'center',weight:'extrabold',shape:0}],shapes:[{kind:'pill',box:{x:50/600,y:.45,width:500/600,height:105/400},corners:'round',shadow:true}],objects:[],faces:[]};
+  const plan = await planLayers(original,analysis);
+  assert.equal(plan.layers.length,1);assert.equal(plan.layers[0].kind,'text');
+  const layer = plan.layers[0] as import('../src/domain/studio').TextLayer;
+  const source = originalTextAppearance(layer);assert.ok(source);
+  assert.ok(readFileSync(studioPath(source.file)).length>50);
+  assert.ok(plan.holes.every(b=>b.x>150),'Clearing text must not erase the icon to its left');
+  const doc:StudioDoc={version:STUDIO_VERSION,width:600,height:400,baseFile:'00000000-0000-0000-0000-000000000000.png',layers:[layer],objects:[],zones:[],logo:null};
+  const svg=layersSvg(doc).svg;assert.ok(svg.includes('<image'));assert.ok(!svg.includes('<path'));
+  const {svg:changed}=layersSvg({...doc,layers:[{...layer,text:'NEW'}]});assert.ok(!changed.includes('<image'));assert.ok(changed.includes('<path'));
+  // Reassemble the lifted glyphs over the same white surface: the actual silhouette and antialiasing survive.
+  assert.equal(plan.holes.length,0,'Quiet surfaces should not be sent to an image-generation edit');
+  assert.equal(plan.flatPatches.length,1);
+  const cleared=await sharp(original).composite(plan.flatPatches.map(p=>({input:p.png,left:p.box.x,top:p.box.y}))).png().toBuffer();
+  const restored=await sharp(cleared).composite([{input:Buffer.from(svg)}]).removeAlpha().raw().toBuffer();
+  const before=await sharp(original).removeAlpha().raw().toBuffer();
+  const error=restored.reduce((sum,v,i)=>sum+Math.abs(v-before[i]),0)/before.length;
+  assert.ok(error<.2,`Mean pixel difference: ${error}`);
+});
+
+test('uncertain text stays in the artwork instead of being erased and replaced with guessed lettering',async()=>{
+  const {planLayers}=await import('../server/creative-intelligence/studio/studio');
+  const original=await png('<svg width="300" height="200"><rect width="300" height="200" fill="#ffffff"/></svg>');
+  const plan=await planLayers(original,{texts:[{text:'غير موجود',approved:'',box:{x:.1,y:.1,width:.5,height:.2},align:'right',weight:'bold',shape:-1}],shapes:[],objects:[],faces:[]});
+  assert.equal(plan.layers.length,0);assert.equal(plan.holes.length,0);
+});
+
+test('object extraction applies only the generated alpha mask to original pixels, preserving colors and details',async()=>{
+  const {originalCutout}=await import('../server/creative-intelligence/studio/pixels');
+  const original=await png('<svg width="80" height="80"><rect width="80" height="80" fill="#0046ff"/><rect x="30" y="30" width="10" height="10" fill="#ff6600"/></svg>');
+  // Deliberately different model colors must never become the extracted object's colors.
+  const mask=await png('<svg width="40" height="40"><rect x="2" y="2" width="36" height="36" fill="#ff0000"/></svg>');
+  const cut=await originalCutout(original,{png:mask,trim:{x:20,y:20,width:40,height:40}});
+  assert.deepEqual(await pixel(cut,5,5),[0,70,255]);assert.deepEqual(await pixel(cut,15,15),[255,102,0]);
+  const {data}=await sharp(cut).ensureAlpha().raw().toBuffer({resolveWithObject:true});assert.equal(data[3],0);
+});
+
+test('a flat-background design decomposes and reassembles without a generative repaint',async()=>{
+  const {decompose,studioPath}=await import('../server/creative-intelligence/studio/studio');
+  const {readFileSync}=await import('node:fs');
+  const letters=outlineText({text:'CFM',x:100,y:100,width:300,style:{size:70,weight:800,color:'#0046FF'}});
+  const original=await png(`<svg width="500" height="300"><rect width="500" height="300" fill="#fff"/>${letters.svg}<circle cx="40" cy="200" r="20" fill="#ff6600"/></svg>`);
+  const split=await decompose({original,format:'feed',approvedCopy:[],env:{},analysis:{texts:[{text:'CFM',approved:'CFM',box:{x:.18,y:.3,width:.6,height:.27},align:'left',weight:'extrabold',shape:-1}],shapes:[],objects:[],faces:[]}});
+  assert.equal(split.layers.length,1);
+  const output=await sharp(readFileSync(studioPath(split.baseFile))).composite([{input:Buffer.from(layersSvg(split).svg)}]).removeAlpha().raw().toBuffer();
+  const pixels=await sharp(original).removeAlpha().raw().toBuffer();
+  assert.ok(output.reduce((s,v,i)=>s+Math.abs(v-pixels[i]),0)/pixels.length<.2);
+});
+
+test('overlapping duplicate text detections create one editable layer',async()=>{
+ const {planLayers}=await import('../server/creative-intelligence/studio/studio');
+ const out=outlineText({text:'CFM',x:80,y:80,width:280,style:{size:60,weight:800,color:'#0046FF'}});
+ const original=await png(`<svg width="500" height="300"><rect width="500" height="300" fill="#fff"/>${out.svg}</svg>`);
+ const text={text:'CFM',approved:'CFM',box:{x:.15,y:.25,width:.6,height:.25},align:'left' as const,weight:'extrabold' as const,shape:-1};
+ const plan=await planLayers(original,{texts:[text,{...text,box:{...text.box,x:.16}}],shapes:[],faces:[],objects:[]});
+ assert.equal(plan.layers.filter(l=>l.kind==='text').length,1);
+});

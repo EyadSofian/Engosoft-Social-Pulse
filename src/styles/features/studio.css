@@ -79,12 +79,11 @@
 .studio__region { border: 2px solid #ff6600; border-radius: 6px; background: rgb(255 102 0 / 0.12); }
 .studio__region.is-working { animation: glass-pulse 1.2s ease-in-out infinite; }
 .studio__working { position: absolute; inset: 0; background: rgb(255 255 255 / 0.25); pointer-events: none; animation: glass-pulse 1.4s ease-in-out infinite; }
-.studio__inline { margin: 0; padding: 0; border: 0; outline: 1.5px solid var(--sel); outline-offset: 2px; background: transparent; font-family: var(--font-ar); white-space: pre-wrap; overflow: hidden; resize: none; transform-origin: center; pointer-events: auto; user-select: text; -webkit-user-select: text; caret-color: var(--sel); }
+.studio__inline { margin: 0; padding: 0; border: 0; outline: 1.5px solid var(--sel); outline-offset: 2px; background: transparent; font-family: var(--font-sans); white-space: pre-wrap; overflow: hidden; resize: none; transform-origin: center; pointer-events: auto; user-select: text; -webkit-user-select: text; caret-color: var(--sel); }
 .studio__inline::selection { background: rgb(47 107 255 / 0.35); }
 
-.studio__float { z-index: 5; transform: translate(-50%, -100%); pointer-events: auto; }
-.studio__float.is-below { transform: translate(-50%, 0); }
-.studio__quickbar { display: flex; align-items: center; gap: 2px; padding: 4px; border-radius: 12px; box-shadow: var(--shadow-md); white-space: nowrap; }
+.studio__float { position: absolute; z-index: 5; pointer-events: auto; }
+.studio__quickbar { display: flex; flex-wrap: wrap; max-width: 100%; box-sizing: border-box; align-items: center; gap: 2px; padding: 4px; border-radius: 12px; box-shadow: var(--shadow-md); white-space: nowrap; }
 .studio__qbtn { display: inline-grid; place-items: center; min-width: 30px; height: 30px; padding: 0 6px; border: 0; border-radius: 8px; background: transparent; color: var(--text); cursor: pointer; }
 .studio__qbtn:hover:not(:disabled) { background: var(--surface-hover); }
 .studio__qbtn[aria-pressed='true'] { background: var(--brand-soft); color: var(--brand-ink); }
@@ -228,3 +227,6 @@
 @media (prefers-reduced-motion: reduce) {
   .studio__scan, .studio__region.is-working, .studio__working { animation: none !important; }
 }
+
+.studio__split-mode { display:grid; gap:8px; font-size:13px; font-weight:700; }
+.studio__split-mode select { width:100%; padding:10px; border:1px solid var(--border); border-radius:8px; color:var(--text); background:var(--surface); font:inherit; }

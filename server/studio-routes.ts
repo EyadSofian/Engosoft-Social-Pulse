@@ -25,14 +25,14 @@ const color = z.string().regex(HEX_COLOR);
 const common = { id: z.string().max(24), name: z.string().max(60).optional(), x: z.number(), y: z.number(), opacity: z.number().min(0).max(1), hidden: z.boolean().optional(), group: z.string().max(24).optional(), rotation: z.number().min(-360).max(360).optional(), locked: z.boolean().optional() };
 const textFields = { text: z.string().max(600), width: z.number().positive().max(10_000), size: z.number().min(8).max(400), color, weight: z.number().int().min(100).max(900), align: z.enum(['start', 'center', 'end']), lineHeight: z.number().min(0.6).max(3), shadow: z.boolean().optional() };
 const layer = z.discriminatedUnion('kind', [
-  z.object({ ...common, kind: z.literal('text'), ...textFields }),
+  z.object({ ...common, kind: z.literal('text'), ...textFields, source: z.object({ file: z.string().regex(STUDIO_FILE), x: z.number(), y: z.number(), width: z.number().positive().max(10000), height: z.number().positive().max(10000), signature: z.string().max(4000) }).optional() }),
   z.object({ ...common, kind: z.literal('shape'), width: z.number().positive(), height: z.number().positive(), fill: color, fill2: color.nullable().optional(), radius: z.number().min(0), shadow: z.boolean().optional(), stroke: color.nullable().optional(), strokeWidth: z.number().min(0).max(200).optional() }),
   z.object({ ...common, kind: z.literal('image'), file: z.string().regex(STUDIO_FILE), width: z.number().positive(), height: z.number().positive(), flipX: z.boolean().optional(), flipY: z.boolean().optional() }),
 ]);
 /** Accepts the current document and upgrades earlier saved versions before validating. */
 const doc = z.preprocess((value) => migrateStudioDoc(value) ?? value, z.object({
   version: z.literal(STUDIO_VERSION), width: z.number().int().positive(), height: z.number().int().positive(), baseFile: z.string().regex(STUDIO_FILE),
-  layers: z.array(layer).max(150),
+  layers: z.array(layer).max(150), notices: z.array(z.string().max(600)).max(12).optional(),
   objects: z.array(z.object({ id: z.string().max(24), label: z.string().max(60), box })).max(20),
   zones: z.array(z.object({ kind: z.enum(['text', 'face', 'subject', 'cta', 'platform-ui', 'salient']), box, label: z.string().optional() })).max(80),
   logo: z.object({ variantId: z.enum(['lockup-reversed', 'lockup-positive', 'symbol-reversed', 'symbol-positive']), x: z.number(), y: z.number(), width: z.number() }).nullable(),
@@ -46,9 +46,15 @@ async function editableItem(req: express.Request, res: express.Response) {
   if (item.creative.svgTemplate || !/^[0-9a-f-]{36}$/.test(item.creative.requestId)) { res.status(400).json({ error: 'أُنشئ هذا المنشور من قالب SVG؛ عدّله من القالب.', code: 'svg_template' }); return null; }
   return item;
 }
-type StudioFormat = 'feed' | 'story' | 'landscape';
-const formatOf = (directionId: string): StudioFormat => directionId.endsWith('-story') ? 'story' : directionId.endsWith('-landscape') ? 'landscape' : 'feed';
-const sizeOf = (format: StudioFormat) => format === 'story' ? { width: 1080, height: 1920 } : format === 'landscape' ? { width: 1200, height: 630 } : { width: 1080, height: 1350 };
+type StudioFormat = 'feed' | 'story' | 'landscape' | 'video';
+const formatOf = (directionId: string, requestId?: string): StudioFormat => {
+  if (directionId.endsWith('-video')) return 'video';
+  if (directionId.endsWith('-story')) return 'story';
+  if (directionId.endsWith('-landscape')) return 'landscape';
+  try { const format = requestId && loadFullCreativeRun(requestId).request.format; if (format && ['feed','story','landscape','video'].includes(format)) return format; } catch { /* Older trace unavailable. */ }
+  return 'feed';
+};
+const sizeOf = (format: StudioFormat) => format === 'story' ? { width: 1080, height: 1920 } : format === 'landscape' ? { width: 1200, height: 630 } : format === 'video' ? { width: 1280, height: 720 } : { width: 1080, height: 1350 };
 const safeAreaOf = (format: StudioFormat) => format === 'story' ? { top: 230, right: 0, bottom: 330, left: 0 } : undefined;
 
 /**
@@ -72,18 +78,20 @@ export function registerStudioRoutes(app: express.Express) {
     if (!item) return;
     const saved = (await listVersions(item.id)).find((v) => v.studio);
     res.setHeader('Cache-Control', 'no-store');
-    res.json({ doc: migrateStudioDoc(saved?.studio), format: formatOf(item.creative!.directionId), imageUrl: item.creative!.imageUrl });
+    res.json({ doc: migrateStudioDoc(saved?.studio), format: formatOf(item.creative!.directionId, item.creative!.requestId), imageUrl: item.creative!.imageUrl });
   });
   app.post('/api/studio/:contentId/decompose', requireUser, requirePermission('design.free'), requireAiBudget, async (req, res) => {
     const item = await editableItem(req, res);
     if (!item || !process.env.OPENAI_API_KEY?.trim()) { if (item) res.status(503).json({ error: 'أضف OPENAI_API_KEY على الخادم.' }); return; }
+    const parsed = z.object({ mode: z.enum(['text', 'all']).default('text') }).safeParse(req.body ?? {});
+    if (!parsed.success) return res.status(400).json({ error: 'اختر طريقة استخراج صحيحة.' });
     const { requestId, directionId } = item.creative!;
-    const format = formatOf(directionId);
+    const format = formatOf(directionId, requestId);
     const job = startStudioJob(req.user!.id, async () => {
       const original = await originalWithoutLogo(requestId, directionId, sizeOf(format));
       let approvedCopy: string[] = [];
       try { const c = loadFullCreativeRun(requestId).brief.canonicalCopy; approvedCopy = [c.headline, c.subheadline, ...(c.facts ?? []), c.cta].filter((s): s is string => Boolean(s)); } catch { /* run trace missing: transcription only */ }
-      return decompose({ original, format, approvedCopy });
+      return decompose({ original, format, approvedCopy, mode: parsed.data.mode });
     });
     res.status(202).json({ jobId: job.id });
   });
@@ -92,7 +100,7 @@ export function registerStudioRoutes(app: express.Express) {
     if (!item) return;
     const parsed = z.object({ doc, box, instruction: z.string().trim().min(3).max(600) }).safeParse(req.body);
     if (!parsed.success) return res.status(400).json({ error: 'حدّد منطقة واكتب التعديل.' });
-    const job = startStudioJob(req.user!.id, () => aiEdit(parsed.data.doc as StudioDoc, parsed.data.box, parsed.data.instruction, formatOf(item.creative!.directionId)));
+    const job = startStudioJob(req.user!.id, () => aiEdit(parsed.data.doc as StudioDoc, parsed.data.box, parsed.data.instruction, formatOf(item.creative!.directionId, item.creative!.requestId)));
     res.status(202).json({ jobId: job.id });
   });
   app.post('/api/studio/:contentId/extract', requireUser, requirePermission('design.free'), requireAiBudget, async (req, res) => {
@@ -101,7 +109,7 @@ export function registerStudioRoutes(app: express.Express) {
     const parsed = z.object({ doc, box, label: z.string().trim().min(1).max(60), objectId: z.string().max(24).optional() }).safeParse(req.body);
     if (!parsed.success) return res.status(400).json({ error: 'حدّد العنصر المراد فصله.' });
     const { box: target, label, objectId } = parsed.data;
-    const job = startStudioJob(req.user!.id, () => extractObject(parsed.data.doc as StudioDoc, { box: target, label, objectId }, formatOf(item.creative!.directionId)));
+    const job = startStudioJob(req.user!.id, () => extractObject(parsed.data.doc as StudioDoc, { box: target, label, objectId }, formatOf(item.creative!.directionId, item.creative!.requestId)));
     res.status(202).json({ jobId: job.id });
   });
   /** A picture the user adds as a layer: a data URL of a PNG, JPEG or WebP image. */
@@ -131,7 +139,7 @@ export function registerStudioRoutes(app: express.Express) {
     const parsed = z.object({ doc, note: z.string().max(200).default('Studio edit') }).safeParse(req.body);
     if (!parsed.success) return res.status(400).json({ error: 'بيانات الطبقات غير صالحة.' });
     try {
-      const result = await renderStudio(parsed.data.doc as StudioDoc, safeAreaOf(formatOf(item.creative!.directionId)), logoPlanFor(parsed.data.doc as StudioDoc, item.creative!.requestId, item.creative!.directionId));
+      const result = await renderStudio(parsed.data.doc as StudioDoc, safeAreaOf(formatOf(item.creative!.directionId, item.creative!.requestId)), logoPlanFor(parsed.data.doc as StudioDoc, item.creative!.requestId, item.creative!.directionId));
       if (result.problems.some((p) => p.startsWith('Logo'))) return res.status(422).json({ error: result.problems.join(' '), problems: result.problems, previewUrl: studioUrl(result.file) });
       const version = await addVersion(req.user!, item.id, { imageUrl: studioUrl(result.file), storyUrl: item.creative!.storyUrl ?? null, studio: result.doc, note: parsed.data.note });
       res.json({ version, problems: result.problems });

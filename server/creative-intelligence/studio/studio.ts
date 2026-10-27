@@ -13,7 +13,7 @@ import { existsSync, mkdirSync, readFileSync, writeFileSync } from 'node:fs';
 import { resolve } from 'node:path';
 import sharp from 'sharp';
 import { mediaDir } from '../../paths.js';
-import { flipTransform, rotateTransform, shapeShadow, strokeOf, STUDIO_FILE, STUDIO_VERSION, textShadow, type Box, type ImageLayer, type ShapeLayer, type StudioDoc, type StudioLayer, type TextLayer } from '../../../src/domain/studio.js';
+import { flipTransform, originalTextAppearance, textAppearanceKey, rotateTransform, shapeShadow, strokeOf, STUDIO_FILE, STUDIO_VERSION, textShadow, type Box, type ImageLayer, type ShapeLayer, type StudioDoc, type StudioLayer, type TextLayer } from '../../../src/domain/studio.js';
 import { OpenAIImageProvider } from '../generation/provider.js';
 import { compositeLogo, verifyComposite } from '../logo-resolution/compositor.js';
 import { resolveLogo, type Corner } from '../logo-resolution/resolver.js';
@@ -23,12 +23,12 @@ import { measureText, outlineText, paragraphDirection } from '../typography/text
 import { analyzeForStudio, type StudioAnalysis } from './analyze.js';
 import { pasteInside } from '../generation/patch.js';
 export { pasteInside };
-import { clip, grow, keyGreen, liftDecor, measureShape, measureTextBox, renderedLines, toRaw, type InkLine, type TextMeasure } from './pixels.js';
+import { clip, grow, keyGreen, liftDecor, liftText, eraseFlatText, originalCutout, measureShape, measureTextBox, renderedLines, toRaw, type InkLine, type TextMeasure } from './pixels.js';
 
 export type { StudioDoc } from '../../../src/domain/studio.js';
 export { STUDIO_VERSION };
 const STUDIO_DIR = mediaDir('studio');
-const EDIT_SIZE = { feed: { w: 1088, h: 1360 }, story: { w: 1088, h: 1936 }, landscape: { w: 1520, h: 800 } } as const;
+const EDIT_SIZE = { feed: { w: 1088, h: 1360 }, story: { w: 1088, h: 1936 }, landscape: { w: 1520, h: 800 }, video: { w: 1536, h: 864 } } as const;
 type Format = keyof typeof EDIT_SIZE;
 
 export const studioPath = (file: string) => {
@@ -46,7 +46,7 @@ const newId = (prefix: string) => `${prefix}${randomUUID().slice(0, 8)}`;
 
 /** The generated image without the logo, at platform size: the starting point for any edit. */
 export async function originalWithoutLogo(requestId: string, directionId: string, size: { width: number; height: number }): Promise<Buffer> {
-  if (!/^[0-9a-f-]{36}$/.test(requestId) || !/^d\d(-story|-feed|-landscape)?$/.test(directionId)) throw new Error('Invalid creative reference');
+  if (!/^[0-9a-f-]{36}$/.test(requestId) || !/^d\d(-story|-feed|-landscape|-video)?$/.test(directionId)) throw new Error('Invalid creative reference');
   const dir = mediaDir('creatives', requestId);
   const raw = [`${directionId}-repaired-raw.png`, `${directionId}-raw.png`].map((f) => resolve(dir, f)).find((f) => existsSync(f));
   if (!raw) throw new Error('The original image for this design is not available on this server');
@@ -186,10 +186,10 @@ function inferAlign(t: { align: 'left' | 'center' | 'right'; shape: number; text
   return t.align;
 }
 
-export interface LayerPlan { layers: StudioLayer[]; holes: Box[]; objects: StudioDoc['objects']; zones: StudioDoc['zones'] }
+export interface LayerPlan { layers: StudioLayer[]; holes: Box[]; notices: string[]; flatPatches: {box:Box;png:Buffer}[]; objects: StudioDoc['objects']; zones: StudioDoc['zones'] }
 
 /** Layers measured from the original pixels, and the areas to clear from the background. No AI calls. */
-export async function planLayers(original: Buffer, analysis: StudioAnalysis): Promise<LayerPlan> {
+export async function planLayers(original: Buffer, analysis: StudioAnalysis, mode: 'text' | 'all' = 'text'): Promise<LayerPlan> {
   const raw = await toRaw(original);
   const { width, height } = raw;
   const P = (b: { x: number; y: number; width: number; height: number }) => clip({ x: b.x * width, y: b.y * height, width: b.width * width, height: b.height * height }, width, height);
@@ -197,9 +197,15 @@ export async function planLayers(original: Buffer, analysis: StudioAnalysis): Pr
   const texts = analysis.texts
     .filter((t) => t.text.trim() && !/^[←→↑↓•|·\s]+$/.test(t.text))
     .map((t) => ({ ...t, guess: P(t.box) }))
-    .filter((t) => t.guess.width >= 6 && t.guess.height >= 6);
+    .filter((t) => t.guess.width >= 6 && t.guess.height >= 6)
+    .filter((t, index, list) => !list.slice(0, index).some(other => {
+      if (letters(other.text).toLowerCase() !== letters(t.text).toLowerCase()) return false;
+      const a = other.guess, b = t.guess;
+      const overlap = Math.max(0, Math.min(a.x+a.width,b.x+b.width)-Math.max(a.x,b.x)) * Math.max(0, Math.min(a.y+a.height,b.y+b.height)-Math.max(a.y,b.y));
+      return overlap / Math.min(a.width*a.height,b.width*b.height) > .7;
+    }));
   // Shapes that cover a large part of the canvas stay in the background: repainting them is too risky.
-  const shapes = analysis.shapes
+  const shapes = (mode === 'all' ? analysis.shapes : [])
     .map((s, index) => ({ ...s, index, guess: P(s.box) }))
     .filter((s) => s.guess.width >= 16 && s.guess.height >= 10 && (s.guess.width * s.guess.height) / (width * height) <= 0.3);
 
@@ -219,6 +225,8 @@ export async function planLayers(original: Buffer, analysis: StudioAnalysis): Pr
     return clip({ x, y, width: Math.max(g.x + g.width, ink.x + ink.width) - x, height: Math.max(g.y + g.height, ink.y + ink.height) - y }, width, height);
   });
   const layers: StudioLayer[] = [];
+  let preservedTexts = 0;
+  const flatPatches: LayerPlan['flatPatches'] = [];
   const holes: Box[] = [];
   const groupOf = new Map<number, string>();
 
@@ -229,6 +237,7 @@ export async function planLayers(original: Buffer, analysis: StudioAnalysis): Pr
       return w > 0 && h > 0 && (w * h) / (b.width * b.height) >= 0.6;
     };
     const innerIdx = textArea.map((b, i) => (within(b) ? i : -1)).filter((i) => i >= 0);
+    if (innerIdx.some(i => !measures[i].reliable)) continue;
     const inner = innerIdx.map((i) => textArea[i]);
     const m = measureShape(raw, s.guess, inner);
     const id = newId('s');
@@ -243,32 +252,43 @@ export async function planLayers(original: Buffer, analysis: StudioAnalysis): Pr
 
   for (const [index, t] of texts.entries()) {
     const measure = measures[index];
+    // Uncertain text stays in the artwork; never erase it and replace it with guessed white letters.
+    if (!measure.reliable) { preservedTexts++; continue; }
     const text = approvedWithBreaks(t.text, t.approved);
     const stretched = /\u0640/.test(t.text) || letters(text) !== letters(t.text);
     const fitted = await fitText(text, measure, WEIGHT[t.weight], aligns[index], t.guess, stretched);
     const group = t.shape >= 0 ? groupOf.get(t.shape) : undefined;
-    layers.push({ kind: 'text', id: newId('t'), group, color: measure.reliable ? measure.color : '#FFFFFF', opacity: 1, ...fitted } satisfies TextLayer);
+    const layer: TextLayer = { kind: 'text', id: newId('t'), group, color: measure.color, opacity: 1, ...fitted };
+    // Preserve the actual rendered lettering until the user changes its copy or visual style.
+    // Corrected spelling deliberately uses the editable font rather than retaining the old misspelling.
+    const source = letters(text) === letters(t.text) ? await liftText(raw, measure) : null;
+    if (!source && mode === 'text' && letters(text) === letters(t.text)) { preservedTexts++; continue; }
+    if (source) layer.source = { file: saveStudioImage(source.png), x: source.box.x - layer.x, y: source.box.y - layer.y, width: source.box.width, height: source.box.height, signature: textAppearanceKey(layer) };
+    layers.push(layer);
     // The model's box and the measured ink together: marks above or below the letters (a damma) stay covered.
-    holes.push(clip(grow(textArea[index], Math.max(6, fitted.size * 0.2)), width, height));
+    const patch = mode === 'text' && source ? await eraseFlatText(raw, measure, source) : null;
+    if (patch && source) flatPatches.push({box:source.box,png:patch});
+    else holes.push(clip(grow(mode === 'text' ? measure.ink! : textArea[index], mode === 'text' ? 4 : Math.max(6, fitted.size * 0.2)), width, height));
   }
 
   return {
-    layers, holes,
+    layers, holes, flatPatches, notices: preservedTexts ? [`أُبقي ${preservedTexts} نص داخل الصورة لتعذّر فصله بثقة؛ يمكنك استخدام تعديل منطقة بدلًا من إعادة رسمه بشكل غير مطابق.`] : [],
     objects: analysis.objects.map((o) => ({ id: newId('o'), label: o.label.slice(0, 60), box: P(o.box) })).filter((o) => o.box.width >= 24 && o.box.height >= 24),
     zones: [...analysis.faces.map((f) => ({ kind: 'face' as const, box: P(f) })), ...analysis.objects.map((o) => ({ kind: 'subject' as const, box: P(o.box), label: o.label.slice(0, 40) }))],
   };
 }
 
-export async function decompose(input: { original: Buffer; format: Format; approvedCopy: string[]; analysis?: StudioAnalysis; env?: NodeJS.ProcessEnv }): Promise<StudioDoc> {
+export async function decompose(input: { original: Buffer; format: Format; approvedCopy: string[]; analysis?: StudioAnalysis; mode?: 'text' | 'all'; env?: NodeJS.ProcessEnv }): Promise<StudioDoc> {
   const env = input.env ?? process.env;
   const { width = 0, height = 0 } = await sharp(input.original).metadata();
   const analysis = input.analysis ?? await analyzeForStudio(input.original, input.approvedCopy, env);
-  const { layers, holes, objects, zones } = await planLayers(input.original, analysis);
+  const { layers, holes, objects, zones, notices, flatPatches } = await planLayers(input.original, analysis, input.mode);
+  const localClean = flatPatches.length ? await sharp(input.original).composite(flatPatches.map(p=>({input:p.png,left:p.box.x,top:p.box.y}))).png().toBuffer() : input.original;
   const clean = holes.length
-    ? await editRegions(input.original, holes, 'Remove all text, letters, numbers, buttons, badges, panels, icons and their shadows inside the transparent masked areas. Recreate exactly what would be behind them: continue the background, scenery, lighting and texture naturally with the same colors. Do not add any text, logo, icon, shape or new object.', input.format, env)
-    : input.original;
+    ? await editRegions(localClean, holes, input.mode === 'all' ? 'Remove all text, letters, numbers, buttons, badges, panels, icons and their shadows inside the transparent masked areas. Continue the existing background naturally. Do not add new text, logos or objects.' : 'Remove ONLY the flat text lettering inside the transparent masked areas. Preserve every existing button, badge, panel, icon, connecting line, shadow, illustration and photograph. Fill the removed glyphs with their immediate surrounding surface color and texture. Do not redesign, flatten, move or add anything.', input.format, env)
+    : localClean;
 
-  return { version: STUDIO_VERSION, width, height, baseFile: saveStudioImage(clean), layers, logo: null, objects, zones };
+  return { version: STUDIO_VERSION, width, height, baseFile: saveStudioImage(clean), layers, logo: null, objects, zones, notices };
 }
 
 /* ── Object extraction and AI edits ────────────────────────────────── */
@@ -286,14 +306,14 @@ export async function extractObject(doc: StudioDoc, target: { box: Box; label: s
   const crop = await sharp(base).extract({ left: region.x, top: region.y, width: region.width, height: region.height }).resize(size.w, size.h, { fit: 'fill' }).png().toBuffer();
   const [[isolated], cleaned] = await Promise.all([
     provider(env).edit({
-      prompt: `Keep the ${label} exactly as it is: same shape, pose, proportions, colors, lighting, details and position in the frame. Replace everything else with a flat, pure green background (#00FF00). No shadow, no floor, no outline, no text.`,
+      prompt: `Create only a segmentation mask for the ${label}: paint its entire silhouette solid white, including any originally green areas, with transparent holes represented by pure green. Preserve the exact original outline, proportions, pose and position in the frame. Paint everything outside this object pure green (#00FF00). No details, shadow, floor, text or new objects. This mask will be applied to the original pixels; do not redraw the object.`,
       size: `${size.w}x${size.h}`, quality: 'high', images: [{ data: crop, mime: 'image/png' }],
     }),
     editRegions(base, [clip(grow(target.box, Math.round(doc.width * 0.012)), doc.width, doc.height)], `Remove the ${label} inside the transparent masked area completely, including its shadow. Recreate exactly what would be behind it: continue the background, scenery, lighting and texture naturally. Do not add any text, logo, icon or new object.`, format, env),
   ]);
   const keyed = await keyGreen(isolated.png, region.width, region.height);
-  if (!keyed) throw new Error('The AI could not isolate this object cleanly. Try a tighter box or the AI edit tool.');
-  const layer: ImageLayer = { kind: 'image', id: newId('i'), name: label, file: saveStudioImage(keyed.png), x: region.x + keyed.trim.x, y: region.y + keyed.trim.y, width: keyed.trim.width, height: keyed.trim.height, opacity: 1 };
+  if (!keyed || keyed.trim.width < target.box.width * .4 || keyed.trim.height < target.box.height * .4) throw new Error('The AI could not isolate this object cleanly. Try a tighter box or the AI edit tool.');
+  const layer: ImageLayer = { kind: 'image', id: newId('i'), name: label, file: saveStudioImage(await originalCutout(await sharp(base).extract({ left: region.x, top: region.y, width: region.width, height: region.height }).png().toBuffer(), keyed)), x: region.x + keyed.trim.x, y: region.y + keyed.trim.y, width: keyed.trim.width, height: keyed.trim.height, opacity: 1 };
   return { ...doc, baseFile: saveStudioImage(cleaned), layers: [layer, ...doc.layers], objects: doc.objects.filter((o) => o.id !== target.objectId) };
 }
 
@@ -348,9 +368,11 @@ export function layersSvg(doc: StudioDoc): { svg: string; textHeights: Map<strin
       const out = outlineLayer(layer);
       if (out.missingGlyphs.length) problems.push(`"${layer.text.slice(0, 30)}" uses characters the brand fonts do not have: ${out.missingGlyphs.join(' ')}`);
       textHeights.set(layer.id, out.height);
+      const source = originalTextAppearance(layer);
+      const content = source ? `<image href="data:image/png;base64,${readFileSync(studioPath(source.file)).toString('base64')}" x="${num(source.x)}" y="${num(source.y)}" width="${num(source.width)}" height="${num(source.height)}"/>` : out.svg;
       const filter = layer.shadow ? shadowFilter(layer.id, textShadow(layer)) : '';
       const transform = [rotateTransform(layer, out.height), `translate(${num(layer.x)} ${num(layer.y)})`].filter(Boolean).join(' ');
-      body.push(`<g transform="${transform}"${opacity}${attr('filter', filter)}>${out.svg}</g>`);
+      body.push(`<g transform="${transform}"${opacity}${attr('filter', filter)}>${content}</g>`);
     }
   }
   return { svg: `<svg xmlns="http://www.w3.org/2000/svg" width="${doc.width}" height="${doc.height}"><defs>${defs.join('')}</defs>${body.join('')}</svg>`, textHeights, problems };

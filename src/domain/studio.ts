@@ -36,7 +36,13 @@ export interface TextLayer extends LayerBase {
   lineHeight: number;
   /** Soft drop shadow that keeps text readable on busy pictures. */
   shadow?: boolean;
+  /** Original glyph pixels, used until the wording or typography changes. Position/rotation remain editable. */
+  source?: { file: string; x: number; y: number; width: number; height: number; signature: string };
 }
+
+export const textAppearanceKey = (layer: Pick<TextLayer, 'text' | 'width' | 'size' | 'color' | 'weight' | 'align' | 'lineHeight' | 'shadow'>) =>
+  JSON.stringify([layer.text, layer.width, layer.size, layer.color, layer.weight, layer.align, layer.lineHeight, Boolean(layer.shadow)]);
+export const originalTextAppearance = (layer: TextLayer) => layer.source?.signature === textAppearanceKey(layer) ? layer.source : undefined;
 
 /** Flat UI shape: button, pill, badge or panel. `fill2` makes a left-to-right gradient. */
 export interface ShapeLayer extends LayerBase {
@@ -75,6 +81,7 @@ export interface StudioDoc {
   height: number;
   /** Background under every layer: the clean plate after decomposition, or the original. */
   baseFile: string;
+  notices?: string[];
   layers: StudioLayer[];
   /** Objects found in the background (people, devices, icons) that can be extracted. */
   objects: StudioObject[];

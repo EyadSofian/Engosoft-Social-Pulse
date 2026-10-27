@@ -122,3 +122,24 @@ test('dragging a row in the layers list moves that layer to the drop position', 
   assert.equal(moveLayerTo(doc, 'a', 2).layers.map((l) => l.id).join(''), 'bca');
   assert.equal(moveLayerTo(doc, 'c', 0).layers.map((l) => l.id).join(''), 'cab');
 });
+
+test('moving and proportional corner resizing retain original letterforms; editing words switches to editable typography',async()=>{
+  const {textAppearanceKey,originalTextAppearance}=await import('../src/domain/studio');
+  const layer=text('t');layer.source={file:'00000000-0000-0000-0000-000000000000.png',x:4,y:8,width:180,height:35,signature:textAppearanceKey(layer)};
+  assert.ok(originalTextAppearance({...layer,x:400,y:100,rotation:25,opacity:.5}));
+  const resized=resizeLayer(layer,'se',100,26,{textHeight:52}) as TextLayer;
+  assert.ok(originalTextAppearance(resized));assert.equal(resized.source!.width,270);
+  assert.equal(originalTextAppearance({...layer,text:'Different words'}),undefined);
+  assert.equal(originalTextAppearance({...layer,color:'#000000'}),undefined);
+});
+
+test('selection toolbar stays inside the viewport at both edges and avoids neighbouring text',async()=>{
+  const {toolbarPosition}=await import('../src/features/studio/toolbar-position');
+  for(const width of [320,800])for(const x of [-100,0,width-30,width+100]){
+    const result=toolbarPosition({x,y:80,width:150,height:60},{width,height:500},{width:600,height:44});
+    assert.ok(result.left>=0);assert.ok(result.left+Math.min(600,result.maxWidth)<=width);
+    assert.ok(result.top>=0&&result.top+44<=500);
+  }
+  const result=toolbarPosition({x:510,y:150,width:200,height:90},{width:800,height:600},{width:600,height:50},[{x:360,y:100,width:350,height:40},{x:360,y:250,width:350,height:40}]);
+  assert.equal(result.top,8,'Both adjacent lines are occupied, so dock in the viewport margin');
+});

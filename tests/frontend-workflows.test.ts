@@ -169,3 +169,16 @@ test('approval card renders channel labels and review actions from server moves,
   );
   assert.ok(!approved.includes('ca-card__actions'));
 });
+
+test('Studio displays the original glyphs while selecting text and switches to live editable text only after a change',async()=>{
+ const {StudioCanvas}=await import('../src/features/studio/StudioCanvas');
+ const {STUDIO_VERSION,textAppearanceKey}=await import('../src/domain/studio');
+ const layer:import('../src/domain/studio').TextLayer={id:'source',kind:'text',text:'CFM',x:100,y:100,width:200,size:70,color:'#0046FF',weight:800,align:'center',lineHeight:1.3,opacity:1};
+ layer.source={file:'00000000-0000-4000-a000-000000000001.png',x:2,y:10,width:190,height:55,signature:textAppearanceKey(layer)};
+ const doc:import('../src/domain/studio').StudioDoc={version:STUDIO_VERSION,width:1080,height:1350,baseFile:'00000000-0000-4000-a000-000000000002.png',layers:[layer],objects:[],zones:[],logo:null};
+ const props={doc,outlines:new Map(),selection:['source'],tool:'select' as const,region:null,highlight:null,working:false,editing:'source',compare:false,originalUrl:'',onSelect:noop,onLive:noop,onCommit:noop,onRegion:noop,onEdit:noop,onContextMenu:noop,onDropFiles:noop};
+ const original=render(createElement(StudioCanvas,props));
+ assert.ok(original.includes(layer.source.file));assert.ok(original.includes('color:transparent'));
+ const edited=render(createElement(StudioCanvas,{...props,doc:{...doc,layers:[{...layer,text:'New course'}]}}));
+ assert.ok(!edited.includes(layer.source.file));assert.ok(edited.includes('New course'));assert.ok(!edited.includes('color:transparent'));
+});

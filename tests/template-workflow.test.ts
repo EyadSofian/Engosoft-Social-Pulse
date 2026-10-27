@@ -151,3 +151,22 @@ test('completed reference jobs survive restart recovery and remain private to th
   assert.equal((await request('/api/reference-design/jobs/saved-result', 'GET', undefined, 'manager')).status, 404);
   assert.equal((await request('/api/reference-design/jobs/saved-result')).status, 200);
 });
+
+test('Studio keeps original text appearances through validation, saving and reopening; unsafe source paths are rejected', async () => {
+  const {saveStudioImage}=await import('../server/creative-intelligence/studio/studio');
+  const {textAppearanceKey,STUDIO_VERSION}=await import('../src/domain/studio');
+  const sharp=(await import('sharp')).default;
+  const baseFile=saveStudioImage(await sharp({create:{width:1080,height:1350,channels:3,background:'#FFFFFF'}}).png().toBuffer());
+  const file=saveStudioImage(await sharp({create:{width:120,height:40,channels:4,background:'#0046FF'}}).png().toBuffer());
+  const layer:import('../src/domain/studio').TextLayer={id:'t-original',kind:'text',text:'CFM',x:400,y:500,width:150,size:60,color:'#0046FF',weight:800,align:'center',lineHeight:1.3,opacity:1};
+  layer.source={file,x:2,y:8,width:120,height:40,signature:textAppearanceKey(layer)};
+  const response=await request('/api/content','POST',{title:'Studio preservation',channels:['facebook'],creative:{requestId:'00000000-0000-4000-a000-000000000001',directionId:'d1',imageUrl:'/api/uploads/00000000-0000-4000-a000-000000000001.png'}},'manager');
+  assert.equal(response.status,201);const {id}=await response.json() as {id:string};
+  const doc={version:STUDIO_VERSION,width:1080,height:1350,baseFile,layers:[layer],objects:[],zones:[],logo:null,notices:['Preserved original glyphs']};
+  assert.equal((await request(`/api/studio/${id}/render`,'POST',{doc},'manager')).status,200);
+  const reopened=await (await request(`/api/studio/${id}/doc`,'GET',undefined,'manager')).json() as {doc:import('../src/domain/studio').StudioDoc};
+  assert.deepEqual((reopened.doc.layers[0] as import('../src/domain/studio').TextLayer).source,layer.source);
+  assert.deepEqual(reopened.doc.notices,doc.notices);
+  const unsafe={...doc,layers:[{...layer,source:{...layer.source,file:'../private.png'}}]};
+  assert.equal((await request(`/api/studio/${id}/render`,'POST',{doc:unsafe},'manager')).status,400);
+});

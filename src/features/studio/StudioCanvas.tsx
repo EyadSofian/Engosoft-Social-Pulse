@@ -1,9 +1,10 @@
 import { useEffect, useLayoutEffect, useRef, useState, type CSSProperties, type DragEvent, type MouseEvent as ReactMouseEvent, type PointerEvent as ReactPointerEvent, type ReactNode } from 'react';
 import { Maximize, Minus, Plus } from 'lucide-react';
-import { flipTransform, rotateTransform, shapeShadow, strokeOf, textShadow, type Box, type StudioDoc, type StudioLayer } from '../../domain/studio';
+import { flipTransform, originalTextAppearance, rotateTransform, shapeShadow, strokeOf, textShadow, type Box, type StudioDoc, type StudioLayer } from '../../domain/studio';
 import { useI18n } from '../../i18n/I18nProvider';
 import { boundsOf, boxOf, groupOf, intersects, movable, moveLayers, resizeLayer, selectionBounds, snapAngle, updateLayer, type Handle } from './edit';
 import { snapEdge, snapMove, type Guide } from './snap';
+import { toolbarPosition } from './toolbar-position';
 import type { Outline } from './useOutlines';
 
 export type Tool = 'select' | 'ai';
@@ -71,6 +72,8 @@ export function StudioCanvas({ doc, outlines, selection, tool, region, highlight
   const viewport = useRef<HTMLDivElement>(null);
   const stage = useRef<HTMLDivElement>(null);
   const editor = useRef<HTMLTextAreaElement>(null);
+  const floating = useRef<HTMLDivElement>(null);
+  const [toolbarSize, setToolbarSize] = useState({ width: 480, height: 42 });
   const [view, setView] = useState({ width: 800, height: 600 });
   const [zoom, setZoom] = useState<'fit' | number>('fit');
   const [hover, setHover] = useState<string | null>(null);
@@ -80,6 +83,7 @@ export function StudioCanvas({ doc, outlines, selection, tool, region, highlight
   const [space, setSpace] = useState(false);
   const [dragging, setDragging] = useState(false);
   const [scrollTop, setScrollTop] = useState(0);
+  const [scrollLeft, setScrollLeft] = useState(0);
   const drag = useRef<Drag | null>(null);
   const anchor = useRef<{ docX: number; docY: number; clientX: number; clientY: number } | null>(null);
   /** Layer under the last press: pointer capture retargets the following dblclick to the viewport. */
@@ -347,13 +351,21 @@ export function StudioCanvas({ doc, outlines, selection, tool, region, highlight
   const bounds = selected.length ? selectionBounds(doc, selection, heightOf) : null;
   const hoverLayer = hover && !selection.includes(hover) && !dragging ? doc.layers.find((l) => l.id === hover) : undefined;
   const showFloat = Boolean(toolbar && bounds && !dragging && !editing && tool === 'select' && !compare);
-  const floatBelow = bounds ? bounds.y * scale + offY - scrollTop < 64 : false;
+  const floatingPosition = bounds ? toolbarPosition({ x: bounds.x * scale + offX - scrollLeft, y: bounds.y * scale + offY - scrollTop, width: bounds.width * scale, height: bounds.height * scale }, view, toolbarSize, visible.filter(l => !selection.includes(l.id)).map(l => { const b = boundsOf(l, heightOf(l.id)); return { x: b.x * scale + offX - scrollLeft, y: b.y * scale + offY - scrollTop, width: b.width * scale, height: b.height * scale }; })) : undefined;
+  useLayoutEffect(() => {
+    const el = floating.current;
+    if (!el) return;
+    const measure = () => setToolbarSize({ width: el.offsetWidth, height: el.offsetHeight });
+    measure();
+    const observer = new ResizeObserver(measure); observer.observe(el);
+    return () => observer.disconnect();
+  }, [showFloat]);
   const filterOf = (l: StudioLayer) => ((l.kind === 'text' || l.kind === 'shape') && l.shadow ? `url(#f-${l.id})` : undefined);
 
   return (
     <div className="studio__view">
       <div ref={viewport} className="studio__viewport" data-tool={tool} data-pan={space || undefined} data-dragging={dragging || undefined}
-        onPointerDown={onPointerDown} onPointerMove={onPointerMove} onPointerUp={onPointerUp} onPointerCancel={onPointerUp} onScroll={(e) => setScrollTop(e.currentTarget.scrollTop)}
+        onPointerDown={onPointerDown} onPointerMove={onPointerMove} onPointerUp={onPointerUp} onPointerCancel={onPointerUp} onScroll={(e) => { setScrollTop(e.currentTarget.scrollTop); setScrollLeft(e.currentTarget.scrollLeft); }}
         onDoubleClick={onDoubleClick} onContextMenu={onContext} onDragOver={(e) => { if (e.dataTransfer.types.includes('Files')) e.preventDefault(); }} onDrop={onDrop}>
         <div className="studio__inner" style={{ width: innerW, height: innerH }}>
           <div ref={stage} className="studio__stage" style={{ left: offX, top: offY, width: stageW, height: stageH }}>
@@ -392,10 +404,11 @@ export function StudioCanvas({ doc, outlines, selection, tool, region, highlight
                 }
                 if (l.kind === 'image') return <g key={l.id} {...common} transform={rot}><image href={`/api/studio/${l.file}`} x={l.x} y={l.y} width={l.width} height={l.height} preserveAspectRatio="none" transform={flipTransform(l) || undefined} /></g>;
                 const outline = outlines.get(l.id);
+                const source = originalTextAppearance(l);
                 return (
                   <g key={l.id} {...common} transform={[rot, `translate(${l.x} ${l.y})`].filter(Boolean).join(' ')} filter={filterOf(l)}>
                     <rect width={l.width} height={Math.max(height, l.size)} fill="transparent" />
-                    {outline && editing !== l.id && <g dangerouslySetInnerHTML={{ __html: outline.svg }} />}
+                    {(editing !== l.id || source) && (source ? <image href={`/api/studio/${source.file}`} x={source.x} y={source.y} width={source.width} height={source.height} /> : outline && <g dangerouslySetInnerHTML={{ __html: outline.svg }} />)}
                   </g>
                 );
               })}
@@ -420,23 +433,20 @@ export function StudioCanvas({ doc, outlines, selection, tool, region, highlight
                 <textarea ref={editor} className="studio__inline" dir="auto" spellCheck={false} value={editLayer.text} aria-label={t('Text', 'النص')}
                   style={{
                     left: editLayer.x * scale, top: editLayer.y * scale, width: editLayer.width * scale,
-                    fontSize: editLayer.size * scale, fontWeight: editLayer.weight, color: editLayer.color, lineHeight: editLayer.lineHeight,
+                    fontSize: editLayer.size * scale, fontWeight: editLayer.weight, color: originalTextAppearance(editLayer) ? 'transparent' : editLayer.color, lineHeight: editLayer.lineHeight,
                     textAlign: editLayer.align, opacity: editLayer.opacity, transform: editLayer.rotation ? `rotate(${editLayer.rotation}deg)` : undefined,
                   }}
                   onChange={(e) => onLive(updateLayer(doc, editLayer.id, { text: e.target.value }))}
                   onBlur={() => { onCommit(); onEdit(null); }}
                   onKeyDown={(e) => { e.stopPropagation(); if (e.key === 'Escape' || (e.key === 'Enter' && (e.metaKey || e.ctrlKey))) { e.preventDefault(); e.currentTarget.blur(); } }} />
               )}
-              {showFloat && bounds && (
-                <div className={`studio__float${floatBelow ? ' is-below' : ''}`} style={{ left: (bounds.x + bounds.width / 2) * scale, top: floatBelow ? (bounds.y + bounds.height) * scale + 14 : bounds.y * scale - 14 }}>
-                  {toolbar}
-                </div>
-              )}
+
             </div>
             {working && !region && <span className="studio__working" aria-hidden />}
           </div>
         </div>
       </div>
+      {showFloat && floatingPosition && <div ref={floating} className="studio__float" style={floatingPosition}>{toolbar}</div>}
       <div className="studio__zoombar glass" role="group" aria-label={t('Zoom', 'التكبير')}>
         <button type="button" onClick={() => stepZoom(-1)} aria-label={t('Zoom out', 'تصغير')} title={t('Zoom out (⌘−)', 'تصغير (⌘−)')}><Minus size={14} /></button>
         <button type="button" className="u-tnum" onClick={() => zoomTo(zoom === 'fit' ? 1 : 'fit')} title={t('Fit / 100%  (⌘0 / ⌘1)', 'ملاءمة / 100%  (⌘0 / ⌘1)')}>{Math.round(scale * 100)}%</button>

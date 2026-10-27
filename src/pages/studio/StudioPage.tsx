@@ -55,6 +55,7 @@ function StudioEditor({ id }: { id: string }) {
   const history = useHistory<StudioDoc>();
   const doc = history.present;
   const [imageUrl, setImageUrl] = useState('');
+  const [splitMode, setSplitMode] = useState<'text' | 'all'>('text');
   const [phase, setPhase] = useState<'loading' | 'intro' | 'decomposing' | 'editing'>('loading');
   const [selection, setSelection] = useState<string[]>([]);
   const [editing, setEditing] = useState<string | null>(null);
@@ -230,7 +231,7 @@ function StudioEditor({ id }: { id: string }) {
   const makeEditable = async () => {
     setPhase('decomposing'); setError(''); setDraft(null);
     try {
-      const { jobId } = await api<{ jobId: string }>(`/api/studio/${id}/decompose`, { method: 'POST' });
+      const { jobId } = await api<{ jobId: string }>(`/api/studio/${id}/decompose`, { method: 'POST', body: { mode: splitMode } });
       const next = await waitForJob(jobId);
       if (doc) history.apply(next); else history.reset(next);
       setSelection([]); setPhase('editing');
@@ -320,6 +321,7 @@ function StudioEditor({ id }: { id: string }) {
       </div>}
       <input ref={fileInput} type="file" accept="image/png,image/jpeg,image/webp" hidden onChange={(e) => { const f = e.target.files?.[0]; e.target.value = ''; if (f) void upload(f); }} />
     </header>
+    {doc?.notices?.map((notice, i) => <p key={i} className="u-sm u-muted" role="status">{notice}</p>)}
     {error && <p role="alert" className="creative-home__error">{error}</p>}
     {draft && <div className="studio__draft glass" role="status">
       <RotateCcw size={16} />
@@ -332,8 +334,9 @@ function StudioEditor({ id }: { id: string }) {
       <div className={`studio__preview${phase === 'decomposing' ? ' is-scanning' : ''}`}>{imageUrl && <img src={imageUrl} alt="" />}<span className="studio__scan" aria-hidden /></div>
       <div className="studio__intro-text glass">
         <Sparkles size={22} />
-        <h2>{phase === 'decomposing' ? t('Splitting the design into layers…', 'جارٍ فصل التصميم إلى طبقات…') : t('Make every part of this design editable', 'اجعل كل جزء في التصميم قابلًا للتعديل')}</h2>
-        <p>{t('The AI separates the design into layers: every text in the brand fonts, buttons and panels as shapes you can recolor and resize, and the icons on them. Objects in the picture (people, devices, icons) can then be lifted into their own layers, with the background rebuilt behind them. The logo is placed again automatically when you save.', 'يفصل الذكاء الاصطناعي التصميم إلى طبقات: كل نص بخطوط الهوية، والأزرار واللوحات كأشكال يمكنك تغيير لونها وحجمها، والأيقونات التي عليها. بعدها يمكنك فصل أي عنصر في الصورة (أشخاص، أجهزة، أيقونات) في طبقة مستقلة، مع إعادة بناء الخلفية خلفه. ويُعاد وضع الشعار تلقائيًا عند الحفظ.')}</p>
+        <h2>{phase === 'decomposing' ? t('Splitting the design into layers…', 'جارٍ فصل التصميم إلى طبقات…') : t('Choose what to make editable', 'اختَر العناصر المراد تعديلها')}</h2>
+        <p>{t('Text-only extraction preserves artwork, icons and badges. Unchanged text keeps its original glyphs; edited wording uses the brand fonts. Extracting flat shapes also reconstructs their appearance.', 'استخراج النصوص فقط يحافظ على الرسومات والأيقونات والبادجات. يحتفظ النص غير المعدّل بشكله الأصلي؛ تعديل الصياغة يستخدم خطوط الهوية. استخراج الأشكال أيضًا يعيد بناء مظهرها.')}</p>
+        <label className="studio__split-mode">{t('Extraction', 'الاستخراج')}<select value={splitMode} disabled={phase === 'decomposing'} onChange={e => setSplitMode(e.target.value as 'text' | 'all')}><option value="text">{t('Text only · preserve artwork', 'النصوص فقط · الحفاظ على الرسومات')}</option><option value="all">{t('Text and flat shapes · reconstruct appearance', 'النصوص والأشكال المسطّحة · إعادة بناء المظهر')}</option></select></label>
         <Button variant="primary" disabled={phase !== 'intro'} busy={phase === 'decomposing'} icon={<Sparkles size={16} />} onClick={() => void makeEditable()}>{phase === 'decomposing' ? t('About a minute', 'نحو دقيقة') : t('Make editable', 'ابدأ التعديل')}</Button>
       </div>
     </div>}

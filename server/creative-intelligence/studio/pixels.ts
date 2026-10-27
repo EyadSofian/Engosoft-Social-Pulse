@@ -159,6 +159,39 @@ export async function renderedLines(svg: string, width: number, height: number):
   return bands(mask, Math.min(width, info.width), Math.min(height, info.height));
 }
 
+/** Lift the actual glyph silhouette from a quiet background, retaining antialiasing instead of redrawing a font. */
+export async function liftText(raw: Raw, measure: TextMeasure): Promise<{ png: Buffer; box: Box } | null> {
+  if (!measure.reliable || !measure.ink) return null;
+  const box = clip(grow(measure.ink, 2), raw.width, raw.height);
+  const bg = measure.background, ink = measure.inkColor;
+  const delta = ink.map((v, i) => v - bg[i]);
+  const energy = delta.reduce((sum, v) => sum + v * v, 0);
+  if (energy < 45 * 45) return null;
+  const rgba = Buffer.alloc(box.width * box.height * 4);
+  let solid = 0;
+  for (let y = 0; y < box.height; y++) for (let x = 0; x < box.width; x++) {
+    const gx = box.x + x, gy = box.y + y;
+    if (!measure.lines.some(l => gy >= l.top - 1 && gy <= l.bottom + 1 && gx >= l.left - 1 && gx <= l.right + 1)) continue;
+    const c = px(raw, gx, gy);
+    const a = Math.max(0, Math.min(1, delta.reduce((sum, v, i) => sum + (c[i] - bg[i]) * v, 0) / energy));
+    const reconstructed = bg.map((v, i) => v + a * delta[i]) as Rgb;
+    // Photographic detail is not a glyph. Do not lift it as accidental text-colored noise.
+    if (a < 0.035 || dist(c, reconstructed) > 20) continue;
+    const offset = (y * box.width + x) * 4;
+    for (let k = 0; k < 3; k++) rgba[offset + k] = Math.max(0, Math.min(255, Math.round((c[k] - (1 - a) * bg[k]) / a)));
+    rgba[offset + 3] = Math.round(a * 255);
+    if (a > 0.5) solid++;
+  }
+  if (solid < 8) return null;
+  return { box, png: await sharp(rgba, { raw: { width: box.width, height: box.height, channels: 4 } }).png().toBuffer() };
+}
+
+/** A model supplies only the cut-out mask. The object colors/details always come from the original crop. */
+export async function originalCutout(original: Buffer, mask: { png: Buffer; trim: Box }): Promise<Buffer> {
+  const crop = await sharp(original).extract({ left: mask.trim.x, top: mask.trim.y, width: mask.trim.width, height: mask.trim.height }).ensureAlpha().png().toBuffer();
+  return sharp(crop).composite([{ input: mask.png, blend: 'dest-in' }]).png().toBuffer();
+}
+
 export interface ShapeMeasure { box: Box; fill: string; fill2: string | null; fillAt: (x: number, y: number) => Rgb }
 
 /**
@@ -310,4 +343,24 @@ export async function keyGreen(png: Buffer, width: number, height: number): Prom
   const trim = { x: minX, y: minY, width: maxX - minX + 1, height: maxY - minY + 1 };
   const out = await sharp(rgba, { raw: { width, height, channels: 4 } }).extract({ left: trim.x, top: trim.y, width: trim.width, height: trim.height }).png().toBuffer();
   return { png: out, trim };
+}
+
+/** Quiet surfaces can be cleaned directly, avoiding a generative repaint of a badge or light background. */
+export async function eraseFlatText(raw: Raw, measure: TextMeasure, lifted: {png:Buffer;box:Box}): Promise<Buffer|null> {
+  const {data:alpha}=await sharp(lifted.png).ensureAlpha().extractChannel(3).raw().toBuffer({resolveWithObject:true});
+  const b=lifted.box;
+  let background=0,quiet=0;
+  for(let y=0;y<b.height;y++)for(let x=0;x<b.width;x++){
+    if(alpha[y*b.width+x]>8)continue;
+    background++;
+    if(dist(px(raw,b.x+x,b.y+y),measure.background)<=6)quiet++;
+  }
+  if(background<40||quiet/background<.97)return null;
+  const rgba=Buffer.alloc(b.width*b.height*4);
+  for(let y=0;y<b.height;y++)for(let x=0;x<b.width;x++){
+    const i=y*b.width+x,o=i*4;
+    const c=alpha[i]>4?measure.background:px(raw,b.x+x,b.y+y);
+    rgba[o]=c[0];rgba[o+1]=c[1];rgba[o+2]=c[2];rgba[o+3]=255;
+  }
+  return sharp(rgba,{raw:{width:b.width,height:b.height,channels:4}}).png().toBuffer();
 }

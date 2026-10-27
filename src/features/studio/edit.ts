@@ -1,5 +1,5 @@
 /** Pure edits on a Studio document. Every function returns a new document. */
-import type { Box, ImageLayer, ShapeLayer, StudioDoc, StudioLayer, TextLayer } from '../../domain/studio';
+import { originalTextAppearance, textAppearanceKey, type Box, ImageLayer, ShapeLayer, StudioDoc, StudioLayer, TextLayer } from '../../domain/studio';
 
 export type Handle = 'n' | 's' | 'e' | 'w' | 'ne' | 'nw' | 'se' | 'sw';
 /** Rendered height of a text layer (from its outline), when known. */
@@ -102,7 +102,15 @@ export function resizeLayer(start: StudioLayer, handle: Handle, dxWorld: number,
   const cx = left + w / 2 - w0 / 2, cy = top + h / 2 - h0 / 2;
   const centerX = start.x + w0 / 2 + cx * cos - cy * sin, centerY = start.y + h0 / 2 + cx * sin + cy * cos;
   const x = round(centerX - w / 2), y = round(centerY - h / 2);
-  if (start.kind === 'text') return { ...start, x, y, width: round(w), size: proportional ? clamp(round(start.size * scale), 8, 400) : start.size };
+  if (start.kind === 'text') {
+    const next = { ...start, x, y, width: round(w), size: proportional ? clamp(round(start.size * scale), 8, 400) : start.size };
+    const source = originalTextAppearance(start);
+    if (proportional && source) {
+      const factor = next.width / start.width;
+      next.source = { ...source, x: source.x * factor, y: source.y * factor, width: source.width * factor, height: source.height * factor, signature: textAppearanceKey(next) };
+    }
+    return next;
+  }
   const resized = { ...start, x, y, width: round(w), height: round(h) };
   if (resized.kind === 'shape') resized.radius = Math.min(resized.radius, Math.floor(Math.min(resized.width, resized.height) / 2));
   return resized;
