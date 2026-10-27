@@ -15,6 +15,7 @@ const fmtDate = (iso: string) => new Date(iso).toLocaleDateString('ar-EG-u-nu-la
 export function CoursePicker({ onPick, autoFocus }: { onPick: (pick: CoursePick) => void; autoFocus?: boolean }) {
   const { t } = useI18n();
   const [query, setQuery] = useState('');
+  const [limit, setLimit] = useState(8);
   const [data, setData] = useState<{ courses: OdooCourse[]; events: OdooEvent[]; status: string; message?: string } | null>(null);
   const [loading, setLoading] = useState(false);
   useEffect(() => {
@@ -36,13 +37,13 @@ export function CoursePicker({ onPick, autoFocus }: { onPick: (pick: CoursePick)
     <div className="course-picker">
       <label className="course-picker__search">
         {loading ? <Loader2 size={16} className="creative-job__spin" /> : <Search size={16} />}
-        <input dir="auto" autoFocus={autoFocus} value={query} onChange={(e) => setQuery(e.target.value)} placeholder={t('Search courses: AutoCAD, CFM, Revit, safety…', 'ابحث في الدورات: أوتوكاد، CFM، ريفيت، السلامة…')} aria-label={t('Search courses', 'ابحث في الدورات')} />
+        <input dir="auto" autoFocus={autoFocus} value={query} onChange={(e) => { setQuery(e.target.value); setLimit(8); }} placeholder={t('Search courses: AutoCAD, CFM, Revit, safety…', 'ابحث في الدورات: أوتوكاد، CFM، ريفيت، السلامة…')} aria-label={t('Search courses', 'ابحث في الدورات')} />
       </label>
       {data?.status && data.status !== 'connected' && <p className="u-xs u-muted">{data.message || t('Odoo is not available.', 'Odoo غير متاح.')}</p>}
       {courses.length > 0 && (
         <div className="course-picker__group">
           <small>{t('Courses', 'الدورات')}</small>
-          {courses.slice(0, 8).map((course) => (
+          {courses.slice(0, limit).map((course) => (
             <button key={course.id} type="button" className="course-picker__item" onClick={() => onPick({ type: 'course', course })}>
               <span className="course-picker__icon">{course.kind === 'elearning' ? <MonitorPlay size={15} /> : <GraduationCap size={15} />}</span>
               <span className="course-picker__text">
@@ -51,6 +52,7 @@ export function CoursePicker({ onPick, autoFocus }: { onPick: (pick: CoursePick)
               </span>
             </button>
           ))}
+          {courses.length > limit && <button type="button" className="ui-link" onClick={() => setLimit(n => n + 8)}>{t('More courses', 'دورات أكثر')}</button>}
         </div>
       )}
       {events.length > 0 && (

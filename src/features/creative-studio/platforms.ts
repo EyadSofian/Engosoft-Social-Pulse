@@ -6,6 +6,7 @@ import type { PostSizeId } from '../post-design/templates';
  * a 1.91:1 banner that also works as the link preview image.
  */
 export const PLATFORM_FORMATS = {
+  youtube: { label: 'YouTube', format: 'Thumbnail 16:9', master: 'video', width: 1280, height: 720, sizeId: 'video-wide', copyLimit: 500, headlineLimit: 70 },
   instagram: { label: 'Instagram', format: 'Feed 4:5', master: 'feed', width: 1080, height: 1350, sizeId: 'portrait', copyLimit: 220, headlineLimit: 70 },
   facebook: { label: 'Facebook', format: 'Feed 4:5', master: 'feed', width: 1080, height: 1350, sizeId: 'portrait', copyLimit: 360, headlineLimit: 85 },
   linkedin: { label: 'LinkedIn', format: 'Feed 4:5', master: 'feed', width: 1080, height: 1350, sizeId: 'portrait', copyLimit: 350, headlineLimit: 75 },
@@ -13,15 +14,15 @@ export const PLATFORM_FORMATS = {
   tiktok: { label: 'TikTok', format: 'Vertical 9:16', master: 'story', width: 1080, height: 1920, sizeId: 'story', copyLimit: 100, headlineLimit: 48 },
   snapchat: { label: 'Snapchat', format: 'Vertical 9:16', master: 'story', width: 1080, height: 1920, sizeId: 'story', copyLimit: 80, headlineLimit: 44 },
   website: { label: 'Website', format: 'Banner 1.91:1', master: 'landscape', width: 1200, height: 630, sizeId: 'facebook-wide', copyLimit: 600, headlineLimit: 90 },
-} as const satisfies Record<string, { label: string; format: string; master: 'feed' | 'story' | 'landscape'; width: number; height: number; sizeId: PostSizeId; copyLimit: number; headlineLimit: number }>;
-export type CreativeMaster = 'feed' | 'story' | 'landscape';
+} as const satisfies Record<string, { label: string; format: string; master: 'feed' | 'story' | 'landscape' | 'video'; width: number; height: number; sizeId: PostSizeId; copyLimit: number; headlineLimit: number }>;
+export type CreativeMaster = 'feed' | 'story' | 'landscape' | 'video';
 /** The format generated first: feed when any feed platform is chosen, else vertical, else the website banner. */
 export const masterFormat = (platforms: readonly CreativePlatform[]): CreativeMaster =>
-  platforms.some((p) => PLATFORM_FORMATS[p].master === 'feed') ? 'feed' : platforms.some((p) => PLATFORM_FORMATS[p].master === 'story') ? 'story' : 'landscape';
+  platforms.some((p) => PLATFORM_FORMATS[p].master === 'feed') ? 'feed' : platforms.some((p) => PLATFORM_FORMATS[p].master === 'story') ? 'story' : platforms.some(p => PLATFORM_FORMATS[p].master === 'video') ? 'video' : 'landscape';
 /** Extra formats to adapt the master into for the chosen platforms. */
 export const extraFormats = (platforms: readonly CreativePlatform[]): CreativeMaster[] => {
   const master = masterFormat(platforms);
-  return (['story', 'landscape'] as const).filter((format) => format !== master && platforms.some((p) => PLATFORM_FORMATS[p].master === format));
+  return (['story', 'landscape', 'video'] as const).filter((format) => format !== master && platforms.some((p) => PLATFORM_FORMATS[p].master === format));
 };
 export type CreativePlatform = keyof typeof PLATFORM_FORMATS;
 export const CREATIVE_PLATFORMS = Object.keys(PLATFORM_FORMATS) as CreativePlatform[];

@@ -103,7 +103,8 @@ export function FullCreativeJob({ jobId, requestId, platforms, prompt, onRestart
         const result = results.find((r) => r.directionId === id);
         const story = results.find((r) => r.directionId === `${id}-story`);
         const landscape = results.find((r) => r.directionId === `${id}-landscape`);
-        const variants = { story, landscape } as Record<CreativeMaster, PublicResult | undefined>;
+        const video = results.find(r => r.directionId === `${id}-video`);
+        const variants = { story, landscape, video } as Record<CreativeMaster, PublicResult | undefined>;
         const stage = job?.directionStages[id] ?? (job?.status === 'running' ? 'generating' : 'done');
         return <motion.article key={id} className="creative-job__card glass" initial={{ opacity: 0, y: 16 }} animate={{ opacity: 1, y: 0 }} transition={{ delay: index * 0.08, type: 'spring', stiffness: 300, damping: 30 }}>
           <div className="creative-job__frame">
@@ -120,17 +121,17 @@ export function FullCreativeJob({ jobId, requestId, platforms, prompt, onRestart
             <p dir="auto" className="u-xs u-muted">{direction.concept}</p>
             {result && <Details result={result} />}
             {result && run && can('content.approve') && <DesignPlanPanel requestId={run.requestId} directionId={id} />}
-            {result?.imageUrl && run && <ResultActions run={run} result={result} story={story} landscape={landscape} platforms={platforms} prompt={prompt} direction={direction} />}
+            {result?.imageUrl && run && <ResultActions run={run} result={result} story={story} landscape={landscape} video={video} platforms={platforms} prompt={prompt} direction={direction} />}
             {result?.imageUrl && extras.filter((format) => !variants[format]).map((format) => {
               const key = `${id}:${format}`;
               return <Button key={format} variant="secondary" disabled={Boolean(adapting[key])} onClick={() => void adapt(id, format)}>
-                {adapting[key] ? <><Loader2 className="creative-job__spin" size={15} /> {t(STAGES[adapting[key]]?.[0] ?? 'Working', STAGES[adapting[key]]?.[1] ?? 'قيد التنفيذ')}</> : format === 'story' ? <><Smartphone size={15} /> {t('Make the 9:16 version (WhatsApp, TikTok, Snapchat)', 'أنشئ نسخة 9:16 (واتساب، تيك توك، سناب شات)')}</> : <><Globe size={15} /> {t('Make the website banner 1200×630', 'أنشئ بانر الموقع 1200×630')}</>}
+                {adapting[key] ? <><Loader2 className="creative-job__spin" size={15} /> {t(STAGES[adapting[key]]?.[0] ?? 'Working', STAGES[adapting[key]]?.[1] ?? 'قيد التنفيذ')}</> : format === 'story' ? <><Smartphone size={15} /> {t('Make the 9:16 version (WhatsApp, TikTok, Snapchat)', 'أنشئ نسخة 9:16 (واتساب، تيك توك، سناب شات)')}</> : format === 'video' ? <><Globe size={15} />{t('Make YouTube thumbnail 1280×720', 'أنشئ صورة يوتيوب 1280×720')}</> : <><Globe size={15} /> {t('Make the website banner 1200×630', 'أنشئ بانر الموقع 1200×630')}</>}
               </Button>;
             })}
-            {(['story', 'landscape'] as const).map((format) => {
+            {(['story', 'landscape', 'video'] as const).map((format) => {
               const variant = variants[format];
               if (!variant) return null;
-              const size = format === 'story' ? '9:16' : '1200×630';
+              const size = format === 'story' ? '9:16' : format === 'video' ? '1280×720' : '1200×630';
               return <div key={format} className="creative-job__variant" data-format={format}><motion.img src={variant.imageUrl} alt={size} initial={{ opacity: 0, filter: 'blur(14px)' }} animate={{ opacity: 1, filter: 'blur(0px)' }} transition={{ duration: 0.8 }} /><Status result={variant} />{variant.imageUrl && <a className="ui-btn ui-btn--secondary ui-btn--md" href={variant.imageUrl} download={`engosoft-${variant.directionId}.png`}><Download size={15} /> PNG {size}</a>}</div>;
             })}
           </div>
@@ -142,7 +143,7 @@ export function FullCreativeJob({ jobId, requestId, platforms, prompt, onRestart
 }
 
 /** Save the design into the content pipeline, or keep its recipe as an AI template. */
-function ResultActions({ run, result, story, landscape, platforms, prompt, direction }: { run: PublicRun; result: PublicResult; story?: PublicResult; landscape?: PublicResult; platforms: CreativePlatform[]; prompt: string; direction: Brief['directions'][number] }) {
+function ResultActions({ run, result, story, landscape, video, platforms, prompt, direction }: { run: PublicRun; result: PublicResult; story?: PublicResult; landscape?: PublicResult; video?: PublicResult; platforms: CreativePlatform[]; prompt: string; direction: Brief['directions'][number] }) {
   const { t } = useI18n();
   const { navigate } = useRouter();
   const [busy, setBusy] = useState('');
@@ -152,7 +153,7 @@ function ResultActions({ run, result, story, landscape, platforms, prompt, direc
     setBusy(send ? 'send' : 'draft'); setError('');
     try {
       const captions = Object.fromEntries(platforms.map((p) => [p, run.brief.captions?.[p] || run.brief.caption]));
-      const item = await api<{ id: string }>('/api/content', { body: { title: run.brief.canonicalCopy.headline, channels: platforms, captions, creative: { requestId: run.requestId, directionId: result.directionId, imageUrl: result.imageUrl, ...(story?.imageUrl ? { storyUrl: story.imageUrl } : {}), ...(landscape?.imageUrl ? { landscapeUrl: landscape.imageUrl } : {}), model: result.model, directionName: direction.name } } });
+      const item = await api<{ id: string }>('/api/content', { body: { title: run.brief.canonicalCopy.headline, channels: platforms, captions, creative: { requestId: run.requestId, directionId: result.directionId, imageUrl: result.imageUrl, ...(story?.imageUrl ? { storyUrl: story.imageUrl } : {}), ...(landscape?.imageUrl ? { landscapeUrl: landscape.imageUrl } : {}), ...(video?.imageUrl ? { youtubeUrl: video.imageUrl } : {}), model: result.model, directionName: direction.name } } });
       if (send) await api(`/api/content/${item.id}/transition`, { body: { to: 'ready_for_review' } });
       navigate(`/content/${item.id}`);
     } catch (e) { setError(errorMessage(e, '')); }
@@ -163,7 +164,7 @@ function ResultActions({ run, result, story, landscape, platforms, prompt, direc
     if (!name) return;
     setBusy('template'); setError('');
     try {
-      await api('/api/ai-templates', { body: { name, prompt, description: direction.concept, style: [direction.concept, direction.subject, direction.composition, direction.palette, direction.typography, direction.mood].join(' | ').slice(0, 1500), format: result.directionId.endsWith('-story') ? 'story' : 'feed', channels: platforms, sampleUrl: result.imageUrl } });
+      await api('/api/ai-templates', { body: { name, prompt, description: direction.concept, style: [direction.concept, direction.subject, direction.composition, direction.palette, direction.typography, direction.mood].join(' | ').slice(0, 1500), format: result.directionId.endsWith('-story') ? 'story' : result.directionId.endsWith('-video') ? 'video' : result.directionId.endsWith('-landscape') ? 'landscape' : run.request.format ?? 'feed', channels: platforms, sampleUrl: result.imageUrl } });
       setSaved(t('Saved to Library › AI templates', 'حُفظ في المكتبة › قوالب الذكاء الاصطناعي'));
     } catch (e) { setError(errorMessage(e, '')); }
     setBusy('');

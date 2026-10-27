@@ -13,8 +13,7 @@ import { saveOAuthAccessToken } from './connectors/tokens.js';
 import { syncTikTok } from './connectors/tiktok.js';
 import { randomBytes, randomUUID, timingSafeEqual } from 'node:crypto';
 import type { Platform } from './types.js';
-import { readOdooCatalog, readOdooSchedule } from './odoo.js';
-import { rankRecords } from '../src/features/creative-studio/course-search.js';
+import { readOdooSchedule } from './odoo.js';
 import { generatePostImage, imageRequest } from './post-image.js';
 import { briefRequest, generateCreativeBrief } from './creative-brief.js';
 import { applyCreativeCommand, creativeEditRequest } from './creative-edit.js';
@@ -30,7 +29,7 @@ import { mediaDir } from './paths.js';
 import { registerUsageRoutes, requireAiBudget } from './usage.js';
 import { registerNotifyRoutes } from './notify.js';
 import { registerSvgTemplateRoutes } from './svg-templates.js';
-import { registerCourseProfileRoutes } from './course-profiles.js';
+import { registerCourseProfileRoutes, seedCourseCatalog } from './course-profiles.js';
 import { seedBuiltinTemplates } from './builtin-templates.js';
 import { recoverReferenceJobs, registerReferenceDesignRoutes } from './reference-designs.js';
 
@@ -53,18 +52,6 @@ app.get('/api/odoo/schedule',async(_req,res)=>{
  const result=await readOdooSchedule();
  res.setHeader('Cache-Control','no-store');
  res.status(result.status==='error'?502:200).json(result);
-});
-/** Every course (sales catalog + published eLearning) with its next runs; `q` ranks courses and upcoming runs together. */
-app.get('/api/odoo/courses',async(req,res)=>{
- const catalog=await readOdooCatalog();
- res.setHeader('Cache-Control','no-store');
- if(catalog.status!=='connected')return res.status(catalog.status==='error'?502:200).json(catalog);
- const q=typeof req.query.q==='string'?req.query.q.trim().slice(0,200):'';
- if(!q)return res.json({...catalog,events:catalog.events.slice(0,200)});
- // Equal matches: a course with an upcoming run is the more useful answer.
- const courses=rankRecords(q,catalog.courses,40).sort((a,b)=>Math.round((b.score-a.score)*10)||b.nextRuns.length-a.nextRuns.length);
- const events=rankRecords(q,catalog.events.map((event)=>({...event,name:event.title})),20);
- res.json({status:'connected',courses,events,message:catalog.message});
 });
 const imageCalls=new Map<string,number[]>();
 const briefCalls=new Map<string,number[]>();
@@ -97,7 +84,7 @@ app.post('/api/ai/post-image',requirePermission('design.free'),requireAiBudget,a
  catch(error){res.status(502).json({error:error instanceof Error?error.message:'تعذّر توليد الصورة.'});}
 });
 const fullCreativeCalls=new Map<string,number[]>();
-const fullCreativeRequest=z.object({prompt:z.string().trim().min(5).max(2000),format:z.enum(['feed','story','landscape']).default('feed'),directions:z.literal(2).default(2),templateId:z.string().uuid().optional(),
+const fullCreativeRequest=z.object({prompt:z.string().trim().min(5).max(2000),format:z.enum(['feed','story','landscape','video']).default('feed'),directions:z.literal(2).default(2),templateId:z.string().uuid().optional(),
  settings:z.object({theme:z.enum(['auto',...THEME_IDS]).optional(),creativity:z.enum(['safe','balanced','experimental']).optional(),imageStyle:z.enum(['auto','photo','graphic']).optional(),detail:z.enum(['auto','minimal','detailed']).optional(),referenceStrength:z.enum(['loose','balanced','strong']).optional()}).optional(),
  engine:z.enum(['skills','legacy']).optional()});
 const localOnly=(res:express.Response)=>{if(!process.env.OPENAI_API_KEY?.trim()){res.status(503).json({error:'أضف OPENAI_API_KEY على الخادم.'});return true;}return false;};
@@ -113,7 +100,7 @@ app.post('/api/ai/full-creative',requirePermission('design.free'),requireAiBudge
 });
 app.post('/api/ai/full-creative/:requestId/adapt',requirePermission('design.free'),requireAiBudget,(req,res)=>{
  if(localOnly(res))return;
- const parsed=z.object({directionId:z.string().regex(/^d\d$/),format:z.enum(['feed','story','landscape'])}).safeParse(req.body);if(!parsed.success)return res.status(400).json({error:'طلب التحويل غير صالح.'});
+ const parsed=z.object({directionId:z.string().regex(/^d\d$/),format:z.enum(['feed','story','landscape','video'])}).safeParse(req.body);if(!parsed.success)return res.status(400).json({error:'طلب التحويل غير صالح.'});
  let run;try{run=loadFullCreativeRun(String(req.params.requestId));}catch{return res.status(404).json({error:'التصميم غير موجود.'});}
  if(run.request.ownerId!==req.user!.id)return res.status(404).json({error:'التصميم غير موجود.'});
  if(limited(req,res))return;
@@ -184,12 +171,12 @@ app.get('/api/oauth/tiktok/callback',async(req,res)=>{
   res.redirect('/connections?tiktok=failed');
  }
 });
-app.get('/api/dashboard',async(_req,res)=>{
+app.get('/api/dashboard',async(req,res)=>{
  const now=new Date();const [posts,plans,alerts,connectors,website,websitePages]=await Promise.all([getObserved(),getPlans(),getAlerts(),getConnectorStatuses(),getWebsiteDaily(),getWebsitePages()]);const grace=Number(process.env.ALERT_GRACE_MINUTES)||15;
  const enriched=plans.map(plan=>({...plan,computedState:planState(plan,posts,now,grace)}));
  const enrichedPosts=posts.map(post=>({...post,engagementRate:engagementRate(post)}));
  res.setHeader('Cache-Control','no-store');
- res.json({generatedAt:now.toISOString(),timeZone:process.env.BUSINESS_TIME_ZONE||'Africa/Cairo',posts:enrichedPosts,plans:enriched,alerts,connectors,website,websitePages});
+ res.json({generatedAt:now.toISOString(),timeZone:process.env.BUSINESS_TIME_ZONE||'Africa/Cairo',posts:userCan(req.user!,'analytics.view')?enrichedPosts:[],plans:userCan(req.user!,'plans.view_all')||userCan(req.user!,'content.schedule')?enriched:[],alerts:userCan(req.user!,'analytics.view')?alerts:[],connectors:userCan(req.user!,'analytics.view')||userCan(req.user!,'connections.manage')?connectors:[],website:userCan(req.user!,'analytics.view')?website:[],websitePages:userCan(req.user!,'analytics.view')?websitePages:[]});
 });
 const planStatus=z.enum(['draft','approved','scheduled','published','cancelled']);
 const planSchema=z.object({
@@ -237,6 +224,7 @@ const dist=resolve('dist');if(existsSync(dist)){
 // Tables first, then the first admin, then traffic: nothing reads the database before it is ready.
 await initDb();
 await seedBuiltinTemplates();
+await seedCourseCatalog();
 await recoverReferenceJobs();
 const admin=await bootstrapAdmin();if(admin)console.log(`Created first admin ${admin.email}`);
 app.listen(port,host,()=>console.log(`Mobde3 listening on http://${host}:${port} (${db.kind === 'pg' ? 'Postgres' : 'SQLite'})`));

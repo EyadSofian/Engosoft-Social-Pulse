@@ -54,7 +54,7 @@ export function WorkspaceProvider({ children }: { children: ReactNode }) {
 
   // The signed-in account is "me"; the demo seed only backs screens that have not moved to the server yet.
   const auth = useAuth();
-  const sessionMe: User = { id: auth.user.id, name: auth.user.name, email: auth.user.email, title: { en: auth.user.title, ar: auth.user.title }, role: auth.user.role, departmentId: auth.user.departmentId, status: 'active', lastActiveAt: auth.user.lastActiveAt };
+  const sessionMe: User = { permissions: auth.permissions, id: auth.user.id, name: auth.user.name, email: auth.user.email, title: { en: auth.user.title, ar: auth.user.title }, role: auth.user.role, departmentId: auth.user.departmentId, status: 'active', lastActiveAt: auth.user.lastActiveAt };
   void meId;
   const me = sessionMe;
   const meRef = useRef(me);

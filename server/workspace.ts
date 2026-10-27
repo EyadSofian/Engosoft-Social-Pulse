@@ -30,11 +30,11 @@ CREATE INDEX IF NOT EXISTS content_events_by_item ON content_events(content_id, 
 CREATE INDEX IF NOT EXISTS content_versions_by_item ON content_versions(content_id, created_at);
 `);
 
-export type Channel = 'facebook' | 'instagram' | 'whatsapp' | 'linkedin' | 'tiktok' | 'snapchat' | 'website';
+export type Channel = 'facebook' | 'instagram' | 'whatsapp' | 'linkedin' | 'tiktok' | 'snapchat' | 'youtube' | 'website';
 /** Channels the sync can prove published; the others are tracked by status only. */
 const TRACKED: Partial<Record<Channel, Platform>> = { facebook: 'facebook', instagram: 'instagram', tiktok: 'tiktok', snapchat: 'snapchat' };
 
-export interface CreativeRef { requestId: string; directionId: string; imageUrl: string; storyUrl?: string; landscapeUrl?: string; model?: string; directionName?: string; svgTemplate?: { id: string; values: Record<string, string>; format?: 'feed' | 'square' | 'story' | 'landscape'; context?: string } }
+export interface CreativeRef { requestId: string; directionId: string; imageUrl: string; storyUrl?: string; landscapeUrl?: string; youtubeUrl?: string; model?: string; directionName?: string; svgTemplate?: { id: string; values: Record<string, string>; format?: 'feed' | 'square' | 'story' | 'landscape'; context?: string; outputPreset?: string } }
 export interface StoredContent {
   id: string; title: string; status: ContentStatus; departmentId: string | null; ownerId: string;
   channels: Channel[]; captions: Partial<Record<Channel, string>>; creative: CreativeRef | null;

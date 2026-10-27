@@ -99,7 +99,7 @@ export function CreationHomePage() {
     try {
       const saved = JSON.parse(sessionStorage.getItem(TEMPLATE_PREFILL_KEY) || 'null') as AiTemplate | null;
       sessionStorage.removeItem(TEMPLATE_PREFILL_KEY);
-      if (saved) { setTemplate(saved); setPrompt(saved.prompt); if (saved.channels.length) { setPlatforms(saved.channels as CreativePlatform[]); setPlatformTouched(true); } }
+      if (saved) { setMode('ai'); setTemplate(saved); setPrompt(saved.prompt); if (saved.channels.length) { setPlatforms(saved.channels as CreativePlatform[]); setPlatformTouched(true); } }
     } catch { /* bad prefill ignored */ }
   }, [query]);
   const [sourcePanel, setSourcePanel] = useState<'course' | 'post' | null>(null);

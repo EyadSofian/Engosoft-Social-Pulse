@@ -23,6 +23,7 @@ export function TemplatePage({ id }: { id: string }) {
   const [channels, setChannels] = useState<CreativePlatform[]>();
   const [format, setFormat] = useState<TemplateFormat>();
   const [context, setContext] = useState<string>();
+  const [preset, setPreset] = useState<string>();
   const [ready, setReady] = useState(!contentId);
   const [error, setError] = useState('');
   usePageMeta(template?.name ?? t('Template', 'قالب'), [{ label: t('Library', 'المكتبة'), to: '/library' }, { label: template?.name ?? t('Template', 'قالب') }]);
@@ -42,6 +43,7 @@ export function TemplatePage({ id }: { id: string }) {
         setImageUrl(item?.creative?.imageUrl);
         setChannels(item?.channels);
         setContext(item?.creative?.svgTemplate?.context);
+        setPreset(item?.creative?.svgTemplate?.outputPreset);
         const format = item?.creative?.svgTemplate?.format ?? item?.creative?.directionId;
         setFormat(format && ['feed', 'square', 'story', 'landscape'].includes(format) ? format as TemplateFormat : undefined);
         setReady(true);
@@ -57,7 +59,7 @@ export function TemplatePage({ id }: { id: string }) {
       <Link to={contentId ? `/content/${contentId}` : '/library'} className="tpl-back"><ArrowRight size={15} className="u-flip" /> {contentId ? t('Back to the post', 'العودة إلى المنشور') : t('Library', 'المكتبة')}</Link>
       {can('design.free') && !template.sourceImage
         ? <TemplateEditor template={template} contentId={contentId} initialValues={values} onDeleted={() => navigate('/library')} />
-        : <TemplateComposer key={`${template.id}:${contentId ?? 'new'}`} template={template} contentId={contentId} initialValues={values} initialImageUrl={imageUrl} initialChannels={channels} initialFormat={format} initialContext={context} />}
+        : <TemplateComposer key={`${template.id}:${contentId ?? 'new'}`} template={template} contentId={contentId} initialValues={values} initialImageUrl={imageUrl} initialChannels={channels} initialFormat={format} initialContext={context} initialPreset={preset} />}
     </div>
   );
 }

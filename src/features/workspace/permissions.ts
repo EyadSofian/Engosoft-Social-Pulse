@@ -3,7 +3,7 @@ import type { ContentItem, ContentStatus, Transition } from '../../domain/conten
 import { TRANSITIONS } from '../../domain/content';
 import type { Permission, User } from '../../domain/users';
 
-export const hasPermission = (user: User, permission: Permission) => can(user.role, permission);
+export const hasPermission = (user: User, permission: Permission) => user.permissions ? user.permissions.includes(permission) : can(user.role, permission);
 
 /** Ownership decides who may work on an item; Marketing roles may work on all of them. */
 export function canEditContent(user: User, item: ContentItem): boolean {

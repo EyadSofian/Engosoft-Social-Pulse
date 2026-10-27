@@ -33,7 +33,7 @@ export interface StrategyDecision {
   contentStrategist: { angle: string; motivation: string; proofPoints: string[]; mustAvoid: string[] };
   hookWriter: { hooks: { text: string; pattern: string; why: string }[]; chosen: number };
   copywriter: { headline: string; subheadline: string; cta: string; emphasis: string };
-  captionWriter: { caption: string; captions: Record<'facebook' | 'instagram' | 'whatsapp' | 'linkedin' | 'tiktok' | 'snapchat' | 'website', string> };
+  captionWriter: { caption: string; captions: Record<'facebook' | 'instagram' | 'whatsapp' | 'linkedin' | 'tiktok' | 'snapchat' | 'website', string> & { youtube?: string } };
   referenceDirector: { references: { id: string; quality: 'excellent' | 'strong' | 'usable' | 'weak' | 'reject'; roles: string[]; analysis: Record<string, string>; useFor: string }[] };
   themeDirector: { directions: { name: string; theme: ThemeId; idea: string; whyThisTheme: string; subjectStrategy: string; references: string[] }[] };
 }

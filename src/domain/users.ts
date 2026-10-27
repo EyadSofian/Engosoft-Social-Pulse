@@ -65,6 +65,7 @@ export type HomeProfile =
   | 'admin';
 
 export interface User {
+  permissions?: Permission[];
   id: Id;
   name: string;
   email: string;

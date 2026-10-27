@@ -1,8 +1,8 @@
 import type { ContentStatus } from '../../domain/content';
 import type { Text } from '../../domain/shared';
 
-export type Channel = 'facebook' | 'instagram' | 'whatsapp' | 'linkedin' | 'tiktok' | 'snapchat' | 'website';
-export interface CreativeRef { requestId: string; directionId: string; imageUrl: string; storyUrl?: string; landscapeUrl?: string; model?: string; directionName?: string; svgTemplate?: { id: string; values: Record<string, string>; format?: 'feed' | 'square' | 'story' | 'landscape'; context?: string } }
+export type Channel = 'facebook' | 'instagram' | 'whatsapp' | 'linkedin' | 'tiktok' | 'snapchat' | 'youtube' | 'website';
+export interface CreativeRef { requestId: string; directionId: string; imageUrl: string; storyUrl?: string; landscapeUrl?: string; youtubeUrl?: string; model?: string; directionName?: string; svgTemplate?: { id: string; values: Record<string, string>; format?: 'feed' | 'square' | 'story' | 'landscape'; context?: string; outputPreset?: string } }
 export interface PipelineItem {
   id: string; title: string; status: ContentStatus; departmentId: string | null; ownerId: string;
   channels: Channel[]; captions: Partial<Record<Channel, string>>; creative: CreativeRef | null;
@@ -45,4 +45,4 @@ export const MOVE_LABEL: Partial<Record<ContentStatus, Text>> = {
   archived: { en: 'Archive', ar: 'أرشفة' },
 };
 
-export const CHANNEL_LABEL: Record<Channel, string> = { facebook: 'Facebook', instagram: 'Instagram', whatsapp: 'WhatsApp', linkedin: 'LinkedIn', tiktok: 'TikTok', snapchat: 'Snapchat', website: 'Website' };
+export const CHANNEL_LABEL: Record<Channel, string> = { facebook: 'Facebook', instagram: 'Instagram', whatsapp: 'WhatsApp', linkedin: 'LinkedIn', tiktok: 'TikTok', snapchat: 'Snapchat', youtube: 'YouTube', website: 'Website' };

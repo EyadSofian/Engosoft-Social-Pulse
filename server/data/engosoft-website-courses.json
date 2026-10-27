@@ -1,0 +1,1055 @@
+{
+  "source": "https://engosoft.com/shop",
+  "retrievedAt": "2026-10-27",
+  "discovered": 131,
+  "courses": [
+    {
+      "courseId": "product.template:1093",
+      "courseName": "الرسم ثلاثي الأبعاد ثري دي اس ماكس (3ds Max & Vray)",
+      "description": "دورة ثري دي ماكس تصميم داخلي لتعلم النمذجة والرندر للمشاريع السكنية والتجارية بما يتوافق مع متطلبات السوق السعودي",
+      "sourceUrl": "https://engosoft.com/shop/3ds-max-vray-for-interior-design-1093",
+      "sourceQuality": "page",
+      "sourceNote": ""
+    },
+    {
+      "courseId": "product.template:2131",
+      "courseName": "Advanced AI Tools - Event",
+      "description": "",
+      "sourceUrl": "https://engosoft.com/shop/advanced-ai-tools-event-2131",
+      "sourceQuality": "page",
+      "sourceNote": ""
+    },
+    {
+      "courseId": "product.template:2130",
+      "courseName": "أدوات الذكاء الاصطناعي المتقدمة للتصميم الداخلي (Advanced AI Tools)",
+      "description": "Discover ai course for interior designers to improve creativity, automate workflows, and enhance design projects.",
+      "sourceUrl": "https://engosoft.com/shop/advanced-ai-tools-for-interior-design-2130",
+      "sourceQuality": "page",
+      "sourceNote": ""
+    },
+    {
+      "courseId": "product.template:2128",
+      "courseName": "تطبيقات التصميم الداخلي وإعداد اللوحات التنفيذية",
+      "description": "ارتقِ بخبرتك في التصميم الداخلي إلى مستوى أكثر احترافية، وطوّر قدرتك على تنفيذ المشاريع المتكاملة بكفاءة وجودة أعلى.\n\nصُممت دورة Applied Interior Design للمصممين والمهندسين العاملين في المجال والراغبين في تعميق خبراتهم، وتحسين جودة مخرجاتهم، وتطوير أسلوب عمل أكثر احترافية يتوافق مع متطلبات العملاء وسوق العمل.\n\nتساعدك الدورة على تعزيز مهاراتك في تحليل المساحات، وتطوير الحلول التصميمية، واختيار الألوان والخامات، وتحقيق التوازن بين الجانب الجمالي والمتطلبات الوظيفية لكل مشروع. كما تمكّنك من تحويل أفكارك إلى مخططات ونماذج وعروض بصرية متكاملة باستخدام مجموعة من أبرز البرامج المهنية في المجال.\n\nستطوّر قدرتك على إعداد المخططات الهندسية الدقيقة باستخدام AutoCAD، وإنشاء نماذج ثلاثية الأبعاد واقعية وإنتاج مشاهد احترافية عبر 3ds Max وV-Ray، إلى جانب تحسين الصور وإعداد العروض النهائية باستخدام Adobe Photoshop.\n\nوتواكب الدورة تطورات المجال من خلال توظيف أدوات الذكاء الاصطناعي في مراحل التصميم المختلفة، بما يساعدك على تطوير الأفكار بسرعة، وتجربة اتجاهات تصميمية متعددة، وتقليل الوقت المستغرق في التنفيذ، ورفع جودة العروض المقدمة للعملاء.\n\nبنهاية الدورة، ستتمكن من إدارة وتنفيذ مشروع تصميم داخلي متكامل بصورة أكثر احترافية، وتقديم حلول تصميمية مدروسة، وإخراج أعمالك بجودة تعكس خبرتك وتمنحك ميزة أقوى في سوق العمل.\n\nطوّر خبرتك، وارفع جودة مشاريعك، وقدّم أعمالك بالمستوى الذي يليق بمصمم محترف.",
+      "sourceUrl": "https://engosoft.com/shop/advanced-applied-interior-design-2128",
+      "sourceQuality": "page",
+      "sourceNote": ""
+    },
+    {
+      "courseId": "product.template:2126",
+      "courseName": "أدوات الذكاء الاصطناعي للتصميم الداخلي (AI Tools)",
+      "description": "Discover ai course for interior designers to improve creativity, automate workflows, and enhance design projects.",
+      "sourceUrl": "https://engosoft.com/shop/ai-tools-2126",
+      "sourceQuality": "page",
+      "sourceNote": ""
+    },
+    {
+      "courseId": "product.template:2127",
+      "courseName": "AI Tools - Event",
+      "description": "Discover ai course for interior designers to improve creativity, automate workflows, and enhance design projects.",
+      "sourceUrl": "https://engosoft.com/shop/ai-tools-event-2127",
+      "sourceQuality": "page",
+      "sourceNote": ""
+    },
+    {
+      "courseId": "product.template:1851",
+      "courseName": "أدوات الذكاء الاصطناعي في التصميم الداخلي (AI Tools)",
+      "description": "Discover ai course for interior designers to improve creativity, automate workflows, and enhance design projects.",
+      "sourceUrl": "https://engosoft.com/shop/ai-tools-for-interior-design-1851",
+      "sourceQuality": "page",
+      "sourceNote": ""
+    },
+    {
+      "courseId": "product.template:1238",
+      "courseName": "دورة تحليل وتصميم المباني بأستخدام (ETABS)",
+      "description": "ابدأ كورس ايتابس كامل وتعلم تحليل وتصميم المنشآت الخرسانية والمعدنية باستخدام ETABS وفق الأكواد الهندسية المعتمدة.",
+      "sourceUrl": "https://engosoft.com/shop/analysis-and-design-of-buildings-using-etabs-course-1238",
+      "sourceQuality": "page",
+      "sourceNote": ""
+    },
+    {
+      "courseId": "product.template:1221",
+      "courseName": "أساسيات التصميم المعماري (Architecture)",
+      "description": "تمنحك هذه الدورة أساسيات التصميم المعماري بشكل منهجي، حيث يتعرّف المتدرّب على المراحل الأولى لعملية التصميم بدايةً من توليد الفكرة وتحليل المشروع ودراسة العوامل الطبيعية للموقع، وصولًا إلى التطبيق العملي. تركّز الدورة على بناء فهم صحيح للتفكير المعماري، من خلال إعداد نماذج تصميمية ورسومات معمارية أساسية لقطع أراضٍ بأبعاد مختلفة، بما يؤهّل المتدرّب للانتقال إلى المراحل المتقدمة بثقة.",
+      "sourceUrl": "https://engosoft.com/shop/architecture-basics-1221",
+      "sourceQuality": "page",
+      "sourceNote": ""
+    },
+    {
+      "courseId": "product.template:1402",
+      "courseName": "ورشة عمل التصميم المعمارى (Architecture)",
+      "description": "شارك في ورشة تصميم معماري وتعلم تطوير الأفكار المعمارية وإعداد المخططات والنماذج العملية للمشاريع المختلفة.",
+      "sourceUrl": "https://engosoft.com/shop/architecture-workshop-1402",
+      "sourceQuality": "page",
+      "sourceNote": ""
+    },
+    {
+      "courseId": "product.template:1529",
+      "courseName": "الأوتوكاد للرسم الهندسى (AutoCAD)",
+      "description": "Join AutoCAD course for Interior Design to learn drafting, layouts, and professional interior drawings for projects.",
+      "sourceUrl": "https://engosoft.com/shop/autocad-for-interior-design-1529",
+      "sourceQuality": "page",
+      "sourceNote": ""
+    },
+    {
+      "courseId": "product.template:1404",
+      "courseName": "أوتوديسك أوتوكاد للأنظمة الميكانيكية (AutoCAD)",
+      "description": "ابدأ كورس اوتوكاد ميكانيكا وتعلم إعداد الرسومات الميكانيكية والمخططات التنفيذية باستخدام AutoCAD للمشاريع الهندسية.",
+      "sourceUrl": "https://engosoft.com/shop/autodesk-autocad-for-mechanical-systems-1404",
+      "sourceQuality": "page",
+      "sourceNote": ""
+    },
+    {
+      "courseId": "product.template:1219",
+      "courseName": "أوتوديسك ريفيت للهندسة المعمارية (Revit)",
+      "description": "انضم إلى دورة ريفيت معماري وتعلم نمذجة المباني وإعداد المخططات والواجهات باستخدام Autodesk Revit وفق متطلبات السوق.",
+      "sourceUrl": "https://engosoft.com/shop/autodesk-revit-architecture-1219",
+      "sourceQuality": "page",
+      "sourceNote": ""
+    },
+    {
+      "courseId": "product.template:2117",
+      "courseName": "الريفيت للأنظمة الميكانيكية",
+      "description": "كورس ريفيت الالكتروميكانيك لتصميم أنظمة الكهرباء والميكانيكا داخل نموذج BIM للمشاريع بالسعودية.",
+      "sourceUrl": "https://engosoft.com/shop/autodesk-revit-mechanical-2117",
+      "sourceQuality": "page",
+      "sourceNote": ""
+    },
+    {
+      "courseId": "product.template:1901",
+      "courseName": "Automotive Electrical Systems Event",
+      "description": "",
+      "sourceUrl": "https://engosoft.com/shop/automotive-electrical-systems-event-1901",
+      "sourceQuality": "page",
+      "sourceNote": ""
+    },
+    {
+      "courseId": "product.template:2030",
+      "courseName": "أنظمة ميكانيكا و كهرباء السيارات",
+      "description": "مسار تدريبي متكامل يجمع بين أساسيات كهرباء السيارات والمستوى المتقدم في ميكانيكا المحركات، ليمنحك رحلة تطوير شاملة من الفهم النظري إلى التطبيق العملي الحقيقي. ستتعلم التعامل مع الأنظمة الكهربائية والميكانيكية الحديثة، وتشخيص الأعطال بدقة، وتطبيق المهارات على ورش عملية مجهّزة بأحدث أجهزة كشف الأعطال  تمامًا كما يحدث في مراكز الصيانة الاحترافية.",
+      "sourceUrl": "https://engosoft.com/shop/automotive-mechanical-electrical-systems-2030",
+      "sourceQuality": "page",
+      "sourceNote": ""
+    },
+    {
+      "courseId": "product.template:1945",
+      "courseName": "Automotive Mechanical & Electrical Systems Event",
+      "description": "",
+      "sourceUrl": "https://engosoft.com/shop/automotive-mechanical-electrical-systems-event-1945",
+      "sourceQuality": "page",
+      "sourceNote": ""
+    },
+    {
+      "courseId": "product.template:2103",
+      "courseName": "أساسيات البيم الالكتروميكانيك",
+      "description": "دورة bim لتعلم نمذجة المشاريع وإدارة المعلومات باستخدام أحدث الأدوات المعتمدة في السعودية",
+      "sourceUrl": "https://engosoft.com/shop/bim-fundamental-mep-2103",
+      "sourceQuality": "page",
+      "sourceNote": ""
+    },
+    {
+      "courseId": "product.template:2102",
+      "courseName": "أساسيات البيم الانشائي",
+      "description": "دورة bim لتعلم نمذجة المشاريع وإدارة المعلومات باستخدام أحدث الأدوات المعتمدة في السعودية",
+      "sourceUrl": "https://engosoft.com/shop/bim-fundamental-structure-2102",
+      "sourceQuality": "page",
+      "sourceNote": ""
+    },
+    {
+      "courseId": "product.template:2204",
+      "courseName": "BIM Fundamental Structure - Alaa Saleh",
+      "description": "دورة bim لتعلم نمذجة المشاريع وإدارة المعلومات باستخدام أحدث الأدوات المعتمدة في السعودية",
+      "sourceUrl": "https://engosoft.com/shop/bim-fundamental-structure-alaa-saleh-2204",
+      "sourceQuality": "page",
+      "sourceNote": ""
+    },
+    {
+      "courseId": "product.template:1988",
+      "courseName": "اساسيات البيم المعماري",
+      "description": "دورة bim لتعلم نمذجة المشاريع وإدارة المعلومات باستخدام أحدث الأدوات المعتمدة في السعودية",
+      "sourceUrl": "https://engosoft.com/shop/bim-fundamentals-architecture-1988",
+      "sourceQuality": "page",
+      "sourceNote": ""
+    },
+    {
+      "courseId": "product.template:1865",
+      "courseName": "BIM fundamentals event ARC.",
+      "description": "",
+      "sourceUrl": "https://engosoft.com/shop/bim-fundamentals-event-arc-1865",
+      "sourceQuality": "page",
+      "sourceNote": ""
+    },
+    {
+      "courseId": "product.template:2109",
+      "courseName": "BIM fundamentals MEP event",
+      "description": "",
+      "sourceUrl": "https://engosoft.com/shop/bim-fundamentals-mep-event-2109",
+      "sourceQuality": "page",
+      "sourceNote": ""
+    },
+    {
+      "courseId": "product.template:2108",
+      "courseName": "BIM fundamentals Structure event",
+      "description": "",
+      "sourceUrl": "https://engosoft.com/shop/bim-fundamentals-structure-event-2108",
+      "sourceQuality": "page",
+      "sourceNote": ""
+    },
+    {
+      "courseId": "product.template:1252",
+      "courseName": "تصميم نظم إدارة وتشغيل المباني (BMS)",
+      "description": "سجل في دورة bms وتعلم تشغيل وبرمجة ومراقبة أنظمة إدارة المباني الذكية وربط الأنظمة الميكانيكية والكهربائية بكفاءة عالية.",
+      "sourceUrl": "https://engosoft.com/shop/building-management-system-bms-1252",
+      "sourceQuality": "page",
+      "sourceNote": ""
+    },
+    {
+      "courseId": "product.template:1384",
+      "courseName": "شهادة مقيم أصول معتمد (CAMA)",
+      "description": "دورة CAMA – مقيم أصول معتمد هي برنامج تدريبي احترافي مصمم لتأهيلك للعمل بكفاءة في مجال إدارة الأصول وفق المعايير الدولية المعتمدة. تعتمد الدورة على بناء معرفي عالمي مستند إلى أطر ISO 55000، ومنهجيات معهد إدارة الأصول البريطاني (IAM)، وأفضل الممارسات الصادرة عن المنتدى العالمي للصيانة وإدارة الأصول (GFMAM).\nتركّز الدورة على تزويد المشاركين بالمعرفة والمهارات العملية اللازمة لتطبيق نظم إدارة الأصول بشكل منهجي، وتقييم أداء المؤسسات وقياس مدى التزامها بالمعايير الدولية، بما يساهم في رفع كفاءة الأصول، دعم الاستدامة، وتحسين جودة القرارات التشغيلية والاستثمارية.",
+      "sourceUrl": "https://engosoft.com/shop/cama-certified-asset-management-assessor-1384",
+      "sourceQuality": "page",
+      "sourceNote": ""
+    },
+    {
+      "courseId": "product.template:2201",
+      "courseName": "محاكي اختبار مساعد معتمد في إدارة المشاريع  ( CAPM )",
+      "description": "",
+      "sourceUrl": "https://engosoft.com/shop/capm-exam-simulator-2201",
+      "sourceQuality": "page",
+      "sourceNote": ""
+    },
+    {
+      "courseId": "product.template:2165",
+      "courseName": "دورة مساعد معتمد في إدارة المشاريع (CAPM)",
+      "description": "دورة pmp معتمدة تؤهلك لاجتياز الاختبار الدولي مع شرح شامل وأمثلة عملية تناسب مديري المشاريع في السعودية.",
+      "sourceUrl": "https://engosoft.com/shop/certified-associate-in-project-management-capm-2165",
+      "sourceQuality": "page",
+      "sourceNote": ""
+    },
+    {
+      "courseId": "product.template:1858",
+      "courseName": "محاكي اختبار شهادة مدير المرافق المعتمد (CFM)",
+      "description": "اختبار cfm يساعدك على تقييم جاهزيتك والتدرب على أسئلة تحاكي الامتحان الحقيقي، مع مراجعة أهم مجالات CFM والاستعداد بثقة قبل الاختبار.",
+      "sourceUrl": "https://engosoft.com/shop/cfm-exam-simulator-1858",
+      "sourceQuality": "page",
+      "sourceNote": ""
+    },
+    {
+      "courseId": "product.template:1109",
+      "courseName": "التهيئة لاختبار مدير مرافق معتمد (CFM)",
+      "description": "دورة CFM لإعداد مديري المرافق لاجتياز الشهادة الدولية وتعزيز فرص العمل في الشركات الكبرى بالسعودية ، كورس CFM لاعداد دورة مدير مرافق معتمد بأحتراف",
+      "sourceUrl": "https://engosoft.com/shop/cfm-preparation-course-1109",
+      "sourceQuality": "page",
+      "sourceNote": ""
+    },
+    {
+      "courseId": "product.template:1104",
+      "courseName": "التهيئة لاختبار مدير مرافق معتمد (CFM)  - Event",
+      "description": "",
+      "sourceUrl": "https://engosoft.com/shop/cfm-preparation-course-event-1104",
+      "sourceQuality": "page",
+      "sourceNote": ""
+    },
+    {
+      "courseId": "product.template:1245",
+      "courseName": "الهندسة الهيدرولوجية وتصميم أنظمة التصريف المائى (Hydrology)",
+      "description": "انضم إلى دورة الهندسة الهيدرولوجية وتعلم تحليل الأمطار والسيول وتصميم منشآت تصريف المياه وفق المعايير الهندسية الحديثة.",
+      "sourceUrl": "https://engosoft.com/shop/civil-hydrology-engineering-1245",
+      "sourceQuality": "page",
+      "sourceNote": ""
+    },
+    {
+      "courseId": "product.template:1260",
+      "courseName": "الرسومات التنفيذية للبنية التحتية المدنية (Shop Drawing)",
+      "description": "سجل في كورس شوب دروينج انشائى وتعلم إعداد اللوحات التنفيذية وتفاصيل التسليح وحصر الكميات باستخدام AutoCAD وفق متطلبات الشركات السعودية.",
+      "sourceUrl": "https://engosoft.com/shop/civil-infrastructure-shop-drawings-1260",
+      "sourceQuality": "page",
+      "sourceNote": ""
+    },
+    {
+      "courseId": "product.template:1257",
+      "courseName": "التصميم الإنشائي المدني للجسور والأنفاق (Bridges & Tunnels)",
+      "description": "دورة تصميم الكباري الخرسانية تشمل التحليل والتصميم وفق الأكواد المعتمدة ومشاريع عملية تناسب السوق السعودي.",
+      "sourceUrl": "https://engosoft.com/shop/civil-structural-design-of-bridges-tunnels-1257",
+      "sourceQuality": "page",
+      "sourceNote": ""
+    },
+    {
+      "courseId": "product.template:1434",
+      "courseName": "ورشة عمل التصميم الإنشائي المدني (Workshop)",
+      "description": "انضم إلى ورشة عمل تصميم انشائي وتعلم تصميم العناصر الإنشائية وتحليل الأحمال وإعداد الرسومات التنفيذية للمشاريع.",
+      "sourceUrl": "https://engosoft.com/shop/civil-structural-engineering-workshop-1434",
+      "sourceQuality": "page",
+      "sourceNote": ""
+    },
+    {
+      "courseId": "product.template:2099",
+      "courseName": "دورة التحضير لشهادة أخصائي الصيانة والموثوقية المعتمد (CMRP)",
+      "description": "تُعد شهادة محترف الصيانة والموثوقية المعتمد CMRP® من أهم الشهادات المهنية العالمية في مجال إدارة الصيانة وموثوقية الأصول، وهي صادرة عن جمعية محترفي الصيانة والموثوقية SMRP، مما يجعلها اختيارًا مثاليًا للمهندسين والفنيين ومديري الصيانة الراغبين في تطوير مهاراتهم وتعزيز فرصهم المهنية في سوق العمل.\n\nتساعدك دورة CMRP من إنجوسوفت على الاستعداد لاجتياز اختبار الشهادة من خلال دراسة شاملة للمحاور الخمسة المعتمدة من SMRP، والتي تشمل: إدارة الأعمال، موثوقية عمليات التصنيع، موثوقية المعدات، القيادة والتنظيم، وإدارة العمل. تم تصميم محتوى الدورة ليجمع بين المعرفة النظرية والتطبيق العملي، بحيث يتمكن المتدرب من فهم أفضل ممارسات الصيانة الحديثة وتطبيقها داخل بيئة العمل.\n\nمن خلال هذه الدورة، ستتعلم كيفية تحسين أداء الأصول، تقليل الأعطال، رفع كفاءة المعدات، تحليل أسباب الفشل، وتطبيق استراتيجيات الصيانة القائمة على الموثوقية والحرجية. كما تركز الدورة على تطوير قدرة المشاركين على اتخاذ قرارات فنية وإدارية أفضل تساعد المؤسسات على تقليل التكاليف التشغيلية وزيادة الاعتمادية والإنتاجية.\n\nسواء كنت تعمل في مجال الصيانة، التشغيل، إدارة الأصول، أو الموثوقية، فإن كورس CMRP يمنحك المعرفة العملية التي تحتاجها للتميز المهني، والاستعداد بثقة للحصول على واحدة من أقوى الشهادات العالمية في مجال الصيانة والموثوقية.",
+      "sourceUrl": "https://engosoft.com/shop/cmrp-certification-preparation-course-2099",
+      "sourceQuality": "page",
+      "sourceNote": ""
+    },
+    {
+      "courseId": "product.template:2120",
+      "courseName": "محترف الصيانة والموثوقية المعتمد (CMRP) - Event",
+      "description": "(دورة حضورية)",
+      "sourceUrl": "https://engosoft.com/shop/cmrp-certified-maintenance-reliability-professional-event-2120",
+      "sourceQuality": "page",
+      "sourceNote": ""
+    },
+    {
+      "courseId": "product.template:1110",
+      "courseName": "محترف الصيانة والموثوقية المعتمد (CMRP) - مسجلة",
+      "description": "دورة cmrp  لتأهيل مهندسي الصيانة لاجتياز شهادة الاعتمادية المعترف بها في القطاعات الصناعية بالسعودية.",
+      "sourceUrl": "https://engosoft.com/shop/cmrp-certified-maintenance-reliability-professional-recorded-1110",
+      "sourceQuality": "page",
+      "sourceNote": ""
+    },
+    {
+      "courseId": "product.template:2118",
+      "courseName": "محاكي اختبار شهادة محترف الصيانة والموثوقية المعتمد (CMRP)",
+      "description": "",
+      "sourceUrl": "https://engosoft.com/shop/cmrp-exam-simulator-2118",
+      "sourceQuality": "page",
+      "sourceNote": ""
+    },
+    {
+      "courseId": "product.template:1453",
+      "courseName": "أساسيات التصميم الكهربى باستخدام اوتوكاد",
+      "description": "",
+      "sourceUrl": "https://engosoft.com/shop/electrical-autocad-1453",
+      "sourceQuality": "page",
+      "sourceNote": ""
+    },
+    {
+      "courseId": "product.template:1254",
+      "courseName": "أنظمة تصميم المصاعد الكهربائية (Elevators)",
+      "description": "التحق بـ دورة تدريبية شاملة في المصاعد الكهربائية وتعلم تصميم وتركيب وصيانة المصاعد وأنظمة التحكم وفق متطلبات سوق العمل.",
+      "sourceUrl": "https://engosoft.com/shop/electrical-elevator-design-systems-1254",
+      "sourceQuality": "page",
+      "sourceNote": ""
+    },
+    {
+      "courseId": "product.template:1269",
+      "courseName": "Electrical - Light Current - Event",
+      "description": "",
+      "sourceUrl": "https://engosoft.com/shop/electrical-light-current-event-1269",
+      "sourceQuality": "page",
+      "sourceNote": ""
+    },
+    {
+      "courseId": "product.template:1268",
+      "courseName": "Electrical - Lighting - Event",
+      "description": "",
+      "sourceUrl": "https://engosoft.com/shop/electrical-lighting-event-1268",
+      "sourceQuality": "page",
+      "sourceNote": ""
+    },
+    {
+      "courseId": "product.template:1256",
+      "courseName": "انظمة التحكم المنطقى المبرمج (PLC)",
+      "description": "تقدّم هذه الدورة تدريبًا احترافيًا متكاملاً على أنظمة PLC للتحكم الكهربائي، حيث يتعلم المتدربون أساسيات البرمجة والتشغيل والصيانة، إضافةً إلى تحليل الأعطال وتحسين الأداء. تهدف الدورة إلى إعداد كوادر قادرة على تصميم وتنفيذ أنظمة تحكم آلية بكفاءة عالية.",
+      "sourceUrl": "https://engosoft.com/shop/electrical-plc-1256",
+      "sourceQuality": "page",
+      "sourceNote": ""
+    },
+    {
+      "courseId": "product.template:1232",
+      "courseName": "التوزيع الكهربى",
+      "description": "كورس التوزيع الكهربي يشرح تصميم شبكات الجهد المنخفض والمتوسط وفق اشتراطات الشركات السعودية.",
+      "sourceUrl": "https://engosoft.com/shop/electrical-power-distribution-1232",
+      "sourceQuality": "page",
+      "sourceNote": ""
+    },
+    {
+      "courseId": "product.template:1270",
+      "courseName": "Electrical - Power Distribution - Event",
+      "description": "",
+      "sourceUrl": "https://engosoft.com/shop/electrical-power-distribution-event-1270",
+      "sourceQuality": "page",
+      "sourceNote": ""
+    },
+    {
+      "courseId": "product.template:1255",
+      "courseName": "تصميم محطات الكهرباء الفرعية",
+      "description": "تركز الدورة على تقديم فهم متكامل لمكونات المحطات الكهربائية وآليات عملها في نقل وتوزيع الطاقة. تشمل المهارات تصميم وتشغيل وصيانة المحطات بكفاءة، مع التأكيد على السلامة الكهربائية وتحليل الأعطال، لضمان استمرارية الأداء وتحقيق أعلى مستويات الاعتمادية للشبكة الكهربائية.",
+      "sourceUrl": "https://engosoft.com/shop/electrical-power-substations-1255",
+      "sourceQuality": "page",
+      "sourceNote": ""
+    },
+    {
+      "courseId": "product.template:1234",
+      "courseName": "المكتب الفنى الكهربى (Shop Drawing)",
+      "description": "كورس مكتب فنى كهرباء لتعلم التسعير وحصر الكميات وإعداد المخططات التنفيذية للمشاريع بالسعودية.",
+      "sourceUrl": "https://engosoft.com/shop/electrical-shop-drawing-1234",
+      "sourceQuality": "page",
+      "sourceNote": ""
+    },
+    {
+      "courseId": "product.template:1272",
+      "courseName": "Electrical - Shop Drawing - Event",
+      "description": "",
+      "sourceUrl": "https://engosoft.com/shop/electrical-shop-drawing-event-1272",
+      "sourceQuality": "page",
+      "sourceNote": ""
+    },
+    {
+      "courseId": "product.template:1235",
+      "courseName": "دورة التنفيذ الكهربى",
+      "description": "برنامج تدريبي متكامل يؤهّلك لاحتراف أعمال الموقع الكهربائي من البداية حتى التسليم. تتعلّم قراءة الرسومات الفنية وتنسيق الأنظمة، متابعة التنفيذ وضبط الجودة، وتطبيق اشتراطات السلامة والفحص والاختبارات. يركّز البرنامج على بناء مهارات الإدارة الميدانية لضمان تنفيذ الأعمال الكهربائية بكفاءة ووفق المعايير والكودات المعتمدة.",
+      "sourceUrl": "https://engosoft.com/shop/electrical-site-engineer-1235",
+      "sourceQuality": "page",
+      "sourceNote": ""
+    },
+    {
+      "courseId": "product.template:1537",
+      "courseName": "هندسة وتصميم شبكات توزيع الغاز الطبيعي (Gas Network)",
+      "description": "دورة هندسة وتصميم شبكات توزيع الغاز الطبيعي هي برنامج تدريبي متخصص يهدف إلى تأهيل المتدربين لفهم أساسيات تصميم وتنفيذ شبكات الغاز الطبيعي داخل المناطق السكنية والتجارية والصناعية. تركز الدورة على دراسة مكونات الشبكة، تخطيط المسارات، فهم متطلبات الأمان، وآلية توزيع الغاز الطبيعي بشكل فعّال وآمن وفق المتطلبات الهندسية للمشروعات.\n\nتساعدك الدورة على بناء معرفة عملية في مجال شبكات الغاز، بداية من فهم فكرة النظام ومكوناته الرئيسية، وحتى التعامل مع خطوات التصميم والتوزيع ومراعاة عوامل السلامة والجودة أثناء العمل. وتعد مناسبة للمهندسين والفنيين العاملين أو الراغبين في دخول مجال البنية التحتية وشبكات الغاز الطبيعي.\nThis course helps you build practical knowledge in gas network systems, starting from understanding the system concept and its main components, through the design and distribution stages, while considering safety and quality requirements during implementation. It is suitable for engineers and technicians who are working in, or planning to enter, the infrastructure and natural gas network field.",
+      "sourceUrl": "https://engosoft.com/shop/engineering-and-design-of-natural-gas-networks-distribution-1537",
+      "sourceQuality": "page",
+      "sourceNote": ""
+    },
+    {
+      "courseId": "product.template:1097",
+      "courseName": "برنامج التشطيبات الداخلية (Finishing)",
+      "description": "انضم إلى دورة تشطيبات كاملة وتعلم أعمال التشطيب الداخلي والخارجي وحصر الكميات وإدارة التنفيذ للمشاريع السكنية والتجارية.",
+      "sourceUrl": "https://engosoft.com/shop/finishing-for-interior-design-1097",
+      "sourceQuality": "page",
+      "sourceNote": ""
+    },
+    {
+      "courseId": "product.template:1224",
+      "courseName": "تصميم أنظمة مكافحة الحريق بإستخدام برنامج (ETAB & AutoCAD)  (Fire Fighting)",
+      "description": "دورة تصميم انظمة مكافحة الحريق وفق كود البناء السعودي ومتطلبات الدفاع المدني",
+      "sourceUrl": "https://engosoft.com/shop/fire-fighting-design-system-1224",
+      "sourceQuality": "page",
+      "sourceNote": ""
+    },
+    {
+      "courseId": "product.template:2078",
+      "courseName": "دورة محترف إدارة المرافق بواسطة عبدالرحيم كمال",
+      "description": "برنامج تدريبي متكامل يؤهلك لتصبح مدير المنشآت محترف لاكتساب مهارة إدارة المنشآت عبر أربع محاور رئيسية، مما يضمن لك التميز في مجالات القيادة، العمليات، والصيانة، إدارة المشاريع، بالإضافة إلى تعزيز الفهم المالي والإداري في بيئة العمل. البرنامج يمزج بين الجانب النظري والتطبيقي لتطوير مهاراتك العملية المطلوبة في سوق العمل.",
+      "sourceUrl": "https://engosoft.com/shop/fmp-preparation-event-by-mr-abdelrahim-kamal-2078",
+      "sourceQuality": "page",
+      "sourceNote": ""
+    },
+    {
+      "courseId": "product.template:1237",
+      "courseName": "دورة تصميم الأساسيات والبلاطات باستخدام برنامج (SAFE)",
+      "description": "سجل في كورس البلاطات وتعلم تصميم البلاطات الخرسانية بأنواعها المختلفة وحساب الأحمال والتسليح وفق الأكواد الهندسية.",
+      "sourceUrl": "https://engosoft.com/shop/fundamentals-and-slab-design-using-safe-course-1237",
+      "sourceQuality": "page",
+      "sourceNote": ""
+    },
+    {
+      "courseId": "product.template:1259",
+      "courseName": "نظم المعلومات الجغرافية والتحليل المكاني باستخدام(ArcGIS) (GIS)",
+      "description": "ابدأ كورس gis كامل وتعلم إدارة وتحليل البيانات المكانية وإعداد الخرائط الاحترافية باستخدام برامج GIS الحديثة.",
+      "sourceUrl": "https://engosoft.com/shop/geographic-information-systems-spatial-analysis-using-arcgis-gis-1259",
+      "sourceQuality": "page",
+      "sourceNote": ""
+    },
+    {
+      "courseId": "product.template:1117",
+      "courseName": "التصميم الجرافيكي الاحترافي (Graphic Design)",
+      "description": "سجل في دورة تصميم جرافيك وتعلم تصميم الهوية البصرية والإعلانات والسوشيال ميديا باستخدام أشهر برامج التصميم الاحترافية.",
+      "sourceUrl": "https://engosoft.com/shop/graphic-design-masterclass-1117",
+      "sourceQuality": "page",
+      "sourceNote": ""
+    },
+    {
+      "courseId": "product.template:1223",
+      "courseName": "تصميم أنظمة التكييف  (HVAC)",
+      "description": "دورة تكييف وتبريد لتعلم تصميم أنظمة HVAC وحساب الأحمال الحرارية بما يناسب مناخ السعودية",
+      "sourceUrl": "https://engosoft.com/shop/hvac-system-design-1223",
+      "sourceQuality": "page",
+      "sourceNote": ""
+    },
+    {
+      "courseId": "product.template:1397",
+      "courseName": "تصميم أنظمة الهيدروليك المتقدمة (Hydraulic)",
+      "description": "سجل في دورة الهيدروليك وتعلم مكونات الدوائر الهيدروليكية وتشغيلها وصيانتها وقراءة المخططات الفنية باحتراف.",
+      "sourceUrl": "https://engosoft.com/shop/hydraulic-systems-design-1397",
+      "sourceQuality": "page",
+      "sourceNote": ""
+    },
+    {
+      "courseId": "product.template:1077",
+      "courseName": "Interior Design - 3ds Max - Event",
+      "description": "",
+      "sourceUrl": "https://engosoft.com/shop/interior-design-3ds-max-event-1077",
+      "sourceQuality": "page",
+      "sourceNote": ""
+    },
+    {
+      "courseId": "product.template:2129",
+      "courseName": "Interior Design Advanced - Event",
+      "description": "",
+      "sourceUrl": "https://engosoft.com/shop/interior-design-advanced-event-2129",
+      "sourceQuality": "page",
+      "sourceNote": ""
+    },
+    {
+      "courseId": "product.template:1078",
+      "courseName": "Interior Design - AutoCAD - Event",
+      "description": "",
+      "sourceUrl": "https://engosoft.com/shop/interior-design-autocad-event-1078",
+      "sourceQuality": "page",
+      "sourceNote": ""
+    },
+    {
+      "courseId": "product.template:1815",
+      "courseName": "التصميم الداخلي باستخدام برنامج اسكتش اب (SketchUp)",
+      "description": "دورة سكتش اب كاملة لتعلم تصميم المجسمات المعمارية والديكور الداخلي بما يتناسب مع مشاريع السعودية.",
+      "sourceUrl": "https://engosoft.com/shop/interior-design-basics-using-sketchup-1815",
+      "sourceQuality": "page",
+      "sourceNote": ""
+    },
+    {
+      "courseId": "product.template:1079",
+      "courseName": "Interior Design - Photoshop - Event",
+      "description": "",
+      "sourceUrl": "https://engosoft.com/shop/interior-design-photoshop-event-1079",
+      "sourceQuality": "page",
+      "sourceNote": ""
+    },
+    {
+      "courseId": "product.template:2124",
+      "courseName": "التصميم الداخلي باستخدام SketchUp & Canva",
+      "description": "",
+      "sourceUrl": "https://engosoft.com/shop/interior-design-using-sketchup-canva-2124",
+      "sourceQuality": "page",
+      "sourceNote": ""
+    },
+    {
+      "courseId": "product.template:2125",
+      "courseName": "Interior Design Using SketchUp & Canva - Event",
+      "description": "",
+      "sourceUrl": "https://engosoft.com/shop/interior-design-using-sketchup-canva-event-2125",
+      "sourceQuality": "page",
+      "sourceNote": ""
+    },
+    {
+      "courseId": "product.template:1797",
+      "courseName": "Interior Design Using SketchUp - Event",
+      "description": "",
+      "sourceUrl": "https://engosoft.com/shop/interior-design-using-sketchup-event-1797",
+      "sourceQuality": "page",
+      "sourceNote": ""
+    },
+    {
+      "courseId": "product.template:1803",
+      "courseName": "مقدمة عن تصميم وتنفيذ الطرق (Civil 3D)",
+      "description": "سجل في دورة تصميم الطرق وتعلم تصميم المحاور الأفقية والرأسية وحساب الكميات وإعداد المخططات باستخدام Civil 3D.",
+      "sourceUrl": "https://engosoft.com/shop/introduction-to-civil-road-construction-1803",
+      "sourceQuality": "page",
+      "sourceNote": ""
+    },
+    {
+      "courseId": "product.template:1368",
+      "courseName": "التصميم الداخلي للمطابخ (Kitchen)",
+      "description": "ابدأ دورة تصميم المطابخ وتعلم تخطيط المساحات واختيار الخامات وإعداد التصميمات التنفيذية للمطابخ السكنية والتجارية.",
+      "sourceUrl": "https://engosoft.com/shop/kitchen-design-interiors-1368",
+      "sourceQuality": "page",
+      "sourceNote": ""
+    },
+    {
+      "courseId": "product.template:1231",
+      "courseName": "تصميم أنظمة التيار الخفيف (Light Current)",
+      "description": "دورة تصميم انظمة التيار الخفيف تشمل أنظمة المراقبة والإنذار والشبكات بما يتوافق مع مشاريع السعودية.",
+      "sourceUrl": "https://engosoft.com/shop/light-current-1231",
+      "sourceQuality": "page",
+      "sourceNote": ""
+    },
+    {
+      "courseId": "product.template:1230",
+      "courseName": "(Lighting ) الإضاءة المتقدمة",
+      "description": "كورس تصميم انظمة التيار الخفيف light current systems مع تطبيقات عملية لمشاريع المباني في السعودية.",
+      "sourceUrl": "https://engosoft.com/shop/lighting-1230",
+      "sourceQuality": "page",
+      "sourceNote": ""
+    },
+    {
+      "courseId": "product.template:1220",
+      "courseName": "الأنيميشن المعماري باستخدام (Lumion)",
+      "description": "سجل في دورة تعلم انيميشن معماري وتعلم إنتاج فيديوهات معمارية واقعية باستخدام 3ds Max وLumion للمشاريع الهندسية.",
+      "sourceUrl": "https://engosoft.com/shop/lumion-program-for-architects-1220",
+      "sourceQuality": "page",
+      "sourceNote": ""
+    },
+    {
+      "courseId": "product.template:1107",
+      "courseName": "Management - PMP - Event",
+      "description": "",
+      "sourceUrl": "https://engosoft.com/shop/management-pmp-event-1107",
+      "sourceQuality": "page",
+      "sourceNote": ""
+    },
+    {
+      "courseId": "product.template:1108",
+      "courseName": "Management - PRIMAVERA - Event",
+      "description": "",
+      "sourceUrl": "https://engosoft.com/shop/management-primavera-event-1108",
+      "sourceQuality": "page",
+      "sourceNote": ""
+    },
+    {
+      "courseId": "product.template:1263",
+      "courseName": "Mechanical -Fire Fighting - Event",
+      "description": "",
+      "sourceUrl": "https://engosoft.com/shop/mechanical-fire-fighting-event-1263",
+      "sourceQuality": "page",
+      "sourceNote": ""
+    },
+    {
+      "courseId": "product.template:1262",
+      "courseName": "Mechanical - HVAC - Event",
+      "description": "",
+      "sourceUrl": "https://engosoft.com/shop/mechanical-hvac-event-1262",
+      "sourceQuality": "page",
+      "sourceNote": ""
+    },
+    {
+      "courseId": "product.template:1265",
+      "courseName": "تصميم انظمة الصرف وتغذية المياه",
+      "description": "",
+      "sourceUrl": "https://engosoft.com/shop/mechanical-plumbing-event-1265",
+      "sourceQuality": "page",
+      "sourceNote": ""
+    },
+    {
+      "courseId": "product.template:1264",
+      "courseName": "Mechanical - Shop Drawing - Event",
+      "description": "",
+      "sourceUrl": "https://engosoft.com/shop/mechanical-shop-drawing-event-1264",
+      "sourceQuality": "page",
+      "sourceNote": ""
+    },
+    {
+      "courseId": "product.template:1228",
+      "courseName": "تنفيذ الأعمال الميكانيكية بالموقع (Mechanical Site)",
+      "description": "دورة اعداد مهندس ميكانيكا موقع لتأهيل المهندس للعمل بالمواقع وإدارة الأعمال الميكانيكية في السعودية.",
+      "sourceUrl": "https://engosoft.com/shop/mechanical-site-execution-1228",
+      "sourceQuality": "page",
+      "sourceNote": ""
+    },
+    {
+      "courseId": "product.template:1535",
+      "courseName": "أعمال المكتب الفني الميكانيكية (Shop Drawing)",
+      "description": "سجل في كورس شوب دروينج ميكانيكا وتعلم إعداد مخططات HVAC والسباكة ومكافحة الحريق وحصر الكميات وفق متطلبات سوق العمل السعودي.",
+      "sourceUrl": "https://engosoft.com/shop/mechanical-systems-design-and-shop-drawing-basics-1535",
+      "sourceQuality": "page",
+      "sourceNote": ""
+    },
+    {
+      "courseId": "product.template:1246",
+      "courseName": "تقنيات معالجة المياه",
+      "description": "سجل في دورة معالجة المياه وتعلم مراحل المعالجة وتصميم وتشغيل محطات المياه والصرف وفق المعايير الهندسية الحديثة.",
+      "sourceUrl": "https://engosoft.com/shop/mechanical-water-treatment-1246",
+      "sourceQuality": "page",
+      "sourceNote": ""
+    },
+    {
+      "courseId": "product.template:1229",
+      "courseName": "تصميم أنظمة الغازات الطبيه (Medical Gas)",
+      "description": "دورة شبكة الغازات الطبية لتصميم وتنفيذ الشبكات بالمستشفيات وفق المعايير المعتمدة في السعودية.",
+      "sourceUrl": "https://engosoft.com/shop/medical-gas-systems-design-1229",
+      "sourceQuality": "page",
+      "sourceNote": ""
+    },
+    {
+      "courseId": "product.template:1869",
+      "courseName": "Navisworks arc -event",
+      "description": "",
+      "sourceUrl": "https://engosoft.com/shop/navisworks-arc-event-1869",
+      "sourceQuality": "page",
+      "sourceNote": ""
+    },
+    {
+      "courseId": "product.template:1995",
+      "courseName": "برنامج النافيس ورك المعماري",
+      "description": "كورس نافيس ورك لتعلم التنسيق وكشف التعارضات بين التخصصات الهندسية في مشاريع السعودية",
+      "sourceUrl": "https://engosoft.com/shop/navisworks-architecture-1995",
+      "sourceQuality": "page",
+      "sourceNote": ""
+    },
+    {
+      "courseId": "product.template:2107",
+      "courseName": "برنامج النافيس ورك الإلكتروميكانيك",
+      "description": "كورس نافيس ورك لتعلم التنسيق وكشف التعارضات بين التخصصات الهندسية في مشاريع السعودية",
+      "sourceUrl": "https://engosoft.com/shop/navisworks-mep-2107",
+      "sourceQuality": "page",
+      "sourceNote": ""
+    },
+    {
+      "courseId": "product.template:2113",
+      "courseName": "Navisworks MEP-event",
+      "description": "",
+      "sourceUrl": "https://engosoft.com/shop/navisworks-mepevent-2113",
+      "sourceQuality": "page",
+      "sourceNote": ""
+    },
+    {
+      "courseId": "product.template:2106",
+      "courseName": "برنامج النافيس ورك الإنشائي",
+      "description": "كورس نافيس ورك لتعلم التنسيق وكشف التعارضات بين التخصصات الهندسية في مشاريع السعودية",
+      "sourceUrl": "https://engosoft.com/shop/navisworks-structure-2106",
+      "sourceQuality": "page",
+      "sourceNote": ""
+    },
+    {
+      "courseId": "product.template:2112",
+      "courseName": "Navisworks Structure-event",
+      "description": "",
+      "sourceUrl": "https://engosoft.com/shop/navisworks-structureevent-2112",
+      "sourceQuality": "page",
+      "sourceNote": ""
+    },
+    {
+      "courseId": "product.template:1244",
+      "courseName": "الاوشا المتخصصة في السلامة والصحة المهنية طبقا للمعايير الأمريكية (OSHA)",
+      "description": "دورة السلامة والصحة المهنية وفق معايير osha لتأهيل العاملين بالمشاريع الصناعية والإنشائية في السعودية.",
+      "sourceUrl": "https://engosoft.com/shop/occupational-safety-and-health-administration-osha-1244",
+      "sourceQuality": "page",
+      "sourceNote": ""
+    },
+    {
+      "courseId": "product.template:1095",
+      "courseName": "التصميم باستخدام برنامج الفوتوشوب (Photoshop)",
+      "description": "دورة فوتوشوب كاملة تشمل التصميم وتعديل الصور وصناعة المحتوى بشهادة معتمدة تناسب سوق العمل",
+      "sourceUrl": "https://engosoft.com/shop/photoshop-for-interior-design-1095",
+      "sourceQuality": "page",
+      "sourceNote": ""
+    },
+    {
+      "courseId": "product.template:1250",
+      "courseName": "تصميم شبكات الأنابيب واللحام والتصنيع  (Piping)",
+      "description": "انضم إلى دورة اللحام وتعلم أساليب اللحام المختلفة وقراءة الرسومات الفنية وفحص جودة اللحامات وفق المعايير الصناعية.",
+      "sourceUrl": "https://engosoft.com/shop/piping-design-welding-fabrication-1250",
+      "sourceQuality": "page",
+      "sourceNote": ""
+    },
+    {
+      "courseId": "product.template:1112",
+      "courseName": "برنامج تخطيط المشاريع ( Primavera P6 )",
+      "description": "دورة بريمافيرا كاملة لتخطيط وجدولة المشاريع الهندسية بشهادة تدعم فرص العمل في شركات المقاولات بالسعودية",
+      "sourceUrl": "https://engosoft.com/shop/planning-and-primavera-p6-course-1112",
+      "sourceQuality": "page",
+      "sourceNote": ""
+    },
+    {
+      "courseId": "product.template:1226",
+      "courseName": "تصميم انظمه الصرف وتغذيه المياه (Plumbing)",
+      "description": "دورة تصميم شبكات الصرف الصحي تشمل الحسابات الهيدروليكية واستخدام البرامج الهندسية وفق المعايير السعودية.",
+      "sourceUrl": "https://engosoft.com/shop/plumbing-systems-design-1226",
+      "sourceQuality": "page",
+      "sourceNote": ""
+    },
+    {
+      "courseId": "product.template:2007",
+      "courseName": "محاكي اختبار شهادة إدارة المشاريع الاحترافية (PMP) – الإصدار الثامن",
+      "description": "اختبار PMP عربي يساعدك على التدرب على أسئلة موقفية باللغة العربية، وفهم نمط الامتحان وتقييم جاهزيتك قبل التقديم على اختبار PMP الحقيقي.",
+      "sourceUrl": "https://engosoft.com/shop/pmp-exam-simulator-8th-edition-ar-2007",
+      "sourceQuality": "page",
+      "sourceNote": ""
+    },
+    {
+      "courseId": "product.template:1855",
+      "courseName": "محاكي اختبار شهادة إدارة المشاريع الاحترافية (PMP) – الإصدار الثامن",
+      "description": "اختبار PMP تجريبي يحاكي نمط أسئلة الامتحان ويساعدك على قياس مستواك، تدريب إدارة الوقت، وتحديد نقاط القوة والضعف قبل دخول اختبار PMP.",
+      "sourceUrl": "https://engosoft.com/shop/pmp-exam-simulator-8th-edition-en-1855",
+      "sourceQuality": "page",
+      "sourceNote": ""
+    },
+    {
+      "courseId": "product.template:2092",
+      "courseName": "التهيئة لاختبار محترف ادارة المشاريع (PMP) - الإصدار الثامن",
+      "description": "دورة pmp معتمدة تؤهلك لاجتياز الاختبار الدولي مع شرح شامل وأمثلة عملية تناسب مديري المشاريع في السعودية.",
+      "sourceUrl": "https://engosoft.com/shop/pmp-preparation-course-8th-edition-2092",
+      "sourceQuality": "page",
+      "sourceNote": ""
+    },
+    {
+      "courseId": "product.template:2170",
+      "courseName": "التهيئة لاختبار محترف ادارة المشاريع (PMP) - الإصدار الثامن",
+      "description": "دورة pmp معتمدة تؤهلك لاجتياز الاختبار الدولي مع شرح شامل وأمثلة عملية تناسب مديري المشاريع في السعودية.",
+      "sourceUrl": "https://engosoft.com/shop/pmp-preparation-course-8th-edition-mahmoud-zidan-2170",
+      "sourceQuality": "page",
+      "sourceNote": ""
+    },
+    {
+      "courseId": "product.template:1249",
+      "courseName": "تصميم وتشغيل وصيانة المضخات (Pumps)",
+      "description": "ابدأ كورس المضخات وتعلم اختيار المضخات وحسابات التدفق والضغط وتشغيل وصيانة أنظمة الضخ في المشاريع الهندسية.",
+      "sourceUrl": "https://engosoft.com/shop/pumps-design-operation-maintenance-1249",
+      "sourceQuality": "page",
+      "sourceNote": ""
+    },
+    {
+      "courseId": "product.template:2001",
+      "courseName": "الريفيت المعمارى",
+      "description": "كورس ريفيت انشائي لتصميم وتحليل العناصر الإنشائية باستخدام برنامج ريفيت وفق متطلبات السوق السعودي.",
+      "sourceUrl": "https://engosoft.com/shop/revit-architecture-2001",
+      "sourceQuality": "page",
+      "sourceNote": ""
+    },
+    {
+      "courseId": "product.template:1943",
+      "courseName": "Revit  architecture  event",
+      "description": "",
+      "sourceUrl": "https://engosoft.com/shop/revit-architecture-event-1943",
+      "sourceQuality": "page",
+      "sourceNote": ""
+    },
+    {
+      "courseId": "product.template:2116",
+      "courseName": "الريفيت الكهربائي",
+      "description": "كورس ريفيت الالكتروميكانيك لتصميم أنظمة الكهرباء والميكانيكا داخل نموذج BIM للمشاريع بالسعودية.",
+      "sourceUrl": "https://engosoft.com/shop/revit-electrical-design-2116",
+      "sourceQuality": "page",
+      "sourceNote": ""
+    },
+    {
+      "courseId": "product.template:1997",
+      "courseName": "عمل الفاميلى باستخدام الريفيت المعمارى",
+      "description": "",
+      "sourceUrl": "https://engosoft.com/shop/revit-family-creation-architure-1997",
+      "sourceQuality": "catalog",
+      "sourceNote": "تعذّر تحميل صفحة الدورة؛ الاسم من بطاقة الدورة بالموقع."
+    },
+    {
+      "courseId": "product.template:1998",
+      "courseName": "عمل الفاميلي باستخدام الالكتروميكانيك",
+      "description": "سجل في دورة ريفيت ميكانيكا وتعلم تصميم أنظمة HVAC والسباكة ومكافحة الحريق باستخدام Revit MEP وفق متطلبات سوق العمل السعودي.",
+      "sourceUrl": "https://engosoft.com/shop/revit-family-creation-mep-1998",
+      "sourceQuality": "page",
+      "sourceNote": ""
+    },
+    {
+      "courseId": "product.template:2003",
+      "courseName": "revit family creationarchitureevent",
+      "description": "",
+      "sourceUrl": "https://engosoft.com/shop/revit-family-creationarchitureevent-2003",
+      "sourceQuality": "sitemap",
+      "sourceNote": "تعذّر تحميل صفحة الدورة. اسم مؤقت مستنتج من الرابط؛ راجع الاسم والمحتوى قبل الاعتماد."
+    },
+    {
+      "courseId": "product.template:1868",
+      "courseName": "revit family creationmepevent",
+      "description": "",
+      "sourceUrl": "https://engosoft.com/shop/revit-family-creationmepevent-1868",
+      "sourceQuality": "sitemap",
+      "sourceNote": "تعذّر تحميل صفحة الدورة. اسم مؤقت مستنتج من الرابط؛ راجع الاسم والمحتوى قبل الاعتماد."
+    },
+    {
+      "courseId": "product.template:1996",
+      "courseName": "عمل الفاميلى باستخدام الريفيت الانشائى",
+      "description": "",
+      "sourceUrl": "https://engosoft.com/shop/revit-family-creationstructure-1996",
+      "sourceQuality": "catalog",
+      "sourceNote": "تعذّر تحميل صفحة الدورة؛ الاسم من بطاقة الدورة بالموقع."
+    },
+    {
+      "courseId": "product.template:2205",
+      "courseName": "Revit Family Creation-Structure - Alaa Saleh",
+      "description": "",
+      "sourceUrl": "https://engosoft.com/shop/revit-family-creationstructure-alaa-saleh-2205",
+      "sourceQuality": "catalog",
+      "sourceNote": "تعذّر تحميل صفحة الدورة؛ الاسم من بطاقة الدورة بالموقع."
+    },
+    {
+      "courseId": "product.template:2002",
+      "courseName": "revit family creationstructureevent",
+      "description": "",
+      "sourceUrl": "https://engosoft.com/shop/revit-family-creationstructureevent-2002",
+      "sourceQuality": "sitemap",
+      "sourceNote": "تعذّر تحميل صفحة الدورة. اسم مؤقت مستنتج من الرابط؛ راجع الاسم والمحتوى قبل الاعتماد."
+    },
+    {
+      "courseId": "product.template:1993",
+      "courseName": "الريفيت الالكتروميكانيك - MEP",
+      "description": "",
+      "sourceUrl": "https://engosoft.com/shop/revit-mep-1993",
+      "sourceQuality": "catalog",
+      "sourceNote": "تعذّر تحميل صفحة الدورة؛ الاسم من بطاقة الدورة بالموقع."
+    },
+    {
+      "courseId": "product.template:1864",
+      "courseName": "revit mep event",
+      "description": "",
+      "sourceUrl": "https://engosoft.com/shop/revit-mep-event-1864",
+      "sourceQuality": "sitemap",
+      "sourceNote": "تعذّر تحميل صفحة الدورة. اسم مؤقت مستنتج من الرابط؛ راجع الاسم والمحتوى قبل الاعتماد."
+    },
+    {
+      "courseId": "product.template:2000",
+      "courseName": "الريفيت الانشائي",
+      "description": "",
+      "sourceUrl": "https://engosoft.com/shop/revit-structure-2000",
+      "sourceQuality": "catalog",
+      "sourceNote": "تعذّر تحميل صفحة الدورة؛ الاسم من بطاقة الدورة بالموقع."
+    },
+    {
+      "courseId": "product.template:2206",
+      "courseName": "Revit Structure - Alaa Saleh",
+      "description": "",
+      "sourceUrl": "https://engosoft.com/shop/revit-structure-alaa-saleh-2206",
+      "sourceQuality": "catalog",
+      "sourceNote": "تعذّر تحميل صفحة الدورة؛ الاسم من بطاقة الدورة بالموقع."
+    },
+    {
+      "courseId": "product.template:1942",
+      "courseName": "revit structure event",
+      "description": "",
+      "sourceUrl": "https://engosoft.com/shop/revit-structure-event-1942",
+      "sourceQuality": "sitemap",
+      "sourceNote": "تعذّر تحميل صفحة الدورة. اسم مؤقت مستنتج من الرابط؛ راجع الاسم والمحتوى قبل الاعتماد."
+    },
+    {
+      "courseId": "product.template:2104",
+      "courseName": "التنسيق بإستخدام الريفيت الإنشائي",
+      "description": "",
+      "sourceUrl": "https://engosoft.com/shop/revit-work-sharing-structure-2104",
+      "sourceQuality": "catalog",
+      "sourceNote": "تعذّر تحميل صفحة الدورة؛ الاسم من بطاقة الدورة بالموقع."
+    },
+    {
+      "courseId": "product.template:1867",
+      "courseName": "revit worksharing arcevent",
+      "description": "",
+      "sourceUrl": "https://engosoft.com/shop/revit-worksharing-arcevent-1867",
+      "sourceQuality": "sitemap",
+      "sourceNote": "تعذّر تحميل صفحة الدورة. اسم مؤقت مستنتج من الرابط؛ راجع الاسم والمحتوى قبل الاعتماد."
+    },
+    {
+      "courseId": "product.template:1999",
+      "courseName": "التنسيق بإستخدام الريفيت المعماري",
+      "description": "",
+      "sourceUrl": "https://engosoft.com/shop/revit-worksharing-architecture-1999",
+      "sourceQuality": "catalog",
+      "sourceNote": "تعذّر تحميل صفحة الدورة؛ الاسم من بطاقة الدورة بالموقع."
+    },
+    {
+      "courseId": "product.template:2105",
+      "courseName": "التنسيق بإستخدام الريفيت الإلكتروميكانيك",
+      "description": "",
+      "sourceUrl": "https://engosoft.com/shop/revit-worksharing-mep-2105",
+      "sourceQuality": "catalog",
+      "sourceNote": "تعذّر تحميل صفحة الدورة؛ الاسم من بطاقة الدورة بالموقع."
+    },
+    {
+      "courseId": "product.template:2111",
+      "courseName": "revit worksharing mepevent",
+      "description": "",
+      "sourceUrl": "https://engosoft.com/shop/revit-worksharing-mepevent-2111",
+      "sourceQuality": "sitemap",
+      "sourceNote": "تعذّر تحميل صفحة الدورة. اسم مؤقت مستنتج من الرابط؛ راجع الاسم والمحتوى قبل الاعتماد."
+    },
+    {
+      "courseId": "product.template:2110",
+      "courseName": "revit worksharing structureevent",
+      "description": "",
+      "sourceUrl": "https://engosoft.com/shop/revit-worksharing-structureevent-2110",
+      "sourceQuality": "sitemap",
+      "sourceNote": "تعذّر تحميل صفحة الدورة. اسم مؤقت مستنتج من الرابط؛ راجع الاسم والمحتوى قبل الاعتماد."
+    },
+    {
+      "courseId": "product.template:1546",
+      "courseName": "road construction fundamentals",
+      "description": "",
+      "sourceUrl": "https://engosoft.com/shop/road-construction-fundamentals-1546",
+      "sourceQuality": "sitemap",
+      "sourceNote": "تعذّر تحميل صفحة الدورة. اسم مؤقت مستنتج من الرابط؛ راجع الاسم والمحتوى قبل الاعتماد."
+    },
+    {
+      "courseId": "product.template:1247",
+      "courseName": "برنامج أوتوديسك سيفيل ثرى دى لتصميم الطرق (Civil 3D)",
+      "description": "",
+      "sourceUrl": "https://engosoft.com/shop/roadway-design-in-autodesk-civil-3d-1247",
+      "sourceQuality": "catalog",
+      "sourceNote": "تعذّر تحميل صفحة الدورة؛ الاسم من بطاقة الدورة بالموقع."
+    },
+    {
+      "courseId": "product.template:1241",
+      "courseName": "تصميم شبكات الصرف باستخدام برنامج (SewerGEMS)",
+      "description": "",
+      "sourceUrl": "https://engosoft.com/shop/sewergems-program-1241",
+      "sourceQuality": "catalog",
+      "sourceNote": "تعذّر تحميل صفحة الدورة؛ الاسم من بطاقة الدورة بالموقع."
+    },
+    {
+      "courseId": "product.template:1809",
+      "courseName": "أساسيات المنشآت المعدنية، الرسومات التنفيذية، وأعمال الموقع",
+      "description": "",
+      "sourceUrl": "https://engosoft.com/shop/steel-basics-shop-drawings-site-works-1809",
+      "sourceQuality": "catalog",
+      "sourceNote": "تعذّر تحميل صفحة الدورة؛ الاسم من بطاقة الدورة بالموقع."
+    },
+    {
+      "courseId": "product.template:1810",
+      "courseName": "التحليل والتصميم الإنشائي للمنشآت المعدنية",
+      "description": "",
+      "sourceUrl": "https://engosoft.com/shop/steel-structural-analysis-and-design-1810",
+      "sourceQuality": "catalog",
+      "sourceNote": "تعذّر تحميل صفحة الدورة؛ الاسم من بطاقة الدورة بالموقع."
+    },
+    {
+      "courseId": "product.template:1242",
+      "courseName": "تصميم شبكات تصريف مياه الامطار بإستخدام برنامج (StormCAD)",
+      "description": "",
+      "sourceUrl": "https://engosoft.com/shop/stormcad-program-1242",
+      "sourceQuality": "catalog",
+      "sourceNote": "تعذّر تحميل صفحة الدورة؛ الاسم من بطاقة الدورة بالموقع."
+    },
+    {
+      "courseId": "product.template:1236",
+      "courseName": "التحليل الإنشائي باستخدام برنامج (SAP 2000)",
+      "description": "",
+      "sourceUrl": "https://engosoft.com/shop/structural-analysis-using-sap2000-1236",
+      "sourceQuality": "catalog",
+      "sourceNote": "تعذّر تحميل صفحة الدورة؛ الاسم من بطاقة الدورة بالموقع."
+    },
+    {
+      "courseId": "product.template:1477",
+      "courseName": "تصميم المباني المستدامة – LEED GA",
+      "description": "",
+      "sourceUrl": "https://engosoft.com/shop/sustainable-building-design-leed-ga-1477",
+      "sourceQuality": "catalog",
+      "sourceNote": "تعذّر تحميل صفحة الدورة؛ الاسم من بطاقة الدورة بالموقع."
+    },
+    {
+      "courseId": "product.template:1116",
+      "courseName": "الهاكر الأخلاقي المعتمد",
+      "description": "",
+      "sourceUrl": "https://engosoft.com/shop/technology-ceh-recorded-1116",
+      "sourceQuality": "catalog",
+      "sourceNote": "تعذّر تحميل صفحة الدورة؛ الاسم من بطاقة الدورة بالموقع."
+    },
+    {
+      "courseId": "product.template:2056",
+      "courseName": "الاحتراف في العمل الحر (Freelance)",
+      "description": "",
+      "sourceUrl": "https://engosoft.com/shop/the-freelance-masterclass-2056",
+      "sourceQuality": "catalog",
+      "sourceNote": "تعذّر تحميل صفحة الدورة؛ الاسم من بطاقة الدورة بالموقع."
+    },
+    {
+      "courseId": "product.template:1258",
+      "courseName": "هندسة النقل والمرور (Transportation and Traffic)",
+      "description": "",
+      "sourceUrl": "https://engosoft.com/shop/transportation-and-traffic-engineering-1258",
+      "sourceQuality": "catalog",
+      "sourceNote": "تعذّر تحميل صفحة الدورة؛ الاسم من بطاقة الدورة بالموقع."
+    },
+    {
+      "courseId": "product.template:1240",
+      "courseName": "تصميم شبكات المياه باستخدام برنامج (WaterGEMS)",
+      "description": "",
+      "sourceUrl": "https://engosoft.com/shop/watergems-program-1240",
+      "sourceQuality": "catalog",
+      "sourceNote": "تعذّر تحميل صفحة الدورة؛ الاسم من بطاقة الدورة بالموقع."
+    }
+  ]
+}

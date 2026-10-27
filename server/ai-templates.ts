@@ -11,10 +11,10 @@ defineSchema(`CREATE TABLE IF NOT EXISTS ai_templates (
  usage_count INTEGER NOT NULL DEFAULT 0, sample_url TEXT, created_at TEXT NOT NULL
 )`);
 
-export interface AiTemplate { id: string; name: string; description: string; prompt: string; style: string; format: 'feed' | 'story'; channels: string[]; departmentId: string | null; createdBy: string; usageCount: number; sampleUrl: string | null; createdAt: string }
+export interface AiTemplate { id: string; name: string; description: string; prompt: string; style: string; format: 'feed' | 'story' | 'landscape' | 'video'; channels: string[]; departmentId: string | null; createdBy: string; usageCount: number; sampleUrl: string | null; createdAt: string }
 const toTemplate = (r: Record<string, unknown>): AiTemplate => ({
   id: String(r.id), name: String(r.name), description: String(r.description), prompt: String(r.prompt), style: String(r.style),
-  format: r.format === 'story' ? 'story' : 'feed', channels: JSON.parse(String(r.channels_json || '[]')), departmentId: (r.department_id as string | null) ?? null,
+  format: ['feed','story','landscape','video'].includes(String(r.format)) ? r.format as AiTemplate['format'] : 'feed', channels: JSON.parse(String(r.channels_json || '[]')), departmentId: (r.department_id as string | null) ?? null,
   createdBy: String(r.created_by), usageCount: Number(r.usage_count), sampleUrl: (r.sample_url as string | null) ?? null, createdAt: String(r.created_at),
 });
 export const listTemplates = async () => (await db.all('SELECT * FROM ai_templates ORDER BY usage_count DESC, created_at DESC')).map(toTemplate);
@@ -24,7 +24,7 @@ export const countTemplateUse = (id: string) => db.run('UPDATE ai_templates SET 
 const input = z.object({
   name: z.string().trim().min(2).max(120), description: z.string().max(500).default(''),
   prompt: z.string().trim().min(5).max(2000), style: z.string().max(1500).default(''),
-  format: z.enum(['feed', 'story']).default('feed'), channels: z.array(z.enum(['facebook', 'instagram', 'whatsapp', 'linkedin', 'tiktok', 'snapchat'])).max(6).default([]),
+  format: z.enum(['feed', 'story', 'landscape', 'video']).default('feed'), channels: z.array(z.enum(['facebook', 'instagram', 'whatsapp', 'linkedin', 'tiktok', 'snapchat', 'youtube', 'website'])).max(8).default([]),
   sampleUrl: z.string().regex(/^\/api\/creatives\/[0-9a-f-]{36}\/[a-z0-9.-]+\.png$/).nullable().default(null),
 });
 

@@ -1,0 +1,122 @@
+.permissions {
+  display: grid;
+  gap: 20px;
+  min-width: 0;
+}
+.permissions__intro {
+  display: flex;
+  gap: 12px;
+  align-items: flex-start;
+}
+.permissions__intro h2,
+.permissions__intro p {
+  margin: 0 0 8px;
+}
+.permissions__intro p {
+  font-size: 13px;
+  color: var(--text-muted);
+  line-height: 1.8;
+}
+.permissions__layout {
+  display: grid;
+  grid-template-columns: 240px minmax(0, 1fr);
+  gap: 20px;
+  align-items: start;
+}
+.permissions__people {
+  display: grid;
+  gap: 6px;
+  max-height: 70vh;
+  overflow: auto;
+}
+.permissions__people button {
+  display: grid;
+  gap: 5px;
+  padding: 14px;
+  text-align: start;
+  border: 1px solid var(--border);
+  border-radius: 10px;
+  background: var(--surface);
+  color: var(--text);
+  font: inherit;
+  cursor: pointer;
+}
+.permissions__people button[aria-pressed='true'] {
+  border-color: var(--brand);
+  background: var(--brand-soft);
+}
+.permissions__people small,
+.permissions__row small {
+  display: block;
+  font-size: 11px;
+  color: var(--text-muted);
+}
+.permissions__detail {
+  padding: 22px;
+  min-width: 0;
+}
+.permissions__head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  flex-wrap: wrap;
+}
+.permissions__head h3 {
+  margin: 0;
+}
+.permissions__row {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  padding: 12px 0;
+  border-bottom: 1px solid var(--border);
+  font-size: 13px;
+}
+.permissions__row > span:first-child {
+  flex: 1;
+  min-width: 0;
+}
+.permissions__row select {
+  padding: 8px;
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  background: var(--surface);
+  color: var(--text);
+  font: inherit;
+  max-width: 150px;
+}
+.permissions__state {
+  font-size: 11px;
+  color: var(--text-muted);
+}
+.permissions__state[data-enabled='true'] {
+  color: var(--success-ink);
+}
+.permissions__dot {
+  width: 6px;
+  height: 6px;
+  border-radius: 50%;
+  background: var(--text-subtle);
+  flex: none;
+}
+.permissions__dot[data-enabled='true'] {
+  background: var(--success);
+}
+@media (max-width: 800px) {
+  .permissions__layout {
+    grid-template-columns: minmax(0, 1fr);
+  }
+  .permissions__people {
+    display: flex;
+    overflow: auto;
+    max-height: none;
+    padding-bottom: 8px;
+  }
+  .permissions__people > * {
+    flex: 0 0 190px;
+  }
+  .permissions__detail {
+    padding: 16px;
+  }
+}

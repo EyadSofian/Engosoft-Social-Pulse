@@ -6,8 +6,8 @@ import type { DepartmentId, Permission, RoleId } from '../../domain/users';
 import { api, ApiError, SESSION_ENDED } from '../../lib/api';
 import { LoginPage } from './LoginPage';
 
-export interface SessionUser { id: string; name: string; email: string; role: RoleId; departmentId: DepartmentId | null; title: string; status: 'active' | 'suspended'; lastActiveAt: string | null }
-interface MeResponse { user: SessionUser; permissions: Permission[]; roles: { id: RoleId; name: Text }[]; departments: { id: DepartmentId; name: Text }[] }
+export interface SessionUser { id: string; name: string; email: string; role: RoleId; departmentId: DepartmentId | null; title: string; status: 'active' | 'suspended'; lastActiveAt: string | null; permissionOverrides?: Partial<Record<Permission, boolean>> }
+interface MeResponse { user: SessionUser; permissions: Permission[]; roles: { id: RoleId; name: Text; description?: Text; permissions?: Permission[] }[]; departments: { id: DepartmentId; name: Text }[] }
 export interface AuthApi extends MeResponse { can: (permission: Permission) => boolean; logout: () => Promise<void> }
 
 const AuthContext = createContext<AuthApi | null>(null);
@@ -19,9 +19,9 @@ export function AuthProvider({ children }: { children: ReactNode }) {
 
   const refresh = useCallback(async () => {
     try { setMe(await api<MeResponse>('/api/auth/me')); setState('signed-in'); }
-    catch (error) { if (error instanceof ApiError && error.status === 401) { setMe(null); setState('signed-out'); } else setState('signed-out'); }
+    catch (error) { if (error instanceof ApiError && error.status === 401) { setMe(null); setState('signed-out'); } else setState(current => current === 'signed-in' ? current : 'signed-out'); }
   }, []);
-  useEffect(() => { void refresh(); }, [refresh]);
+  useEffect(() => { void refresh(); const onFocus = () => { void refresh(); }; window.addEventListener('focus', onFocus); return () => window.removeEventListener('focus', onFocus); }, [refresh]);
   useEffect(() => {
     const ended = () => { setMe(null); setState('signed-out'); };
     window.addEventListener(SESSION_ENDED, ended);

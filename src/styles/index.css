@@ -40,3 +40,5 @@
 @import './features/notifications.css';
 @import './features/course-picker.css';
 @import './features/course-profiles.css';
+
+@import './features/permissions.css';

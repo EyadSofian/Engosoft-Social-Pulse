@@ -234,7 +234,7 @@ export function registerSvgTemplateRoutes(app: express.Express) {
 
   /** Ready-to-post captions per platform from the facts of a template post: one cheap text call. */
   app.post('/api/ai/captions', requireUser, requirePermission('content.create'), requireAiBudget, async (req, res) => {
-    const channels = ['facebook', 'instagram', 'whatsapp', 'linkedin', 'tiktok', 'snapchat', 'website'] as const;
+    const channels = ['facebook', 'instagram', 'whatsapp', 'linkedin', 'tiktok', 'snapchat', 'youtube', 'website'] as const;
     const parsed = z.object({ facts: z.string().trim().min(3).max(3000), channels: z.array(z.enum(channels)).min(1).max(7) }).safeParse(req.body);
     if (!parsed.success) return res.status(400).json({ error: 'بيانات المنشور والمنصات مطلوبة.' });
     const key = process.env.OPENAI_API_KEY?.trim();

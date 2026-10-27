@@ -10,6 +10,9 @@ import { CoursePicker, runOf } from '../creative-studio/CoursePicker';
 import { CREATIVE_PLATFORMS, PLATFORM_FORMATS, type CreativePlatform } from '../creative-studio/platforms';
 import { courseValues, exportPng, fillSvg, FORMAT_LABEL, KIND_LABEL, loadBrandFonts, odooValues, sampleValues, TEMPLATE_KINDS, type CourseProfile, type SvgTemplate, type TemplateFormat, type TemplateKind } from './render';
 import type { CoursePick } from '../creative-studio/CoursePicker';
+import { courseCopy, courseTemplateCopy } from '../../domain/course-copy';
+import { publishingPreset } from '../../domain/output-presets';
+import { PublishingPresetPicker } from '../publishing/PublishingPresetPicker';
 import { useAuth } from '../auth/AuthProvider';
 
 export function useSvgTemplates() {
@@ -25,9 +28,10 @@ export function useSvgTemplates() {
 /** Goals, audience and outcomes marketing recorded for each course; they fill templates' `course.*` fields. */
 export function useCourseProfiles() {
   const [profiles, setProfiles] = useState<CourseProfile[]>([]);
-  const reload = () => api<CourseProfile[]>('/api/course-profiles').then(setProfiles).catch(() => {});
-  useEffect(() => { void reload(); }, []);
-  return { profiles, reload };
+  const [error, setError] = useState('');
+  const reload = () => api<CourseProfile[]>('/api/course-profiles').then(data => { setProfiles(data); setError(''); }).catch(e => { setError(errorMessage(e, 'تعذّر تحميل ملفات الدورات.')); throw e; });
+  useEffect(() => { void reload().catch(() => {}); }, []);
+  return { profiles, reload, error };
 }
 
 const norm = (value: string) => value.toLowerCase().replace(/[\s\-_:()]+/g, ' ').trim();
@@ -176,7 +180,7 @@ export function TemplateGrid({ items, onOpen }: { items: SvgTemplate[]; onOpen: 
 }
 
 /** Fill a template's fields by hand or from an Odoo event. */
-function FieldsForm({ template, values, onChange }: { template: SvgTemplate; values: Record<string, string>; onChange: (next: Record<string, string>) => void }) {
+function FieldsForm({ template, values, onChange, onCourseCopy }: { template: SvgTemplate; values: Record<string, string>; onChange: (next: Record<string, string>) => void; onCourseCopy?: (copy: Record<string, string>, profile?: CourseProfile) => void }) {
   const { t } = useI18n();
   const { can } = useAuth();
   const [picking, setPicking] = useState(false);
@@ -188,7 +192,7 @@ function FieldsForm({ template, values, onChange }: { template: SvgTemplate; val
     <div className="tpl-fields">
       {usesOdoo && (
         <div className="tpl-fields__odoo">
-          <span><CalendarClock size={15} /> {t('Fill from an Odoo course', 'املأ الحقول من دورة في Odoo')}</span>
+          <span><CalendarClock size={15} /> {t('Choose a course to fill its copy', 'اختَر الدورة لملء النص تلقائيًا')}</span>
           {picking ? (
             <CoursePicker autoFocus onPick={(pick) => {
               const run = runOf(pick);
@@ -201,9 +205,11 @@ function FieldsForm({ template, values, onChange }: { template: SvgTemplate; val
                 if (linkField && (pick.course.url || run?.registrationUrl)) filled[linkField.key] = (run?.registrationUrl || pick.course.url)!;
               }
               const profile = profileFor(profiles, pick);
-              const cleared = Object.fromEntries(template.fields.filter((f) => f.source !== 'manual').map((f) => [f.key, '']));
-              onChange({ ...values, ...cleared, ...filled, ...courseValues(profile, template.fields) });
-              setNote(usesCourse ? (profile ? '' : t('No goals are recorded for this course yet; ask marketing to add them in Settings → Courses.', 'لا توجد أهداف مسجلة لهذه الدورة بعد؛ اطلب من التسويق إضافتها من الإعدادات ← الدورات.')) : '');
+              const cleared = Object.fromEntries(template.fields.filter((f) => f.source !== 'manual' || ['title','subtitle','body','objectives','audience','outcomes','cta'].includes(f.key)).map((f) => [f.key, '']));
+              const merged = { ...values, ...cleared, ...(profile ? courseTemplateCopy(profile, template.fields) : {}), ...filled, ...courseValues(profile, template.fields) };
+              onChange(Object.fromEntries(template.fields.map(field => [field.key, field.type === 'image' ? merged[field.key] ?? '' : (merged[field.key] ?? '').slice(0, field.maxChars ?? 2000)])));
+              onCourseCopy?.(profile ? courseCopy(profile) : { caption: '' }, profile);
+              setNote(profile ? (profile.reviewStatus === 'suggested' ? t('Copy filled from a suggested profile. Review it before submitting.', 'تم ملء النص من ملف مقترح. راجعه قبل الإرسال للاعتماد.') : t('Copy filled from the approved course profile. You can edit it below.', 'تم ملء النص من ملف الدورة المعتمد. يمكنك تعديله بالأسفل.')) : usesCourse ? t('No goals are recorded for this course yet; ask marketing to add them in Settings → Courses.', 'لا توجد أهداف مسجلة لهذه الدورة بعد؛ اطلب من التسويق إضافتها من الإعدادات ← الدورات.') : '');
               setPicking(false);
             }} />
           ) : (
@@ -214,7 +220,7 @@ function FieldsForm({ template, values, onChange }: { template: SvgTemplate; val
       )}
       {template.fields.map((field) => (
         <label key={field.key} className="tpl-fields__field">
-          <span>{field.label}{field.source.startsWith('course.') ? <i>{t('Course goals', 'أهداف الدورة')}</i> : field.source !== 'manual' && <i>Odoo</i>}</span>
+          <span>{field.label}{field.source.startsWith('course.') ? <i>{t('Course goals', 'أهداف الدورة')}</i> : field.source !== 'manual' && <i>{t('Course data', 'بيانات الدورة')}</i>}</span>
           {field.type === 'image' ? (
             <input type="file" accept="image/*" onChange={async (e) => { const f = e.target.files?.[0]; if (f) onChange({ ...values, [field.key]: await asDataUrl(f) }); }} />
           ) : field.type === 'multiline' ? (
@@ -236,12 +242,12 @@ const storedValues = (template: SvgTemplate, values: Record<string, string>) =>
  * Template → post: fill the fields, pick platforms, get captions, export the PNG in the browser and send the post
  * into the pipeline. With `contentId`, saves a new version of an existing template post instead.
  */
-interface ComposerProps { template: SvgTemplate; initialValues?: Record<string, string>; contentId?: string; initialChannels?: CreativePlatform[]; initialImageUrl?: string; initialFormat?: TemplateFormat; initialContext?: string; onClose?: () => void }
+interface ComposerProps { template: SvgTemplate; initialValues?: Record<string, string>; contentId?: string; initialChannels?: CreativePlatform[]; initialImageUrl?: string; initialFormat?: TemplateFormat; initialContext?: string; initialPreset?: string; onClose?: () => void }
 export function TemplateComposer(props: ComposerProps) {
   return props.template.sourceImage ? <ReferenceComposer {...props} /> : <SvgTemplateComposer {...props} />;
 }
 
-function ReferenceComposer({ template, initialValues, contentId, initialChannels, initialImageUrl, initialFormat, initialContext, onClose }: ComposerProps) {
+function ReferenceComposer({ template, initialValues, contentId, initialChannels, initialImageUrl, initialFormat, initialContext, initialPreset, onClose }: ComposerProps) {
   const { t } = useI18n();
   const { user } = useAuth();
   const { navigate } = useRouter();
@@ -251,17 +257,19 @@ function ReferenceComposer({ template, initialValues, contentId, initialChannels
   const [context, setContext] = useState<string>(saved.context ?? initialContext ?? '');
   const [format, setFormat] = useState<TemplateFormat>(saved.format ?? initialFormat ?? template.format);
   const [channels, setChannels] = useState<CreativePlatform[]>(initialChannels ?? saved.channels ?? ['instagram', 'facebook']);
+  const [presetId, setPresetId] = useState<string>(saved.presetId ?? initialPreset ?? '');
+  const preset = publishingPreset(presetId);
   const [caption, setCaption] = useState<string>(saved.caption ?? '');
   const [imageUrl, setImageUrl] = useState<string>(saved.imageUrl ?? initialImageUrl ?? '');
   const [jobId, setJobId] = useState<string>(saved.jobId ?? '');
   const [createdId, setCreatedId] = useState<string>(contentId ?? saved.createdId ?? '');
   const savedSignature = useRef<string>(saved.savedSignature ?? '');
-  const [renderedFor, setRenderedFor] = useState<string>(saved.renderedFor ?? (initialImageUrl ? JSON.stringify({ values: initialValues, format: initialFormat ?? template.format, context: initialContext ?? '' }) : ''));
+  const [renderedFor, setRenderedFor] = useState<string>(saved.renderedFor ?? (initialImageUrl ? JSON.stringify({ values: initialValues, format: initialFormat ?? template.format, context: initialContext ?? '', presetId: initialPreset ?? '' }) : ''));
   const [busy, setBusy] = useState('');
   const [error, setError] = useState('');
-  const signature = JSON.stringify({ values, format, context });
+  const signature = JSON.stringify({ values, format, context, presetId });
   const current = Boolean(imageUrl && renderedFor === signature);
-  useEffect(() => { try { sessionStorage.setItem(draftKey, JSON.stringify({ values, format, context, channels, caption, imageUrl, jobId, renderedFor, createdId, savedSignature: savedSignature.current })); } catch { /* Private storage: the current session still works. */ } }, [draftKey, values, format, context, channels, caption, imageUrl, jobId, renderedFor, createdId]);
+  useEffect(() => { try { sessionStorage.setItem(draftKey, JSON.stringify({ values, format, context, presetId, channels, caption, imageUrl, jobId, renderedFor, createdId, savedSignature: savedSignature.current })); } catch { /* Private storage: the current session still works. */ } }, [draftKey, values, format, context, presetId, channels, caption, imageUrl, jobId, renderedFor, createdId]);
   useEffect(() => {
     if (!jobId) return;
     let alive = true;
@@ -281,7 +289,7 @@ function ReferenceComposer({ template, initialValues, contentId, initialChannels
   const generate = async () => {
     setBusy('generate'); setError('');
     try {
-      const result = await api<{ jobId: string }>(`/api/svg-templates/${template.id}/render`, { body: { values, context, format } });
+      const result = await api<{ jobId: string }>(`/api/svg-templates/${template.id}/render`, { body: { values, context, format, ...(presetId ? { outputPreset: presetId } : {}) } });
       setRenderedFor(signature); setImageUrl(''); setJobId(result.jobId);
     } catch (e) { setError(errorMessage(e, '')); }
     setBusy('');
@@ -290,7 +298,7 @@ function ReferenceComposer({ template, initialValues, contentId, initialChannels
     if (!current || busy || jobId) return;
     setBusy(send ? 'send' : 'save'); setError('');
     try {
-      const svgTemplate = { id: template.id, values, format, context };
+      const svgTemplate = { id: template.id, values, format, context, ...(presetId ? { outputPreset: presetId } : {}) };
       let id = createdId;
       if (id && savedSignature.current !== signature) await api(`/api/content/${id}/versions`, { body: { imageUrl, studio: { svgTemplate }, note: t('New design from the approved reference', 'تصميم جديد من المرجع المعتمد') } });
       if (id) await api(`/api/content/${id}`, { method: 'PATCH', body: { title: values.title.slice(0, 300), ...(!contentId ? { channels, captions: Object.fromEntries(channels.map((c) => [c, caption])) } : {}) } });
@@ -301,7 +309,7 @@ function ReferenceComposer({ template, initialValues, contentId, initialChannels
         void api(`/api/svg-templates/${template.id}/used`, { body: {} }).catch(() => {});
       }
       savedSignature.current = signature;
-      try { sessionStorage.setItem(draftKey, JSON.stringify({ values, format, context, channels, caption, imageUrl, renderedFor, createdId: id, savedSignature: signature })); } catch { /* Continue saving without browser storage. */ }
+      try { sessionStorage.setItem(draftKey, JSON.stringify({ values, format, context, presetId, channels, caption, imageUrl, renderedFor, createdId: id, savedSignature: signature })); } catch { /* Continue saving without browser storage. */ }
       if (send) await api(`/api/content/${id}/transition`, { body: { to: 'ready_for_review' } });
       try { sessionStorage.removeItem(draftKey); } catch { /* Storage may be disabled. */ }
       navigate(`/content/${id}`);
@@ -311,7 +319,7 @@ function ReferenceComposer({ template, initialValues, contentId, initialChannels
   return <div className="tpl-composer">
     <div className="tpl-composer__stage">
       <span className="tpl-reference-label">{imageUrl ? t('Your generated design', 'تصميمك المولّد') : t('Visual reference', 'المرجع البصري')}</span>
-      <TemplatePreview template={imageUrl ? { ...template, sourceImage: imageUrl, width: format === 'landscape' ? 1200 : 1080, height: format === 'story' ? 1920 : format === 'square' ? 1080 : format === 'landscape' ? 630 : 1350 } : template} className="tpl-composer__preview" />
+      <TemplatePreview template={imageUrl ? { ...template, sourceImage: imageUrl, width: preset?.width ?? (format === 'landscape' ? 1200 : 1080), height: preset?.height ?? (format === 'story' ? 1920 : format === 'square' ? 1080 : format === 'landscape' ? 630 : 1350) } : template} className="tpl-composer__preview" />
       {imageUrl && <a href={template.sourceImage} target="_blank" rel="noreferrer" className="ui-link">{t('Compare with the reference', 'قارن بالمرجع')}</a>}
       {jobId && <p role="status"><Loader2 size={15} className="creative-job__spin" /> {t('Creating new artwork in this visual family…', 'جارٍ توليد تصميم جديد من نفس العائلة البصرية…')}</p>}
     </div>
@@ -319,9 +327,13 @@ function ReferenceComposer({ template, initialValues, contentId, initialChannels
       <div className="tpl-composer__title"><h3>{template.name}</h3>{onClose && <button type="button" className="content-drawer__close" aria-label={t('Close', 'إغلاق')} onClick={onClose}><X size={16} /></button>}</div>
       <p className="u-sm u-muted">{t('New imagery for your topic, with the reference’s typography, content zones and visual treatment.', 'صورة وفكرة جديدتان لموضوعك، بنفس طابع الخطوط وتوزيع المحتوى والمعالجة البصرية للمرجع.')}</p>
       <fieldset disabled={Boolean(jobId || busy)} className="tpl-reference-fields">
-        <FieldsForm template={template} values={values} onChange={setValues} />
+        <FieldsForm template={template} values={values} onChange={setValues} onCourseCopy={(copy, profile) => { setCaption(copy.caption); setContext((profile?.description || profile?.courseName || '').slice(0, 800)); }} />
         <label className="tpl-fields__field">{t('Subject and scene details', 'الموضوع وتفاصيل المشهد')}<textarea value={context} onChange={(e) => setContext(e.target.value)} maxLength={800} rows={3} placeholder={t('What is the new course or event about?', 'ما موضوع الدورة أو الفعالية؟ وأي تفاصيل تحب تظهر في الصورة؟')} /></label>
-        <label className="tpl-fields__field">{t('Output size', 'مقاس التصميم')}<select value={format} onChange={(e) => setFormat(e.target.value as TemplateFormat)}>{(Object.keys(FORMAT_LABEL) as TemplateFormat[]).map((f) => <option key={f} value={f}>{t(FORMAT_LABEL[f].en, FORMAT_LABEL[f].ar)}</option>)}</select></label>
+        <PublishingPresetPicker value={presetId} format={format} onFormatChange={setFormat} onChange={id => {
+          setPresetId(id);
+          const next = publishingPreset(id);
+          if (next) { setFormat(next.format); setChannels(old => old.includes(next.channel as CreativePlatform) ? old : [...old, next.channel as CreativePlatform]); }
+        }} />
       </fieldset>
       <Button variant="primary" busy={Boolean(jobId) || busy === 'generate'} disabled={Boolean(jobId || busy) || !values.title?.trim()} onClick={() => void generate()}><Sparkles size={16} />{imageUrl ? t('Generate another design', 'ولّد تصميمًا آخر') : t('Generate a new design', 'ولّد تصميمًا جديدًا')}</Button>
       {!contentId && <><div className="creative-home__platforms tpl-composer__platforms">{CREATIVE_PLATFORMS.map((channel) => <button key={channel} type="button" aria-pressed={channels.includes(channel)} onClick={() => setChannels((c) => c.includes(channel) ? c.filter((p) => p !== channel) : [...c, channel])}><ChannelIcon channel={channel} size={14} />{PLATFORM_FORMATS[channel].label}</button>)}</div><label className="tpl-fields__field">{t('Caption', 'النص المرافق')}<textarea rows={3} value={caption} onChange={(e) => setCaption(e.target.value)} /></label></>}

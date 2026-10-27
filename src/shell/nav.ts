@@ -49,7 +49,7 @@ export const NAV: NavGroup[] = [
     id: 'system',
     label: { en: 'System', ar: 'النظام' },
     items: [
-      { id: 'usage', path: '/usage', label: { en: 'AI usage', ar: 'الاستهلاك' }, icon: Wallet, visible: (user) => hasPermission(user, 'design.free') || hasPermission(user, 'users.manage') },
+      { id: 'usage', path: '/usage', label: { en: 'AI usage', ar: 'الاستهلاك' }, icon: Wallet, visible: (user) => hasPermission(user, 'credits.view') || hasPermission(user, 'credits.view_all') },
       { id: 'settings', path: '/settings', label: { en: 'Settings', ar: 'الإعدادات' }, icon: Settings, visible: (user) => hasPermission(user, 'users.manage') || hasPermission(user, 'connections.manage') || hasPermission(user, 'templates.manage') },
     ],
   },

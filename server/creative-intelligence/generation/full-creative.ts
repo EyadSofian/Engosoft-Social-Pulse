@@ -25,10 +25,11 @@ import { openAIJson, OpenAIImageProvider, type CreativeImageProvider, type Image
 
 export const FULL_CREATIVE_VERSIONS = { director: 'creative-director:v2', compiler: 'full-creative-compiler:v2', pipeline: 'full-creative-pipeline:v1', designLanguage: DESIGN_LANGUAGE_VERSION } as const;
 
-export type CreativeFormat = 'feed' | 'story' | 'landscape';
+export type CreativeFormat = 'feed' | 'story' | 'landscape' | 'video';
 /** Generation size (model) and output size (platform). Same aspect ratio, so nothing is cropped away. */
 export const CREATIVE_FORMATS: Record<CreativeFormat, { generation: string; output: { width: number; height: number }; label: string; safeArea: SafeArea; reservedCorner: Corner }> = {
   feed: { generation: '1088x1360', output: { width: 1080, height: 1350 }, label: 'Instagram/Facebook feed post, 4:5 portrait', safeArea: { top: 0, right: 0, bottom: 0, left: 0 }, reservedCorner: 'top-left' },
+  video: { generation: '1536x864', output: { width: 1280, height: 720 }, label: 'YouTube video thumbnail, 16:9 landscape. Keep the headline readable at thumbnail scale.', safeArea: { top: 0, right: 0, bottom: 0, left: 0 }, reservedCorner: 'top-left' },
   landscape: { generation: '1520x800', output: { width: 1200, height: 630 }, label: 'Website article / news banner and link preview, 1.91:1 landscape. Keep the headline large and the composition wide.', safeArea: { top: 0, right: 0, bottom: 0, left: 0 }, reservedCorner: 'top-left' },
   story: { generation: '1088x1936', output: { width: 1080, height: 1920 }, label: 'WhatsApp status / Instagram story, 9:16 vertical', safeArea: { top: 230, right: 0, bottom: 330, left: 0 }, reservedCorner: 'top-left' },
 };
@@ -49,7 +50,7 @@ export interface CreativeBriefPlan {
   canonicalCopy: CanonicalCopy;
   caption: string;
   /** Ready-to-post caption per platform. */
-  captions: Record<'facebook' | 'instagram' | 'whatsapp' | 'linkedin' | 'tiktok' | 'snapchat' | 'website', string>;
+  captions: Record<'facebook' | 'instagram' | 'whatsapp' | 'linkedin' | 'tiktok' | 'snapchat' | 'website', string> & { youtube?: string };
   directions: CreativeDirectionPlan[];
   /** Design-engine runs: the strategy decisions, references and skill versions behind the brief. */
   engine?: { version: string; skills: Record<string, string>; settings: EngineSettings; strategy: StrategyDecision; references: ReferenceInput[] };
@@ -113,7 +114,7 @@ const briefSchema = {
     language: { type: 'string', enum: ['ar', 'en'] }, objective: { type: 'string' }, audience: { type: 'string' },
     canonicalCopy: { type: 'object', additionalProperties: false, required: ['headline', 'subheadline', 'cta'], properties: { headline: { type: 'string' }, subheadline: { type: 'string' }, cta: { type: 'string' } } },
     caption: { type: 'string' },
-    captions: { type: 'object', additionalProperties: false, required: ['facebook', 'instagram', 'whatsapp', 'linkedin', 'tiktok', 'snapchat', 'website'], properties: Object.fromEntries(['facebook', 'instagram', 'whatsapp', 'linkedin', 'tiktok', 'snapchat', 'website'].map((p) => [p, { type: 'string' }])) },
+    captions: { type: 'object', additionalProperties: false, required: ['facebook', 'instagram', 'whatsapp', 'linkedin', 'tiktok', 'snapchat', 'youtube', 'website'], properties: Object.fromEntries(['facebook', 'instagram', 'whatsapp', 'linkedin', 'tiktok', 'snapchat', 'youtube', 'website'].map((p) => [p, { type: 'string' }])) },
     directions: { type: 'array', items: directionSchema },
   },
 };

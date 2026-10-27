@@ -143,7 +143,8 @@ const purposeOf = (path: string) => PURPOSES.find(([pattern]) => pattern.test(pa
 export function registerUsageRoutes(app: express.Express) {
   app.get('/api/usage', requireUser, async (req, res) => {
     const me = req.user!;
-    const all = userCan(me, 'users.manage');
+    if (!userCan(me, 'credits.view') && !userCan(me, 'credits.view_all')) return res.status(403).json({ error: 'لا تملك صلاحية عرض الاستهلاك.' });
+    const all = userCan(me, 'credits.view_all');
     const start = monthStart(typeof req.query.month === 'string' ? req.query.month : undefined);
     const end = nextMonth(start);
     const where = all ? 'created_at>=? AND created_at<?' : 'created_at>=? AND created_at<? AND user_id=?';

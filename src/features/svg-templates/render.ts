@@ -18,7 +18,7 @@ export const KIND_LABEL: Record<TemplateKind, { en: string; ar: string; hint: { 
   announcement: { en: 'Announcement', ar: 'إعلان', hint: { en: 'Support, offers and service notices', ar: 'دعم فني وعروض وإعلانات الخدمة' } },
   general: { en: 'General', ar: 'عام', hint: { en: 'Anything else', ar: 'أي شيء آخر' } },
 };
-export interface CourseProfile { courseId: string; courseName: string; objectives: string[]; outcomes: string[]; audience: string; notes: string; updatedAt: string }
+export interface CourseProfile { courseId: string; courseName: string; objectives: string[]; outcomes: string[]; audience: string; notes: string; updatedAt: string; category?: string; description?: string; sourceUrl?: string; reviewStatus?: 'suggested' | 'approved' }
 export interface SvgTemplate { id: string; name: string; description: string; kind: TemplateKind; format: TemplateFormat; width: number; height: number; svg: string; fields: TemplateField[]; sourceImage?: string; sourcePrompt: string; createdBy: string; usageCount: number; createdAt: string; updatedAt: string }
 
 export const FORMAT_LABEL: Record<TemplateFormat, { en: string; ar: string; size: string }> = {

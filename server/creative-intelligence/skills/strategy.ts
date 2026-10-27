@@ -65,7 +65,7 @@ export const captionWriter: DesignSkill<'caption-writer'> = {
     'facebook: 4–7 lines, value, verified facts, registration link if given, 3–5 hashtags. instagram: 3–5 short lines, 6–10 relevant hashtags, no links (say "الرابط في البايو"). whatsapp: 2–3 direct lines and the link if given. linkedin: professional, 4–6 lines, 3 hashtags. tiktok and snapchat: one punchy line and 3 hashtags. website: a 2–4 sentence news-style paragraph with the link if given, no hashtags.',
     'Use only verified facts. One clear call to action per caption. Emojis at most one or two, and only where they help scanning.',
   ],
-  schema: obj({ caption: str(), captions: obj({ facebook: str(), instagram: str(), whatsapp: str(), linkedin: str(), tiktok: str(), snapchat: str(), website: str() }) }),
+  schema: obj({ caption: str(), captions: obj({ facebook: str(), instagram: str(), whatsapp: str(), linkedin: str(), tiktok: str(), snapchat: str(), youtube: str(), website: str() }) }),
 };
 
 export const referenceDirector: DesignSkill<'reference-director'> = {

@@ -1,14 +1,15 @@
 import { useCallback, useEffect, useMemo, useState } from 'react';
 import { DateTime } from 'luxon';
-import { AnimatePresence, LayoutGroup, motion } from 'motion/react';
-import { Check, CheckCircle2, Clock3, ExternalLink, Image as ImageIcon, Loader2, MessageSquare, Paintbrush, Search, Send, X } from 'lucide-react';
-import { useRouter } from '../../app/router/router';
+import { AnimatePresence, motion } from 'motion/react';
+import { CheckCircle2, ExternalLink, Image as ImageIcon, Loader2, MessageSquare, Paintbrush, Search, Send, X } from 'lucide-react';
+import { useQueryState, useRouter } from '../../app/router/router';
 import { Button } from '../../components/ui/Button';
 import { useAuth } from '../../features/auth/AuthProvider';
 import { CHANNEL_LABEL, MOVE_LABEL, STATUS_LABEL, type Channel, type PipelineDetail, type PipelineItem, type TeamMember } from '../../features/content-pipeline/types';
 import type { ContentStatus } from '../../domain/content';
 import { useI18n } from '../../i18n/I18nProvider';
 import { api, errorMessage } from '../../lib/api';
+import { ApprovalCard } from '../../features/content-pipeline/ApprovalCard';
 import { PageHeader } from '../../shell/Header';
 import { usePageMeta } from '../../shell/ShellContext';
 import { useOverlay } from '../../hooks/ui';
@@ -35,9 +36,15 @@ export function ContentBoardPage({ openId }: { openId?: string }) {
   const [items, setItems] = useState<PipelineItem[] | null>(null);
   const [team, setTeam] = useState<TeamMember[]>([]);
   const [error, setError] = useState('');
-  const [scope, setScope] = useState<Scope>('all');
-  const [tab, setTab] = useState<Tab | null>(null);
-  const [query, setQuery] = useState('');
+  const [params, setParams] = useQueryState();
+  const scope = (['all', 'mine', 'department'].includes(params.get('scope') || '') ? params.get('scope') : 'all') as Scope;
+  const tab = TABS.some(x => x.id === params.get('tab')) ? params.get('tab') as Tab : null;
+  const query = params.get('q') || '';
+  const [limit, setLimit] = useState(40);
+  const setScope = (value: Scope) => { setParams({ scope: value }); setLimit(40); };
+  const setTab = (value: Tab) => { setParams({ tab: value }); setLimit(40); };
+  const setQuery = (value: string) => { setParams({ q: value }); setLimit(40); };
+  const boardPath = (id?: string) => `/content${id ? `/${id}` : ''}${params.size ? `?${params}` : ''}`;
   const [busyId, setBusyId] = useState('');
 
   const load = useCallback(() => api<PipelineItem[]>('/api/content').then((data) => { setItems(data); setError(''); }).catch((e) => setError(errorMessage(e, t('Could not load content.', 'تعذّر تحميل المحتوى.')))), [t]);
@@ -82,37 +89,16 @@ export function ContentBoardPage({ openId }: { openId?: string }) {
     {items && <div className="ca-summary"><span>{t(current.en, current.ar)} <b className="u-tnum">{shown.length}</b></span><small>{can('content.approve') ? t('Open a preview to review captions and leave feedback.', 'افتح المعاينة لمراجعة النص وكتابة ملاحظاتك.') : t('Follow the approval status of your team’s posts.', 'تابع حالة اعتماد منشورات فريقك.')}</small></div>}
     {error && <div role="alert" className="creative-home__error">{error} <Button variant="secondary" size="sm" onClick={() => void load()}>{t('Retry', 'أعد المحاولة')}</Button></div>}
     {!items && !error && <div className="board-loading"><Loader2 className="creative-job__spin" size={22} /></div>}
-    {items && <LayoutGroup>
+    {items && <>
       {shown.length > 0
         ? <div className="ca-grid">
-          <AnimatePresence initial={false}>
-            {shown.map((item) => {
-              const canApprove = item.moves.some((m) => m.to === 'approved');
-              return <motion.article layout key={item.id} className="ca-card glass" data-status={item.status}
-                initial={{ opacity: 0, y: 10 }} animate={{ opacity: 1, y: 0 }} exit={{ opacity: 0, scale: 0.96 }} transition={{ type: 'spring', stiffness: 420, damping: 34 }}>
-                <button type="button" className="ca-card__media" onClick={() => navigate(`/content/${item.id}`)} aria-label={item.title}>
-                  {item.creative?.imageUrl ? <img src={item.creative.imageUrl} alt="" loading="lazy" /> : <span className="board-card__placeholder"><ImageIcon size={26} /></span>}
-                  <span className="content-status ca-card__status" data-status={item.status}>{tx(STATUS_LABEL[item.status])}</span>
-                </button>
-                <div className="ca-card__body">
-                  <b dir="auto">{item.title}</b>
-                  <small>{nameOf(item.ownerId)}{deptOf(item.departmentId) ? ` · ${tx(deptOf(item.departmentId)!.name)}` : ''}</small>
-                  <span className="ca-card__meta">
-                    <span className="board-card__chips">{item.channels.map((c) => <i key={c}>{CHANNEL_LABEL[c]}</i>)}</span>
-                    <small className="board-card__when"><Clock3 size={12} />{date(item.scheduledAt ?? item.createdAt, 'dayShort')}</small>
-                  </span>
-                </div>
-                {item.status === 'ready_for_review' && canApprove && <div className="ca-card__actions">
-                  <Button variant="primary" size="sm" busy={busyId === item.id} disabled={Boolean(busyId)} onClick={() => void approve(item)}><Check size={14} /> {t('Approve', 'اعتمد')}</Button>
-                  <Button variant="secondary" size="sm" onClick={() => navigate(`/content/${item.id}`)}>{t('Request changes', 'اطلب تعديلًا')}</Button>
-                </div>}
-              </motion.article>;
-            })}
-          </AnimatePresence>
+
+          {shown.slice(0, limit).map(item => <ApprovalCard key={item.id} item={item} owner={nameOf(item.ownerId)} department={deptOf(item.departmentId) ? tx(deptOf(item.departmentId)!.name) : undefined} busy={busyId === item.id} disabled={Boolean(busyId)} onOpen={() => navigate(boardPath(item.id))} onApprove={() => void approve(item)} />)}
         </div>
         : <div className="ca-empty glass"><CheckCircle2 size={26} /><b>{active === 'review' ? t('Nothing is waiting for approval.', 'لا شيء بانتظار الاعتماد.') : t('No posts here.', 'لا توجد منشورات هنا.')}</b><p>{t('Posts move between these tabs as they are sent, approved or returned.', 'تنتقل المنشورات بين هذه التابات عند إرسالها أو اعتمادها أو إعادتها.')}</p></div>}
-    </LayoutGroup>}
-    <AnimatePresence>{openId && <ContentDrawer key={openId} id={openId} team={team} onClose={() => navigate('/content')} onChanged={load} />}</AnimatePresence>
+    </>}
+    {shown.length > limit && <Button variant="secondary" onClick={() => setLimit(value => value + 40)}>{t('Show more posts', 'اعرض منشورات أكثر')}</Button>}
+    <AnimatePresence>{openId && <ContentDrawer key={openId} id={openId} team={team} onClose={() => navigate(boardPath())} onChanged={load} />}</AnimatePresence>
   </div>;
 }
 
@@ -158,6 +144,7 @@ function ContentDrawer({ id, team, onClose, onChanged }: { id: string; team: Tea
           {image ? <img src={image} alt={item.title} /> : <span className="board-card__placeholder"><ImageIcon size={26} /></span>}
           {item.creative?.storyUrl && <img className="content-drawer__story" src={item.creative.storyUrl} alt="9:16" />}
         </div>
+        {item.creative?.youtubeUrl && <a className="ui-link" href={item.creative.youtubeUrl} download>{t('Download YouTube thumbnail 16:9', 'نزّل صورة يوتيوب 16:9')}</a>}
         {item.editable && item.creative && (can('design.free') || item.creative.svgTemplate) && !['published', 'archived', 'cancelled'].includes(item.status) && <Button variant="secondary" onClick={() => navigate(item.creative!.svgTemplate ? `/library/templates/${item.creative!.svgTemplate.id}?content=${item.id}` : `/studio/${item.id}`)}><Paintbrush size={15} /> {item.creative.requestId === 'reference-design' ? t('Generate a new version from the reference', 'ولّد نسخة جديدة من المرجع') : item.creative.svgTemplate ? t('Edit the template', 'عدّل في القالب') : t('Open in Studio', 'افتح في الاستوديو')}</Button>}
 
         {item.published?.length ? <section className="content-drawer__section"><h3>{t('Live results', 'النتائج على المنصات')}</h3>

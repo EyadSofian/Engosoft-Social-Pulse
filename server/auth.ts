@@ -2,8 +2,8 @@
 import { createHash, randomBytes, randomUUID, scryptSync, timingSafeEqual } from 'node:crypto';
 import type express from 'express';
 import { can, DEPARTMENTS, ROLES } from '../src/domain/catalog.js';
-import type { DepartmentId, Permission, RoleId } from '../src/domain/users.js';
-import { db, defineSchema } from './db.js';
+import { ALL_PERMISSIONS, type DepartmentId, type Permission, type RoleId } from '../src/domain/users.js';
+import { db, defineColumn, defineSchema } from './db.js';
 
 defineSchema(`
 CREATE TABLE IF NOT EXISTS users (
@@ -14,7 +14,9 @@ CREATE TABLE IF NOT EXISTS users (
 CREATE TABLE IF NOT EXISTS sessions (token_hash TEXT PRIMARY KEY, user_id TEXT NOT NULL, expires_at INTEGER NOT NULL, created_at TEXT NOT NULL);
 `);
 
-export interface AuthUser { id: string; email: string; name: string; role: RoleId; departmentId: DepartmentId | null; title: string; status: 'active' | 'suspended'; lastActiveAt: string | null }
+defineColumn('users', 'permission_overrides', "TEXT NOT NULL DEFAULT '{}'");
+export interface AuthUser { id: string; email: string; name: string; role: RoleId; departmentId: DepartmentId | null; title: string; status: 'active' | 'suspended'; lastActiveAt: string | null; permissionOverrides?: Partial<Record<Permission, boolean>> }
+const overridesFrom = (value: unknown): AuthUser['permissionOverrides'] => { try { const parsed = JSON.parse(String(value || '{}')); return Object.fromEntries(Object.entries(parsed).filter(([k,v]) => ALL_PERMISSIONS.includes(k as Permission) && typeof v === 'boolean')); } catch { return {}; } };
 export const SESSION_COOKIE = 'sp_session';
 const SESSION_DAYS = 14;
 
@@ -32,6 +34,7 @@ export function verifyPassword(password: string, stored: string): boolean {
 export const passwordProblem = (password: string) => password.length < 10 ? 'يجب ألا تقل كلمة المرور عن 10 أحرف.' : null;
 
 const toUser = (r: Record<string, unknown>): AuthUser => ({
+  permissionOverrides: overridesFrom(r.permission_overrides),
   id: String(r.id), email: String(r.email), name: String(r.name), role: r.role as RoleId,
   departmentId: (r.department_id as DepartmentId | null) ?? null, title: String(r.title ?? ''),
   status: r.status === 'suspended' ? 'suspended' : 'active', lastActiveAt: (r.last_active_at as string | null) ?? null,
@@ -98,7 +101,7 @@ export async function bootstrapAdmin(env = process.env): Promise<AuthUser | null
   return createUser({ email: env.ADMIN_EMAIL, name: env.ADMIN_NAME?.trim() || 'Admin', role: 'admin', departmentId: 'marketing', password: env.ADMIN_PASSWORD });
 }
 
-export const userCan = (user: AuthUser, permission: Permission) => can(user.role, permission);
+export const userCan = (user: AuthUser, permission: Permission) => user.role === 'admin' || (user.permissionOverrides?.[permission] ?? can(user.role, permission));
 
 export function readCookie(req: express.Request, name: string): string {
   return (req.header('cookie') || '').split(';').map((part) => part.trim()).find((part) => part.startsWith(`${name}=`))?.slice(name.length + 1) ?? '';
