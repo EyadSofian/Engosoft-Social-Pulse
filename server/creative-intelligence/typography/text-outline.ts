@@ -31,6 +31,8 @@ export interface TextBlock {
    * Plain Unicode bidi would show "2026-10-04". Default true.
    */
   isolateNumbers?: boolean;
+  /** Keep typed line breaks as hard breaks (Studio text layers). Default false: any whitespace is a space. */
+  preserveNewlines?: boolean;
 }
 export interface OutlinedLine { text: string; width: number; baseline: number }
 export interface OutlinedText {
@@ -161,23 +163,28 @@ export function outlineText(block: TextBlock): OutlinedText {
   const direction = !block.direction || block.direction === 'auto' ? paragraphDirection(block.text) : block.direction;
   const lineHeight = style.size * (style.lineHeight ?? 1.3);
   const source = block.isolateNumbers === false ? block.text : isolateNumericSequences(block.text);
-  const words = source.trim().split(/\s+/).filter(Boolean);
+  const paragraphs = block.preserveNewlines ? source.split(/\r?\n/) : [source];
   const lines: { text: string; shaped: ShapedLine }[] = [];
   let overflow = false;
-  let current = '';
-  for (const word of words) {
-    const candidate = current ? `${current} ${word}` : word;
-    const shaped = shapeLine(candidate, direction, style);
-    if (shaped.width <= block.width || !current) {
-      if (!current && shaped.width > block.width) overflow = true;
-      current = candidate;
-    } else {
-      lines.push({ text: current, shaped: shapeLine(current, direction, style) });
-      current = word;
-      if (shapeLine(word, direction, style).width > block.width) overflow = true;
+  for (const paragraph of paragraphs) {
+    const words = paragraph.trim().split(/\s+/).filter(Boolean);
+    // An empty typed line still takes a line's height.
+    if (!words.length) { if (block.preserveNewlines) lines.push({ text: '', shaped: { width: 0, glyphs: [], missing: [] } }); continue; }
+    let current = '';
+    for (const word of words) {
+      const candidate = current ? `${current} ${word}` : word;
+      const shaped = shapeLine(candidate, direction, style);
+      if (shaped.width <= block.width || !current) {
+        if (!current && shaped.width > block.width) overflow = true;
+        current = candidate;
+      } else {
+        lines.push({ text: current, shaped: shapeLine(current, direction, style) });
+        current = word;
+        if (shapeLine(word, direction, style).width > block.width) overflow = true;
+      }
     }
+    if (current) lines.push({ text: current, shaped: shapeLine(current, direction, style) });
   }
-  if (current) lines.push({ text: current, shaped: shapeLine(current, direction, style) });
   if (block.maxLines && lines.length > block.maxLines) overflow = true;
 
   const primary = loadFont(direction === 'rtl' || style.family === 'Almarai' ? 'Almarai' : 'Plus Jakarta Sans', style.weight);

@@ -4,7 +4,8 @@ import { z } from 'zod';
 import { requireUser } from './auth.js';
 import { requireAiBudget } from './usage.js';
 import { loadFullCreativeRun } from './creative-intelligence/generation/full-creative.js';
-import { aiEdit, decompose, originalWithoutLogo, renderStudio, studioPath, studioUrl, type StudioDoc } from './creative-intelligence/studio/studio.js';
+import { aiEdit, decompose, extractObject, originalWithoutLogo, outlineLayer, renderStudio, saveUpload, studioPath, studioUrl, type StudioDoc } from './creative-intelligence/studio/studio.js';
+import { HEX_COLOR, migrateStudioDoc, STUDIO_FILE, STUDIO_VERSION } from '../src/domain/studio.js';
 import { addVersion, canEdit, getContent, listVersions } from './workspace.js';
 
 interface StudioJob { id: string; ownerId: string; status: 'running' | 'done' | 'failed'; doc?: StudioDoc; error?: string }
@@ -18,12 +19,22 @@ function startStudioJob(ownerId: string, work: () => Promise<StudioDoc>): Studio
 }
 
 const box = z.object({ x: z.number().min(0), y: z.number().min(0), width: z.number().positive(), height: z.number().positive() });
-const layer = z.object({ id: z.string().max(20), text: z.string().max(400), x: z.number(), y: z.number(), width: z.number().positive(), size: z.number().min(8).max(400), color: z.string().regex(/^#[0-9A-Fa-f]{6}$/), weight: z.number().int().min(100).max(900), align: z.enum(['start', 'center', 'end']), lineHeight: z.number().min(0.8).max(3) });
-const doc = z.object({
-  version: z.literal('studio:v1'), width: z.number().int().positive(), height: z.number().int().positive(), baseFile: z.string().regex(/^[0-9a-f-]{36}\.png$/),
-  layers: z.array(layer).max(40), zones: z.array(z.object({ kind: z.enum(['text', 'face', 'subject', 'cta', 'platform-ui', 'salient']), box, label: z.string().optional() })).max(80),
+const color = z.string().regex(HEX_COLOR);
+const common = { id: z.string().max(24), name: z.string().max(60).optional(), x: z.number(), y: z.number(), opacity: z.number().min(0).max(1), hidden: z.boolean().optional(), group: z.string().max(24).optional(), rotation: z.number().min(-360).max(360).optional(), locked: z.boolean().optional() };
+const textFields = { text: z.string().max(600), width: z.number().positive().max(10_000), size: z.number().min(8).max(400), color, weight: z.number().int().min(100).max(900), align: z.enum(['start', 'center', 'end']), lineHeight: z.number().min(0.6).max(3), shadow: z.boolean().optional() };
+const layer = z.discriminatedUnion('kind', [
+  z.object({ ...common, kind: z.literal('text'), ...textFields }),
+  z.object({ ...common, kind: z.literal('shape'), width: z.number().positive(), height: z.number().positive(), fill: color, fill2: color.nullable().optional(), radius: z.number().min(0), shadow: z.boolean().optional(), stroke: color.nullable().optional(), strokeWidth: z.number().min(0).max(200).optional() }),
+  z.object({ ...common, kind: z.literal('image'), file: z.string().regex(STUDIO_FILE), width: z.number().positive(), height: z.number().positive(), flipX: z.boolean().optional(), flipY: z.boolean().optional() }),
+]);
+/** Accepts the current document and upgrades earlier saved versions before validating. */
+const doc = z.preprocess((value) => migrateStudioDoc(value) ?? value, z.object({
+  version: z.literal(STUDIO_VERSION), width: z.number().int().positive(), height: z.number().int().positive(), baseFile: z.string().regex(STUDIO_FILE),
+  layers: z.array(layer).max(150),
+  objects: z.array(z.object({ id: z.string().max(24), label: z.string().max(60), box })).max(20),
+  zones: z.array(z.object({ kind: z.enum(['text', 'face', 'subject', 'cta', 'platform-ui', 'salient']), box, label: z.string().optional() })).max(80),
   logo: z.object({ variantId: z.enum(['lockup-reversed', 'lockup-positive', 'symbol-reversed', 'symbol-positive']), x: z.number(), y: z.number(), width: z.number() }).nullable(),
-});
+}));
 
 async function editableItem(req: express.Request, res: express.Response) {
   const item = await getContent(String(req.params.contentId));
@@ -44,7 +55,7 @@ export function registerStudioRoutes(app: express.Express) {
     if (!item) return;
     const saved = (await listVersions(item.id)).find((v) => v.studio);
     res.setHeader('Cache-Control', 'no-store');
-    res.json({ doc: saved?.studio ?? null, format: formatOf(item.creative!.directionId), imageUrl: item.creative!.imageUrl });
+    res.json({ doc: migrateStudioDoc(saved?.studio), format: formatOf(item.creative!.directionId), imageUrl: item.creative!.imageUrl });
   });
   app.post('/api/studio/:contentId/decompose', requireUser, requireAiBudget, async (req, res) => {
     const item = await editableItem(req, res);
@@ -66,6 +77,30 @@ export function registerStudioRoutes(app: express.Express) {
     if (!parsed.success) return res.status(400).json({ error: 'حدّد منطقة واكتب التعديل.' });
     const job = startStudioJob(req.user!.id, () => aiEdit(parsed.data.doc as StudioDoc, parsed.data.box, parsed.data.instruction, formatOf(item.creative!.directionId)));
     res.status(202).json({ jobId: job.id });
+  });
+  app.post('/api/studio/:contentId/extract', requireUser, requireAiBudget, async (req, res) => {
+    const item = await editableItem(req, res);
+    if (!item) return;
+    const parsed = z.object({ doc, box, label: z.string().trim().min(1).max(60), objectId: z.string().max(24).optional() }).safeParse(req.body);
+    if (!parsed.success) return res.status(400).json({ error: 'حدّد العنصر المراد فصله.' });
+    const { box: target, label, objectId } = parsed.data;
+    const job = startStudioJob(req.user!.id, () => extractObject(parsed.data.doc as StudioDoc, { box: target, label, objectId }, formatOf(item.creative!.directionId)));
+    res.status(202).json({ jobId: job.id });
+  });
+  /** A picture the user adds as a layer: a data URL of a PNG, JPEG or WebP image. */
+  app.post('/api/studio/:contentId/upload', requireUser, async (req, res) => {
+    const item = await editableItem(req, res);
+    if (!item) return;
+    const parsed = z.object({ data: z.string().max(16_000_000).regex(/^data:image\/(png|jpeg|webp);base64,/) }).safeParse(req.body);
+    if (!parsed.success) return res.status(400).json({ error: 'ارفع صورة PNG أو JPEG أو WebP.' });
+    try { res.json(await saveUpload(Buffer.from(parsed.data.data.slice(parsed.data.data.indexOf(',') + 1), 'base64'))); }
+    catch { res.status(400).json({ error: 'تعذّر قراءة الصورة.' }); }
+  });
+  /** Brand-font outlines of text layers at the origin, so the editor shows exactly what the render will. */
+  app.post('/api/studio/outline', requireUser, (req, res) => {
+    const parsed = z.object({ layers: z.array(z.object({ id: z.string().max(24), ...textFields })).max(150) }).safeParse(req.body);
+    if (!parsed.success) return res.status(400).json({ error: 'Invalid text layers' });
+    res.json(Object.fromEntries(parsed.data.layers.map((l) => [l.id, outlineLayer(l)])));
   });
   app.get('/api/studio/jobs/:id', requireUser, async (req, res) => {
     const job = jobs.get(String(req.params.id));
