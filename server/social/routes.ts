@@ -11,10 +11,11 @@ import { configuredCallback } from './oauth.js';
 import { attachVideo, contentMedia, validMediaSignature } from './media.js';
 import { contentJobs, getJob, publish, checkJob, reconcileJob } from './publishing.js';
 import { creatorInfo } from './publish-providers.js';
+import { IdentityConfirmationRequired, publishingServices, hybridConfigured, hybridSummary, connectPublishingService, checkPublishingService, hybridCreator } from './hybrid.js';
 import { runSync } from '../sync.js';
 import { youtubeAnalytics } from '../connectors/youtube.js';
 import type { PublishInput, SocialProvider } from './types.js';
-const inputSchema=z.object({contentId:z.string().min(1),accountId:z.string().min(1),kind:z.enum(['text','image','video','carousel']),media:z.array(z.object({url:z.string().max(2048)})).max(35).default([]),mode:z.enum(['direct','draft']).default('direct'),privacy:z.string().optional(),categoryId:z.string().regex(/^\d+$/).optional(),tags:z.array(z.string().max(100)).max(50).optional(),madeForKids:z.boolean().optional(),disableComment:z.boolean().optional(),disableDuet:z.boolean().optional(),disableStitch:z.boolean().optional(),brandContent:z.boolean().optional(),brandOrganic:z.boolean().optional(),retry:z.boolean().optional(),snapTarget:z.enum(['story','spotlight']).optional(),locale:z.string().regex(/^[a-z]{2}_[A-Z]{2}$/).optional(),consent:z.literal(true)});
+const inputSchema=z.object({contentId:z.string().min(1),accountId:z.string().min(1),kind:z.enum(['text','image','video','carousel']),media:z.array(z.object({url:z.string().max(2048)})).max(35).default([]),mode:z.enum(['direct','draft']).default('direct'),privacy:z.string().optional(),categoryId:z.string().regex(/^\d+$/).optional(),tags:z.array(z.string().max(100)).max(50).optional(),madeForKids:z.boolean().optional(),disableComment:z.boolean().optional(),disableDuet:z.boolean().optional(),disableStitch:z.boolean().optional(),brandContent:z.boolean().optional(),brandOrganic:z.boolean().optional(),retry:z.boolean().optional(),snapTarget:z.enum(['story','spotlight']).optional(),locale:z.string().regex(/^[a-z]{2}_[A-Z]{2}$/).optional(),bufferDefaultsConsent:z.boolean().optional(),isAiGenerated:z.boolean().optional(),consent:z.literal(true)});
 let syncRunning:Promise<unknown>|null=null;
 export function registerSocialRoutes(app:express.Express) {
  registerSocialOAuth(app);
@@ -22,6 +23,7 @@ export function registerSocialRoutes(app:express.Express) {
  app.get('/api/social/connections',async(req,res)=>{
   if(!userCan(req.user!,'connections.manage')&&!userCan(req.user!,'analytics.view')&&!userCan(req.user!,'content.publish'))return res.status(403).json({error:'Permission required.'});
   const accounts=await listAccounts();
+  for(const a of accounts)if(a.provider==='tiktok')a.metadata={...a.metadata,hybridPublishing:await hybridConfigured(a.id)};
   const health=Object.fromEntries(await Promise.all(accounts.map(async a=>[a.id,await tokenHealth(a)])));
   res.setHeader('Cache-Control','no-store');
   res.json({providers:socialProviders.map(p=>{
@@ -32,6 +34,25 @@ export function registerSocialRoutes(app:express.Express) {
  app.post('/api/social/accounts/:id/disconnect',requirePermission('connections.manage'),async(req,res)=>{
   const a=await getAccount(String(req.params.id));if(!a)return res.status(404).json({error:'Account not found.'});await disconnect(a.id);res.json({disconnected:true});
  });
+ app.get('/api/social/publishing-services/:accountId',requirePermission('connections.manage'),async(req,res)=>{
+  const a=await getAccount(String(req.params.accountId));if(!a||a.provider!=='tiktok')return res.status(404).end();
+  res.setHeader('Cache-Control','no-store');res.json({services:await hybridSummary(a.id)});
+ });
+ app.post('/api/social/publishing-services/:accountId/:service',requirePermission('connections.manage'),async(req,res)=>{
+  const service=z.enum(publishingServices).safeParse(req.params.service),a=await getAccount(String(req.params.accountId));
+  const body=z.object({apiKey:z.string().trim().min(16).max(4096),identity:z.object({targetId:z.string().min(1).max(200),confirmed:z.literal(true)}).optional(),consent:z.literal(true)}).safeParse(req.body);
+  if(!service.success||!a||a.provider!=='tiktok'||!body.success)return res.status(400).json({error:'Choose a TikTok account and confirm connecting its publishing service.'});
+  try{res.setHeader('Cache-Control','no-store');res.json({services:await connectPublishingService(a,service.data,body.data.apiKey,body.data.identity,req.user!.id)});}catch(e){res.status(409).json({error:e instanceof Error?e.message:'Publishing service could not be verified.',...(e instanceof IdentityConfirmationRequired?{candidates:e.candidates,expectedUsername:e.expectedUsername}:{})});}
+ });
+ app.post('/api/social/publishing-services/:accountId/:service/check',requirePermission('connections.manage'),async(req,res)=>{
+  const service=z.enum(publishingServices).safeParse(req.params.service),a=await getAccount(String(req.params.accountId));
+  if(!service.success||!a||a.provider!=='tiktok')return res.status(404).end();
+  try{res.json({services:await checkPublishingService(a.id,service.data)});}catch{res.status(409).json({error:'Publishing service check failed.'});}
+ });
+ app.post('/api/social/publishing-services/:accountId/:service/disable',requirePermission('connections.manage'),async(req,res)=>{
+  const service=z.enum(publishingServices).safeParse(req.params.service);if(!service.success)return res.status(404).end();
+  await db.run('UPDATE social_publishing_routes SET enabled=0 WHERE account_id=? AND service=?',[String(req.params.accountId),service.data]);res.json({services:await hybridSummary(String(req.params.accountId))});
+ });
  app.post('/api/social/:provider/sync',requirePermission('connections.manage'),async(req,res)=>{
   const provider=String(req.params.provider) as SocialProvider;if(!socialProviders.includes(provider))return res.status(404).end();
   if(syncRunning)return res.status(409).json({error:'A synchronization is already running.'});
@@ -39,8 +60,8 @@ export function registerSocialRoutes(app:express.Express) {
   try{const r=await syncRunning;res.json({results:r});}catch{res.status(502).json({error:'Synchronization failed.'});}finally{syncRunning=null;}
  });
  app.get('/api/social/accounts/:id/creator',requirePermission('content.publish'),async(req,res)=>{
-  const a=await getAccount(String(req.params.id));if(!a||a.provider!=='tiktok'||capabilities('tiktok',a).publish_video!=='available')return res.status(409).json({error:'TikTok publishing consent and approval required.'});
-  try{res.json(await creatorInfo(a));}catch{res.status(502).json({error:'Creator settings unavailable.'});}
+  const a=await getAccount(String(req.params.id));if(!a||a.provider!=='tiktok'||a.status!=='connected'||!await hybridConfigured(a.id)&&capabilities('tiktok',a).publish_video!=='available')return res.status(409).json({error:'TikTok publishing consent and approval required.'});
+  try{res.json(await hybridConfigured(a.id)?await hybridCreator(a):await creatorInfo(a));}catch{res.status(502).json({error:'Creator settings unavailable.'});}
  });
  app.get('/api/social/accounts/:id/analytics',requirePermission('analytics.view'),async(req,res)=>{
   const a=await getAccount(String(req.params.id));const start=String(req.query.startDate||''),end=String(req.query.endDate||'');

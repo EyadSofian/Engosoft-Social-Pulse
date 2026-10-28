@@ -14,6 +14,7 @@ export interface PublishInput {
  mode: 'direct' | 'draft'; privacy?: string; categoryId?: string; tags?: string[]; madeForKids?: boolean;
  disableComment?: boolean; disableDuet?: boolean; disableStitch?: boolean; brandContent?: boolean; brandOrganic?: boolean;
  retry?: boolean; snapTarget?: 'story' | 'spotlight'; locale?: string; consent: true;
+ bufferDefaultsConsent?: boolean; isAiGenerated?: boolean;
 }
 export interface PublishResult { state: 'processing' | 'awaiting_user' | 'published' | 'failed' | 'unknown'; remoteId?: string; externalId?: string; url?: string; error?: string; errorCode?: string; retryable?: boolean; retryAfter?: number; phase?: string }
 export interface PublishJob extends PublishResult { id: string; contentId: string; accountId: string; provider: SocialProvider; actorId: string; attempt?: number; createdAt: string; updatedAt: string }

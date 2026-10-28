@@ -53,7 +53,7 @@ export async function submit(account:SocialAccount,input:PublishInput,caption:st
    if(media.some(m=>m.type==='video'&&(m.duration||0)>info.max_video_post_duration_sec))throw new PublicationValidationError('Video exceeds the creator’s maximum duration.');
   }
   if(input.brandContent&&input.privacy==='SELF_ONLY')throw new PublicationValidationError('Paid partnerships cannot use SELF_ONLY privacy.');
-  const post_info={title:caption,privacy_level:input.privacy,disable_comment:info.comment_disabled||input.disableComment!==false,disable_duet:info.duet_disabled||input.disableDuet!==false,disable_stitch:info.stitch_disabled||input.disableStitch!==false,brand_content_toggle:input.brandContent===true,brand_organic_toggle:input.brandOrganic===true};
+  const post_info={title:caption,privacy_level:input.privacy,disable_comment:info.comment_disabled||input.disableComment!==false,disable_duet:info.duet_disabled||input.disableDuet!==false,disable_stitch:info.stitch_disabled||input.disableStitch!==false,brand_content_toggle:input.brandContent===true,brand_organic_toggle:input.brandOrganic===true,is_aigc:input.isAiGenerated===true};
   let r:Record<string,any>;
   if(media[0].type==='image') {
    const origin=new URL(process.env.APP_URL!);const verified=(process.env.TIKTOK_VERIFIED_MEDIA_ORIGINS||'').split(',').map(x=>x.trim());
