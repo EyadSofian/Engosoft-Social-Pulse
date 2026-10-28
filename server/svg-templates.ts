@@ -231,24 +231,4 @@ export function registerSvgTemplateRoutes(app: express.Express) {
     if (!/^[0-9a-f-]{36}\.png$/.test(file)) return res.status(404).end();
     res.sendFile(mediaDir('uploads', file), { headers: { 'Cache-Control': 'private, max-age=86400' } }, (error) => { if (error && !res.headersSent) res.status(404).end(); });
   });
-
-  /** Ready-to-post captions per platform from the facts of a template post: one cheap text call. */
-  app.post('/api/ai/captions', requireUser, requirePermission('content.create'), requireAiBudget, async (req, res) => {
-    const channels = ['facebook', 'instagram', 'whatsapp', 'linkedin', 'tiktok', 'snapchat', 'youtube', 'website'] as const;
-    const parsed = z.object({ facts: z.string().trim().min(3).max(3000), channels: z.array(z.enum(channels)).min(1).max(7) }).safeParse(req.body);
-    if (!parsed.success) return res.status(400).json({ error: 'بيانات المنشور والمنصات مطلوبة.' });
-    const key = process.env.OPENAI_API_KEY?.trim();
-    if (!key) return res.status(503).json({ error: 'أضف OPENAI_API_KEY على الخادم.' });
-    try {
-      const result = await openAIJson<{ captions: { channel: string; text: string }[] }>({
-        apiKey: key, model: process.env.OPENAI_TEXT_MODEL?.trim() || 'gpt-4.1-mini', schemaName: 'engosoft_captions',
-        instructions: 'Write ready-to-post social captions for Engosoft (professional training, Egypt and Saudi Arabia) in the language of the facts (usually Arabic, natural Egyptian-friendly Modern Standard). Use only the given facts: never invent dates, prices, instructors or claims. Facebook: 3-6 short lines, benefit first, clear call to action and the link if given. Instagram: short hook, 2-4 lines, 5-8 relevant hashtags. WhatsApp: very short and direct with the link. LinkedIn: professional, value-focused, 3-5 lines, 3 hashtags. TikTok and Snapchat: one punchy line plus 3 hashtags. Website: a 2-3 sentence news-style summary without hashtags. Emojis: at most 2, only where natural.',
-        schema: { type: 'object', additionalProperties: false, required: ['captions'], properties: { captions: { type: 'array', items: { type: 'object', additionalProperties: false, required: ['channel', 'text'], properties: { channel: { type: 'string', enum: [...channels] }, text: { type: 'string' } } } } } },
-        content: [{ type: 'input_text', text: `Platforms: ${parsed.data.channels.join(', ')}\n\nFacts:\n${parsed.data.facts}` }],
-      });
-      res.json({ captions: Object.fromEntries(result.captions.filter((c) => parsed.data.channels.includes(c.channel as never)).map((c) => [c.channel, c.text.slice(0, 5000)])) });
-    } catch (error) {
-      res.status(502).json({ error: error instanceof Error ? error.message : 'تعذّرت كتابة النص المرافق.' });
-    }
-  });
 }

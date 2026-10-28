@@ -10,6 +10,7 @@ import type { ContentStatus } from '../../domain/content';
 import { useI18n } from '../../i18n/I18nProvider';
 import { api, errorMessage } from '../../lib/api';
 import { ApprovalCard } from '../../features/content-pipeline/ApprovalCard';
+import { ContentCopilot } from '../../features/content/ContentCopilot';
 import { PageHeader } from '../../shell/Header';
 import { usePageMeta } from '../../shell/ShellContext';
 import { useOverlay } from '../../hooks/ui';
@@ -115,8 +116,6 @@ function ContentDrawer({ id, team, onClose, onChanged }: { id: string; team: Tea
   const [comment, setComment] = useState('');
   const [captions, setCaptions] = useState<Partial<Record<Channel, string>>>({});
   const [preview, setPreview] = useState<string | null>(null);
-  const [copied, setCopied] = useState<Channel | null>(null);
-  useEffect(() => { if (!copied) return; const timer = setTimeout(() => setCopied(null), 1600); return () => clearTimeout(timer); }, [copied]);
   const load = useCallback(() => api<PipelineDetail>(`/api/content/${id}`).then((d) => { setItem(d); setCaptions(d.captions); }).catch((e) => setError(errorMessage(e, 'Not found'))), [id]);
   useEffect(() => { void load(); }, [load]);
   const nameOf = (uid: string) => team.find((m) => m.id === uid)?.name ?? (uid === 'system' ? t('Sync', 'المزامنة') : '—');
@@ -128,15 +127,19 @@ function ContentDrawer({ id, team, onClose, onChanged }: { id: string; team: Tea
     catch (e) { setError(errorMessage(e, t('That did not work.', 'لم تنجح العملية.'))); }
     setBusy(false);
   };
+  const captionsChanged = item && JSON.stringify(captions) !== JSON.stringify(item.captions);
   const nowLocal = DateTime.now().setZone(businessZone()).toFormat("yyyy-LL-dd'T'HH:mm");
   const whenPast = Boolean(when) && when < nowLocal;
-  const move = (to: ContentStatus) => act(() => api(`/api/content/${id}/transition`, { body: { to, ...(note.trim() ? { note } : {}), ...(to === 'scheduled' && when ? { scheduledAt: DateTime.fromISO(when, { zone: businessZone() }).toUTC().toISO() } : {}) } }), 'note');
-  const captionsChanged = item && JSON.stringify(captions) !== JSON.stringify(item.captions);
+  // Edited captions travel with the post: they are saved before it moves (sent for review, approved, scheduled).
+  const move = (to: ContentStatus) => act(async () => {
+    if (captionsChanged) await api(`/api/content/${id}`, { method: 'PATCH', body: { captions } });
+    await api(`/api/content/${id}/transition`, { body: { to, ...(note.trim() ? { note } : {}), ...(to === 'scheduled' && when ? { scheduledAt: DateTime.fromISO(when, { zone: businessZone() }).toUTC().toISO() } : {}) } });
+  }, 'note');
   const image = preview ?? item?.creative?.imageUrl;
 
   return <div className="ui-overlay">
     <motion.div className="ui-overlay__scrim" initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }} onClick={onClose} />
-    <motion.aside ref={overlay} tabIndex={-1} role="dialog" aria-modal="true" aria-label={item?.title ?? t('Post preview', 'معاينة المنشور')} className="content-drawer glass"
+    <motion.aside ref={overlay} tabIndex={-1} role="dialog" aria-modal="true" aria-label={item?.title ?? t('Post preview', 'معاينة المنشور')} className="content-drawer content-drawer--wide glass"
       initial={{ x: dir === 'rtl' ? -40 : 40, opacity: 0 }} animate={{ x: 0, opacity: 1 }} exit={{ x: dir === 'rtl' ? -40 : 40, opacity: 0 }} transition={{ type: 'spring', stiffness: 380, damping: 36 }}>
       <header className="content-drawer__head">
         <div>{item && <span className="content-status" data-status={item.status}>{tx(STATUS_LABEL[item.status])}</span>}<h2 dir="auto">{item?.title ?? '…'}</h2></div>
@@ -144,7 +147,8 @@ function ContentDrawer({ id, team, onClose, onChanged }: { id: string; team: Tea
       </header>
       {!item && !error && <Loader2 className="creative-job__spin" size={22} />}
       {error && <p role="alert" className="creative-home__error">{error}</p>}
-      {item && <div className="content-drawer__body">
+      {item && <div className="content-drawer__body content-drawer__layout">
+        <div className="content-drawer__post">
         <div className="content-drawer__media">
           {image ? <img src={image} alt={item.title} /> : <span className="board-card__placeholder"><ImageIcon size={26} /></span>}
           {item.creative?.storyUrl && <img className="content-drawer__story" src={item.creative.storyUrl} alt="9:16" />}
@@ -163,25 +167,22 @@ function ContentDrawer({ id, team, onClose, onChanged }: { id: string; team: Tea
           <div className="content-drawer__buttons">{item.moves.map((m) => <Button key={m.to} variant={m.to === 'approved' || m.to === 'ready_for_review' || m.to === 'scheduled' ? 'primary' : 'secondary'} disabled={busy || (m.needsNote && !note.trim()) || (m.to === 'scheduled' && (!when || whenPast))} onClick={() => void move(m.to)}>{tx(MOVE_LABEL[m.to] ?? STATUS_LABEL[m.to])}</Button>)}</div>
         </section>}
 
-        <section className="content-drawer__section"><h3>{t('Captions', 'النص المرافق')}</h3>
-          {item.channels.map((channel) => <label key={channel} className="content-caption">{CHANNEL_LABEL[channel]}
-            <textarea rows={channel === 'facebook' || channel === 'linkedin' ? 5 : 3} dir="auto" value={captions[channel] ?? ''} disabled={!item.editable} onChange={(e) => setCaptions((c) => ({ ...c, [channel]: e.target.value }))} />
-            <button type="button" className="ui-link" onClick={() => void navigator.clipboard.writeText(captions[channel] ?? '').then(() => setCopied(channel), () => setError(t('Copy is blocked in this browser; select the text instead.', 'المتصفح منع النسخ؛ حدّد النص وانسخه يدويًا.')))}>{copied === channel ? t('Copied', 'تم النسخ') : t('Copy', 'انسخ')}</button>
-          </label>)}
-          {captionsChanged && <Button variant="primary" disabled={busy} onClick={() => void act(() => api(`/api/content/${id}`, { method: 'PATCH', body: { captions } }))}>{t('Save captions', 'احفظ النص المرافق')}</Button>}
-        </section>
-
-        {item.versions.length > 1 && <section className="content-drawer__section"><h3>{t('Versions', 'النسخ')}</h3>
+        {item.versions.length > 1 && <section className="content-drawer__section content-drawer__section--late"><h3>{t('Versions', 'النسخ')}</h3>
           <div className="content-versions">{item.versions.map((v) => <button key={v.id} type="button" aria-pressed={image === v.imageUrl} onClick={() => setPreview(v.imageUrl)}><img src={v.imageUrl} alt="" /><small dir="auto">{v.note}</small></button>)}</div>
         </section>}
 
-        <section className="content-drawer__section"><h3><MessageSquare size={15} /> {t('Activity', 'السجل')}</h3>
+        <section className="content-drawer__section content-drawer__section--late"><h3><MessageSquare size={15} /> {t('Activity', 'السجل')}</h3>
           <ol className="content-timeline">{item.events.map((e) => <li key={e.id} data-kind={e.kind}>
             <b>{nameOf(e.actorId)}</b> <span>{e.kind === 'transition' && e.to ? `→ ${tx(STATUS_LABEL[e.to as ContentStatus] ?? { en: e.to, ar: e.to })}` : e.kind === 'comment' ? '' : e.kind === 'created' ? t('created', 'أنشأ') : e.kind === 'version' ? t('new version', 'نسخة جديدة') : t('edited captions', 'عدّل النص المرافق')}</span>
             {e.body && <p dir="auto">{e.body}</p>}<time>{date(e.createdAt, 'dateTime')}</time>
           </li>)}</ol>
           <div className="content-comment"><input value={comment} onChange={(e) => setComment(e.target.value)} placeholder={t('Write a comment', 'اكتب تعليقًا')} dir="auto" /><Button variant="secondary" disabled={busy || !comment.trim()} onClick={() => void act(() => api(`/api/content/${id}/comments`, { body: { body: comment } }), 'comment')}><Send size={14} /></Button></div>
         </section>
+        </div>
+
+        <ContentCopilot contentId={id} title={item.title} channels={item.channels} values={item.creative?.svgTemplate?.values}
+          captions={captions} onCaptions={setCaptions} editable={item.editable}
+          footer={captionsChanged ? <Button variant="primary" disabled={busy} onClick={() => void act(() => api(`/api/content/${id}`, { method: 'PATCH', body: { captions } }))}>{t('Save captions', 'احفظ النص المرافق')}</Button> : null} />
       </div>}
     </motion.aside>
   </div>;

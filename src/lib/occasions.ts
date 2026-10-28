@@ -35,9 +35,11 @@ const FIXED: Fixed[] = [
   [2, 22, 'يوم التأسيس', 'national', 'السعودية'],
   [3, 4, 'اليوم العالمي للهندسة', 'global'],
   [3, 8, 'اليوم الدولي للمرأة', 'global'],
+  [3, 11, 'يوم العلم', 'national', 'السعودية'],
   [3, 21, 'عيد الأم', 'season'],
   [4, 22, 'يوم الأرض', 'global'],
   [4, 25, 'عيد تحرير سيناء', 'national', 'مصر'],
+  [4, 28, 'اليوم العالمي للسلامة والصحة المهنية', 'global'],
   [5, 1, 'عيد العمال', 'global'],
   [6, 5, 'اليوم العالمي للبيئة', 'global'],
   [6, 30, 'ذكرى 30 يونيو', 'national', 'مصر'],
@@ -47,6 +49,7 @@ const FIXED: Fixed[] = [
   [9, 23, 'اليوم الوطني', 'national', 'السعودية'],
   [10, 5, 'اليوم العالمي للمعلم', 'global'],
   [10, 6, 'ذكرى انتصارات أكتوبر', 'national', 'مصر'],
+  [10, 14, 'اليوم العالمي للتقييس', 'global'],
   [12, 2, 'اليوم الوطني', 'national', 'الإمارات'],
   [12, 18, 'اليوم العالمي للغة العربية', 'global'],
 ];
@@ -142,7 +145,10 @@ function computed(year: number): Omit<Occasion, 'key'>[] {
   const november = DateTime.fromObject({ year, month: 11, day: 1 }, { zone });
   const thanksgiving = november.plus({ days: ((4 - november.weekday + 7) % 7) + 21 });
   const shamElNessim = orthodoxEaster(year).plus({ days: 1 });
+  const firstThursdayOfNovember = november.plus({ days: (4 - november.weekday + 7) % 7 });
   return [
+    { day: firstThursdayOfNovember.toISODate() ?? '', name: 'اليوم العالمي لإدارة المشاريع', kind: 'global' },
+    { day: firstThursdayOfNovember.plus({ days: 7 }).toISODate() ?? '', name: 'اليوم العالمي للجودة', kind: 'global' },
     { day: architecture.toISODate() ?? '', name: 'اليوم العالمي للعمارة', kind: 'global' },
     { day: thanksgiving.plus({ days: 1 }).toISODate() ?? '', name: 'الجمعة البيضاء', kind: 'season' },
     { day: shamElNessim.toISODate() ?? '', name: 'شم النسيم', kind: 'season', region: 'مصر' },

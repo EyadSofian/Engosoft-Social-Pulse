@@ -24,6 +24,8 @@ import { bootstrapAdmin, requirePermission, requireUser, userCan } from './auth.
 import { registerAuthRoutes, registerWorkspaceRoutes } from './workspace-routes.js';
 import { countTemplateUse, getTemplate, registerAiTemplateRoutes } from './ai-templates.js';
 import { registerStudioRoutes } from './studio-routes.js';
+import { registerCaptionRoutes } from './captions.js';
+import { registerContentKitRoutes } from './content-intelligence/kit.js';
 import { db, initDb } from './db.js';
 import { mediaDir } from './paths.js';
 import { registerUsageRoutes, requireAiBudget } from './usage.js';
@@ -43,6 +45,8 @@ app.use('/api',(req,res,next)=>PUBLIC_API.has(req.originalUrl.split('?')[0])?nex
 registerWorkspaceRoutes(app);
 registerAiTemplateRoutes(app);
 registerStudioRoutes(app);
+registerCaptionRoutes(app);
+registerContentKitRoutes(app);
 registerUsageRoutes(app);
 registerNotifyRoutes(app);
 registerSvgTemplateRoutes(app);

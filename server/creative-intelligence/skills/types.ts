@@ -53,9 +53,10 @@ export async function runStage<T>(input: {
   content: StageContent[];
   env: NodeJS.ProcessEnv;
   reasoning?: 'low' | 'medium' | 'high';
+  model?: string;
 }): Promise<T> {
   return openAIJson<T>({
-    apiKey: input.env.OPENAI_API_KEY ?? '', model: input.env.OPENAI_CREATIVE_TEXT_MODEL?.trim() || 'gpt-5.5', reasoning: input.reasoning ?? 'medium',
+    apiKey: input.env.OPENAI_API_KEY ?? '', model: input.model || input.env.OPENAI_CREATIVE_TEXT_MODEL?.trim() || 'gpt-5.5', reasoning: input.reasoning ?? 'medium',
     schemaName: `engosoft_${input.name}`, schema: stageSchema(input.skills),
     instructions: stageInstructions(input.intro, input.skills),
     content: input.content,

@@ -15,6 +15,7 @@ import { readFileSync } from 'node:fs';
 import sharp from 'sharp';
 import { HEX_COLOR, type Box, type StudioDoc, type StudioLayer, type TextLayer } from '../../../src/domain/studio.js';
 import { openAIJson } from '../generation/provider.js';
+import { unverifiedNumbers } from '../../../src/domain/platform-content.js';
 import { designPreview, editModel, isArabic, verifyRegionEdit } from './edit-ai.js';
 import { editInContext, layersSvg, outlineLayer, regionEditPrompt, saveStudioImage, studioPath } from './studio.js';
 
@@ -89,12 +90,7 @@ export async function planStudioEdit(input: { doc: StudioDoc; command: string; s
   });
 }
 
-/** Digits in the new text that the person, the old text and the approved copy never mentioned. */
-export function unverifiedNumbers(next: string, sources: string[]): string[] {
-  const latin = (s: string) => s.replace(/[٠-٩]/g, (d) => String('٠١٢٣٤٥٦٧٨٩'.indexOf(d)));
-  const known = new Set(sources.flatMap((s) => latin(s).match(/\d+/g) ?? []));
-  return [...new Set((latin(next).match(/\d+/g) ?? []).filter((n) => !known.has(n)))];
-}
+export { unverifiedNumbers };
 
 const clamp = (n: number, lo: number, hi: number) => Math.max(lo, Math.min(hi, n));
 const finite = (n: number | null): n is number => typeof n === 'number' && Number.isFinite(n);

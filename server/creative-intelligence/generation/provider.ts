@@ -87,6 +87,9 @@ export async function openAIJson<T>(input: {
   apiKey: string; model: string; instructions: string; schemaName: string; schema: object;
   content: ({ type: 'input_text'; text: string } | { type: 'input_image'; image_url: string; detail: 'low' | 'high' | 'auto' } | { type: 'input_file'; filename: string; file_data: string })[];
   reasoning?: 'minimal' | 'low' | 'medium' | 'high';
+  /** Hosted tools such as `{ type: 'web_search' }`; their citations are handed to `onCitations`. */
+  tools?: Record<string, unknown>[];
+  onCitations?: (citations: { url: string; title: string }[]) => void;
 }): Promise<T> {
   const response = await fetchWithRetry('https://api.openai.com/v1/responses', () => ({
     method: 'POST',
@@ -94,15 +97,18 @@ export async function openAIJson<T>(input: {
     body: JSON.stringify({
       model: input.model, store: false, instructions: input.instructions,
       ...(input.reasoning ? { reasoning: { effort: input.reasoning } } : {}),
+      ...(input.tools?.length ? { tools: input.tools } : {}),
       input: [{ role: 'user', content: input.content }],
       text: { format: { type: 'json_schema', name: input.schemaName, strict: true, schema: input.schema } },
     }),
     signal: AbortSignal.timeout(180_000),
   }));
-  const body = await response.json().catch(() => ({})) as { output?: { content?: { type?: string; text?: string }[] }[]; error?: { message?: string }; usage?: OpenAIUsage };
+  type Part = { type?: string; text?: string; annotations?: { type?: string; url?: string; title?: string }[] };
+  const body = await response.json().catch(() => ({})) as { output?: { content?: Part[] }[]; error?: { message?: string }; usage?: OpenAIUsage };
   if (response.ok) recordUsage({ kind: 'text', model: input.model, usage: body.usage });
   if (!response.ok) throw new ImageProviderError(body.error?.message || `${input.model} request failed (HTTP ${response.status})`, response.status);
-  const text = body.output?.flatMap((part) => part.content ?? []).find((part) => part.type === 'output_text')?.text;
-  if (!text) throw new ImageProviderError(`${input.model} returned no structured output`);
-  return JSON.parse(text) as T;
+  const part = body.output?.flatMap((item) => item.content ?? []).find((item) => item.type === 'output_text');
+  if (!part?.text) throw new ImageProviderError(`${input.model} returned no structured output`);
+  input.onCitations?.((part.annotations ?? []).filter((a) => a.type === 'url_citation' && a.url).map((a) => ({ url: a.url!, title: a.title || a.url! })));
+  return JSON.parse(part.text) as T;
 }
