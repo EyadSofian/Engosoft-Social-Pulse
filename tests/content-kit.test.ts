@@ -3,14 +3,17 @@ import { test } from 'node:test';
 import { writeInstructions } from '../server/captions';
 import { contentSkills, platformCopywriter, voiceRules } from '../server/creative-intelligence/skills/content';
 import { stageInstructions, stageSchema } from '../server/creative-intelligence/skills/types';
-import { DIALECTS, POSTING_WINDOWS, SCRIPT_FORMATS, suggestedDialect } from '../src/domain/content-voice';
+import { DIALECTS, POSTING_WINDOWS, SCRIPT_FORMATS, suggestedDialect, suggestedSlots } from '../src/domain/content-voice';
 import { CHANNELS } from '../src/domain/shared';
 import { PLATFORM_SPECS, analyzeCaption } from '../src/domain/platform-content';
 import { upcomingOccasions } from '../src/lib/occasions';
 
 test('the content team is versioned and its stage schema is strict', () => {
-  const skills = contentSkills('reel', 30);
-  assert.deepEqual(skills.map((s) => s.id), ['kit-strategist', 'hook-writer-social', 'script-writer', 'carousel-writer', 'hashtag-strategist']);
+  // Each part of the kit is written on its own, only when asked for.
+  assert.deepEqual(contentSkills('ideas', 'reel', 30).map((s) => s.id), ['kit-strategist', 'hook-writer-social', 'hashtag-strategist']);
+  assert.deepEqual(contentSkills('script', 'tiktok', 30).map((s) => s.id), ['script-writer']);
+  assert.deepEqual(contentSkills('carousel', 'reel', 30).map((s) => s.id), ['carousel-writer']);
+  const skills = [...contentSkills('ideas', 'reel', 30), ...contentSkills('script', 'reel', 30), ...contentSkills('carousel', 'reel', 30)];
   for (const s of skills) assert.match(s.version, new RegExp(`^${s.id}:v\\d+$`));
   const check = (node: Record<string, unknown>, path: string) => {
     if (node.type === 'object') {
@@ -65,4 +68,15 @@ test('captions are fitted to the platform, extra hashtags dropped', async () => 
   assert.equal(out.match(/#/g)?.length, 5);
   assert.ok(out.startsWith('افهم أهداف CFM'));
   assert.equal(fitCaption('whatsapp', 'سجّل الآن #CFM').includes('#'), false);
+});
+
+test('suggested publishing times follow the lead platform in Saudi time', async () => {
+  const { DateTime } = await import('luxon');
+  // Wednesday 4 Nov 2026, 15:00 in Riyadh (Egypt's summer time has ended).
+  const now = DateTime.fromISO('2026-11-04T15:00', { zone: 'Asia/Riyadh' });
+  assert.deepEqual(suggestedSlots(['facebook', 'instagram'], 'Asia/Riyadh', now).map((s) => s.at), ['2026-11-04T21:00', '2026-11-05T12:00', '2026-11-05T21:00']);
+  // Cairo is an hour behind Riyadh in winter: the same slot reads 20:00 there.
+  assert.equal(suggestedSlots(['instagram'], 'Africa/Cairo', now)[0].at, '2026-11-04T20:00');
+  // LinkedIn skips Thursday to Saturday: the next Sunday morning comes after Wednesday's lunch window is gone.
+  assert.equal(suggestedSlots(['linkedin'], 'Asia/Riyadh', now)[0].at, '2026-11-08T08:00');
 });

@@ -14,7 +14,7 @@ import { runStage, skillVersions } from '../creative-intelligence/skills/types.j
 import { db, defineSchema } from '../db.js';
 import { requireAiBudget } from '../usage.js';
 import { canEdit, canSee, getContent, type StoredContent } from '../workspace.js';
-import { DIALECTS, GOALS, SCRIPT_FORMATS, SCRIPT_INFO, TONES, type ContentKit, type Dialect, type Goal, type HookFormula, type KitScript, type ScriptFormat, type Tone } from '../../src/domain/content-voice.js';
+import { DIALECTS, KIT_PARTS, SCRIPT_FORMATS, SCRIPT_INFO, type ContentKit, type Dialect, type HookFormula, type KitPart, type KitScript, type ScriptFormat } from '../../src/domain/content-voice.js';
 import { unverifiedNumbers } from '../../src/domain/platform-content.js';
 import { upcomingOccasions } from '../../src/lib/occasions.js';
 import { scanTrends } from './trends.js';
@@ -38,70 +38,76 @@ const contentModel = (env: NodeJS.ProcessEnv) => env.OPENAI_CONTENT_MODEL?.trim(
 const saudiToday = () => DateTime.now().setZone('Asia/Riyadh').toISODate() ?? new Date().toISOString().slice(0, 10);
 
 interface StageOut {
-  kitStrategist: { idea: string; audience: string; insight: string; pillar: string; occasions: { day: string; name: string; idea: string }[] };
-  hookWriterSocial: { hooks: { text: string; formula: HookFormula; spoken: string }[] };
-  scriptWriter: KitScript;
-  carouselWriter: { slides: { title: string; body: string }[]; stories: { frame: string; sticker: string }[] };
-  hashtagStrategist: { core: string[]; niche: string[]; local: string[]; keywords: string[] };
+  kitStrategist?: { idea: string; audience: string; insight: string; pillar: string; occasions: { day: string; name: string; idea: string }[] };
+  hookWriterSocial?: { hooks: { text: string; formula: HookFormula; spoken: string }[] };
+  scriptWriter?: KitScript;
+  carouselWriter?: { slides: { title: string; body: string }[]; stories: { frame: string; sticker: string }[] };
+  hashtagStrategist?: { core: string[]; niche: string[]; local: string[]; keywords: string[] };
 }
 
 const tag = (value: string) => { const t = value.trim().replace(/^#+/, '').replace(/[^\p{L}\p{N}_]+/gu, '_').replace(/^_+|_+$/g, ''); return t.length > 1 ? `#${t}` : ''; };
 const tags = (values: string[], max: number) => [...new Set(values.map(tag).filter(Boolean))].slice(0, max);
 
-/** Writes a fresh kit for a post. Captions are fitted to their platform; digits nobody supplied become warnings. */
-export async function generateKit(input: { item: StoredContent; user: AuthUser; dialect: Dialect; tone: Tone; goal: Goal; format: ScriptFormat; previous: ContentKit | null }, env: NodeJS.ProcessEnv = process.env): Promise<ContentKit> {
-  const { item, dialect, tone, goal, format } = input;
+/**
+ * Writes one part of a post's kit and merges it into what is already there: `ideas` (angle, opening lines,
+ * hashtags, occasion links — the suggestions for the caption), `script` (a short video) or `carousel`
+ * (slides and stories). Digits nobody supplied become warnings.
+ */
+export async function generateKit(input: { item: StoredContent; user: AuthUser; part: KitPart; dialect: Dialect; format: ScriptFormat; previous: ContentKit | null }, env: NodeJS.ProcessEnv = process.env): Promise<ContentKit> {
+  const { item, part, dialect, format } = input;
+  const base = input.previous ?? emptyKit(input.user.id);
   const seconds = SCRIPT_INFO[format].seconds;
   const facts = contentFacts(item);
   const occasions = upcomingOccasions(saudiToday(), 45, 6);
-  const skills = contentSkills(format, seconds);
+  const skills = contentSkills(part, format, seconds);
   const model = contentModel(env);
+  const angle = base.angle.idea ? `The angle already chosen for this post (keep to it): ${base.angle.idea}` : '';
 
   const out = await runStage<StageOut>({
-    name: 'content_kit', env, model, reasoning: 'low', skills,
+    name: `content_${part}`, env, model, reasoning: 'low', skills,
     intro: [
-      'You are the content team of Engosoft, a professional engineering and business training company serving Saudi Arabia and Egypt. You write a complete, ready-to-use content kit for ONE post, in one voice.',
+      'You are the content team of Engosoft, a professional engineering and business training company serving Saudi Arabia and Egypt. You write for ONE post, in one voice.',
       'Voice for every piece of text:',
-      ...voiceRules(dialect, tone, goal).map((rule) => `- ${rule}`),
+      ...voiceRules(dialect, 'expert', 'register').map((rule) => `- ${rule}`),
     ].join('\n'),
     content: [{
       type: 'input_text',
       text: [
         `Platforms the post is for: ${item.channels.join(', ')}`,
-        `Video format: ${format}, ${seconds} seconds`,
+        part === 'script' ? `Video format: ${format}, ${seconds} seconds` : '',
         `Today (Saudi time): ${saudiToday()}`,
-        `Upcoming occasions (data):\n${occasions.map((o) => `- ${o.day}: ${o.name}${o.region ? ` (${o.region})` : ''}${o.approximate ? ' — Hijri, ±1 day' : ''}`).join('\n') || '- none'}`,
-        input.previous?.trends?.items.length ? `Current trends that may fit (data, use only when the link is genuine):\n${input.previous.trends.items.filter((t) => t.fit >= 60).map((t) => `- ${t.title}: ${t.howToUse}`).join('\n')}` : '',
+        part === 'ideas' ? `Upcoming occasions (data):\n${occasions.map((o) => `- ${o.day}: ${o.name}${o.region ? ` (${o.region})` : ''}${o.approximate ? ' — Hijri, ±1 day' : ''}`).join('\n') || '- none'}` : angle,
+        base.trends?.items.length ? `Current trends that may fit (data, use only when the link is genuine):\n${base.trends.items.filter((t) => t.fit >= 60).map((t) => `- ${t.title}: ${t.howToUse}`).join('\n')}` : '',
         `Facts about the post (data only):\n${facts}`,
       ].filter(Boolean).join('\n\n'),
     }],
   });
 
-  const script = out.scriptWriter;
-  const spoken = [...out.hookWriterSocial.hooks.flatMap((h) => [h.text, h.spoken]), ...script.scenes.flatMap((s) => [s.voiceover, s.onScreen]), script.cta, script.cover,
-    ...out.carouselWriter.slides.flatMap((s) => [s.title, s.body]), ...out.carouselWriter.stories.map((s) => s.frame)].join('\n');
-  const unknown = unverifiedNumbers(spoken, [facts]);
-  const known = new Set(occasions.map((o) => o.day));
-
-  return {
-    dialect, tone, goal,
-    angle: { idea: out.kitStrategist.idea, audience: out.kitStrategist.audience, insight: out.kitStrategist.insight, pillar: out.kitStrategist.pillar },
-    hooks: out.hookWriterSocial.hooks.filter((h) => h.text.trim()).slice(0, 6),
-    captions: {},
-    script: { ...script, format, seconds },
-    carousel: out.carouselWriter.slides.slice(0, 10),
-    stories: out.carouselWriter.stories.slice(0, 6),
-    hashtags: { core: tags(out.hashtagStrategist.core, 3), niche: tags(out.hashtagStrategist.niche, 5), local: tags(out.hashtagStrategist.local, 3) },
-    keywords: [...new Set(out.hashtagStrategist.keywords.map((k) => k.trim()).filter(Boolean))].slice(0, 8),
-    warnings: unknown.length ? [`أرقام غير موجودة في بيانات المنشور، راجعها قبل النشر: ${unknown.join('، ')}`] : [],
+  const kit: ContentKit = { ...base, dialect, skills: { ...base.skills, ...skillVersions(skills) }, model, generatedBy: input.user.id, parts: { ...base.parts, [part]: new Date().toISOString() } };
+  const written: string[] = [];
+  if (out.kitStrategist && out.hookWriterSocial && out.hashtagStrategist) {
+    const known = new Set(occasions.map((o) => o.day));
+    kit.angle = { idea: out.kitStrategist.idea, audience: out.kitStrategist.audience, insight: out.kitStrategist.insight, pillar: out.kitStrategist.pillar };
     // Only occasions we actually gave the writer: a model cannot add a date of its own.
-    occasions: out.kitStrategist.occasions.filter((o) => known.has(o.day) && o.idea.trim()),
-    ...(input.previous?.trends ? { trends: input.previous.trends } : {}),
-    skills: skillVersions(skills),
-    model,
-    generatedAt: new Date().toISOString(),
-    generatedBy: input.user.id,
-  };
+    kit.occasions = out.kitStrategist.occasions.filter((o) => known.has(o.day) && o.idea.trim());
+    kit.hooks = out.hookWriterSocial.hooks.filter((h) => h.text.trim()).slice(0, 6);
+    kit.hashtags = { core: tags(out.hashtagStrategist.core, 3), niche: tags(out.hashtagStrategist.niche, 5), local: tags(out.hashtagStrategist.local, 3) };
+    kit.keywords = [...new Set(out.hashtagStrategist.keywords.map((k) => k.trim()).filter(Boolean))].slice(0, 8);
+    kit.generatedAt = kit.parts!.ideas!;
+    written.push(...kit.hooks.map((h) => h.text));
+  }
+  if (out.scriptWriter) {
+    kit.script = { ...out.scriptWriter, format, seconds };
+    written.push(...kit.script.scenes.flatMap((s) => [s.voiceover, s.onScreen]), kit.script.cta, kit.script.cover);
+  }
+  if (out.carouselWriter) {
+    kit.carousel = out.carouselWriter.slides.slice(0, 10);
+    kit.stories = out.carouselWriter.stories.slice(0, 6);
+    written.push(...kit.carousel.flatMap((s) => [s.title, s.body]), ...kit.stories.map((s) => s.frame));
+  }
+  const unknown = unverifiedNumbers(written.join('\n'), [facts]);
+  kit.warnings = unknown.length ? [`أرقام غير موجودة في بيانات المنشور، راجعها قبل النشر: ${unknown.join('، ')}`] : [];
+  return kit;
 }
 
 export function registerContentKitRoutes(app: express.Express) {
@@ -122,7 +128,7 @@ export function registerContentKitRoutes(app: express.Express) {
   });
 
   app.post('/api/content/:id/kit', requireUser, requireAiBudget, async (req, res) => {
-    const parsed = z.object({ dialect: z.enum(DIALECTS).default('saudi'), tone: z.enum(TONES).default('expert'), goal: z.enum(GOALS).default('register'), format: z.enum(SCRIPT_FORMATS).default('reel') }).safeParse(req.body ?? {});
+    const parsed = z.object({ part: z.enum(KIT_PARTS).default('ideas'), dialect: z.enum(DIALECTS).default('saudi'), format: z.enum(SCRIPT_FORMATS).default('reel') }).safeParse(req.body ?? {});
     if (!parsed.success) return res.status(400).json({ error: 'اختيارات غير صالحة.' });
     const item = await load(req, res, true);
     if (!item || unavailable(res)) return;

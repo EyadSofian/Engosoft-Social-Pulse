@@ -3,7 +3,7 @@
  * platform, a short-video script, a carousel, stories and search keywords — in the register the person chose.
  * Human-readable: .claude/skills/engosoft-content-strategist, engosoft-arabic-voice, engosoft-video-scripts.
  */
-import { HOOK_FORMULAS, SCRIPT_FORMATS, type Dialect, type Goal, type ScriptFormat, type Tone } from '../../../src/domain/content-voice.js';
+import { HOOK_FORMULAS, SCRIPT_FORMATS, type Dialect, type Goal, type KitPart, type ScriptFormat, type Tone } from '../../../src/domain/content-voice.js';
 import { PLATFORM_SPECS } from '../../../src/domain/platform-content.js';
 import type { Channel } from '../../../src/domain/shared.js';
 import { list, num, obj, oneOf, str, type DesignSkill } from './types.js';
@@ -61,12 +61,12 @@ export const kitStrategist: DesignSkill<'kit-strategist'> = {
 };
 
 export const socialHookWriter: DesignSkill<'hook-writer-social'> = {
-  id: 'hook-writer-social', version: 'hook-writer-social:v1',
-  purpose: 'Writes five scroll-stopping opening lines with different formulas, each with a spoken version for video.',
+  id: 'hook-writer-social', version: 'hook-writer-social:v2',
+  purpose: 'Writes five alternative opening lines for the caption — each one can replace the caption\'s first line as is.',
   rules: [
-    `Five hooks, five different formulas from: ${HOOK_FORMULAS.join(', ')}. "number" only when the number is in the facts; "timely" only for a genuine occasion or trend link.`,
-    'Text hook: 3–10 words, specific to this course and audience — never generic ("طوّر مهاراتك", "فرصتك الذهبية").',
-    'spoken: the same hook as it would be SAID in the first 2 seconds of a video, in the chosen dialect.',
+    `Five opening lines, five different formulas from: ${HOOK_FORMULAS.join(', ')}. "number" only when the number is in the facts; "timely" only for a genuine occasion or trend link.`,
+    'text: a complete first line for the caption, 4–12 words, under 110 characters so it shows before "see more", specific to this course and audience — never generic ("طوّر مهاراتك", "فرصتك الذهبية"). No hashtags, no link.',
+    'spoken: the same idea as it would be SAID in the first 2 seconds of a video, in the chosen dialect.',
     'Order them strongest first.',
   ],
   schema: obj({ hooks: list(obj({ text: str(), formula: oneOf(HOOK_FORMULAS), spoken: str() })) }),
@@ -124,6 +124,9 @@ export const hashtagStrategist: DesignSkill<'hashtag-strategist'> = {
   schema: obj({ core: list(str()), niche: list(str()), local: list(str()), keywords: list(str()) }),
 };
 
-/** The ideas kit beside a post. Captions are not part of it: they are written straight into the post's caption box. */
-export const contentSkills = (format: ScriptFormat, seconds: number) =>
-  [kitStrategist, socialHookWriter, scriptWriter(format, seconds), carouselWriter, hashtagStrategist];
+/** The skills that write one part of a post's kit. Captions are never part of it: they go straight into the caption box. */
+export function contentSkills(part: KitPart, format: ScriptFormat, seconds: number): DesignSkill[] {
+  if (part === 'script') return [scriptWriter(format, seconds)];
+  if (part === 'carousel') return [carouselWriter];
+  return [kitStrategist, socialHookWriter, hashtagStrategist];
+}

@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useRef, useState } from 'react';
+import { useEffect, useMemo, useRef, useState, type ReactNode } from 'react';
 import { AlertTriangle, Check, CheckCircle2, ChevronDown, Copy, Eye, EyeOff, Sparkles, Undo2, Wand2 } from 'lucide-react';
 import { ChannelIcon } from '../../components/data-display/ChannelIcon';
 import { Button } from '../../components/ui/Button';
@@ -38,12 +38,30 @@ function Preview({ channel, text, report }: { channel: Channel; text: string; re
   );
 }
 
+/** What suggestions beside the caption can do to the platform being edited. */
+export interface CaptionAssist {
+  channel: Channel;
+  text: string;
+  /** False for a locked (approved) post: suggestions can only be copied. */
+  editable: boolean;
+  busy: boolean;
+  /** Replaces the first line (the hook shown before "see more"). */
+  useOpening: (line: string) => void;
+  hasTag: (tag: string) => boolean;
+  toggleTag: (tag: string) => void;
+  /** Asks the AI to change the caption, e.g. to tie it to an occasion. */
+  ask: (request: string, label: string) => void;
+}
+
+const escape = (value: string) => value.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+const tagPattern = (tag: string) => new RegExp(`(^|\\s)${escape(tag)}(?=$|\\s)`, 'u');
+
 /**
  * One caption per platform in one box. A status line says whether it is ready by that platform's rules; one
  * button writes every platform with AI in the chosen dialect, a menu improves the current one, and every AI
  * change can be undone.
  */
-export function CaptionsEditor({ channels, value, onChange, readOnly, ai, onBusy, dialect }: {
+export function CaptionsEditor({ channels, value, onChange, readOnly, ai, onBusy, dialect, assist }: {
   channels: Channel[];
   value: Captions;
   onChange: (next: Captions) => void;
@@ -52,6 +70,8 @@ export function CaptionsEditor({ channels, value, onChange, readOnly, ai, onBusy
   onBusy?: (busy: boolean) => void;
   /** The register AI writing uses; without it the server writes modern Standard Arabic. */
   dialect?: Dialect;
+  /** Suggestions shown under the box that act on it. */
+  assist?: (api: CaptionAssist) => ReactNode;
 }) {
   const { t } = useI18n();
   const [active, setActive] = useState<Channel>(channels[0]);
@@ -63,6 +83,8 @@ export function CaptionsEditor({ channels, value, onChange, readOnly, ai, onBusy
   const [preview, setPreview] = useState(false);
   const [showIssues, setShowIssues] = useState(false);
   const [custom, setCustom] = useState('');
+  const [flash, setFlash] = useState(0);
+  useEffect(() => { if (!flash) return; const timer = setTimeout(() => setFlash(0), 1400); return () => clearTimeout(timer); }, [flash]);
   const menu = useRef<HTMLDetailsElement>(null);
   useEffect(() => { if (!channels.includes(active)) setActive(channels[0]); }, [channels, active]);
   useEffect(() => { if (!copied) return; const timer = setTimeout(() => setCopied(false), 1600); return () => clearTimeout(timer); }, [copied]);
@@ -80,7 +102,8 @@ export function CaptionsEditor({ channels, value, onChange, readOnly, ai, onBusy
   const report = reports[active];
   const spec = specOf(active);
   const anyText = channels.some((c) => (value[c] ?? '').trim());
-  const apply = (patch: Captions, label: string) => { setUndo({ label, before: value }); onChange({ ...value, ...patch }); };
+  // Every change from the AI or a suggestion can be undone and briefly lights up the box.
+  const apply = (patch: Captions, label: string) => { setUndo({ label, before: value }); onChange({ ...value, ...patch }); setFlash(Date.now()); };
 
   const issues = [
     ...(warnings[active] ?? []).map((w, i) => ({ id: `f${i}`, level: 'error' as const, text: w })),
@@ -102,10 +125,10 @@ export function CaptionsEditor({ channels, value, onChange, readOnly, ai, onBusy
     apply(result.captions, targets.length > 1 ? t('Wrote every platform', 'كتبت النص لكل المنصات') : t(`Rewrote ${channelName[targets[0]]}`, `أعدت كتابة ${channelName[targets[0]]}`));
     setWarnings((current) => ({ ...current, ...Object.fromEntries(targets.map((c) => [c, result.warnings?.[c] ?? []])) }));
   };
-  const aiRefine = async (intent?: (typeof INTENTS)[number]['id'] | 'fix', words?: string) => {
+  const aiRefine = async (intent?: (typeof INTENTS)[number]['id'] | 'fix', words?: string, named?: string) => {
     if (menu.current) menu.current.open = false;
     if (!ai || !text.trim()) return;
-    const label = intent === 'fix' ? t('Fixed the issues', 'أصلحت الملاحظات') : intent ? t(INTENTS.find((i) => i.id === intent)!.en, INTENTS.find((i) => i.id === intent)!.ar) : t('Applied your change', 'نفّذت طلبك');
+    const label = named ?? (intent === 'fix' ? t('Fixed the issues', 'أصلحت الملاحظات') : intent ? t(INTENTS.find((i) => i.id === intent)!.en, INTENTS.find((i) => i.id === intent)!.ar) : t('Applied your change', 'نفّذت طلبك'));
     const body = { ...(intent ? { intent } : { custom: words }) };
     const result = await call(`refine:${intent ?? 'custom'}`, () => 'contentId' in ai
       ? api<{ captions: Captions; warnings: Record<string, string[]> }>(`/api/content/${ai.contentId}/captions/ai`, { body: { dialect, refine: { channel: active, text, ...body } } })
@@ -135,7 +158,7 @@ export function CaptionsEditor({ channels, value, onChange, readOnly, ai, onBusy
         </div>
       )}
 
-      <div className="caps__box">
+      <div className="caps__box" data-flash={flash ? true : undefined} key={flash ? `f${flash}` : 'box'}>
         <textarea className="caps__text" dir="auto" rows={active === 'snapchat' || active === 'tiktok' ? 3 : 7} value={text} readOnly={readOnly}
           aria-label={t(`${channelName[active]} caption`, `نص ${channelName[active]}`)}
           placeholder={readOnly ? '' : t(`Write the ${channelName[active]} caption, or press “Write with AI”.`, `اكتب نص ${channelName[active]}، أو اضغط «اكتب بالذكاء».`)}
@@ -171,6 +194,18 @@ export function CaptionsEditor({ channels, value, onChange, readOnly, ai, onBusy
         {text.trim() && <button type="button" className="caps__icon" onClick={copy} title={t('Copy', 'انسخ')} aria-label={t('Copy', 'انسخ')}>{copied ? <Check size={15} /> : <Copy size={15} />}</button>}
       </div>
 
+      {assist?.({
+        channel: active, text, editable: Boolean(!readOnly && ai), busy: Boolean(busy),
+        useOpening: (line) => { const lines = text.split('\n'); apply({ [active]: text.trim() ? [line, ...lines.slice(1)].join('\n') : line }, t('Replaced the opening line', 'استبدلت الافتتاحية')); },
+        hasTag: (tag) => tagPattern(tag).test(text),
+        toggleTag: (tag) => {
+          if (tagPattern(tag).test(text)) { onChange({ ...value, [active]: text.replace(tagPattern(tag), '$1').replace(/[ \t]{2,}/g, ' ').replace(/[ \t]+$/gm, '').trim() }); return; }
+          const lines = text.trimEnd().split('\n');
+          const last = lines[lines.length - 1] ?? '';
+          onChange({ ...value, [active]: /^\s*#/.test(last) ? [...lines.slice(0, -1), `${last} ${tag}`].join('\n') : `${text.trimEnd()}${text.trim() ? '\n' : ''}${tag}` });
+        },
+        ask: (request, label) => void aiRefine(undefined, request, label),
+      })}
       {preview && text.trim() && <Preview channel={active} text={text} report={report} />}
       {error && <p role="alert" className="creative-home__error">{error}</p>}
       {undo && !busy && <p className="caps__undo" role="status"><CheckCircle2 size={14} /> {undo.label}<button type="button" className="ui-link" onClick={() => { onChange(undo.before); setUndo(null); }}><Undo2 size={13} /> {t('Undo', 'تراجع')}</button></p>}

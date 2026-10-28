@@ -1,7 +1,7 @@
 import { useCallback, useEffect, useMemo, useState } from 'react';
 import { DateTime } from 'luxon';
 import { AnimatePresence, motion } from 'motion/react';
-import { CheckCircle2, ExternalLink, Image as ImageIcon, Loader2, MessageSquare, Paintbrush, Search, Send, X } from 'lucide-react';
+import { CheckCircle2, Clock, ExternalLink, Image as ImageIcon, Loader2, MessageSquare, Paintbrush, Search, Send, X } from 'lucide-react';
 import { useQueryState, useRouter } from '../../app/router/router';
 import { Button } from '../../components/ui/Button';
 import { useAuth } from '../../features/auth/AuthProvider';
@@ -11,6 +11,7 @@ import { useI18n } from '../../i18n/I18nProvider';
 import { api, errorMessage } from '../../lib/api';
 import { ApprovalCard } from '../../features/content-pipeline/ApprovalCard';
 import { ContentCopilot } from '../../features/content/ContentCopilot';
+import { suggestedSlots } from '../../domain/content-voice';
 import { PageHeader } from '../../shell/Header';
 import { usePageMeta } from '../../shell/ShellContext';
 import { useOverlay } from '../../hooks/ui';
@@ -104,7 +105,7 @@ export function ContentBoardPage({ openId }: { openId?: string }) {
 }
 
 function ContentDrawer({ id, team, onClose, onChanged }: { id: string; team: TeamMember[]; onClose: () => void; onChanged: () => void }) {
-  const { t, tx, dir, date } = useI18n();
+  const { t, tx, dir, date, lang } = useI18n();
   const overlay = useOverlay(true, onClose);
   const { can } = useAuth();
   const { navigate } = useRouter();
@@ -139,7 +140,7 @@ function ContentDrawer({ id, team, onClose, onChanged }: { id: string; team: Tea
 
   return <div className="ui-overlay">
     <motion.div className="ui-overlay__scrim" initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }} onClick={onClose} />
-    <motion.aside ref={overlay} tabIndex={-1} role="dialog" aria-modal="true" aria-label={item?.title ?? t('Post preview', 'معاينة المنشور')} className="content-drawer content-drawer--wide glass"
+    <motion.aside ref={overlay} tabIndex={-1} data-overlay role="dialog" aria-modal="true" aria-label={item?.title ?? t('Post preview', 'معاينة المنشور')} className="content-drawer content-drawer--wide glass"
       initial={{ x: dir === 'rtl' ? -40 : 40, opacity: 0 }} animate={{ x: 0, opacity: 1 }} exit={{ x: dir === 'rtl' ? -40 : 40, opacity: 0 }} transition={{ type: 'spring', stiffness: 380, damping: 36 }}>
       <header className="content-drawer__head">
         <div>{item && <span className="content-status" data-status={item.status}>{tx(STATUS_LABEL[item.status])}</span>}<h2 dir="auto">{item?.title ?? '…'}</h2></div>
@@ -163,6 +164,13 @@ function ContentDrawer({ id, team, onClose, onChanged }: { id: string; team: Tea
         {item.moves.length > 0 && <section className="content-drawer__section content-drawer__actions"><h3>{t('Next step', 'الخطوة التالية')}</h3>
           {item.moves.some((m) => m.needsNote) && <textarea rows={2} value={note} onChange={(e) => setNote(e.target.value)} placeholder={t('Note for the owner (required to request changes or cancel)', 'ملاحظة لصاحب المنشور (مطلوبة عند طلب التعديل أو الإلغاء)')} dir="auto" />}
           {item.moves.some((m) => m.to === 'scheduled') && <label>{t('Publish at', 'ميعاد النشر')} · {businessZone()}<input type="datetime-local" min={nowLocal} value={when} onChange={(e) => setWhen(e.target.value)} /></label>}
+          {item.moves.some((m) => m.to === 'scheduled') && <div className="content-slots" aria-label={t('Suggested times', 'مواعيد مقترحة')}>
+            <span><Clock size={13} /> {t('Best times', 'أفضل وقت')}</span>
+            {suggestedSlots(item.channels, businessZone()).map((slot) => <button key={slot.at} type="button" aria-pressed={when === slot.at} onClick={() => setWhen(slot.at)}>
+              {DateTime.fromISO(slot.at, { zone: businessZone() }).setLocale(lang === 'ar' ? 'ar' : 'en').toFormat(lang === 'ar' ? 'ccc h:mm a' : 'ccc h:mm a')}
+            </button>)}
+            <small>{t('for the Saudi audience', 'لجمهور السعودية')}</small>
+          </div>}
           {whenPast && <small role="alert" className="creative-home__error">{t('This time has already passed. Choose a future time.', 'هذا الموعد مضى بالفعل. اختر موعدًا قادمًا.')}</small>}
           <div className="content-drawer__buttons">{item.moves.map((m) => <Button key={m.to} variant={m.to === 'approved' || m.to === 'ready_for_review' || m.to === 'scheduled' ? 'primary' : 'secondary'} disabled={busy || (m.needsNote && !note.trim()) || (m.to === 'scheduled' && (!when || whenPast))} onClick={() => void move(m.to)}>{tx(MOVE_LABEL[m.to] ?? STATUS_LABEL[m.to])}</Button>)}</div>
         </section>}

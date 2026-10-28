@@ -5,17 +5,19 @@ description: Plan and write the full content kit for one Engosoft post — angle
 
 # Engosoft content strategist
 
-The panel beside each post (**نص المنشور**) has two parts, deliberately simple:
+The panel beside each post (**نص المنشور**) is built around the caption, the thing that is actually published:
 
-1. **The caption** — one box per platform, one dialect choice, one primary button «اكتب بالذكاء» that writes every platform straight into the box (undo available), an «حسّن» menu, preview and copy. Server: `server/captions.ts`; every caption is fitted on the way in (`fitCaption`: extra hashtags dropped, links handled, length capped), including posts created from the Create page.
-2. **More for this post** (on demand) — the ideas kit: angle, hooks, a video script, a carousel and stories, trends and occasions, timing, hashtags and keywords. It never touches the caption.
+1. **The caption** — one dialect choice, one box per platform with a status line, one primary «اكتب بالذكاء» that writes every platform into the box (undo), an «حسّن» menu, preview and copy. Server: `server/captions.ts`; captions are fitted on the way in (`fitCaption`: extra hashtags dropped, links handled, length capped), including new posts.
+2. **Suggestions for this caption** (on demand, kit part `ideas`) — they act on the caption, never beside it: an alternative opening line replaces the first line, hashtag chips toggle in and out of the text (limit shown), an occasion or a live trend rewrites the caption around it. Each change lights up the box and can be undone. On a locked post they copy instead.
+3. **Turn this post into** — a short video script, a carousel or stories (kit parts `script` and `carousel`), only when asked, in a sheet over the drawer. An image post never gets a script it did not ask for.
+4. **Best times** sit next to «ميعاد النشر» as chips that fill the field (`suggestedSlots`, Saudi audience).
 
 ```
 post facts (title, approved copy, template fields, existing captions)
   + dialect (and video format) chosen in the panel
   + upcoming occasions (src/lib/occasions.ts) and, when scanned, live trends
   → CONTENT stage (runtime skills in server/creative-intelligence/skills/content.ts)
-      kit-strategist · hook-writer-social · script-writer · carousel-writer · hashtag-strategist
+      ideas: kit-strategist · hook-writer-social · hashtag-strategist   script: script-writer   carousel: carousel-writer
   → unverifiedNumbers check → saved in content_kits
 ```
 

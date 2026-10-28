@@ -2,6 +2,7 @@
  * The voice and the content kit of a post, shared by the copilot panel and the server. Human-readable rules:
  * .claude/skills/engosoft-arabic-voice and engosoft-content-strategist — change them together.
  */
+import { DateTime } from 'luxon';
 import type { Channel } from './shared';
 
 export const DIALECTS = ['saudi', 'msa', 'egyptian', 'english'] as const;
@@ -10,6 +11,9 @@ export const TONES = ['expert', 'friendly', 'energetic', 'formal'] as const;
 export type Tone = (typeof TONES)[number];
 export const GOALS = ['register', 'awareness', 'engagement', 'authority'] as const;
 export type Goal = (typeof GOALS)[number];
+/** The parts of a post's kit, each written on demand. */
+export const KIT_PARTS = ['ideas', 'script', 'carousel'] as const;
+export type KitPart = (typeof KIT_PARTS)[number];
 export const SCRIPT_FORMATS = ['reel', 'tiktok', 'snapchat', 'short'] as const;
 export type ScriptFormat = (typeof SCRIPT_FORMATS)[number];
 
@@ -81,8 +85,11 @@ export interface ContentKit {
   trends?: { items: KitTrend[]; sources: KitSource[]; scannedAt: string; live: boolean };
   skills: Record<string, string>;
   model: string;
+  /** When the ideas were written (empty until then). */
   generatedAt: string;
   generatedBy: string;
+  /** When each part was last written. */
+  parts?: Partial<Record<KitPart, string>>;
 }
 
 /**
@@ -99,3 +106,24 @@ export const POSTING_WINDOWS: Record<Channel, { primary: [number, number]; secon
   whatsapp: { primary: [19, 21], secondary: [10, 11] },
   website: { primary: [9, 11], secondary: [13, 14], days: { en: 'Sun–Thu', ar: 'الأحد–الخميس' } },
 };
+
+/**
+ * The next good publishing times for a post, from its lead platform's windows in Saudi time, as local
+ * `yyyy-LL-ddTHH:mm` strings in `zone` (what a datetime-local input takes). LinkedIn only gets Sun–Wed.
+ */
+export function suggestedSlots(channels: Channel[], zone: string, now: DateTime = DateTime.now(), count = 3): { at: string; channel: Channel }[] {
+  const lead = channels.includes('instagram') ? 'instagram' : channels[0];
+  if (!lead) return [];
+  const windows = POSTING_WINDOWS[lead];
+  const soonest = now.plus({ minutes: 30 });
+  const slots: { at: string; channel: Channel; ms: number }[] = [];
+  for (let day = 0; day < 8 && slots.length < count; day++) {
+    for (const hour of [windows.primary[0], windows.secondary[0]].sort((a, b) => a - b)) {
+      const when = now.setZone('Asia/Riyadh').startOf('day').plus({ days: day, hours: hour });
+      if (when < soonest) continue;
+      if (lead === 'linkedin' && ![7, 1, 2, 3].includes(when.weekday)) continue;
+      slots.push({ at: when.setZone(zone).toFormat("yyyy-LL-dd'T'HH:mm"), channel: lead, ms: when.toMillis() });
+    }
+  }
+  return slots.sort((a, b) => a.ms - b.ms).slice(0, count).map(({ at, channel }) => ({ at, channel }));
+}
