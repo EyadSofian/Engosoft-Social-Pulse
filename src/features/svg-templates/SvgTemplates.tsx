@@ -91,9 +91,21 @@ export function TemplateGenerator({ onCreated }: { onCreated: (template: SvgTemp
   const [format, setFormat] = useState<TemplateFormat>('feed');
   const [kind, setKind] = useState<TemplateKind>('course');
   const [reference, setReference] = useState<string>('');
+  const [dragging, setDragging] = useState(false);
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState('');
   const file = useRef<HTMLInputElement>(null);
+  const takeReference = async (f: File) => {
+    if (!/^image\/(png|jpeg|webp)$/.test(f.type)) return setError(t('Use a PNG, JPG or WebP image.', 'استخدم صورة PNG أو JPG أو WebP.'));
+    if (f.size > 6_000_000) return setError(t('The image is larger than 6 MB.', 'الصورة أكبر من ٦ ميجابايت.'));
+    setError('');
+    setReference(await asDataUrl(f));
+  };
+  const starters: { label: string; text: string; kind: TemplateKind }[] = [
+    { label: t('Course announcement', 'إعلان دورة'), kind: 'course', text: t('Course announcement with a big title, date and time badge, instructor name and a register button. Dark blue, modern.', 'إعلان دورة بعنوان كبير، وشارة للتاريخ والوقت، واسم المحاضر، وزر «سجّل الآن». أزرق داكن وتصميم عصري.') },
+    { label: t('Graduation', 'تخريج وإنجاز'), kind: 'graduation', text: t('Graduation congratulation with the graduate photo, name, course title and a certificate badge. Bright and celebratory.', 'تهنئة تخرج بصورة الخريج واسمه واسم الدورة وشارة الشهادة. ألوان مبهجة واحتفالية.') },
+    { label: t('Webinar', 'ندوة أونلاين'), kind: 'event', text: t('Free webinar invitation with the topic, speaker, date, time and a join button. Clean and professional.', 'دعوة لندوة مجانية بموضوعها والمتحدث والتاريخ والوقت وزر الانضمام. تصميم نظيف واحترافي.') },
+  ];
   const generate = async () => {
     if (prompt.trim().length < 5) return setError(t('Describe the template in a few words.', 'صِف القالب في كلمتين على الأقل.'));
     setBusy(true);
@@ -130,27 +142,55 @@ export function TemplateGenerator({ onCreated }: { onCreated: (template: SvgTemp
           </motion.div>
         ) : (
           <motion.div key="form" className="tpl-generator__form" initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }}>
-            <textarea dir="auto" rows={3} value={prompt} onChange={(e) => setPrompt(e.target.value)} placeholder={t('Example: Course announcement with a big title, date and time badge, instructor name and a register button. Dark blue, modern.', 'مثال: إعلان دورة بعنوان كبير، وشارة للتاريخ والوقت، واسم المحاضر، وزر «سجّل الآن». أزرق داكن وتصميم عصري.')} />
-            <div className="tpl-generator__row">
-              <label className="tpl-kind-select">{t('Post type', 'نوع المنشور')}
-                <select value={kind} onChange={(e) => setKind(e.target.value as TemplateKind)}>{TEMPLATE_KINDS.map((value) => <option key={value} value={value}>{t(KIND_LABEL[value].en, KIND_LABEL[value].ar)}</option>)}</select>
-              </label>
-              <div className="tpl-formats" role="radiogroup" aria-label={t('Size', 'المقاس')}>
-                {(Object.keys(FORMAT_LABEL) as TemplateFormat[]).map((value) => (
-                  <button key={value} type="button" role="radio" aria-checked={format === value} onClick={() => setFormat(value)}>
-                    <span className="tpl-formats__shape" data-format={value} />
-                    <b>{t(FORMAT_LABEL[value].en, FORMAT_LABEL[value].ar)}</b>
-                    <small dir="ltr">{FORMAT_LABEL[value].size}</small>
-                  </button>
-                ))}
+            <div className="tpl-field">
+              <label className="tpl-field__label" htmlFor="tpl-prompt">{t('Describe the template', 'صِف القالب')}<small className="u-tnum" data-ready={prompt.trim().length >= 5 || undefined}>{prompt.trim().length}</small></label>
+              <textarea id="tpl-prompt" dir="auto" rows={3} value={prompt} onChange={(e) => { setPrompt(e.target.value); if (error) setError(''); }} onKeyDown={(e) => { if (e.key === 'Enter' && (e.metaKey || e.ctrlKey)) { e.preventDefault(); void generate(); } }} placeholder={t('Example: Course announcement with a big title, date and time badge, instructor name and a register button. Dark blue, modern.', 'مثال: إعلان دورة بعنوان كبير، وشارة للتاريخ والوقت، واسم المحاضر، وزر «سجّل الآن». أزرق داكن وتصميم عصري.')} />
+              <div className="tpl-starters" aria-label={t('Start from an idea', 'ابدأ من فكرة')}>
+                {starters.map((starter) => <button key={starter.label} type="button" onClick={() => { setPrompt(starter.text); setKind(starter.kind); }}><Sparkles size={12} /> {starter.label}</button>)}
               </div>
-              <input ref={file} type="file" accept="image/png,image/jpeg,image/webp" hidden onChange={async (e) => { const f = e.target.files?.[0]; if (f) setReference(await asDataUrl(f)); e.target.value = ''; }} />
-              {reference ? (
-                <span className="tpl-reference"><img src={reference} alt="" /><button type="button" onClick={() => setReference('')} aria-label={t('Remove reference', 'أزل المرجع')}><X size={14} /></button></span>
-              ) : (
-                <Button variant="secondary" onClick={() => file.current?.click()}><ImagePlus size={15} /> {t('Reference design', 'تصميم مرجعي')}</Button>
-              )}
-              <Button variant="primary" className="cta-create" onClick={() => void generate()}><Sparkles size={17} className="cta-create__spark" /> {t('Design the template', 'صمّم القالب')}</Button>
+            </div>
+            <div className="tpl-generator__options">
+              <div className="tpl-field">
+                <span className="tpl-field__label" id="tpl-kind-label">{t('Post type', 'نوع المنشور')}</span>
+                <div className="tpl-kinds" role="radiogroup" aria-labelledby="tpl-kind-label">
+                  {TEMPLATE_KINDS.map((value) => <button key={value} type="button" role="radio" aria-checked={kind === value} title={t(KIND_LABEL[value].hint.en, KIND_LABEL[value].hint.ar)} onClick={() => setKind(value)}>{t(KIND_LABEL[value].en, KIND_LABEL[value].ar)}</button>)}
+                </div>
+                <small className="tpl-field__hint">{t(KIND_LABEL[kind].hint.en, KIND_LABEL[kind].hint.ar)}</small>
+              </div>
+              <div className="tpl-field">
+                <span className="tpl-field__label" id="tpl-size-label">{t('Size', 'المقاس')}</span>
+                <div className="tpl-formats" role="radiogroup" aria-labelledby="tpl-size-label">
+                  {(Object.keys(FORMAT_LABEL) as TemplateFormat[]).map((value) => (
+                    <button key={value} type="button" role="radio" aria-checked={format === value} onClick={() => setFormat(value)}>
+                      <span className="tpl-formats__shape" data-format={value} />
+                      <b>{t(FORMAT_LABEL[value].en, FORMAT_LABEL[value].ar)}</b>
+                      <small dir="ltr">{FORMAT_LABEL[value].size}</small>
+                    </button>
+                  ))}
+                </div>
+              </div>
+              <div className="tpl-field tpl-field--reference">
+                <span className="tpl-field__label">{t('Reference design', 'تصميم مرجعي')}<em>{t('optional', 'اختياري')}</em></span>
+                <input ref={file} type="file" accept="image/png,image/jpeg,image/webp" hidden onChange={(e) => { const f = e.target.files?.[0]; if (f) void takeReference(f); e.target.value = ''; }} />
+                {reference ? (
+                  <div className="tpl-dropzone tpl-dropzone--filled">
+                    <img src={reference} alt="" />
+                    <span><b>{t('Reference attached', 'تم إرفاق المرجع')}</b><small>{t('The AI copies its style and layout.', 'يقلّد الذكاء أسلوبه وتوزيعه.')}</small></span>
+                    <button type="button" onClick={() => setReference('')} aria-label={t('Remove reference', 'أزل المرجع')}><X size={14} /></button>
+                  </div>
+                ) : (
+                  <button type="button" className="tpl-dropzone" data-over={dragging || undefined} onClick={() => file.current?.click()}
+                    onDragOver={(e) => { e.preventDefault(); setDragging(true); }} onDragLeave={() => setDragging(false)}
+                    onDrop={(e) => { e.preventDefault(); setDragging(false); const f = e.dataTransfer.files?.[0]; if (f) void takeReference(f); }}>
+                    <ImagePlus size={20} />
+                    <span><b>{t('Add a design you like', 'أضف تصميمًا يعجبك')}</b><small>{t('Click or drop an image: PNG, JPG or WebP', 'اضغط أو اسحب صورة: PNG أو JPG أو WebP')}</small></span>
+                  </button>
+                )}
+              </div>
+            </div>
+            <div className="tpl-generator__footer">
+              <small className="u-muted">{t('Designed once, then reused for every post. ⌘↵ to start.', 'يُصمَّم مرة واحدة ثم يُعاد استخدامه في كل منشور. ⌘↵ للبدء.')}</small>
+              <Button variant="primary" className="cta-create" disabled={prompt.trim().length < 5} onClick={() => void generate()}><Sparkles size={17} className="cta-create__spark" /> {t('Design the template', 'صمّم القالب')}</Button>
             </div>
           </motion.div>
         )}
