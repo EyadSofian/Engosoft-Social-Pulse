@@ -1,6 +1,6 @@
 # TikTok publishing through Buffer and Zernio
 
-Connections → TikTok publishing backup attaches publishing services to an existing, verified TikTok account. Its direct OAuth credential and analytics stay unchanged. This enables **public video publishing only** through the connected service; it does not mark the Engosoft developer app audited or enable direct API access to other formats.
+Connections → TikTok publishing backup attaches publishing services to an existing, verified TikTok account. Its direct OAuth credential and analytics stay unchanged. This enables **public video publishing** through Buffer/Zernio and **photos/carousels** through Zernio (with an explicit inbox route for AI photos); it does not mark the Engosoft developer app audited or enable its direct API access.
 
 ## Setup
 
@@ -33,3 +33,17 @@ Free service plans and platform caps can change. Buffer keys have an expiry (the
 `tests/hybrid-publishing.test.ts` exercises primary delivery, quota fallback, preflight outage, timeout/5xx/malformed-response ambiguity, duplicate and concurrent submissions, pinned identity changes, explicit alias confirmation, disclosure preservation, encrypted credentials, RBAC, consent and CSRF. All remote publication writes in these tests are mocked. A live account connection/creator-info read does not test video delivery; retain that distinction when reporting readiness.
 
 Official contracts: [Buffer API](https://developers.buffer.com/reference.html), [Buffer rate limits](https://developers.buffer.com/guides/api-limits.html), [Zernio TikTok](https://docs.zernio.com/platforms/tiktok), [Zernio post creation](https://docs.zernio.com/posts/create-post).
+
+## TikTok photos and carousels
+
+The same publishing panel supports a single photo or an ordered carousel of 2–35 photos through **Zernio**. Buffer remains the primary option for eligible videos; it is not used as a photo fallback because its public photo metadata cannot preserve the required disclosures and controls. A Buffer-only connection does not enable the photo capabilities.
+
+Attach JPEG, PNG or WebP files before marketing review (8 MB per file, at most 40 megapixels). The server inspects each image, normalizes it to JPEG, and stores verified dimensions. Attaching a photo updates the content version and is blocked once the content is approved, including a final transactional status check after normalization. An attachment-only item can enter review; the content drawer shows every attached photo. Publication refuses assets owned by another content item, duplicate selections, and mixed photo/video TikTok carousels. The existing application's 360-pixel minimum dimension applies.
+
+After approval, select **Single photo** or **Photo carousel**, choose the photos, arrange them with Earlier/Later, and pick the cover. The displayed title comes from the approved content title, with URLs/hashtags removed and a maximum of 90 characters; the complete approved TikTok caption goes into the photo description (up to 4,000 characters). Comments, commercial disclosures, public privacy and per-post consent remain explicit. Recommended music is off by default and available only for non-promotional photos. Photo-specific creator settings are read with `mediaType=photo` in the composer and rechecked before submission.
+
+**AI-generated photos:** the connected TikTok Business integration rejects AI disclosure on direct photo posts. Checking the AI option therefore blocks direct publishing. Choose **TikTok inbox** instead, then enable the AI disclosure, review the final settings and finish publishing inside TikTok. The application never silently clears the disclosure or switches delivery mode. A successful inbox upload is `awaiting_user`, never proof of a public post. The selected delivery mode is retained with the service attempt for later polling.
+
+Photo submissions reuse the central uniqueness, idempotency and uncertain-outcome protections. A timeout never starts a second photo upload. Photo permalinks (`/@handle/photo/id`) are recognized without fabricating a video URL from a photo ID.
+
+Contracts checked 2026-10-28: [photo posts and inbox behavior](https://docs.zernio.com/platforms/tiktok/posts), [AI photo disclosure limitation](https://docs.zernio.com/platforms/tiktok/fields), [photo creator settings](https://docs.zernio.com/accounts/get-tiktok-creator-info). No real content is uploaded or published by setup or automated tests.

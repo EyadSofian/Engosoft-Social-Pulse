@@ -25,18 +25,19 @@ export async function publish(user:AuthUser,input:PublishInput):Promise<PublishJ
  const existing=await db.get('SELECT * FROM social_publish_jobs WHERE content_id=? AND account_id=? ORDER BY attempt DESC LIMIT 1',[item.id,account.id]);if(existing&&(!input.retry||existing.state!=='failed'))return toJob(existing);
  if(!['approved','scheduled'].includes(item.status))throw new Error('Marketing must approve the exact content before publishing.');
  if(!input.consent)throw new Error('Explicit publication consent required.');
- const hybrid=account.provider==='tiktok'&&input.kind==='video'&&input.mode==='direct'&&await hybridConfigured(account.id);
+ const hybrid=account.provider==='tiktok'&&(input.kind==='video'&&input.mode==='direct'||['image','carousel'].includes(input.kind))&&await hybridConfigured(account.id,input.kind);
  if(!hybrid&&capabilities(account.provider,account)[requiredCapability(input.kind,input.mode)]!=='available')throw new Error('Publishing authorization or application approval is required.');
  const caption=item.captions[account.provider]||'';
+ if(account.provider==='tiktok'&&new Set(input.media.map(m=>m.url)).size!==input.media.length)throw new Error('Select each TikTok media item only once.');
  const media=await resolveMedia(item,input.media.map(m=>m.url));validateMedia(account.provider,input,media,caption);
- if(hybrid)validateHybrid(input,caption,media);
+ if(hybrid)validateHybrid(input,caption,media,item.title);
  const latest=await getContent(item.id);if(!latest||latest.updatedAt!==item.updatedAt||!['approved','scheduled'].includes(latest.status))throw new Error('Approval changed. Review this content again before publishing.');
  const now=new Date().toISOString(),id=randomUUID(),attempt=Number(existing?.attempt||0)+1;
  // Database uniqueness arbitrates across requests/replicas before any remote write.
  const inserted=await db.run('INSERT INTO social_publish_jobs(id,content_id,account_id,provider,actor_id,state,phase,created_at,updated_at,attempt) VALUES(?,?,?,?,?,?,?,?,?,?) ON CONFLICT(content_id,account_id,attempt) DO NOTHING',[id,item.id,account.id,account.provider,user.id,'processing',hybrid?'hybrid:starting':'submitting',now,now,attempt]);
  if(!inserted.changes)return toJob((await db.get('SELECT * FROM social_publish_jobs WHERE content_id=? AND account_id=? ORDER BY attempt DESC LIMIT 1',[item.id,account.id]))!);
  const job=(await getJob(id))!;
- try {await updateJob(id,hybrid?await submitHybrid(account,input,caption,media,job,r=>updateJob(id,r)):await submit(account,input,caption,item.title,media,job,r=>updateJob(id,r)));}
+ try {await updateJob(id,hybrid?await submitHybrid(account,input,caption,media,job,r=>updateJob(id,r),item.title):await submit(account,input,caption,item.title,media,job,r=>updateJob(id,r)));}
  catch(e) {
   const latest=(await getJob(id))!;
   // Transport/server errors can hide a successful write; keep the job and remote handle for reconciliation.

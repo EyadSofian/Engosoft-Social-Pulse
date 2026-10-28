@@ -1,5 +1,5 @@
 import { createHmac, randomUUID } from 'node:crypto';
-import { mkdir, readFile, writeFile } from 'node:fs/promises';
+import { mkdir, readFile, writeFile, unlink } from 'node:fs/promises';
 import sharp from 'sharp';
 import { db, defineSchema } from '../db.js';
 import { mediaDir } from '../paths.js';
@@ -34,7 +34,26 @@ export async function attachVideo(contentId:string,b:Buffer) {
  const m:Media={url:`/api/social/assets/${id}`,type:'video',mimeType:'video/mp4',bytes:b.length,...dimensions};
  await db.run('INSERT INTO social_media(id,content_id,path,metadata_json,created_at) VALUES(?,?,?,?,?)',[id,contentId,file,JSON.stringify(m),new Date().toISOString()]);return {id,...m};
 }
-export async function contentMedia(contentId:string) {return (await db.all<{id:string;metadata_json:string}>('SELECT id,metadata_json FROM social_media WHERE content_id=?',[contentId])).map(r=>({id:r.id,...JSON.parse(r.metadata_json) as Media}));}
+export async function attachImage(contentId:string,b:Buffer) {
+ if(!b.length||b.length>8*1024*1024)throw new Error('Images must be at most 8 MB.');
+ const image=sharp(b,{limitInputPixels:40_000_000}),metadata=await image.metadata();
+ if(!['jpeg','png','webp'].includes(metadata.format||'')||(metadata.pages||1)>1)throw new Error('Use a still JPEG, PNG or WebP image.');
+ const {data,info}=await image.rotate().flatten({background:'#ffffff'}).jpeg({quality:94}).toBuffer({resolveWithObject:true});
+ if(data.length>8*1024*1024)throw new Error('The normalized image exceeds 8 MB.');
+ const id=randomUUID(),file=mediaDir('social',`${id}.jpg`);
+ await mkdir(mediaDir('social'),{recursive:true});await writeFile(file,data,{flag:'wx'});
+ const m:Media={url:`/api/social/assets/${id}`,type:'image',mimeType:'image/jpeg',bytes:data.length,width:info.width,height:info.height};
+ try {
+  await db.tx(async tx=>{
+   const now=new Date().toISOString();
+   const locked=await tx.run("UPDATE content_items SET updated_at=? WHERE id=? AND status NOT IN ('approved','scheduled','published','archived','cancelled')",[now,contentId]);
+   if(!locked.changes)throw new Error('Return content for review before attaching photos.');
+   await tx.run('INSERT INTO social_media(id,content_id,path,metadata_json,created_at) VALUES(?,?,?,?,?)',[id,contentId,file,JSON.stringify(m),now]);
+  });
+ } catch(e){await unlink(file).catch(()=>{});throw e;}
+ return {id,...m};
+}
+export async function contentMedia(contentId:string) {return (await db.all<{id:string;metadata_json:string}>('SELECT id,metadata_json FROM social_media WHERE content_id=? ORDER BY created_at,id',[contentId])).map(r=>({id:r.id,...JSON.parse(r.metadata_json) as Media}));}
 export async function resolveMedia(item:StoredContent,urls:string[]):Promise<PreparedMedia[]> {
  const result:PreparedMedia[]=[];
  for(const url of urls) {
@@ -65,6 +84,8 @@ export function validateMedia(provider:SocialProvider,input:PublishInput,media:M
  if(input.kind==='image'&&media.some(m=>m.type!=='image')||input.kind==='video'&&media.some(m=>m.type!=='video'))throw new Error('Media does not match the selected content type.');
  if(provider==='instagram'&&caption.length>2200)throw new Error('Instagram captions are limited to 2,200 characters.');
  if(input.kind==='carousel'&&(media.length<2||media.length>(provider==='tiktok'?35:20)))throw new Error('Invalid carousel length.');
+ if(provider==='tiktok'&&input.kind==='carousel'&&media.some(m=>m.type!=='image'))throw new Error('TikTok photo carousels cannot contain videos.');
+ if(provider==='tiktok'&&new Set(media.map(m=>m.url)).size!==media.length)throw new Error('Select each TikTok media item only once.');
  for(const m of media) {
   if(!m.bytes||!m.width||!m.height)throw new Error('Media size and dimensions must be verified.');
   if(m.type==='image'&&(m.bytes>8*1024*1024||m.mimeType!=='image/jpeg'))throw new Error('Images must be JPEG and at most 8 MB.');

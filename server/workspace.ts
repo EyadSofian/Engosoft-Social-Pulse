@@ -1,3 +1,4 @@
+import { contentMedia } from './social/media.js';
 import { hasPendingPublication } from './social/store.js';
 /**
  * Stored content pipeline shared by every department: posts, their creative versions, review rounds,
@@ -208,7 +209,7 @@ export async function transition(user: AuthUser, id: string, to: ContentStatus, 
   const move = allowedMoves(user, item).find((entry) => entry.to === to);
   if (!move) throw new WorkspaceError(403, 'هذه الخطوة غير متاحة لك الآن.');
   if (move.needsNote && !input.note?.trim()) throw new WorkspaceError(400, 'اكتب سبب أو ملاحظة.');
-  if (to === 'ready_for_review' && !item.creative) throw new WorkspaceError(400, 'أضف التصميم أولًا قبل إرساله للمراجعة.');
+  if (to === 'ready_for_review' && !item.creative && !(await contentMedia(item.id)).length) throw new WorkspaceError(400, 'أضف التصميم أولًا قبل إرساله للمراجعة.');
   const andSchedule = to === 'approved' && item.status === 'ready_for_review' && Boolean(input.scheduledAt);
   if (andSchedule && !userCan(user, 'content.schedule')) throw new WorkspaceError(403, 'لا تملك صلاحية جدولة النشر؛ اعتمد المنشور فقط.');
   // Nothing changes when the time is wrong.

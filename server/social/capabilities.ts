@@ -15,6 +15,7 @@ export function capabilities(provider:SocialProvider,account?:SocialAccount):Rec
   if(!account)return [id,'unconfigured'];
   if(account.status!=='connected'||!account.verifiedAt)return [id,'authorization_required'];
   if(provider==='tiktok'&&id==='publish_video'&&account.metadata.hybridPublishing===true)return [id,'available'];
+  if(provider==='tiktok'&&['publish_image','publish_carousel'].includes(id)&&account.metadata.hybridPhotoPublishing===true)return [id,'available'];
   if(!scopes.every(scope=>account.scopes.includes(scope)))return [id,'authorization_required'];
   if(id.startsWith('publish')&&provider==='tiktok'&&process.env.TIKTOK_DIRECT_POST_APPROVED!=='true'&&process.env.TIKTOK_SANDBOX_POSTING!=='true')return [id,'approval_required'];
   return [id,'available'];
