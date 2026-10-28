@@ -9,6 +9,7 @@ import { capabilities, requiredCapability } from './capabilities.js';
 import { resolveMedia, validateMedia } from './media.js';
 import { poll, publishInstagramContainer, submit, PublicationValidationError } from './publish-providers.js';
 import { ProviderError } from './http.js';
+import { hybridConfigured, pollHybrid, submitHybrid, validateHybrid } from './hybrid.js';
 import type { PublishInput, PublishJob, PublishResult } from './types.js';
 const toJob=(r:Record<string,any>):PublishJob=>({id:r.id,attempt:Number(r.attempt||1),contentId:r.content_id,accountId:r.account_id,provider:r.provider,actorId:r.actor_id,state:r.state,remoteId:r.remote_id||undefined,externalId:r.external_id||undefined,url:r.url||undefined,error:r.error||undefined,errorCode:r.error_code||undefined,retryable:Boolean(r.retryable),retryAfter:r.retry_after||undefined,phase:r.phase||undefined,createdAt:r.created_at,updatedAt:r.updated_at});
 export const getJob=async(id:string)=>{const r=await db.get('SELECT * FROM social_publish_jobs WHERE id=?',[id]);return r?toJob(r):undefined;};
@@ -24,16 +25,18 @@ export async function publish(user:AuthUser,input:PublishInput):Promise<PublishJ
  const existing=await db.get('SELECT * FROM social_publish_jobs WHERE content_id=? AND account_id=? ORDER BY attempt DESC LIMIT 1',[item.id,account.id]);if(existing&&(!input.retry||existing.state!=='failed'))return toJob(existing);
  if(!['approved','scheduled'].includes(item.status))throw new Error('Marketing must approve the exact content before publishing.');
  if(!input.consent)throw new Error('Explicit publication consent required.');
- if(capabilities(account.provider,account)[requiredCapability(input.kind,input.mode)]!=='available')throw new Error('Publishing authorization or application approval is required.');
+ const hybrid=account.provider==='tiktok'&&input.kind==='video'&&input.mode==='direct'&&await hybridConfigured(account.id);
+ if(!hybrid&&capabilities(account.provider,account)[requiredCapability(input.kind,input.mode)]!=='available')throw new Error('Publishing authorization or application approval is required.');
  const caption=item.captions[account.provider]||'';
  const media=await resolveMedia(item,input.media.map(m=>m.url));validateMedia(account.provider,input,media,caption);
+ if(hybrid)validateHybrid(input,caption,media);
  const latest=await getContent(item.id);if(!latest||latest.updatedAt!==item.updatedAt||!['approved','scheduled'].includes(latest.status))throw new Error('Approval changed. Review this content again before publishing.');
  const now=new Date().toISOString(),id=randomUUID(),attempt=Number(existing?.attempt||0)+1;
  // Database uniqueness arbitrates across requests/replicas before any remote write.
- const inserted=await db.run('INSERT INTO social_publish_jobs(id,content_id,account_id,provider,actor_id,state,phase,created_at,updated_at,attempt) VALUES(?,?,?,?,?,?,?,?,?,?) ON CONFLICT(content_id,account_id,attempt) DO NOTHING',[id,item.id,account.id,account.provider,user.id,'processing','submitting',now,now,attempt]);
+ const inserted=await db.run('INSERT INTO social_publish_jobs(id,content_id,account_id,provider,actor_id,state,phase,created_at,updated_at,attempt) VALUES(?,?,?,?,?,?,?,?,?,?) ON CONFLICT(content_id,account_id,attempt) DO NOTHING',[id,item.id,account.id,account.provider,user.id,'processing',hybrid?'hybrid:starting':'submitting',now,now,attempt]);
  if(!inserted.changes)return toJob((await db.get('SELECT * FROM social_publish_jobs WHERE content_id=? AND account_id=? ORDER BY attempt DESC LIMIT 1',[item.id,account.id]))!);
  const job=(await getJob(id))!;
- try {await updateJob(id,await submit(account,input,caption,item.title,media,job,r=>updateJob(id,r)));}
+ try {await updateJob(id,hybrid?await submitHybrid(account,input,caption,media,job,r=>updateJob(id,r)):await submit(account,input,caption,item.title,media,job,r=>updateJob(id,r)));}
  catch(e) {
   const latest=(await getJob(id))!;
   // Transport/server errors can hide a successful write; keep the job and remote handle for reconciliation.
@@ -55,7 +58,7 @@ async function check(id:string) {
  // Persistent compare-and-set prevents simultaneous polling and media_publish on separate replicas.
  const lock=await db.run('UPDATE social_publish_jobs SET updated_at=? WHERE id=? AND updated_at=?',[new Date().toISOString(),id,job.updatedAt]);if(!lock.changes)return (await getJob(id))!;
  try {
-  let result=await poll(account,job);
+  let result=job.phase?.startsWith('hybrid:')?await pollHybrid(job):await poll(account,job);
   if(account.provider==='instagram'&&result.phase==='instagram_ready') {
    await updateJob(id,{state:'processing',phase:'instagram_publishing'});
    const externalId=await publishInstagramContainer(account,job);

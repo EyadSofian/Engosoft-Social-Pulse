@@ -1,4 +1,5 @@
 import { SocialConnectionDetails, type ProviderConnection } from '../../features/publishing/SocialConnections';
+import { PublishingServices } from '../../features/publishing/PublishingServices';
 import { useEffect, useMemo, useState } from 'react';
 import { CircleAlert, CircleCheck, CircleDashed, RefreshCw } from 'lucide-react';
 import { useQueryState } from '../../app/router/router';
@@ -96,6 +97,7 @@ export function ConnectionsPage() {
             <FutureCard />
             <Card className="connector"><CardHeader title="Odoo" description={t('Courses and events schedule', 'مواعيد الدورات والإيفنتات')} actions={<Badge tone={odoo.status === 'connected' ? 'success' : odoo.status === 'error' ? 'danger' : 'neutral'}>{odoo.status === 'connected' ? t('Connected', 'متصل') : odoo.status === 'loading' ? t('Checking', 'جارٍ الفحص') : t('Needs setup', 'يحتاج إعداد')}</Badge>} /><CardBody><p className="u-sm">{odoo.status === 'connected' ? t(`${odoo.events.length} upcoming dates are available in the Calendar and Post Designer.`, `${odoo.events.length} موعد قادم متاح في التقويم ومصمم المنشورات.`) : odoo.message}</p><p className="u-xs u-muted" dir="ltr">ODOO_URL · ODOO_API_KEY · ODOO_DATABASE</p></CardBody></Card>
           </div>
+          {manage&&<PublishingServices connections={social} onReload={reloadSocial} />}
           <p className="u-xs u-muted">{t('Automatic sync runs on the server every 30 minutes. Values a platform does not return are shown as —, never as zero.', 'المزامنة التلقائية تعمل على الخادم كل 30 دقيقة. القيم التي لا ترجعها المنصة تظهر —، وليس صفرًا.')}</p>
         </>
       )}
