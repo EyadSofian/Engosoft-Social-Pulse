@@ -92,6 +92,8 @@ test('OAuth start requests only read scopes and binds opaque state to provider a
 test('OAuth publishing and draft consent are separate from reading',async()=>{
  const direct=new URL((await local('/api/oauth/tiktok/start?mode=publishing')).headers.get('location')!);assert.match(direct.searchParams.get('scope')!,/video.publish/);assert.ok(!direct.searchParams.get('scope')!.includes('video.upload'));
  const draft=new URL((await local('/api/oauth/tiktok/start?mode=draft')).headers.get('location')!);assert.match(draft.searchParams.get('scope')!,/video.upload/);
+ const both=new URL((await local('/api/oauth/tiktok/start?mode=publishing-and-draft')).headers.get('location')!);assert.match(both.searchParams.get('scope')!,/video.publish/);assert.match(both.searchParams.get('scope')!,/video.upload/);
+ assert.equal((await local('/api/oauth/youtube/start?mode=publishing-and-draft')).status,400);
 });
 test('OAuth callback rejects missing, mismatched, expired and replayed state',async()=>{
  assert.equal((await local('/api/oauth/tiktok/callback?code=secret')).status,400);
@@ -131,6 +133,30 @@ test('OAuth callback rechecks manager permissions after initiation',async()=>{
 });
 test('callback configuration rejects alternate origins and paths',()=>{
  const saved=process.env.TIKTOK_REDIRECT_URI;process.env.TIKTOK_REDIRECT_URI='https://evil.test/api/oauth/tiktok/callback';assert.throws(()=>oauth.configuredCallback('tiktok'));process.env.TIKTOK_REDIRECT_URI=saved;
+});
+test('Meta expiry honors non-expiring tokens and the actual data access deadline',()=>{
+ assert.equal(oauth.metaTokenExpiry({expires_at:0,data_access_expires_at:1800000000}),1800000000000);
+ assert.equal(oauth.metaTokenExpiry({expires_at:1800000000,data_access_expires_at:1801000000}),1800000000000);
+ assert.equal(oauth.metaTokenExpiry({expires_at:1801000000,data_access_expires_at:1800000000}),1800000000000);
+ assert.equal(oauth.metaTokenExpiry({expires_at:0,data_access_expires_at:0}),0);
+ assert.equal(oauth.metaTokenExpiry({}),0);
+});
+test('Meta callback verifies the token app and persists its real expiry for Page credentials',async()=>{
+ const names=['META_APP_ID','META_APP_SECRET','META_REDIRECT_URI'];const saved=Object.fromEntries(names.map(name=>[name,process.env[name]]));
+ Object.assign(process.env,{META_APP_ID:'meta-client',META_APP_SECRET:'meta-secret',META_REDIRECT_URI:'http://127.0.0.1:4100/api/oauth/facebook/callback'});
+ try {
+  let verified=false;
+  mock((url,init)=>{
+   if(url.includes('/oauth/access_token'))return Response.json({access_token:'meta-long-lived'});
+   if(url.includes('/debug_token')){verified=true;assert.equal(new URL(url).searchParams.get('input_token'),'meta-long-lived');assert.equal(new Headers(init?.headers).get('authorization'),'Bearer meta-client|meta-secret');return Response.json({data:{is_valid:true,app_id:'meta-client',expires_at:0,data_access_expires_at:1800000000}});}
+   if(url.includes('/me/permissions'))return Response.json({data:[{permission:'pages_manage_posts',status:'granted'}]});
+   if(url.includes('/me/accounts'))return Response.json({data:[{id:'expiry-page',name:'Expiry Page',access_token:'meta-page-token',tasks:['CREATE_CONTENT']}]});
+   throw new Error('Unexpected Meta request');
+  });
+  const start=await local('/api/oauth/facebook/start?mode=publishing'),state=new URL(start.headers.get('location')!).searchParams.get('state')!,cookie=start.headers.get('set-cookie')!.split(';')[0];
+  const response=await local(`/api/oauth/facebook/callback?state=${state}&code=test-code`,{headers:{cookie}});assert.match(response.headers.get('location')!,/oauth=connected/);assert.ok(verified);
+  const page=(await store.getAccount('facebook:expiry-page'))!;assert.equal((await store.loadSecret(page.credentialSource))?.expiresAt,1800000000000);
+ } finally {for(const name of names){if(saved[name]===undefined)delete process.env[name];else process.env[name]=saved[name];}}
 });
 test('connections response never contains credentials or encrypted token envelopes',async()=>{
  const r=await local('/api/social/connections'),text=await r.text();assert.equal(r.status,200);for(const value of ['access-secret','refresh-secret','encrypted_json','credentialSource','client_secret'])assert.ok(!text.includes(value),value);

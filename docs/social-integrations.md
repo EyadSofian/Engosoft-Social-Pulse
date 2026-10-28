@@ -2,6 +2,37 @@
 
 Checked 28 October 2026 (Africa/Cairo). No public content was published during implementation.
 
+## Verified live setup
+
+Deployment `64cb0982-bd6b-413d-81a0-6b2fc5e0b857` became SUCCESS after Railway's
+build delay. `/api/health` returns 200 and the new protected social routes are live.
+The owner subsequently requested connection setup only, with all content uploads and
+publishing deferred, and explicitly deferred Snapchat.
+
+- Facebook: five existing Engosoft Pages reauthorized through the live app with
+  pages_manage_posts and publish_video. All five show text/image/video capability.
+- Instagram: engosoftofficial and engosoft_eng reauthorized through the live app
+  with instagram_content_publish; image/video/carousel capabilities are available.
+- TikTok: official account reauthorized with video.publish and video.upload in Sandbox. Content
+  Posting API and Direct Post are configured. Public Direct Post is still unapproved.
+- YouTube: dedicated Web client saved securely in Railway, exact callback registered,
+  Data API v3 and Analytics API enabled and confirmed. Existing OAuth audience is
+  External/In production, with 2/100 users. Channel consent awaits deployment of
+  the new client pair; the running deployment still has the earlier Desktop pair.
+- The original 2 users, 7 plans, 7 content items, 4,272 observed posts and legacy
+  encrypted token were preserved. No publishing job was created.
+
+Meta's debugger confirmed current Page/User tokens have expires_at=0 and an actual
+data_access_expires_at deadline. The earlier one-hour fallback was incorrect; all six
+currently referenced encrypted Meta credentials were corrected from authoritative
+debugger metadata without changing their tokens. Future OAuth callbacks now verify
+the token's app/validity and retain the earliest real expiry/data-access deadline.
+
+Further deploy submissions currently return **Deploys have been paused temporarily**.
+The Business Login configuration, YouTube client update and subsequent callback/UI
+fixes are committed for the next deployment. This is an active Railway incident;
+do not report the latest source as deployed until a new deployment succeeds.
+
 ## Existing production and rollback
 
 Starting commit: `be4a0b684405e9df391e95fb750563632cede03a` on `main`.
@@ -55,9 +86,9 @@ Never roll the database back to an earlier snapshot just to revert application c
 
 | Provider | Implemented flow | Real production publishing verification |
 |---|---|---|
-| Facebook | Page text, image and video; Page task/token checks; read-after-write verification | Not performed; current token lacks publishing scopes |
-| Instagram | JPEG, Reel/video and mixed carousel containers, processing, quota check, media_publish, permalink verification | Not performed; current token lacks instagram_content_publish |
-| TikTok | Separate Direct Post and inbox upload; creator/privacy/interaction options; FILE_UPLOAD video chunks; verified-domain photo pull; publish-status checks | Not performed; current Sandbox consent is Display-only |
+| Facebook | Page text, image and video; Page task/token checks; read-after-write verification | Publishing scopes verified on all five Pages; content submission deferred by owner |
+| Instagram | JPEG, Reel/video and mixed carousel containers, processing, quota check, media_publish, permalink verification | Publishing scope verified on both accounts; content submission deferred by owner |
+| TikTok | Separate Direct Post and inbox upload; creator/privacy/interaction options; FILE_UPLOAD video chunks; verified-domain photo pull; publish-status checks | Sandbox video.publish/video.upload consent verified; public audit and content submission remain outstanding |
 | Snapchat | AES-256-CBC encrypted multipart media upload, organic Story and Spotlight requests; Spotlight LIVE verification | Not performed; no authorized Public Profile token |
 | YouTube | Owner OAuth; resumable videos.insert; metadata/privacy/audience; upload-session recovery; successful processing verification | Not performed; no working owner authorization |
 
@@ -71,9 +102,10 @@ unconfirmed until an ID can be verified. No public URL is fabricated.
 
 ### Meta
 
-The production token grants read_insights, pages_show_list, instagram_basic,
+The original environment token grants read_insights, pages_show_list, instagram_basic,
 instagram_manage_insights, pages_read_engagement and related messaging/read scopes.
-It does **not** grant pages_manage_posts, instagram_content_publish or publish_video.
+It was preserved. New encrypted OAuth credentials now also grant pages_manage_posts,
+instagram_content_publish and publish_video on the existing Engosoft accounts.
 Keep the existing token and key. Configure the following exact OAuth redirects in
 the current Meta app's Facebook Login settings, then use Connections → Authorize publishing:
 
@@ -90,8 +122,8 @@ instagram_manage_insights and read_insights. `META_PUBLISH_LOGIN_CONFIG_ID` sele
 this configuration only for explicit publishing consent, replacing the scope query.
 The optional `META_READ_LOGIN_CONFIG_ID` must reference a separate minimal read
 configuration; otherwise read consent keeps the existing scope-based flow. Configuring
-the app does not grant those permissions to the existing token: account reauthorization
-is still required after the new server deployment becomes available.
+the app alone does not grant those permissions. The existing scope-based user-token
+flow was sufficient for the owner to reauthorize both providers on the live deployment.
 Obtain the relevant publishing permission's app access/review and the Page
 CREATE_CONTENT/MANAGE role. Complete Page Publishing Authorization if Meta requires it.
 The existing linked-Professional-account authentication method is preserved.
@@ -103,9 +135,12 @@ Developer app “Engosoft N8n”, Sandbox “Social Pulse Demo”, retains Login
 user.info.basic/video.list. With the owner's approval, Content Posting API was added,
 Direct Post enabled, and video.publish/video.upload saved and confirmed after reload.
 @engosoft_official is an existing target user. Production is still a Draft with no
-submitted review/demo. Existing account tokens still need publishing reauthorization.
+submitted review/demo. The official account was reauthorized for both Direct Post and
+inbox uploads in Sandbox; the persisted token was verified to retain both scopes.
 
-Reauthorize from Connections with the appropriate publishing or inbox-upload scope.
+Connections supports separate publishing/inbox consent and explicit combined
+`publishing-and-draft` consent, so users requesting both retain both grants in one
+credential. Read-only consent never requests either publishing scope.
 For authorized private Sandbox tests only, set `TIKTOK_SANDBOX_POSTING=true`; privacy
 must be SELF_ONLY and TikTok's unaudited account restrictions still apply. General
 Direct Post requires audit approval, not merely Display API review. Only set
@@ -147,9 +182,10 @@ all existing clients. Its only redirect is:
 `https://web-production-d07de.up.railway.app/api/oauth/youtube/callback`
 
 The new Web client replaces only the initially copied YouTube client pair in Social
-Pulse Railway; the source Hub credentials and clients remain untouched. Enable
-YouTube Data API v3/YouTube Analytics API and check consent audience in this project,
-then have the channel owner connect. Its Ads refresh token was not imported. Read consent requests youtube.readonly and
+Pulse Railway; the source Hub credentials and clients remain untouched.
+YouTube Data API v3/YouTube Analytics API are enabled and the audience was checked:
+External, In production (2/100 users). The latest client pair needs deployment before
+channel-owner consent can complete. Its Ads refresh token was not imported. Read consent requests youtube.readonly and
 yt-analytics.readonly; publishing separately adds youtube.upload. API keys and
 Google Ads/Sheets scopes do not grant owner upload/Analytics authorization.
 Use Google's current verification rules for the selected audience and scopes.
