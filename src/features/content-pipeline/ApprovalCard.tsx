@@ -1,3 +1,5 @@
+import { ChannelIcon } from '../../components/data-display/ChannelIcon';
+import { GoalBadge } from './PostPlan';
 import { CalendarClock, Check, Clock3, Image as ImageIcon } from 'lucide-react';
 import { Button } from '../../components/ui/Button';
 import { useI18n } from '../../i18n/I18nProvider';
@@ -65,13 +67,19 @@ export function ApprovalCard({
         <span className="ca-card__meta">
           <span className="board-card__chips">
             {item.channels.map((c) => (
-              <i key={c}>{CHANNEL_LABEL[c]}</i>
+              <i key={c} title={CHANNEL_LABEL[c]}><ChannelIcon channel={c} size={12} /> {CHANNEL_LABEL[c]}</i>
             ))}
           </span>
+          <GoalBadge goal={item.goal} />
           {item.status === 'scheduled' && item.scheduledAt ? (
             <small className="board-card__when" data-scheduled title={t('Publishes', 'ينشر')}>
               <CalendarClock size={12} />
               {date(item.scheduledAt, 'dateTime')}
+            </small>
+          ) : item.plannedFor ? (
+            <small className="board-card__when" title={t('Planned for', 'اليوم المستهدف')}>
+              <CalendarClock size={12} />
+              {t('Planned', 'مستهدف')} {date(item.plannedFor, 'dayShort')}
             </small>
           ) : (
             <small className="board-card__when" title={t('Created', 'أُنشئ')}>

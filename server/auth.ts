@@ -36,7 +36,9 @@ export async function migrateLegacyRoles(): Promise<number> {
     const legacy = LEGACY_ROLES[row.role];
     if (!legacy) continue;
     const old = overridesFrom(row.permission_overrides) ?? {};
-    const effective = (p: Permission) => old[p] ?? legacy.permissions.includes(p);
+    // Templates were open to anyone who could create; uploads came with free design.
+    const had = (p: Permission): boolean => p === 'design.templates' ? had('content.create') : p === 'design.upload' ? had('design.free') : old[p] ?? legacy.permissions.includes(p);
+    const effective = (p: Permission) => old[p] ?? had(p);
     const overrides = Object.fromEntries(ALL_PERMISSIONS.filter((p) => effective(p) !== can(legacy.to, p)).map((p) => [p, effective(p)]));
     const result = await db.run('UPDATE users SET role=?, permission_overrides=? WHERE id=? AND role=?', [legacy.to, JSON.stringify(overrides), row.id, row.role]);
     moved += result.changes;

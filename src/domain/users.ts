@@ -23,8 +23,12 @@ export type Permission =
   | 'content.approve'
   | 'content.schedule'
   | 'content.publish'
-  /** AI design, the free Studio editor and template authoring. Without it a person builds posts from approved templates only. */
+  /** AI design, the free Studio editor and template authoring. */
   | 'design.free'
+  /** Making posts from the approved ready templates. */
+  | 'design.templates'
+  /** Uploading a design finished outside the app. */
+  | 'design.upload'
   | 'task.assign'
   | 'users.manage'
   | 'templates.manage'
@@ -78,6 +82,8 @@ export const ALL_PERMISSIONS: Permission[] = [
   'content.schedule',
   'content.publish',
   'design.free',
+  'design.templates',
+  'design.upload',
   'task.assign',
   'users.manage',
   'templates.manage',

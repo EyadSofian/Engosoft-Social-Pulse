@@ -1,6 +1,7 @@
 import { readSheet } from 'read-excel-file/node';
 import { parse as parseCsv } from 'csv-parse/sync';
 import { DateTime } from 'luxon';
+import { goalFromText } from '../src/domain/goals.js';
 import { importKey, isPlatform, newPlan } from './domain.js';
 import type { Plan, Platform } from './types.js';
 
@@ -12,6 +13,7 @@ const aliases:Record<string,string>={
  'post title':'title','title':'title','عنوان البوست':'title','عنوان المنشور':'title','العنوان':'title',
  'caption':'caption','copy':'caption','نص البوست':'caption','نص المنشور':'caption','النص':'caption',
  'content type':'contentType','نوع المحتوى':'contentType',
+ 'goal':'goal','objective':'goal','الهدف':'goal','هدف المنشور':'goal',
  'campaign':'campaign','الحملة':'campaign',
  'owner':'owner','المسؤول':'owner',
  'status':'status','الحالة':'status',
@@ -44,11 +46,12 @@ function toRows(records:unknown[][]):{plans:Plan[];errors:string[]}{
    const dt=DateTime.fromISO(`${date}T${time}`,{zone});
    const platformValues=norm(row.platform).split(/[,،/]/).map(s=>s.trim().toLowerCase()).filter(Boolean);
    if(!dt.isValid || !title || !platformValues.length || platformValues.some(p=>!isPlatform(p))){errors.push(`صف ${i+1}: التاريخ أو الوقت أو المنصة أو العنوان غير صالح.`);continue;}
-   const status=norm(row.status).toLowerCase()||'scheduled';
+   // A row without a status is a plan: a day and a topic that nobody has designed yet.
+   const status=norm(row.status).toLowerCase()||'draft';
    if(!['draft','approved','scheduled','published','cancelled'].includes(status)){errors.push(`صف ${i+1}: حالة غير معروفة.`);continue;}
    if(status==='published' && !norm(row.permalink) && !norm(row.externalId)){errors.push(`صف ${i+1}: المنشور المنشور يحتاج رابطًا أو معرّفًا للتأكيد.`);continue;}
    for(const platform of platformValues as Platform[]){
-     const plan=newPlan({platform,accountId:norm(row.accountId),title,caption:norm(row.caption),scheduledAt:dt.toUTC().toISO()||'',status:status as Plan['status'],permalink:norm(row.permalink),externalId:norm(row.externalId),owner:norm(row.owner),contentType:norm(row.contentType)||'post',campaign:norm(row.campaign),notes:norm(row.notes)});
+     const plan=newPlan({platform,accountId:norm(row.accountId),title,caption:norm(row.caption),scheduledAt:dt.toUTC().toISO()||'',status:status as Plan['status'],permalink:norm(row.permalink),externalId:norm(row.externalId),owner:norm(row.owner),contentType:norm(row.contentType)||'post',goal:goalFromText(norm(row.goal))??'',campaign:norm(row.campaign),notes:norm(row.notes)});
      plan.sourceKey=importKey(plan);plans.push(plan);
    }
  }

@@ -43,7 +43,6 @@ function scriptText(kit: ContentKit) {
   return [s.title, `${SCRIPT_INFO[s.format].ar} · ${s.seconds}s`, '', ...s.scenes.map((scene) => [`[${scene.t}]`, `🎙️ ${scene.voiceover}`, scene.onScreen ? `🔤 ${scene.onScreen}` : '', `🎥 ${scene.visual}${scene.broll ? ` · ${scene.broll}` : ''}`].filter(Boolean).join('\n')), '', `CTA: ${s.cta}`, `🎵 ${s.audio}`].join('\n');
 }
 
-const VIDEO_CHANNELS: Channel[] = ['tiktok', 'snapchat', 'youtube'];
 type Sheet = 'script' | 'carousel' | 'stories';
 
 /**
@@ -93,7 +92,6 @@ export function ContentCopilot({ contentId, channels, captions, onCaptions, edit
     const has = part === 'script' ? Boolean(kit?.script.scenes.length) : Boolean(kit?.carousel.length);
     if (!has && !busy) void write(part);
   };
-  const needsVideo = channels.some((c) => VIDEO_CHANNELS.includes(c));
 
   return (
     <section className="cop glass" aria-label={t('Post caption', 'نص المنشور')}>
@@ -112,8 +110,6 @@ export function ContentCopilot({ contentId, channels, captions, onCaptions, edit
 
       <div className="cop-repurpose">
         <span>{t('Turn this post into', 'حوّل البوست لـ')}</span>
-        <button type="button" onClick={() => open('script')} data-hint={needsVideo || undefined}><Film size={15} /> {t('A short video', 'فيديو قصير')}{needsVideo && <i>{t('for TikTok/Snap', 'لتيك توك وسناب')}</i>}</button>
-        <button type="button" onClick={() => open('carousel')}><Layers size={15} /> {t('Carousel', 'كاروسيل')}</button>
         <button type="button" onClick={() => open('stories')}><Smartphone size={15} /> {t('Stories', 'ستوري')}</button>
       </div>
 
@@ -211,7 +207,7 @@ function RepurposeSheet({ sheet, kit, busy, format, onFormat, onWrite, onSwitch,
       <div className="cop-sheet__panel glass" ref={overlay} tabIndex={-1} data-overlay>
         <header className="cop-sheet__head">
           <div className="cop-sheet__switch" role="tablist">
-            {(['script', 'carousel', 'stories'] as Sheet[]).map((s) => <button key={s} type="button" role="tab" aria-selected={sheet === s} onClick={() => onSwitch(s)}>{s === 'script' ? <Film size={14} /> : s === 'carousel' ? <Layers size={14} /> : <Smartphone size={14} />} {t(...TITLES[s])}</button>)}
+            {(['stories'] as Sheet[]).map((s) => <button key={s} type="button" role="tab" aria-selected={sheet === s} onClick={() => onSwitch(s)}>{s === 'script' ? <Film size={14} /> : s === 'carousel' ? <Layers size={14} /> : <Smartphone size={14} />} {t(...TITLES[s])}</button>)}
           </div>
           <button type="button" className="content-drawer__close" onClick={onClose} aria-label={t('Close', 'إغلاق')}><X size={18} /></button>
         </header>

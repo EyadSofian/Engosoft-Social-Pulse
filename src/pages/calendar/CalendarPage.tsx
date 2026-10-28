@@ -1,4 +1,6 @@
-import { ArrowRight, FileSpreadsheet, Send } from 'lucide-react';
+import { useRef, useState } from 'react';
+import { ArrowRight, Download, FileSpreadsheet, Send, Upload } from 'lucide-react';
+import { useToast } from '../../components/feedback/Toast';
 import { useLiveData } from '../../app/providers/LiveDataProvider';
 import { useQueryState } from '../../app/router/router';
 import { EmptyState } from '../../components/feedback/States';
@@ -19,7 +21,22 @@ export function CalendarPage() {
   const { can } = useAuth();
   const [query, setQuery] = useQueryState();
   const { store } = useLiveData();
+  const toast = useToast();
+  const file = useRef<HTMLInputElement>(null);
+  const [uploading, setUploading] = useState(false);
   usePageMeta(t('Calendar', 'التقويم'), [{ label: t('Calendar', 'التقويم') }]);
+  const upload = async (picked: File | undefined) => {
+    if (!picked) return;
+    setUploading(true);
+    try {
+      const result = await store.importCalendar(picked);
+      if (result.imported) toast.success(t(`${result.imported} plan rows added`, `خانات أُضيفت للخطة: ${result.imported}`), result.duplicates ? t(`${result.duplicates} were already in the plan.`, `كانت موجودة بالفعل: ${result.duplicates}`) : undefined);
+      else toast.info(t('Nothing new in the file', 'لا جديد في الملف'), result.duplicates ? t(`${result.duplicates} rows were already in the plan.`, `كانت موجودة بالفعل: ${result.duplicates}`) : undefined);
+      if (result.errors.length) toast.error(t(`${result.errors.length} rows were skipped`, `أسطر لم تُقرأ: ${result.errors.length}`), result.errors.slice(0, 3).join(' · '));
+    } catch (error) { toast.error(t('The plan could not be read', 'تعذّر قراءة الخطة'), error instanceof Error ? error.message : String(error)); }
+    if (file.current) file.current.value = '';
+    setUploading(false);
+  };
   const plans = query.get('view') === 'live' && can('content.schedule');
 
   return (
@@ -28,11 +45,16 @@ export function CalendarPage() {
         title={plans ? t('Spreadsheet plans', 'خطط الجداول') : t('Calendar', 'التقويم')}
         description={plans
           ? t('Import the XLSX template, export to CSV or ICS, and drag plans to a new time. Alerts fire before and after each post time. This view is Arabic-only.', 'ارفع قالب XLSX، صدّر CSV أو ICS، واسحب الخطة لموعد جديد. التنبيهات قبل وبعد موعد كل منشور. هذا العرض بالعربية فقط.')
-          : t('Every post by publishing day. Press + on a day to schedule an approved post there.', 'كل المنشورات حسب يوم النشر. اضغط + على أي يوم لجدولة منشور معتمد فيه.')}
+          : t('The month’s plan and every post on its day. Upload the plan, turn each planned row into a post, then schedule approved posts with + on any day.', 'خطة الشهر وكل منشور في يومه. ارفع الخطة، حوّل كل سطر مخطط لمنشور، ثم جدول المنشورات المعتمدة بزر + على أي يوم.')}
         actions={plans
           ? <Button icon={<ArrowRight size={15} className="u-flip" />} onClick={() => setQuery({ view: null })}>{t('Back to the calendar', 'العودة للتقويم')}</Button>
           : <>
-            {can('content.schedule') && <Button variant="ghost" icon={<FileSpreadsheet size={15} />} onClick={() => setQuery({ view: 'live' })}>{t('Import / export plans', 'استيراد وتصدير الخطط')}</Button>}
+            {can('content.schedule') && <>
+              <input ref={file} hidden type="file" accept=".xlsx,.csv" onChange={(event) => void upload(event.target.files?.[0])} />
+              <Button variant="primary" icon={<Upload size={15} />} busy={uploading} onClick={() => file.current?.click()}>{t('Upload a plan', 'ارفع خطة')}</Button>
+              <Button variant="ghost" icon={<Download size={15} />} onClick={downloadTemplate}>{t('Plan template', 'نموذج الخطة')}</Button>
+              <Button variant="ghost" icon={<FileSpreadsheet size={15} />} onClick={() => setQuery({ view: 'live' })}>{t('Spreadsheet view', 'عرض الجداول')}</Button>
+            </>}
             {(can('content.publish') || can('content.schedule')) && <ButtonLink to="/publish" icon={<Send size={15} />}>{t('Publishing', 'النشر')}</ButtonLink>}
           </>}
       />
@@ -43,4 +65,19 @@ export function CalendarPage() {
       )}
     </div>
   );
+}
+
+/** A CSV the team fills in Excel: required columns first, then goal, caption, owner and notes. */
+function downloadTemplate() {
+  const rows = [
+    ['التاريخ', 'الوقت', 'المنصة', 'العنوان', 'الهدف', 'النص', 'المسؤول', 'ملاحظات'],
+    ['2026-11-03', '19:00', 'facebook,instagram', 'دورة CFM تبدأ الأسبوع القادم', 'تسجيلات', '', '', ''],
+    ['2026-11-05', '20:00', 'tiktok', 'نصيحة هندسية سريعة', 'وصول', '', '', ''],
+    ['2026-11-07', '18:00', 'instagram', 'شهادات خريجي الدفعة', 'تفاعل', '', '', ''],
+  ];
+  const csv = '\uFEFF' + rows.map((row) => row.map((cell) => (/[",\n]/.test(cell) ? `"${cell.replace(/"/g, '""')}"` : cell)).join(',')).join('\n');
+  const url = URL.createObjectURL(new Blob([csv], { type: 'text/csv;charset=utf-8' }));
+  const link = Object.assign(document.createElement('a'), { href: url, download: 'mobde3-plan-template.csv' });
+  link.click();
+  URL.revokeObjectURL(url);
 }

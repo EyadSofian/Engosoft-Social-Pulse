@@ -1,6 +1,9 @@
 import { useEffect, useRef, useState } from 'react';
 import { AnimatePresence, motion } from 'motion/react';
-import { ArrowLeft, ArrowRight, Coins, GraduationCap, ImagePlus, LayoutTemplate, Sparkles, Upload, Wand2 } from 'lucide-react';
+import { ArrowLeft, ArrowRight, CalendarDays, Coins, GraduationCap, ImagePlus, LayoutTemplate, Sparkles, Upload, Wand2 } from 'lucide-react';
+import { GoalPicker } from '../../features/content-pipeline/PostPlan';
+import { clearPostPlan, readPostPlan, takePostPlan, writePostPlan, type PostPlan } from '../../features/content/postPlan';
+import { fromInputValue, toInputValue } from '../../lib/format';
 import { Link, useRouter } from '../../app/router/router';
 import { Button } from '../../components/ui/Button';
 import { CREATE_PREFILL_KEY, type CreatePrefill } from '../../features/content/CreateContent';
@@ -73,8 +76,9 @@ export function CreationHomePage() {
   const { query } = useRouter();
   const { state } = useWorkspace();
   const { can } = useAuth();
-  // Without free design the person works from approved templates only: no AI mode, no authoring.
+  // Each way of creating is its own permission; a person with one way goes straight to it.
   const free = can('design.free');
+  const ways = ([['ai', free], ['template', can('design.templates')], ['upload', can('design.upload')]] as const).filter(([, allowed]) => allowed).map(([way]) => way);
   const upload = useRef<HTMLInputElement>(null);
   const [prompt, setPrompt] = useState(() => getActiveCreative()?.prompt ?? '');
   const [objective, setObjective] = useState<Objective | 'auto'>('auto');
@@ -85,11 +89,12 @@ export function CreationHomePage() {
   const [creating, setCreating] = useState(false);
   // Coming back while a design is still running reopens it; links that name a template open that template.
   const [mode, setMode] = useState<Mode>(() => {
-    if (!free) return 'template';
-    if (query.has('creative') || query.has('template') || getActiveCreative()?.status === 'running') return 'ai';
-    if (query.has('svgTemplate')) return 'template';
-    return 'choose';
+    if (free && (query.has('creative') || query.has('template') || getActiveCreative()?.status === 'running')) return 'ai';
+    if (query.has('svgTemplate') && ways.includes('template')) return 'template';
+    return ways.length === 1 ? ways[0] : 'choose';
   });
+  // A plan left from an abandoned visit must not attach a new post to someone else's plan row.
+  const [planKey, setPlanKey] = useState(() => { if (!query.has('create') && getActiveCreative()?.status !== 'running') clearPostPlan(); return 0; });
   // A run in progress (or just finished) survives leaving the page; ?creative= opens one from a notification.
   const active = getActiveCreative();
   const opened = query.get('creative');
@@ -124,6 +129,9 @@ export function CreationHomePage() {
       const template = state.templates.find((entry) => entry.id === prefill.templateId);
       const parts = [prefill.title, course ? `${course.code} ${course.title}` : '', template?.name.en, prefill.caption].filter(Boolean);
       if (parts.length) setPrompt(parts.join(' — '));
+      writePostPlan({ goal: prefill.goal ?? null, plannedFor: prefill.plannedFor ?? null, slotId: prefill.slotId ?? null, slotTitle: prefill.slotId ? prefill.title : undefined, channels: prefill.channels });
+      setPlanKey((key) => key + 1);
+      if (prefill.channels?.length) { setPlatforms(prefill.channels.filter((c): c is CreativePlatform => (CREATIVE_PLATFORMS as string[]).includes(c))); setPlatformTouched(true); }
       if (free) setMode('ai');
     } catch { /* bad transient prefill ignored */ }
   }, [query, state.courses, state.templates]);
@@ -169,7 +177,7 @@ export function CreationHomePage() {
   return <div className="u-stack u-stack--lg creative-home">
     <header className="create-hero">
       <div className="create-hero__titles">
-        {free && mode !== 'choose' && stage === 'compose' && <button type="button" className="create-back" onClick={() => setMode('choose')}><ArrowRight size={15} className="u-flip" /> {t('Other ways to create', 'طرق إنشاء أخرى')}</button>}
+        {ways.length > 1 && mode !== 'choose' && stage === 'compose' && <button type="button" className="create-back" onClick={() => setMode('choose')}><ArrowRight size={15} className="u-flip" /> {t('Other ways to create', 'طرق إنشاء أخرى')}</button>}
         <h1 className="create-hero__title">{t(...heading[mode])}</h1>
         <p>{t(...lead[mode])}</p>
       </div>
@@ -181,25 +189,27 @@ export function CreationHomePage() {
       </ol>
     </header>
     {mode === 'choose' && <div className="create-methods">
-      <button type="button" className="create-method glass" onClick={() => setMode('ai')}>
+      {free && <button type="button" className="create-method glass" onClick={() => setMode('ai')}>
         <span className="create-method__icon" data-tone="brand"><Wand2 size={22} /></span>
         <b>{t('Describe it, AI designs it', 'اكتب الفكرة والذكاء الاصطناعي يصمّم')}</b>
         <small>{t('For a new idea. You write a sentence; you get two finished designs with copy for each platform.', 'لفكرة جديدة. تكتب جملة وتحصل على تصميمين جاهزين مع النص لكل منصة.')}</small>
         <em>{t('e.g. “CFM course starts next week, for Facebook and Instagram”', 'مثال: «دورة CFM تبدأ الأسبوع القادم، لفيسبوك وإنستجرام»')}</em>
-      </button>
-      <button type="button" className="create-method glass" onClick={() => setMode('template')}>
+      </button>}
+      {ways.includes('template') && <button type="button" className="create-method glass" onClick={() => setMode('template')}>
         <span className="create-method__icon" data-tone="success"><LayoutTemplate size={22} /></span>
         <b>{t('Fill a ready template', 'املأ قالبًا جاهزًا')}</b>
         <small>{t('For recurring posts. Approved layouts: change the text and photos only.', 'للمنشورات المتكررة. تصميمات معتمدة، تغيّر النص والصور فقط.')}</small>
         <em>{t('e.g. weekly course schedule, a student certificate', 'مثال: جدول الدورات الأسبوعي، شهادة طالب')}</em>
-      </button>
-      <button type="button" className="create-method glass" onClick={() => setMode('upload')}>
+      </button>}
+      {ways.includes('upload') && <button type="button" className="create-method glass" onClick={() => setMode('upload')}>
         <span className="create-method__icon" data-tone="accent"><Upload size={22} /></span>
         <b>{t('Upload a finished design', 'ارفع تصميمًا جاهزًا')}</b>
         <small>{t('Designed it elsewhere? Upload the image and send it for approval.', 'صمّمته في برنامج آخر؟ ارفع الصورة وأرسلها للاعتماد.')}</small>
         <em>{t('PNG, JPEG or WebP, up to 12 MB', 'PNG أو JPEG أو WebP حتى 12 ميجابايت')}</em>
-      </button>
+      </button>}
+      {!ways.length && <p className="u-sm u-muted">{t('No way of creating posts is part of your permissions yet. Ask an administrator.', 'لا توجد طريقة إنشاء ضمن صلاحياتك بعد. اطلبها من مسؤول النظام.')}</p>}
     </div>}
+    {mode !== 'choose' && stage === 'compose' && <PostDetails key={planKey} />}
     {mode === 'upload' && <UploadMode />}
     {mode === 'template' && <TemplateMode initialId={query.get('svgTemplate')} />}
     {mode === 'ai' && <div className={stage === 'compose' ? 'create-layout' : 'create-layout create-layout--single'}>
@@ -302,9 +312,13 @@ function UploadMode() {
   const { navigate } = useRouter();
   const input = useRef<HTMLInputElement>(null);
   const [image, setImage] = useState<string | null>(null);
-  const [title, setTitle] = useState('');
+  // A post made for a plan row starts with the row's title.
+  const [title, setTitle] = useState(() => readPostPlan().slotTitle ?? '');
   const [caption, setCaption] = useState('');
-  const [platforms, setPlatforms] = useState<CreativePlatform[]>(['facebook', 'instagram']);
+  const [platforms, setPlatforms] = useState<CreativePlatform[]>(() => {
+    const planned = (readPostPlan().channels ?? []).filter((c): c is CreativePlatform => (CREATIVE_PLATFORMS as string[]).includes(c));
+    return planned.length ? planned : ['facebook', 'instagram'];
+  });
   const [busy, setBusy] = useState(false);
   const [message, setMessage] = useState('');
   const pick = async (file: File | undefined) => {
@@ -323,7 +337,7 @@ function UploadMode() {
     try {
       const { url } = await api<{ url: string }>('/api/uploads', { body: { dataUrl: image } });
       const captions = caption.trim() ? Object.fromEntries(platforms.map((platform) => [platform, caption.trim()])) : {};
-      const item = await api<{ id: string }>('/api/content', { body: { title: title.trim(), channels: platforms, captions, creative: { requestId: 'upload', directionId: 'upload', imageUrl: url, directionName: 'Uploaded design' } } });
+      const item = await api<{ id: string }>('/api/content', { body: { ...takePostPlan(), title: title.trim(), channels: platforms, captions, creative: { requestId: 'upload', directionId: 'upload', imageUrl: url, directionName: 'Uploaded design' } } });
       navigate(`/content/${item.id}`);
     } catch (error) { setMessage(error instanceof Error ? error.message : String(error)); }
     setBusy(false);
@@ -343,5 +357,25 @@ function UploadMode() {
       <div><Button variant="primary" busy={busy} disabled={busy} onClick={() => void submit()}>{t('Create the post', 'أنشئ المنشور')}</Button></div>
       <p className="u-xs u-muted">{t('It is saved as a draft. Open it to check the caption, then send it for approval.', 'يُحفظ كمسودة. افتحه لمراجعة النص ثم أرسله للاعتماد.')}</p>
     </div>
+  </section>;
+}
+
+/** What every new post needs besides its design: why it exists and the day it is planned for. */
+function PostDetails() {
+  const { t } = useI18n();
+  const [plan, setPlan] = useState<PostPlan>(readPostPlan);
+  const update = (patch: Partial<PostPlan>) => setPlan((current) => { const next = { ...current, ...patch }; writePostPlan(next); return next; });
+  return <section className="create-plan glass">
+    <div>
+      {plan.slotId && <span className="create-plan__slot"><CalendarDays size={13} /> {t('For the plan row', 'لخانة الخطة')}: <bdi>{plan.slotTitle}</bdi></span>}
+      <h2>{t('What is this post for?', 'ما هدف هذا المنشور؟')}</h2>
+      <p>{t('The goal decides which number the post is judged by after publishing.', 'الهدف يحدد الرقم الذي يُقاس به المنشور بعد نشره.')}</p>
+      <GoalPicker value={plan.goal} onChange={(goal) => update({ goal })} />
+    </div>
+    <label className="ui-field">
+      <span className="ui-field__label">{t('Planned for (optional)', 'اليوم المستهدف (اختياري)')}</span>
+      <input className="ui-input" type="datetime-local" value={plan.plannedFor ? toInputValue(plan.plannedFor) : ''} onChange={(event) => update({ plannedFor: event.target.value ? fromInputValue(event.target.value) : null })} />
+      <span className="ui-field__hint">{t('The post shows on that day in the calendar until someone schedules it.', 'يظهر المنشور في التقويم في هذا اليوم حتى تتم جدولته.')}</span>
+    </label>
   </section>;
 }

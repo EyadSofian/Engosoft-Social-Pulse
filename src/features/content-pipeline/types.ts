@@ -1,4 +1,5 @@
 import type { ContentStatus } from '../../domain/content';
+import type { Goal } from '../../domain/goals';
 import type { Text } from '../../domain/shared';
 
 export type Channel = 'facebook' | 'instagram' | 'whatsapp' | 'linkedin' | 'tiktok' | 'snapchat' | 'youtube' | 'website';
@@ -7,12 +8,16 @@ export interface PipelineItem {
   id: string; title: string; status: ContentStatus; departmentId: string | null; ownerId: string;
   channels: Channel[]; captions: Partial<Record<Channel, string>>; creative: CreativeRef | null;
   scheduledAt: string | null; planIds: string[]; templateId: string | null; createdAt: string; updatedAt: string;
+  /** Why the post exists, the day it is planned for before scheduling, and the plan row it was made for. */
+  goal: Goal | null; plannedFor: string | null; slotId: string | null;
   published?: { platform: string; permalink: string; publishedAt: string; metrics: Record<string, number | null> }[];
   moves: { to: ContentStatus; needsNote: boolean }[];
   editable: boolean;
   /** This person may put posts on the calendar (offered when approving). */
   canSchedule?: boolean;
   canPublish?: boolean;
+  /** An approved or scheduled post this person may send back for changes. */
+  canReopen?: boolean;
 }
 export interface PipelineEvent { id: string; actorId: string; kind: 'created' | 'transition' | 'comment' | 'version' | 'caption'; from: string | null; to: string | null; body: string; createdAt: string }
 export interface PipelineVersion { id: string; imageUrl: string; storyUrl: string | null; studio: unknown; note: string; createdBy: string; createdAt: string }

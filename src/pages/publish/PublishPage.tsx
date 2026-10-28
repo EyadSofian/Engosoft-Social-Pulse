@@ -10,7 +10,7 @@ import { Tabs } from '../../components/ui/Tabs';
 import { useAuth } from '../../features/auth/AuthProvider';
 import type { PipelineItem } from '../../features/content-pipeline/types';
 import { usePipeline } from '../../features/content-pipeline/usePipeline';
-import { PublishDialog, usePublishingBoard, type JobRow, type QueueRow } from '../../features/publishing/PublishDialog';
+import { PLATFORMS, PublishDialog, usePublishingBoard, type JobRow, type PublishAccount, type QueueRow } from '../../features/publishing/PublishDialog';
 import { useClock } from '../../features/workspace/hooks';
 import { useI18n } from '../../i18n/I18nProvider';
 import { api } from '../../lib/api';
@@ -18,7 +18,7 @@ import { parseTimestamp } from '../../lib/format';
 import { PageHeader } from '../../shell/Header';
 import { usePageMeta } from '../../shell/ShellContext';
 
-type View = 'ready' | 'scheduled' | 'results';
+type View = 'ready' | 'scheduled' | 'results' | 'accounts';
 
 /**
  * One place to send approved posts out: what is ready, what goes out when (and whether it publishes
@@ -40,7 +40,9 @@ export function PublishPage() {
   const queueOf = (id: string) => (board?.queue ?? []).filter((row) => row.contentId === id);
   const problems = (board?.queue ?? []).filter((row) => row.state === 'failed').length + (board?.jobs ?? []).filter((job) => job.state === 'failed' || job.state === 'unknown').length;
   const requested = query.get('view') as View | null;
-  const view: View = requested && ['ready', 'scheduled', 'results'].includes(requested) ? requested : ready.length || !scheduled.length ? 'ready' : 'scheduled';
+  const view: View = requested && ['ready', 'scheduled', 'results', 'accounts'].includes(requested) ? requested : ready.length || !scheduled.length ? 'ready' : 'scheduled';
+  const autoCount = (board?.accounts ?? []).filter((account) => account.auto).length;
+  const missing = PLATFORMS.filter((platform) => platform.way !== 'manual' && !(board?.accounts ?? []).some((account) => account.provider === platform.channel)).length;
   const done = () => { void reload(); void reloadItems(); };
   const accountName = (id: string) => board?.accounts.find((account) => account.id === id)?.name ?? id;
   const titleOf = (id: string) => live.find((item) => item.id === id)?.title;
@@ -53,13 +55,11 @@ export function PublishPage() {
         actions={<ButtonLink to="/calendar" icon={<CalendarClock size={15} />}>{t('Calendar', 'التقويم')}</ButtonLink>}
       />
 
-      <section className="publish-accounts" aria-label={t('Connected accounts', 'الحسابات المربوطة')}>
-        {board?.accounts.map((account) => <span key={account.id} className="publish-account" data-auto={account.auto || undefined} title={account.auto ? t('Publishes automatically', 'ينشر تلقائيًا') : t('Publish from the post page', 'النشر من صفحة المنشور')}>
-          <ChannelIcon channel={account.provider} size={15} /><b dir="auto">{account.name}</b>{account.auto ? <Zap size={12} aria-label={t('automatic', 'تلقائي')} /> : <Hand size={12} aria-label={t('manual', 'يدوي')} />}
-        </span>)}
-        {board && !board.accounts.length && <span className="u-sm u-muted">{t('No connected accounts yet.', 'لا توجد حسابات مربوطة بعد.')}</span>}
-        {can('connections.manage') && <Link to="/connections" className="publish-account publish-account--add"><Plug size={14} /> {t('Manage connections', 'إدارة الربط')}</Link>}
-      </section>
+      {board && <button type="button" className="publish-summary" onClick={() => setQuery({ view: 'accounts' })}>
+        <Zap size={14} /> {t(`${autoCount} accounts publish by themselves`, `${autoCount} حساب ينشر تلقائيًا`)}
+        {missing > 0 && <span data-warn>· {t(`${missing} platforms not connected`, `${missing} منصات غير مربوطة`)}</span>}
+        <b>{t('See all accounts', 'كل الحسابات')}</b>
+      </button>}
 
       <Tabs
         label={t('Publishing', 'النشر')}
@@ -69,6 +69,7 @@ export function PublishPage() {
           { value: 'ready', label: t('Ready to publish', 'جاهز للنشر'), count: ready.length },
           { value: 'scheduled', label: t('Scheduled', 'مجدول'), count: scheduled.length },
           { value: 'results', label: t('Results', 'النتائج'), count: problems || undefined },
+          { value: 'accounts', label: t('Accounts', 'الحسابات'), count: board?.accounts.length },
         ]}
       />
 
@@ -103,6 +104,8 @@ export function PublishPage() {
           </span>
         </li>;
       })}</ul> : <EmptyState icon={<CalendarClock size={22} />} title={t('Nothing is scheduled.', 'لا شيء مجدول.')} text={t('Schedule a ready post, or pick a day on the calendar.', 'جدول منشورًا جاهزًا، أو اختر يومًا من التقويم.')} />)}
+
+      {view === 'accounts' && <AccountsLibrary accounts={board?.accounts ?? null} scheduled={scheduled} />}
 
       {items && view === 'results' && <Results queue={board?.queue ?? []} jobs={board?.jobs ?? []} titleOf={titleOf} accountName={accountName} />}
 
@@ -163,4 +166,36 @@ function Results({ queue, jobs, titleOf, accountName }: { queue: QueueRow[]; job
       {job.url && <a className="publish-open" href={job.url} target="_blank" rel="noreferrer"><ExternalLink size={14} /> {t('Open post', 'افتح المنشور')}</a>}
     </li>)}
   </ul>;
+}
+
+/**
+ * Every platform the team publishes to, connected or not, with how its posts go out:
+ * by themselves at the time, from the post page with the platform's own choices, or by hand.
+ */
+function AccountsLibrary({ accounts, scheduled }: { accounts: PublishAccount[] | null; scheduled: PipelineItem[] }) {
+  const { t } = useI18n();
+  const { can } = useAuth();
+  if (!accounts) return <p role="status" className="u-sm u-muted">{t('Loading accounts…', 'جارٍ تحميل الحسابات…')}</p>;
+  const WAY: Record<string, [string, string, string]> = {
+    auto: ['Publishes by itself at the time', 'ينشر تلقائيًا في الموعد', 'success'],
+    post_page: ['Publish from the post page', 'النشر من صفحة المنشور', 'brand'],
+    manual: ['Published by hand', 'يُنشر يدويًا', 'neutral'],
+  };
+  return <div className="accounts-library">{PLATFORMS.map((platform) => {
+    const linked = accounts.filter((account) => account.provider === platform.channel);
+    const [en, ar, tone] = WAY[platform.way];
+    const queued = scheduled.filter((item) => item.channels.includes(platform.channel)).length;
+    return <article key={platform.channel} className="accounts-card" data-empty={(platform.way !== 'manual' && !linked.length) || undefined}>
+      <header><span className="accounts-card__icon"><ChannelIcon channel={platform.channel} size={20} /></span><span><b>{platform.name}</b><small className={`ui-badge ui-badge--${tone}`}>{t(en, ar)}</small></span></header>
+      {platform.way === 'manual'
+        ? <p className="u-xs u-muted">{t('No publishing API. The post goes on the calendar and someone posts it by hand.', 'لا توجد واجهة نشر. يوضع المنشور في التقويم وينشره أحد الفريق يدويًا.')}</p>
+        : linked.length
+          ? <ul>{linked.map((account) => <li key={account.id} data-state={account.status === 'connected' ? 'ok' : 'warn'}>
+            <span className="accounts-card__dot" aria-hidden /><bdi>{account.name}</bdi>
+            <small>{account.status === 'connected' ? (account.auto ? t('Ready', 'جاهز') : t('Connected', 'متصل')) : t('Needs a check', 'يحتاج مراجعة')}</small>
+          </li>)}</ul>
+          : <p className="u-xs u-muted">{t('Not connected yet.', 'غير مربوط بعد.')} {can('connections.manage') && <Link to="/connections">{t('Connect', 'اربط الحساب')}</Link>}</p>}
+      <footer className="u-xs u-muted">{t(`${queued} scheduled`, `${queued} مجدول`)}</footer>
+    </article>;
+  })}</div>;
 }

@@ -1,8 +1,11 @@
 import { PublishContent } from '../../features/publishing/PublishContent';
 import { PublishDialog } from '../../features/publishing/PublishDialog';
+import { ChannelIcon } from '../../components/data-display/ChannelIcon';
+import { GoalBadge, PostPlanCard } from '../../features/content-pipeline/PostPlan';
 import { useCallback, useEffect, useMemo, useState } from 'react';
 import { AnimatePresence, motion } from 'motion/react';
-import { CheckCircle2, ExternalLink, Image as ImageIcon, Loader2, MessageSquare, Paintbrush, Search, Send, X } from 'lucide-react';
+import { CheckCircle2, ExternalLink, Image as ImageIcon, Loader2, MessageSquare, Paintbrush, Pencil, Search, Send, X } from 'lucide-react';
+import { Dialog } from '../../components/overlay/Overlay';
 import { useQueryState, useRouter } from '../../app/router/router';
 import { Button } from '../../components/ui/Button';
 import { useAuth } from '../../features/auth/AuthProvider';
@@ -116,6 +119,8 @@ function ContentDrawer({ id, team, onClose, onChanged }: { id: string; team: Tea
   const [captions, setCaptions] = useState<Partial<Record<Channel, string>>>({});
   const [preview, setPreview] = useState<string | null>(null);
   const [publishing, setPublishing] = useState(false);
+  const [reopening, setReopening] = useState(false);
+  const [reason, setReason] = useState('');
   const load = useCallback(() => api<PipelineDetail>(`/api/content/${id}`).then((d) => { setItem(d); setCaptions(d.captions); }).catch((e) => setError(errorMessage(e, 'Not found'))), [id]);
   useEffect(() => { void load(); }, [load]);
   const nameOf = (uid: string) => team.find((m) => m.id === uid)?.name ?? (uid === 'system' ? t('Sync', 'المزامنة') : '—');
@@ -142,9 +147,23 @@ function ContentDrawer({ id, team, onClose, onChanged }: { id: string; team: Tea
     <motion.aside ref={overlay} tabIndex={-1} data-overlay role="dialog" aria-modal="true" aria-label={item?.title ?? t('Post preview', 'معاينة المنشور')} className="content-drawer content-drawer--wide glass"
       initial={{ x: dir === 'rtl' ? -40 : 40, opacity: 0 }} animate={{ x: 0, opacity: 1 }} exit={{ x: dir === 'rtl' ? -40 : 40, opacity: 0 }} transition={{ type: 'spring', stiffness: 380, damping: 36 }}>
       <header className="content-drawer__head">
-        <div>{item && <span className="content-status" data-status={item.status}>{tx(STATUS_LABEL[item.status])}</span>}<h2 dir="auto">{item?.title ?? '…'}</h2></div>
-        <button type="button" className="content-drawer__close" onClick={onClose} aria-label={t('Close', 'إغلاق')}><X size={18} /></button>
+        <div>
+          {item && <span className="content-drawer__facts"><span className="content-status" data-status={item.status}>{tx(STATUS_LABEL[item.status])}</span><GoalBadge goal={item.goal} empty />{(item.scheduledAt ?? item.plannedFor) && <small className="u-tnum">{date((item.scheduledAt ?? item.plannedFor)!, 'weekdayDate')}</small>}<span className="content-drawer__channels">{item.channels.map((channel) => <ChannelIcon key={channel} channel={channel} size={14} />)}</span></span>}
+          <h2 dir="auto">{item?.title ?? '…'}</h2>
+        </div>
+        <span className="content-drawer__tools">
+          {item?.canReopen && <Button size="sm" variant="secondary" icon={<Pencil size={14} />} onClick={() => setReopening(true)}>{t('Edit post', 'تعديل المنشور')}</Button>}
+          <button type="button" className="content-drawer__close" onClick={onClose} aria-label={t('Close', 'إغلاق')}><X size={18} /></button>
+        </span>
       </header>
+      {item && <Dialog open={reopening} onClose={() => setReopening(false)} title={t('Edit this post', 'تعديل هذا المنشور')}
+        description={item.status === 'scheduled'
+          ? t('Editing an approved post takes it off the calendar and stops its automatic publishing. It goes back for changes and must be approved again.', 'تعديل منشور معتمد يشيله من التقويم ويوقف نشره التلقائي، ويرجعه للتعديل، ولازم يتعتمد تاني قبل النشر.')
+          : t('Editing an approved post sends it back for changes. It must be approved again before publishing.', 'تعديل منشور معتمد يرجعه للتعديل، ولازم يتعتمد تاني قبل النشر.')}
+        footer={<><Button variant="ghost" onClick={() => setReopening(false)}>{t('Cancel', 'إلغاء')}</Button>
+          <Button variant="primary" icon={<Pencil size={15} />} busy={busy} disabled={!reason.trim()} onClick={() => void act(() => api(`/api/content/${id}/reopen`, { body: { note: reason } })).then((ok) => { if (ok) { setReopening(false); setReason(''); } })}>{t('Open for editing', 'افتح للتعديل')}</Button></>}>
+        <label className="ui-field"><span className="ui-field__label">{t('What needs to change?', 'إيه اللي محتاج يتغيّر؟')}</span><textarea className="ui-input" rows={3} dir="auto" value={reason} onChange={(event) => setReason(event.target.value)} placeholder={t('e.g. the course date is wrong', 'مثال: تاريخ الدورة غلط')} /></label>
+      </Dialog>}
       {!item && !error && <Loader2 className="creative-job__spin" size={22} />}
       {error && !item && <p role="alert" className="creative-home__error">{error}</p>}
       {item && <div className="content-drawer__body content-drawer__layout">
@@ -154,7 +173,7 @@ function ContentDrawer({ id, team, onClose, onChanged }: { id: string; team: Tea
           {item.creative?.storyUrl && <img className="content-drawer__story" src={item.creative.storyUrl} alt="9:16" />}
         </div>
         {item.creative?.youtubeUrl && <a className="ui-link" href={item.creative.youtubeUrl} download>{t('Download YouTube thumbnail 16:9', 'نزّل صورة يوتيوب 16:9')}</a>}
-        {item.editable && item.creative && (can('design.free') || item.creative.svgTemplate) && !['published', 'archived', 'cancelled'].includes(item.status) && <Button variant="secondary" onClick={() => navigate(item.creative!.svgTemplate ? `/library/templates/${item.creative!.svgTemplate.id}?content=${item.id}` : `/studio/${item.id}`)}><Paintbrush size={15} /> {item.creative.requestId === 'reference-design' ? t('Generate a new version from the reference', 'ولّد نسخة جديدة من المرجع') : item.creative.svgTemplate ? t('Edit the template', 'عدّل في القالب') : t('Open in Studio', 'افتح في الاستوديو')}</Button>}
+        {item.editable && item.creative && (item.creative.svgTemplate ? can('design.templates') : can('design.free')) && !['published', 'archived', 'cancelled'].includes(item.status) && <Button variant="secondary" onClick={() => navigate(item.creative!.svgTemplate ? `/library/templates/${item.creative!.svgTemplate.id}?content=${item.id}` : `/studio/${item.id}`)}><Paintbrush size={15} /> {item.creative.requestId === 'reference-design' ? t('Generate a new version from the reference', 'ولّد نسخة جديدة من المرجع') : item.creative.svgTemplate ? t('Edit the template', 'عدّل في القالب') : t('Open in Studio', 'افتح في الاستوديو')}</Button>}
 
         {item.published?.length ? <section className="content-drawer__section"><h3>{t('Live results', 'النتائج على المنصات')}</h3>
           {item.published.map((p) => <a key={p.permalink} href={p.permalink} target="_blank" rel="noreferrer" className="content-live">{p.platform} · {t('views', 'مشاهدات')} {p.metrics.views ?? '—'} · {t('reach', 'وصول')} {p.metrics.reach ?? '—'} <ExternalLink size={13} /></a>)}
@@ -162,6 +181,7 @@ function ContentDrawer({ id, team, onClose, onChanged }: { id: string; team: Tea
 
         {publishing && <PublishDialog item={item} open onClose={() => setPublishing(false)} onDone={() => { void load(); onChanged(); }} />}
         <NextStep key={item.status} item={item} busy={busy} onMove={move} onPublish={can('content.publish') || can('content.schedule') ? () => setPublishing(true) : undefined} />
+        <PostPlanCard key={`${item.goal}-${item.plannedFor}`} item={item} onSaved={() => { void load(); onChanged(); }} />
         <PublishContent item={item} />
         {error && <p role="alert" className="creative-home__error">{error}</p>}
 

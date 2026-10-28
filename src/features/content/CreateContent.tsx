@@ -1,7 +1,9 @@
 import { createContext, useCallback, useContext, useMemo, type ReactNode } from 'react';
 import { useRouter } from '../../app/router/router';
 import type { ContentType } from '../../domain/content';
+import type { Goal } from '../../domain/goals';
 import type { DepartmentId } from '../../domain/users';
+import type { Channel } from '../content-pipeline/types';
 
 export interface CreatePrefill {
   templateId?: string;
@@ -11,6 +13,11 @@ export interface CreatePrefill {
   type?: ContentType;
   caption?: string;
   dueDate?: string;
+  /** A calendar plan row this post is made for, with its day, goal and platforms. */
+  slotId?: string;
+  goal?: Goal | null;
+  plannedFor?: string;
+  channels?: Channel[];
 }
 
 export const CREATE_PREFILL_KEY = 'engosoft-create-prefill';

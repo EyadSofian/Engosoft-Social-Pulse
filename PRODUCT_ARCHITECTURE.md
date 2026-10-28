@@ -7,6 +7,8 @@ Idea → Creation → Assignment → Production → Review → Changes → Appro
      → Scheduling → Publishing → Performance → KPIs → Learning
 ```
 
+The business rules (goals, plan rows, stages, roles, publishing ways) are written out in Arabic in [docs/business-logic.md](docs/business-logic.md).
+
 Every department plans and produces content in the same place. Marketing reviews, approves, schedules and publishes. The live connectors (Meta, TikTok, Snapchat, GA4) measure what was published.
 
 ## Principles

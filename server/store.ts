@@ -29,12 +29,14 @@ CREATE TABLE IF NOT EXISTS alerts (id TEXT PRIMARY KEY, plan_id TEXT NOT NULL, k
 
 defineColumn('connector_status','last_success_at','TEXT');
 defineColumn('connector_status','partial',"INTEGER NOT NULL DEFAULT 0");
+/** The plan row's goal (reach, engagement, leads, traffic); empty when the spreadsheet gave none. */
+defineColumn('plans','goal',"TEXT NOT NULL DEFAULT ''");
 
 const toPlan = (r: Record<string, unknown>): Plan => ({
-  id:String(r.id), platform:r.platform as Platform, accountId:String(r.account_id), title:String(r.title), caption:String(r.caption), scheduledAt:String(r.scheduled_at), status:r.status as Plan['status'], permalink:String(r.permalink), externalId:String(r.external_id), owner:String(r.owner), contentType:String(r.content_type), campaign:String(r.campaign), notes:String(r.notes), sourceKey:String(r.source_key), createdAt:String(r.created_at), updatedAt:String(r.updated_at)
+  id:String(r.id), platform:r.platform as Platform, accountId:String(r.account_id), title:String(r.title), caption:String(r.caption), scheduledAt:String(r.scheduled_at), status:r.status as Plan['status'], permalink:String(r.permalink), externalId:String(r.external_id), owner:String(r.owner), contentType:String(r.content_type), goal:String(r.goal ?? ''), campaign:String(r.campaign), notes:String(r.notes), sourceKey:String(r.source_key), createdAt:String(r.created_at), updatedAt:String(r.updated_at)
 });
-const PLAN_COLUMNS = 'id, platform, account_id, title, caption, scheduled_at, status, permalink, external_id, owner, content_type, campaign, notes, source_key, created_at, updated_at';
-const PLAN_VALUES = '@id,@platform,@accountId,@title,@caption,@scheduledAt,@status,@permalink,@externalId,@owner,@contentType,@campaign,@notes,@sourceKey,@createdAt,@updatedAt';
+const PLAN_COLUMNS = 'id, platform, account_id, title, caption, scheduled_at, status, permalink, external_id, owner, content_type, goal, campaign, notes, source_key, created_at, updated_at';
+const PLAN_VALUES = '@id,@platform,@accountId,@title,@caption,@scheduledAt,@status,@permalink,@externalId,@owner,@contentType,@goal,@campaign,@notes,@sourceKey,@createdAt,@updatedAt';
 const planParams = (plan: Plan) => ({ ...plan }) as unknown as Record<string, unknown>;
 
 export const getPlan = async (id: string): Promise<Plan | undefined> => {
@@ -46,7 +48,7 @@ export async function savePlan(plan: Plan): Promise<Plan> {
   const previous = await db.get<{scheduled_at:string;status:string;permalink:string;external_id:string}>('SELECT scheduled_at,status,permalink,external_id FROM plans WHERE id=?', [plan.id]);
   await db.run(`INSERT INTO plans (${PLAN_COLUMNS}) VALUES (${PLAN_VALUES})
   ON CONFLICT(id) DO UPDATE SET platform=excluded.platform, account_id=excluded.account_id, title=excluded.title, caption=excluded.caption, scheduled_at=excluded.scheduled_at,
-  status=excluded.status, permalink=excluded.permalink, external_id=excluded.external_id, owner=excluded.owner, content_type=excluded.content_type, campaign=excluded.campaign, notes=excluded.notes, updated_at=excluded.updated_at`, planParams(plan));
+  status=excluded.status, permalink=excluded.permalink, external_id=excluded.external_id, owner=excluded.owner, content_type=excluded.content_type, goal=excluded.goal, campaign=excluded.campaign, notes=excluded.notes, updated_at=excluded.updated_at`, planParams(plan));
   // A new time, status or publish proof resets the plan's alerts.
   if (previous?.scheduled_at !== plan.scheduledAt || (previous && (previous.status !== plan.status || previous.permalink !== plan.permalink || previous.external_id !== plan.externalId)))
     await db.run('DELETE FROM alerts WHERE plan_id=?', [plan.id]);
