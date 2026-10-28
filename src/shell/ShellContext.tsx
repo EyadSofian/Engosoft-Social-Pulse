@@ -63,13 +63,14 @@ export function useShell(): ShellState {
 }
 
 /** Pages declare their breadcrumb trail and document title. */
-export function usePageMeta(title: string, crumbs: Crumb[]) {
+export function usePageMeta(title: string, crumbs: Crumb[], enabled = true) {
   const { setCrumbs } = useShell();
   const key = JSON.stringify(crumbs);
   useEffect(() => {
+    if (!enabled) return;
     setCrumbs(crumbs);
     document.title = `${title} · ${document.documentElement.lang === 'en' ? 'Mobde3' : 'مبدع'}`;
     // `key` captures the crumb contents; the array identity changes every render.
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [title, key, setCrumbs]);
+  }, [title, key, setCrumbs, enabled]);
 }

@@ -26,10 +26,9 @@ export function allowedTransitions(user: User, item: ContentItem): Transition[] 
   return TRANSITIONS[item.status].filter((move) => transitionBlock(user, item, move.to) === null);
 }
 
-/** Which content a person sees by default. Freelancers and production roles see their own work only. */
+/** Which content a person sees by default: their own work and their department's, or everything with the wider permissions. */
 export function canSeeContent(user: User, item: ContentItem, taskContentIds: Set<string>): boolean {
   if (hasPermission(user, 'content.edit_any') || hasPermission(user, 'plans.view_all') || user.role === 'admin') return true;
   if (item.ownerId === user.id || item.assigneeId === user.id || taskContentIds.has(item.id)) return true;
-  if (user.role === 'freelancer' || user.role === 'designer' || user.role === 'media_editor') return false;
   return item.departmentId === user.departmentId;
 }

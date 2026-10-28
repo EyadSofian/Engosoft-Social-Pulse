@@ -1,10 +1,11 @@
 import type { JSX } from 'react';
-import { AnalyticsPage } from '../pages/analytics/AnalyticsPage';
+import { AnalyticsHub } from '../pages/analytics/AnalyticsHub';
 import { CalendarPage } from '../pages/calendar/CalendarPage';
 import { CoursesPage } from '../pages/courses/CoursesPage';
 import { ContentBoardPage } from '../pages/content/ContentBoardPage';
 import { CreationHomePage } from '../pages/home/CreationHomePage';
-import { ContentTrackingPage, InsightsPage, OverviewPage } from '../pages/insights/InsightsPage';
+import { OverviewPage } from '../pages/overview/OverviewPage';
+import { PublishPage } from '../pages/publish/PublishPage';
 import { TemplatePage } from '../pages/library/TemplatePage';
 import { UsagePage } from '../pages/usage/UsagePage';
 import { LibraryPage } from '../pages/library/LibraryPage';
@@ -26,10 +27,12 @@ export const ROUTES: RouteDef[] = [
   { pattern: '/content/:id', nav: 'content', render: ({ id }) => <ContentBoardPage openId={id} /> },
   { pattern: '/studio/:id', nav: 'content', render: ({ id }) => <StudioPage key={id} id={id} /> },
   { pattern: '/calendar', nav: 'calendar', render: () => <CalendarPage /> },
+  { pattern: '/publish', nav: 'publish', render: () => <PublishPage /> },
   { pattern: '/overview', nav: 'overview', render: () => <OverviewPage /> },
-  { pattern: '/tracking', nav: 'tracking', render: () => <ContentTrackingPage /> },
-  { pattern: '/analytics', nav: 'analytics', render: () => <InsightsPage /> },
-  { pattern: '/performance', nav: 'performance', render: () => <AnalyticsPage /> },
+  { pattern: '/analytics', nav: 'analytics', render: () => <AnalyticsHub /> },
+  // Older links to the separate tracking pages open the matching Analytics tab.
+  { pattern: '/tracking', nav: 'analytics', render: () => <AnalyticsHub initial="posts" /> },
+  { pattern: '/performance', nav: 'analytics', render: () => <AnalyticsHub initial="team" /> },
   { pattern: '/courses', nav: 'courses', render: () => <CoursesPage /> },
   { pattern: '/library', nav: 'library', render: () => <LibraryPage /> },
   { pattern: '/library/templates/:id', nav: 'library', render: ({ id }) => <TemplatePage key={id} id={id} /> },

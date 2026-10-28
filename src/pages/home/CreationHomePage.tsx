@@ -1,6 +1,6 @@
 import { useEffect, useRef, useState } from 'react';
 import { AnimatePresence, motion } from 'motion/react';
-import { ArrowLeft, Coins, GraduationCap, ImagePlus, LayoutTemplate, Sparkles, Wand2 } from 'lucide-react';
+import { ArrowLeft, ArrowRight, Coins, GraduationCap, ImagePlus, LayoutTemplate, Sparkles, Upload, Wand2 } from 'lucide-react';
 import { Link, useRouter } from '../../app/router/router';
 import { Button } from '../../components/ui/Button';
 import { CREATE_PREFILL_KEY, type CreatePrefill } from '../../features/content/CreateContent';
@@ -25,6 +25,8 @@ import { DesignSettings } from '../../features/creative-studio/DesignSettings';
 import { DEFAULT_ENGINE_SETTINGS, type EngineSettings } from '../../domain/design-engine';
 
 type Stage = 'compose' | 'generating';
+/** The three ways to make a post; `choose` is the first screen for people who may use more than one. */
+type Mode = 'choose' | 'ai' | 'template' | 'upload';
 const OBJECTIVES: { value: Objective | 'auto'; ar: string; en: string }[] = [
   { value: 'auto', ar: 'حدده من الطلب', en: 'Detect from prompt' },
   { value: 'course_launch', ar: 'إعلان دورة', en: 'Course announcement' },
@@ -81,8 +83,13 @@ export function CreationHomePage() {
   const [references, setReferences] = useState<CreativeReference[]>([]);
   const [message, setMessage] = useState('');
   const [creating, setCreating] = useState(false);
-  // Coming back while a design is still running reopens it instead of hiding it behind the template mode.
-  const [mode, setMode] = useState<'ai' | 'template'>(() => (free && (query.has('creative') || getActiveCreative()?.status === 'running') ? 'ai' : 'template'));
+  // Coming back while a design is still running reopens it; links that name a template open that template.
+  const [mode, setMode] = useState<Mode>(() => {
+    if (!free) return 'template';
+    if (query.has('creative') || query.has('template') || getActiveCreative()?.status === 'running') return 'ai';
+    if (query.has('svgTemplate')) return 'template';
+    return 'choose';
+  });
   // A run in progress (or just finished) survives leaving the page; ?creative= opens one from a notification.
   const active = getActiveCreative();
   const opened = query.get('creative');
@@ -117,6 +124,7 @@ export function CreationHomePage() {
       const template = state.templates.find((entry) => entry.id === prefill.templateId);
       const parts = [prefill.title, course ? `${course.code} ${course.title}` : '', template?.name.en, prefill.caption].filter(Boolean);
       if (parts.length) setPrompt(parts.join(' — '));
+      if (free) setMode('ai');
     } catch { /* bad transient prefill ignored */ }
   }, [query, state.courses, state.templates]);
   const [designSettings, setDesignSettings] = useState<EngineSettings>(DEFAULT_ENGINE_SETTINGS);
@@ -146,21 +154,55 @@ export function CreationHomePage() {
     } catch (error) { setMessage(error instanceof Error ? error.message : String(error)); }
     setCreating(false);
   };
+  const heading: Record<Mode, [string, string]> = {
+    choose: ['How do you want to make the post?', 'كيف تريد إنشاء المنشور؟'],
+    ai: ['Describe the post', 'اكتب فكرة المنشور'],
+    template: [free ? 'Fill a ready template' : 'What kind of post is it?', free ? 'املأ قالبًا جاهزًا' : 'ما نوع المنشور؟'],
+    upload: ['Upload your finished design', 'ارفع تصميمك الجاهز'],
+  };
+  const lead: Record<Mode, [string, string]> = {
+    choose: ['Pick one way. You can come back and change it any time.', 'اختر طريقة واحدة، ويمكنك الرجوع وتغييرها في أي وقت.'],
+    ai: ['Write the idea in your own words. We check Odoo, write the copy, design two options and place the official logo.', 'اكتب الفكرة بكلماتك. نراجع بيانات Odoo ونكتب النص ونصمّم خيارين ونضع الشعار الرسمي.'],
+    template: ['Pick a template, change its text and photos, then send it for approval. No AI cost.', 'اختر قالبًا، غيّر نصوصه وصوره، ثم أرسله للاعتماد. بدون تكلفة ذكاء اصطناعي.'],
+    upload: ['Already designed it? Upload the image, choose the platforms and send it for approval.', 'صمّمته بالفعل؟ ارفع الصورة واختر المنصات وأرسله للاعتماد.'],
+  };
   return <div className="u-stack u-stack--lg creative-home">
     <header className="create-hero">
       <div className="create-hero__titles">
-        <span className="create-hero__eyebrow"><Sparkles size={14} /> Engosoft Creative Studio</span>
-        <h1 className="create-hero__title">{free ? t('What would you like to create?', 'ماذا تريد أن تنشئ؟') : t('What kind of post is it?', 'ما نوع المنشور؟')}</h1>
-        <p>{mode === 'ai' ? t('Describe the idea. We check Odoo, write the copy, design two directions and place the official logo.', 'اكتب الفكرة، وسنراجع بيانات Odoo ونكتب النص ونصمّم اتجاهين ونضع الشعار الرسمي.') : t('Choose a post type and visual reference. Create new artwork in the same visual family, then send it for approval.', 'اختر نوع المنشور ومرجعه البصري. ولّد تصميمًا جديدًا من نفس العائلة، ثم أرسله للاعتماد.')}</p>
+        {free && mode !== 'choose' && stage === 'compose' && <button type="button" className="create-back" onClick={() => setMode('choose')}><ArrowRight size={15} className="u-flip" /> {t('Other ways to create', 'طرق إنشاء أخرى')}</button>}
+        <h1 className="create-hero__title">{t(...heading[mode])}</h1>
+        <p>{t(...lead[mode])}</p>
       </div>
-      {free && <div className="create-mode" role="tablist" aria-label={t('How to create', 'طريقة الإنشاء')}>
-        {(['ai', 'template'] as const).map((value) => <button key={value} type="button" role="tab" aria-selected={mode === value} onClick={() => setMode(value)}>
-          {mode === value && <motion.span layoutId="create-mode-pill" className="create-mode__pill" transition={{ type: 'spring', stiffness: 420, damping: 34 }} />}
-          <span className="create-mode__label">{value === 'ai' ? <><Wand2 size={16} /> {t('Full AI design', 'تصميم كامل بالذكاء الاصطناعي')}</> : <><LayoutTemplate size={16} /> {t('From an approved reference', 'من مرجع معتمد')}</>}</span>
-        </button>)}
-      </div>}
+      <ol className="create-steps" aria-label={t('Steps', 'الخطوات')}>
+        {[[ 'Choose how', 'اختر الطريقة'], ['Make the post', 'جهّز المنشور'], ['Send for approval', 'أرسله للاعتماد']].map(([en, ar], index) => {
+          const current = mode === 'choose' ? 0 : 1;
+          return <li key={en} data-state={index < current ? 'done' : index === current ? 'current' : undefined}><span className="u-tnum">{index + 1}</span>{t(en, ar)}</li>;
+        })}
+      </ol>
     </header>
-    {mode === 'template' ? <TemplateMode initialId={query.get('svgTemplate')} /> : <div className={stage === 'compose' ? 'create-layout' : 'create-layout create-layout--single'}>
+    {mode === 'choose' && <div className="create-methods">
+      <button type="button" className="create-method glass" onClick={() => setMode('ai')}>
+        <span className="create-method__icon" data-tone="brand"><Wand2 size={22} /></span>
+        <b>{t('Describe it, AI designs it', 'اكتب الفكرة والذكاء الاصطناعي يصمّم')}</b>
+        <small>{t('For a new idea. You write a sentence; you get two finished designs with copy for each platform.', 'لفكرة جديدة. تكتب جملة وتحصل على تصميمين جاهزين مع النص لكل منصة.')}</small>
+        <em>{t('e.g. “CFM course starts next week, for Facebook and Instagram”', 'مثال: «دورة CFM تبدأ الأسبوع القادم، لفيسبوك وإنستجرام»')}</em>
+      </button>
+      <button type="button" className="create-method glass" onClick={() => setMode('template')}>
+        <span className="create-method__icon" data-tone="success"><LayoutTemplate size={22} /></span>
+        <b>{t('Fill a ready template', 'املأ قالبًا جاهزًا')}</b>
+        <small>{t('For recurring posts. Approved layouts: change the text and photos only.', 'للمنشورات المتكررة. تصميمات معتمدة، تغيّر النص والصور فقط.')}</small>
+        <em>{t('e.g. weekly course schedule, a student certificate', 'مثال: جدول الدورات الأسبوعي، شهادة طالب')}</em>
+      </button>
+      <button type="button" className="create-method glass" onClick={() => setMode('upload')}>
+        <span className="create-method__icon" data-tone="accent"><Upload size={22} /></span>
+        <b>{t('Upload a finished design', 'ارفع تصميمًا جاهزًا')}</b>
+        <small>{t('Designed it elsewhere? Upload the image and send it for approval.', 'صمّمته في برنامج آخر؟ ارفع الصورة وأرسلها للاعتماد.')}</small>
+        <em>{t('PNG, JPEG or WebP, up to 12 MB', 'PNG أو JPEG أو WebP حتى 12 ميجابايت')}</em>
+      </button>
+    </div>}
+    {mode === 'upload' && <UploadMode />}
+    {mode === 'template' && <TemplateMode initialId={query.get('svgTemplate')} />}
+    {mode === 'ai' && <div className={stage === 'compose' ? 'create-layout' : 'create-layout create-layout--single'}>
     <div className="creative-home__hero">
       {stage === 'compose' && <>
         <div className="creative-home__composer"><span className="creative-home__composer-icon"><Sparkles size={20} /></span><textarea value={prompt} onChange={(event) => { setPrompt(event.target.value); if (!platformTouched) { const found = detectPlatforms(event.target.value); if (found.length) setPlatforms(found); } }} rows={4} placeholder={t('Example: Create a CFM course post for Facebook, Instagram and WhatsApp next week…', 'مثال: صمّم منشورًا عن دورة CFM التي تبدأ الأسبوع القادم لفيسبوك وإنستجرام وواتساب…')} aria-label={t('Describe the content to create', 'صف المحتوى الذي تريد إنشاءه')} dir="auto" /></div>
@@ -180,8 +222,11 @@ export function CreationHomePage() {
         }} /></div>}
         {references.length > 0 && <ul className="creative-home__references">{references.map((file, index) => <li key={`${file.name}-${index}`}>{file.mime.startsWith('image/') && file.dataUrl && <img src={file.dataUrl} alt="" />}<span>{file.name}</span><button type="button" onClick={() => setReferences((current) => current.filter((_, i) => i !== index))} aria-label={t(`Remove ${file.name}`, `احذف ${file.name}`)}>×</button></li>)}</ul>}
         <div className="creative-home__platforms" role="group" aria-label={t('Platforms', 'المنصات')}>{CREATIVE_PLATFORMS.map((platform) => <button key={platform} type="button" aria-pressed={platforms.includes(platform)} onClick={() => togglePlatform(platform)}><span className="creative-home__platform-icon"><ChannelIcon channel={platform} size={15} /></span>{PLATFORM_FORMATS[platform].label}</button>)}</div>
-        <DesignSettings value={designSettings} onChange={setDesignSettings} />
-        <div className="creative-home__options"><label>{t('Objective', 'الهدف')}<select value={objective} onChange={(event) => setObjective(event.target.value as Objective | 'auto')}>{OBJECTIVES.map((entry) => <option key={entry.value} value={entry.value}>{t(entry.en, entry.ar)}</option>)}</select></label></div>
+        <details className="create-advanced">
+          <summary>{t('More options (optional)', 'خيارات إضافية (اختياري)')}</summary>
+          <DesignSettings value={designSettings} onChange={setDesignSettings} />
+          <div className="creative-home__options"><label>{t('Objective', 'الهدف')}<select value={objective} onChange={(event) => setObjective(event.target.value as Objective | 'auto')}>{OBJECTIVES.map((entry) => <option key={entry.value} value={entry.value}>{t(entry.en, entry.ar)}</option>)}</select></label></div>
+        </details>
         <div className="creative-home__action"><p className="u-xs">{t('Attached images, PDFs and text files are read by the AI as context. Up to 6 files, 2 MB each.', 'يقرأ الذكاء الاصطناعي الصور وملفات PDF والنصوص المرفقة كسياق للتصميم. حتى ٦ ملفات، ٢ ميجابايت لكل ملف.')}</p><Button variant="primary" className="cta-create" disabled={creating} busy={creating} onClick={() => void startFullCreative()}>{!creating && <Sparkles size={17} className="cta-create__spark" />}{creating ? t('Starting…', 'جارٍ البدء…') : t('Design the post', 'صمّم المنشور')}</Button></div>
       </>}
       {stage === 'generating' && (jobId || requestId) && <FullCreativeJob key={`${jobId}:${requestId}`} jobId={jobId} requestId={requestId} platforms={platforms} prompt={prompt} onRestart={() => { setStage('compose'); setJobId(''); setRequestId(''); clearActiveCreative(); }} />}
@@ -248,5 +293,55 @@ function TemplateMode({ initialId }: { initialId: string | null }) {
         {shown.length ? <TemplateGrid items={shown} onOpen={(item) => setSelected(item.id)} /> : <div className="library-empty glass"><LayoutTemplate size={22} /><p>{free ? t('No templates yet. Design one with AI in the Library once, then reuse it.', 'لا توجد قوالب بعد. صمّم قالبًا بالذكاء الاصطناعي في المكتبة مرة واحدة، ثم أعد استخدامه.') : t('No templates are ready yet. Ask marketing to add them.', 'لا توجد قوالب جاهزة بعد. اطلب من التسويق إضافتها.')}</p></div>}
       </>}
     {free && <div><Button variant="secondary" onClick={() => navigate('/library')}><Wand2 size={15} /> {t('Design a new template', 'صمّم قالبًا جديدًا')}</Button></div>}
+  </section>;
+}
+
+/** A design made outside the app: upload the image, name it, pick platforms; it becomes a draft ready for review. */
+function UploadMode() {
+  const { t } = useI18n();
+  const { navigate } = useRouter();
+  const input = useRef<HTMLInputElement>(null);
+  const [image, setImage] = useState<string | null>(null);
+  const [title, setTitle] = useState('');
+  const [caption, setCaption] = useState('');
+  const [platforms, setPlatforms] = useState<CreativePlatform[]>(['facebook', 'instagram']);
+  const [busy, setBusy] = useState(false);
+  const [message, setMessage] = useState('');
+  const pick = async (file: File | undefined) => {
+    if (!file) return;
+    if (!/^image\/(png|jpeg|webp)$/.test(file.type)) { setMessage(t('Use a PNG, JPEG or WebP image.', 'استخدم صورة PNG أو JPEG أو WebP.')); return; }
+    if (file.size > 12_000_000) { setMessage(t('The image is larger than 12 MB.', 'الصورة أكبر من 12 ميجابايت.')); return; }
+    setMessage(''); setImage(await asDataUrl(file));
+    if (!title.trim()) setTitle(file.name.replace(/\.[a-z]+$/i, '').replace(/[-_]+/g, ' '));
+  };
+  const toggle = (platform: CreativePlatform) => setPlatforms((current) => current.includes(platform) ? current.filter((value) => value !== platform) : [...current, platform]);
+  const submit = async () => {
+    if (!image) { setMessage(t('Choose the image first.', 'اختر الصورة أولًا.')); return; }
+    if (title.trim().length < 2) { setMessage(t('Give the post a short title.', 'اكتب عنوانًا قصيرًا للمنشور.')); return; }
+    if (!platforms.length) { setMessage(t('Choose at least one platform.', 'اختر منصة واحدة على الأقل.')); return; }
+    setBusy(true); setMessage('');
+    try {
+      const { url } = await api<{ url: string }>('/api/uploads', { body: { dataUrl: image } });
+      const captions = caption.trim() ? Object.fromEntries(platforms.map((platform) => [platform, caption.trim()])) : {};
+      const item = await api<{ id: string }>('/api/content', { body: { title: title.trim(), channels: platforms, captions, creative: { requestId: 'upload', directionId: 'upload', imageUrl: url, directionName: 'Uploaded design' } } });
+      navigate(`/content/${item.id}`);
+    } catch (error) { setMessage(error instanceof Error ? error.message : String(error)); }
+    setBusy(false);
+  };
+  return <section className="create-upload glass">
+    <input ref={input} hidden type="file" accept="image/png,image/jpeg,image/webp" onChange={(event) => void pick(event.target.files?.[0])} />
+    <button type="button" className="create-upload__drop" onClick={() => input.current?.click()} onDragOver={(event) => event.preventDefault()} onDrop={(event) => { event.preventDefault(); void pick(event.dataTransfer.files[0]); }}>
+      {image ? <img src={image} alt="" /> : <><ImagePlus size={28} /><b>{t('Choose or drop the image', 'اختر الصورة أو اسحبها هنا')}</b><small>PNG · JPEG · WebP</small></>}
+    </button>
+    <div className="create-upload__form u-stack">
+      <label className="ui-field"><span className="ui-field__label">{t('Title', 'العنوان')}</span><input className="ui-input" value={title} onChange={(event) => setTitle(event.target.value)} dir="auto" placeholder={t('e.g. CFM course — November cohort', 'مثال: دورة CFM — دفعة نوفمبر')} /></label>
+      <div className="ui-field"><span className="ui-field__label">{t('Platforms', 'المنصات')}</span>
+        <div className="creative-home__platforms" role="group" aria-label={t('Platforms', 'المنصات')}>{CREATIVE_PLATFORMS.map((platform) => <button key={platform} type="button" aria-pressed={platforms.includes(platform)} onClick={() => toggle(platform)}><span className="creative-home__platform-icon"><ChannelIcon channel={platform} size={15} /></span>{PLATFORM_FORMATS[platform].label}</button>)}</div>
+      </div>
+      <label className="ui-field"><span className="ui-field__label">{t('Caption (optional)', 'النص المرافق (اختياري)')}</span><textarea className="ui-input" rows={4} value={caption} onChange={(event) => setCaption(event.target.value)} dir="auto" placeholder={t('You can also write or improve it with AI on the post page.', 'يمكنك أيضًا كتابته أو تحسينه بالذكاء الاصطناعي من صفحة المنشور.')} /></label>
+      {message && <p role="alert" className="creative-home__error">{message}</p>}
+      <div><Button variant="primary" busy={busy} disabled={busy} onClick={() => void submit()}>{t('Create the post', 'أنشئ المنشور')}</Button></div>
+      <p className="u-xs u-muted">{t('It is saved as a draft. Open it to check the caption, then send it for approval.', 'يُحفظ كمسودة. افتحه لمراجعة النص ثم أرسله للاعتماد.')}</p>
+    </div>
   </section>;
 }

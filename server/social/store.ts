@@ -44,3 +44,29 @@ export async function loadSecret<T=Credential>(id:string):Promise<T|undefined> {
 export async function disconnect(id:string) { await db.run("UPDATE social_accounts SET status='disconnected',error=NULL WHERE id=?",[id]); }
 
 export const hasPendingPublication=async(contentId:string)=>Boolean(await db.get("SELECT id FROM social_publish_jobs WHERE content_id=? AND state IN ('processing','awaiting_user','unknown') LIMIT 1",[contentId]));
+
+/** Automatic publications: each row publishes one approved post to one account when its time comes. */
+defineSchema(`
+CREATE TABLE IF NOT EXISTS social_publish_queue (
+ id TEXT PRIMARY KEY, content_id TEXT NOT NULL, account_id TEXT NOT NULL, kind TEXT NOT NULL, media_json TEXT NOT NULL DEFAULT '[]',
+ publish_at TEXT NOT NULL, state TEXT NOT NULL, created_by TEXT NOT NULL, job_id TEXT, error TEXT, created_at TEXT NOT NULL, updated_at TEXT NOT NULL
+);
+CREATE INDEX IF NOT EXISTS social_publish_queue_due ON social_publish_queue(state, publish_at);
+CREATE INDEX IF NOT EXISTS social_publish_queue_content ON social_publish_queue(content_id);
+`);
+export type QueueState = 'queued' | 'sending' | 'sent' | 'failed' | 'cancelled';
+export interface QueuedPublication { id: string; contentId: string; accountId: string; kind: 'text' | 'image' | 'video'; media: { url: string }[]; publishAt: string; state: QueueState; createdBy: string; jobId: string | null; error: string | null; createdAt: string; updatedAt: string }
+export const toQueued = (r: Record<string, unknown>): QueuedPublication => ({
+ id: String(r.id), contentId: String(r.content_id), accountId: String(r.account_id), kind: r.kind as QueuedPublication['kind'], media: JSON.parse(String(r.media_json || '[]')),
+ publishAt: String(r.publish_at), state: r.state as QueueState, createdBy: String(r.created_by), jobId: (r.job_id as string | null) ?? null, error: (r.error as string | null) ?? null,
+ createdAt: String(r.created_at), updatedAt: String(r.updated_at),
+});
+export const contentQueue = async (contentId: string) => (await db.all('SELECT * FROM social_publish_queue WHERE content_id=? ORDER BY created_at', [contentId])).map(toQueued);
+/** A post taken off the calendar takes its waiting publications with it. */
+export async function cancelQueued(contentId: string, reason: string) {
+ await db.run("UPDATE social_publish_queue SET state='cancelled', error=?, updated_at=? WHERE content_id=? AND state='queued'", [reason, new Date().toISOString(), contentId]);
+}
+/** A new publish time moves the waiting publications with the post. */
+export async function moveQueued(contentId: string, publishAt: string) {
+ await db.run("UPDATE social_publish_queue SET publish_at=?, updated_at=? WHERE content_id=? AND state='queued'", [publishAt, new Date().toISOString(), contentId]);
+}

@@ -108,12 +108,9 @@ test('records from the live calendar cannot be moved through the demo workflow',
   assert.deepEqual(transitionContent(withLive, user(state, 'u-mariam'), 'live-1', { to: 'approved' }, nowIso), { ok: false, error: 'live' });
 });
 
-test('freelancers see only their own work; department staff see their department', () => {
+test('content creators see their own and their department’s work, not other departments’', () => {
   const state = createSeed(monday);
-  const laila = user(state, 'u-laila');
   const nour = user(state, 'u-nour');
-  const foreign = state.content.find((entry) => entry.ownerId !== laila.id && entry.assigneeId !== laila.id && entry.departmentId === 'marketing')!;
-  assert.equal(canSeeContent(laila, foreign, new Set()), false);
   const operations = state.content.find((entry) => entry.departmentId === 'operations')!;
   const hr = state.content.find((entry) => entry.departmentId === 'hr' && entry.ownerId !== nour.id && entry.assigneeId !== nour.id)!;
   assert.equal(canSeeContent(nour, operations, new Set()), true);

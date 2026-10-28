@@ -97,13 +97,13 @@ test('course editor renders stored audience and goals, distinguishes drafts, and
   assert.ok(approved.includes('disabled=""'));
 });
 
-test('role directory renders every capability, with Operations limited to two defaults', () => {
+test('role directory renders every capability, with the Content Creator limited to four defaults', () => {
   const html = render(
-    createElement(PermissionsRoleDetail, { role: ROLES.operations }),
+    createElement(PermissionsRoleDetail, { role: ROLES.creator }),
   );
   assert.equal((html.match(/class="permissions__row"/g) || []).length, 18);
-  assert.equal((html.match(/data-enabled="true"/g) || []).length, 2);
-  assert.ok(html.includes('فريق العمليات'));
+  assert.equal((html.match(/data-enabled="true"/g) || []).length, 4);
+  assert.ok(html.includes('منشئ محتوى'));
   assert.ok(html.includes('الاعتماد وطلب التعديلات'));
 });
 

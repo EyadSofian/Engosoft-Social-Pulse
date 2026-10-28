@@ -1,10 +1,10 @@
 import type { LucideIcon } from 'lucide-react';
-import { CalendarDays, ChartColumn, ChartSpline, GraduationCap, Layers, LayoutDashboard, Library, Newspaper, Settings, Wallet, WandSparkles } from 'lucide-react';
+import { CalendarDays, ChartSpline, GraduationCap, Layers, LayoutDashboard, Library, Send, Settings, Wallet, WandSparkles } from 'lucide-react';
 import type { Text } from '../domain/shared';
 import type { User } from '../domain/users';
 import { hasPermission } from '../features/workspace/permissions';
 
-export type NavId = 'home' | 'content' | 'calendar' | 'courses' | 'overview' | 'tracking' | 'analytics' | 'performance' | 'library' | 'usage' | 'settings';
+export type NavId = 'overview' | 'home' | 'content' | 'calendar' | 'publish' | 'analytics' | 'courses' | 'library' | 'usage' | 'settings';
 
 export interface NavItem {
   id: NavId;
@@ -16,35 +16,40 @@ export interface NavItem {
 }
 
 export interface NavGroup {
-  id: 'main' | 'tracking' | 'system';
+  id: 'main' | 'results' | 'resources' | 'system';
   label: Text;
   items: NavItem[];
 }
 
 const everyone = () => true;
 
-/** Destinations: make, move through review, plan, measure (platforms and pipeline), reuse, configure. */
+/** The day's work in order: see where things stand, make, approve, plan, publish; then results, resources, setup. */
 export const NAV: NavGroup[] = [
   {
     id: 'main',
     label: { en: 'Workspace', ar: 'مساحة العمل' },
     items: [
+      { id: 'overview', path: '/overview', label: { en: 'Overview', ar: 'نظرة عامة' }, icon: LayoutDashboard, visible: everyone },
       { id: 'home', path: '/', label: { en: 'Create', ar: 'إنشاء' }, icon: WandSparkles, visible: (user) => hasPermission(user, 'content.create') },
       { id: 'content', path: '/content', label: { en: 'Content & approval', ar: 'المحتوى والاعتماد' }, icon: Layers, visible: everyone },
       { id: 'calendar', path: '/calendar', label: { en: 'Calendar', ar: 'التقويم' }, icon: CalendarDays, visible: everyone },
-      // Marketing reviews course content here; anyone who makes posts can read it.
-      { id: 'courses', path: '/courses', label: { en: 'Courses', ar: 'الدورات' }, icon: GraduationCap, visible: (user) => hasPermission(user, 'templates.manage') || hasPermission(user, 'content.create') },
-      { id: 'library', path: '/library', label: { en: 'Library', ar: 'المكتبة' }, icon: Library, visible: everyone },
+      { id: 'publish', path: '/publish', label: { en: 'Publishing', ar: 'النشر' }, icon: Send, visible: (user) => hasPermission(user, 'content.publish') || hasPermission(user, 'content.schedule') },
     ],
   },
   {
-    id: 'tracking',
-    label: { en: 'Tracking', ar: 'المتابعة' },
+    id: 'results',
+    label: { en: 'Results', ar: 'النتائج' },
     items: [
-      { id: 'overview', path: '/overview', label: { en: 'Overview', ar: 'نظرة عامة' }, icon: LayoutDashboard, visible: (user) => hasPermission(user, 'analytics.view') },
-      { id: 'tracking', path: '/tracking', label: { en: 'Content performance', ar: 'أداء المحتوى' }, icon: Newspaper, visible: (user) => hasPermission(user, 'analytics.view') },
       { id: 'analytics', path: '/analytics', label: { en: 'Analytics', ar: 'التحليلات' }, icon: ChartSpline, visible: (user) => hasPermission(user, 'analytics.view') },
-      { id: 'performance', path: '/performance', label: { en: 'Team performance', ar: 'أداء الفرق' }, icon: ChartColumn, visible: (user) => hasPermission(user, 'analytics.view') },
+    ],
+  },
+  {
+    id: 'resources',
+    label: { en: 'Resources', ar: 'الموارد' },
+    items: [
+      { id: 'library', path: '/library', label: { en: 'Library', ar: 'المكتبة' }, icon: Library, visible: everyone },
+      // Marketing reviews course content here; anyone who makes posts can read it.
+      { id: 'courses', path: '/courses', label: { en: 'Courses', ar: 'الدورات' }, icon: GraduationCap, visible: (user) => hasPermission(user, 'templates.manage') || hasPermission(user, 'content.create') },
     ],
   },
   {

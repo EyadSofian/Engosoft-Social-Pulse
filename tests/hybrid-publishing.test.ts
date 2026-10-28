@@ -19,7 +19,7 @@ const {db,initDb}=await import('../server/db');
 import type {PublishInput,PublishJob,PublishResult,SocialAccount} from '../server/social/types';
 await initDb();
 const admin=await auth.createUser({name:'Admin',email:'hybrid-admin@example.test',password:'test-password-123',role:'admin',departmentId:'marketing'});
-const employee=await auth.createUser({name:'Staff',email:'hybrid-staff@example.test',password:'test-password-123',role:'employee',departmentId:'hr'});
+const employee=await auth.createUser({name:'Staff',email:'hybrid-staff@example.test',password:'test-password-123',role:'creator',departmentId:'hr'});
 const originalFetch=globalThis.fetch;
 const app=express();app.use(express.json());let acting=admin;app.use((req,_res,next)=>{req.user=acting;next();});registerSocialRoutes(app);
 const server=app.listen(0,'127.0.0.1');await new Promise<void>(r=>server.once('listening',r));

@@ -9,6 +9,7 @@ import { applyPlanPatch, newPlan, isPlatform, missingPublishProof, planState, en
 import { deletePlan, dismissAlert, getAlerts, getConnectorStatuses, getObserved, getPlan, getPlans, getWebsiteDaily, getWebsitePages, saveImportedPlan, savePlan } from './store.js';
 import { runSync } from './sync.js';
 import { registerSocialRoutes } from './social/routes.js';
+import { runDuePublications } from './social/queue.js';
 import { randomUUID } from 'node:crypto';
 import type { Platform } from './types.js';
 import { readOdooSchedule } from './odoo.js';
@@ -195,4 +196,6 @@ const admin=await bootstrapAdmin();if(admin)console.log(`Created first admin ${a
 app.listen(port,host,()=>console.log(`Mobde3 listening on http://${host}:${port} (${db.kind === 'pg' ? 'Postgres' : 'SQLite'})`));
 setTimeout(()=>{void runSync().catch(()=>{});},1500);
 setInterval(()=>{void checkAlerts().catch(()=>{});},60_000).unref();
+// Scheduled Facebook and Instagram publications go out within a minute of their time.
+setInterval(()=>{void runDuePublications().catch(()=>{});},60_000).unref();
 setInterval(()=>{void runSync().catch(()=>{});},30*60_000).unref();

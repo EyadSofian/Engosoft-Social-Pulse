@@ -1,4 +1,5 @@
 import { PublishContent } from '../../features/publishing/PublishContent';
+import { PublishDialog } from '../../features/publishing/PublishDialog';
 import { useCallback, useEffect, useMemo, useState } from 'react';
 import { AnimatePresence, motion } from 'motion/react';
 import { CheckCircle2, ExternalLink, Image as ImageIcon, Loader2, MessageSquare, Paintbrush, Search, Send, X } from 'lucide-react';
@@ -114,6 +115,7 @@ function ContentDrawer({ id, team, onClose, onChanged }: { id: string; team: Tea
   const [comment, setComment] = useState('');
   const [captions, setCaptions] = useState<Partial<Record<Channel, string>>>({});
   const [preview, setPreview] = useState<string | null>(null);
+  const [publishing, setPublishing] = useState(false);
   const load = useCallback(() => api<PipelineDetail>(`/api/content/${id}`).then((d) => { setItem(d); setCaptions(d.captions); }).catch((e) => setError(errorMessage(e, 'Not found'))), [id]);
   useEffect(() => { void load(); }, [load]);
   const nameOf = (uid: string) => team.find((m) => m.id === uid)?.name ?? (uid === 'system' ? t('Sync', 'المزامنة') : '—');
@@ -158,7 +160,8 @@ function ContentDrawer({ id, team, onClose, onChanged }: { id: string; team: Tea
           {item.published.map((p) => <a key={p.permalink} href={p.permalink} target="_blank" rel="noreferrer" className="content-live">{p.platform} · {t('views', 'مشاهدات')} {p.metrics.views ?? '—'} · {t('reach', 'وصول')} {p.metrics.reach ?? '—'} <ExternalLink size={13} /></a>)}
         </section> : null}
 
-        <NextStep key={item.status} item={item} busy={busy} onMove={move} />
+        {publishing && <PublishDialog item={item} open onClose={() => setPublishing(false)} onDone={() => { void load(); onChanged(); }} />}
+        <NextStep key={item.status} item={item} busy={busy} onMove={move} onPublish={can('content.publish') || can('content.schedule') ? () => setPublishing(true) : undefined} />
         <PublishContent item={item} />
         {error && <p role="alert" className="creative-home__error">{error}</p>}
 

@@ -19,8 +19,8 @@ const RouterContext = createContext<RouterApi | null>(null);
 const LEGACY_HASH: Record<string, string> = {
   overview: '/overview',
   calendar: '/calendar',
-  content: '/tracking',
-  insights: '/analytics',
+  content: '/analytics?section=posts',
+  insights: '/analytics?section=insights',
   connections: '/connections',
 };
 

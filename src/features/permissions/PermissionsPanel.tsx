@@ -31,7 +31,7 @@ export function PermissionsPanel() {
   const [notice, setNotice] = useState('');
   const [busy, setBusy] = useState(false);
   const [mode, setMode] = useState<'people' | 'roles'>('people');
-  const [role, setRole] = useState('operations');
+  const [role, setRole] = useState('creator');
   const reload = () =>
     api<{ users: SessionUser[] }>('/api/permissions')
       .then((data) => {

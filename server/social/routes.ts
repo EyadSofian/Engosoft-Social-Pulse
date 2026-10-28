@@ -13,13 +13,41 @@ import { contentJobs, getJob, publish, checkJob, reconcileJob } from './publishi
 import { creatorInfo } from './publish-providers.js';
 import { IdentityConfirmationRequired, publishingServices, hybridConfigured, hybridSummary, connectPublishingService, checkPublishingService, hybridCreator } from './hybrid.js';
 import { runSync } from '../sync.js';
+import { cancelPublication, publishingBoard, publishNow, publishTargets, schedulePublication } from './queue.js';
+import { contentQueue } from './store.js';
+import { WorkspaceError } from '../workspace.js';
 import { youtubeAnalytics } from '../connectors/youtube.js';
 import type { PublishInput, SocialProvider } from './types.js';
 const inputSchema=z.object({contentId:z.string().min(1),accountId:z.string().min(1),kind:z.enum(['text','image','video','carousel']),media:z.array(z.object({url:z.string().max(2048)})).max(35).default([]),mode:z.enum(['direct','draft']).default('direct'),privacy:z.string().optional(),categoryId:z.string().regex(/^\d+$/).optional(),tags:z.array(z.string().max(100)).max(50).optional(),madeForKids:z.boolean().optional(),disableComment:z.boolean().optional(),disableDuet:z.boolean().optional(),disableStitch:z.boolean().optional(),brandContent:z.boolean().optional(),brandOrganic:z.boolean().optional(),retry:z.boolean().optional(),snapTarget:z.enum(['story','spotlight']).optional(),locale:z.string().regex(/^[a-z]{2}_[A-Z]{2}$/).optional(),bufferDefaultsConsent:z.boolean().optional(),isAiGenerated:z.boolean().optional(),photoCoverIndex:z.number().int().min(0).max(34).optional(),autoAddMusic:z.boolean().optional(),consent:z.literal(true)});
 let syncRunning:Promise<unknown>|null=null;
+/** Writes come only from this app's own pages: the APP_URL origin, or the host the request was sent to (the Vite proxy in development). */
+const sameOriginWrites:express.RequestHandler=(req,res,next)=>{
+ const origin=req.header('origin');if(['GET','HEAD'].includes(req.method)||!origin)return next();
+ let ok=false;try{const o=new URL(origin);ok=o.origin===new URL(process.env.APP_URL||'http://127.0.0.1:4100').origin||o.host===req.header('host');}catch{}
+ if(!ok)return res.status(403).json({error:'Cross-origin request refused.'});next();
+};
 export function registerSocialRoutes(app:express.Express) {
  registerSocialOAuth(app);
- app.use('/api/social',(req,res,next)=>{const origin=req.header('origin');if(!['GET','HEAD'].includes(req.method)&&origin&&origin!==new URL(process.env.APP_URL||'http://127.0.0.1:4100').origin)return res.status(403).json({error:'Cross-origin request refused.'});next();});
+ app.use('/api/social',sameOriginWrites);
+ app.use('/api/publishing',sameOriginWrites);
+ const failed=(res:express.Response,e:unknown)=>res.status(e instanceof WorkspaceError?e.status:409).json({error:e instanceof Error?e.message:'Publishing unavailable.'});
+ app.get('/api/publishing',async(req,res)=>{
+  if(!userCan(req.user!,'content.publish')&&!userCan(req.user!,'content.schedule'))return res.status(403).json({error:'Permission required.'});
+  res.setHeader('Cache-Control','no-store');res.json(await publishingBoard(req.user!));
+ });
+ app.get('/api/publishing/:contentId',async(req,res)=>{
+  const item=await getContent(String(req.params.contentId));if(!item||!canSee(req.user!,item))return res.status(404).json({error:'المحتوى غير موجود.'});
+  res.setHeader('Cache-Control','no-store');res.json({targets:await publishTargets(item),queue:await contentQueue(item.id),jobs:await contentJobs(item.id)});
+ });
+ // `at` queues the publication for that time; without it the post goes out now.
+ app.post('/api/publishing/:contentId',async(req,res)=>{
+  const body=z.object({accountIds:z.array(z.string().min(1).max(200)).min(1).max(20),at:z.iso.datetime().optional(),consent:z.literal(true)}).safeParse(req.body);
+  if(!body.success)return res.status(400).json({error:'اختر الحسابات وأكّد النشر.'});
+  try{const id=String(req.params.contentId);res.json(body.data.at?{queue:await schedulePublication(req.user!,id,body.data.accountIds,body.data.at)}:{results:await publishNow(req.user!,id,body.data.accountIds)});}catch(e){failed(res,e);}
+ });
+ app.post('/api/publishing/:contentId/cancel',async(req,res)=>{
+  try{res.json({queue:await cancelPublication(req.user!,String(req.params.contentId))});}catch(e){failed(res,e);}
+ });
  app.get('/api/social/connections',async(req,res)=>{
   if(!userCan(req.user!,'connections.manage')&&!userCan(req.user!,'analytics.view')&&!userCan(req.user!,'content.publish'))return res.status(403).json({error:'Permission required.'});
   const accounts=await listAccounts();

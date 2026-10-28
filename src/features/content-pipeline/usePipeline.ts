@@ -1,4 +1,4 @@
-import { useEffect, useState } from 'react';
+import { useCallback, useEffect, useRef, useState } from 'react';
 import type { ContentStatus } from '../../domain/content';
 import { api } from '../../lib/api';
 import type { PipelineItem, TeamMember } from './types';
@@ -8,25 +8,30 @@ export function usePipeline() {
   const [items, setItems] = useState<PipelineItem[] | null>(null);
   const [team, setTeam] = useState<TeamMember[]>([]);
   const [error, setError] = useState<string | null>(null);
-  useEffect(() => {
-    let alive = true;
-    const load = () =>
+  const alive = useRef(true);
+  const load = useCallback(
+    () =>
       Promise.all([api<PipelineItem[]>('/api/content'), api<TeamMember[]>('/api/users')])
         .then(([content, users]) => {
-          if (!alive) return;
+          if (!alive.current) return;
           setItems(content);
           setTeam(users);
           setError(null);
         })
-        .catch((reason: unknown) => alive && setError(reason instanceof Error ? reason.message : String(reason)));
+        .catch((reason: unknown) => alive.current && setError(reason instanceof Error ? reason.message : String(reason))),
+    [],
+  );
+  useEffect(() => {
+    alive.current = true;
     void load();
     const timer = setInterval(load, 60_000);
     return () => {
-      alive = false;
+      alive.current = false;
       clearInterval(timer);
     };
-  }, []);
-  return { items, team, error };
+  }, [load]);
+  /** `reload` re-reads at once, e.g. right after a publish. */
+  return { items, team, error, reload: load };
 }
 
 export interface PipelineRollup {

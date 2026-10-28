@@ -35,21 +35,20 @@ Live calendar plans also appear as content items in Content, Calendar and Home. 
 
 ## Navigation
 
-The sidebar has three groups. Items are hidden when the current role cannot use them, and a direct link to a hidden page shows an access message instead of a broken page.
+The sidebar has four groups. Items are hidden when the current role cannot use them, and a direct link to a hidden page shows an access message instead of a broken page.
 
 | Group | Page | Route | Who sees it |
 | --- | --- | --- | --- |
-| Workspace | Create | `/` | Roles with `content.create` |
-| | Content | `/content`, `/content/:id` (drawer) | Everyone |
+| Workspace | Overview | `/overview` | Everyone (numbers cover the posts they can see) |
+| | Create | `/` | Roles with `content.create` |
+| | Content & approval | `/content`, `/content/:id` (drawer) | Everyone |
 | | Studio | `/studio/:id` (opened from a content item) | Everyone who can open the item |
-| | Calendar | `/calendar` (`?view=live` for the publishing calendar) | Everyone |
-| | Courses | `/courses` (old `/settings?tab=courses` links redirect) | Edit and approve with `templates.manage`; read-only with `content.create` |
-| | Library | `/library`, `/library/templates/:id` | Everyone |
-| Tracking | Overview | `/overview` | Roles with `analytics.view` |
-| | Content performance | `/tracking` | Roles with `analytics.view` |
-| | Analytics | `/analytics` | Roles with `analytics.view` |
-| | Team performance | `/performance` | Roles with `analytics.view` |
-| System | AI usage | `/usage` | Roles with `content.create` or `users.manage` |
+| | Calendar | `/calendar` (`?view=live` for spreadsheet plans: import, export, alerts) | Everyone; scheduling with `content.schedule` |
+| | Publishing | `/publish` | Roles with `content.publish` or `content.schedule` |
+| Results | Analytics | `/analytics?section=platforms\|posts\|insights\|team` (old `/tracking`, `/performance` open the matching section) | Roles with `analytics.view` |
+| Resources | Library | `/library`, `/library/templates/:id` | Everyone |
+| | Courses | `/courses` | Edit and approve with `templates.manage`; read-only with `content.create` |
+| System | AI usage | `/usage` | Roles with `credits.view` or `credits.view_all` |
 | | Settings | `/settings`, `/connections` | Roles with `users.manage` or `connections.manage` |
 
 The routes live in `src/app/routes.tsx`; any other path shows a not-found page. The earlier demo-workspace pages (My Work, Tasks, Templates, AI Studio, Media, Hall of Fame, Departments, Credits, Admin) were removed on 2026-10-27: they ran only on the in-memory demo seed and had no route.
@@ -60,17 +59,21 @@ Old hash links (`/#/content`, `/#/connections?tiktok=…`) redirect to the new r
 
 ## Roles and permissions
 
-| Role | Key permissions |
-| --- | --- |
-| Admin | Everything, including users, connections and system settings |
-| Marketing Manager | Create, edit any, approve, schedule, publish, assign, templates, all analytics, all credits, connections, all plans |
-| Publisher | Create, edit any, schedule, publish, assign, all analytics, all plans |
-| Department Manager | Create, edit own and department content, assign, department analytics and credits |
-| Employee | Create and edit own content, analytics |
-| Designer, Media Editor | Edit content assigned to them |
-| Lecturer, Freelancer | Create and edit own content |
+Five roles, each one step above the last (`src/domain/catalog.ts`). Settings → Permissions narrows or widens a single person, e.g. an Operations creator limited to approved templates (`design.free` off).
 
-Permissions are enforced in the UI and in the pure workflow functions (`src/features/workspace/permissions.ts`). There is no sign-in yet: "View as" in the account menu switches the demo user. Server-side enforcement comes with authentication.
+| Role | Adds |
+| --- | --- |
+| Content Creator (منشئ محتوى) | Create posts (AI, templates, upload), edit own, send for approval, own AI usage |
+| Content Supervisor (مسؤول المحتوى) | Edit the department's posts, see all plans, schedule and publish approved posts, assign tasks, analytics |
+| Marketing Manager (مدير التسويق) | Approve, edit any post, templates and course profiles, connected accounts, all analytics and usage |
+| Manager (مدير) | Team accounts and permissions |
+| Administrator (مسؤول النظام) | Everything, including system settings |
+
+Accounts stored with the earlier ten roles move to the new ones on startup (`migrateLegacyRoles` in `server/auth.ts`); per-person overrides keep each person's effective permissions exactly as they were. The server enforces the same table.
+
+## Publishing
+
+An approved post is published from Publishing, from its page, or from a day on the calendar: choose the accounts, then now or a time. Facebook and Instagram publish themselves at the time: `social_publish_queue` holds one row per post and account, and the server sends due rows every minute (`server/social/queue.ts`). Each send goes through the same `publish` path as the full panel (approval, consent, one write per account, published-evidence rules). A row is not sent when the post left the calendar, the scheduler lost `content.publish`, or the time passed by more than 6 hours; Publishing → Results shows those. TikTok, YouTube and Snapchat keep their options in the full panel on the post page. With no account chosen, a scheduled post is a calendar entry with alerts for manual publishing.
 
 ### Home by role
 
@@ -121,7 +124,7 @@ idea → draft → in_production → ready_for_review ─┬→ approved → sch
 | scheduled → published | `content.publish` | The live post link (proof) |
 | published → archived | `content.publish` | — |
 
-Social Pulse does not post to platforms. Scheduling records the slot. The publisher posts on the platform, then records the link, and the next sync matches it to the observed post for performance.
+Scheduling records the slot. Facebook and Instagram posts with automatic publishing go out at that time (see Publishing); other posts are published by hand, and the next sync matches them to the observed post for performance.
 
 ## Approval lifecycle
 

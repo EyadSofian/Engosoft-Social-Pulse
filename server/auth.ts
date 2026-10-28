@@ -3,7 +3,7 @@ import { createHash, randomBytes, randomUUID, scryptSync, timingSafeEqual } from
 import type express from 'express';
 import { can, DEPARTMENTS, ROLES } from '../src/domain/catalog.js';
 import { ALL_PERMISSIONS, type DepartmentId, type Permission, type RoleId } from '../src/domain/users.js';
-import { db, defineColumn, defineSchema } from './db.js';
+import { db, defineColumn, defineMigration, defineSchema } from './db.js';
 
 defineSchema(`
 CREATE TABLE IF NOT EXISTS users (
@@ -17,6 +17,33 @@ CREATE TABLE IF NOT EXISTS sessions (token_hash TEXT PRIMARY KEY, user_id TEXT N
 defineColumn('users', 'permission_overrides', "TEXT NOT NULL DEFAULT '{}'");
 export interface AuthUser { id: string; email: string; name: string; role: RoleId; departmentId: DepartmentId | null; title: string; status: 'active' | 'suspended'; lastActiveAt: string | null; permissionOverrides?: Partial<Record<Permission, boolean>> }
 const overridesFrom = (value: unknown): AuthUser['permissionOverrides'] => { try { const parsed = JSON.parse(String(value || '{}')); return Object.fromEntries(Object.entries(parsed).filter(([k,v]) => ALL_PERMISSIONS.includes(k as Permission) && typeof v === 'boolean')); } catch { return {}; } };
+
+/** Roles from before the five-role model (2026-10-28) and what each allowed. */
+const LEGACY_ROLES: Record<string, { to: RoleId; permissions: Permission[] }> = {
+  publisher: { to: 'supervisor', permissions: ['design.free', 'content.create', 'content.edit_own', 'content.edit_any', 'content.schedule', 'content.publish', 'task.assign', 'analytics.view', 'analytics.view_all', 'credits.view', 'plans.view_all'] },
+  department_manager: { to: 'supervisor', permissions: ['design.free', 'content.create', 'content.edit_own', 'content.edit_department', 'task.assign', 'analytics.view', 'credits.view'] },
+  employee: { to: 'creator', permissions: ['design.free', 'content.create', 'content.edit_own', 'analytics.view'] },
+  designer: { to: 'creator', permissions: ['design.free', 'content.edit_own'] },
+  media_editor: { to: 'creator', permissions: ['design.free', 'content.edit_own'] },
+  lecturer: { to: 'creator', permissions: ['design.free', 'content.create', 'content.edit_own'] },
+  freelancer: { to: 'creator', permissions: ['design.free', 'content.create', 'content.edit_own'] },
+  operations: { to: 'creator', permissions: ['content.create', 'content.edit_own'] },
+};
+/** Moves stored accounts onto the new roles. Overrides keep each person's effective permissions exactly as they were. */
+export async function migrateLegacyRoles(): Promise<number> {
+  let moved = 0;
+  for (const row of await db.all<{ id: string; role: string; permission_overrides: string }>('SELECT id, role, permission_overrides FROM users')) {
+    const legacy = LEGACY_ROLES[row.role];
+    if (!legacy) continue;
+    const old = overridesFrom(row.permission_overrides) ?? {};
+    const effective = (p: Permission) => old[p] ?? legacy.permissions.includes(p);
+    const overrides = Object.fromEntries(ALL_PERMISSIONS.filter((p) => effective(p) !== can(legacy.to, p)).map((p) => [p, effective(p)]));
+    const result = await db.run('UPDATE users SET role=?, permission_overrides=? WHERE id=? AND role=?', [legacy.to, JSON.stringify(overrides), row.id, row.role]);
+    moved += result.changes;
+  }
+  return moved;
+}
+defineMigration(migrateLegacyRoles);
 export const SESSION_COOKIE = 'sp_session';
 const SESSION_DAYS = 14;
 

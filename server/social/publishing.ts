@@ -14,6 +14,7 @@ import type { PublishInput, PublishJob, PublishResult } from './types.js';
 const toJob=(r:Record<string,any>):PublishJob=>({id:r.id,attempt:Number(r.attempt||1),contentId:r.content_id,accountId:r.account_id,provider:r.provider,actorId:r.actor_id,state:r.state,remoteId:r.remote_id||undefined,externalId:r.external_id||undefined,url:r.url||undefined,error:r.error||undefined,errorCode:r.error_code||undefined,retryable:Boolean(r.retryable),retryAfter:r.retry_after||undefined,phase:r.phase||undefined,createdAt:r.created_at,updatedAt:r.updated_at});
 export const getJob=async(id:string)=>{const r=await db.get('SELECT * FROM social_publish_jobs WHERE id=?',[id]);return r?toJob(r):undefined;};
 export const contentJobs=async(contentId:string)=>(await db.all('SELECT * FROM social_publish_jobs WHERE content_id=? ORDER BY created_at DESC,attempt DESC',[contentId])).map(toJob);
+export const recentJobs=async(limit=60)=>(await db.all('SELECT * FROM social_publish_jobs ORDER BY updated_at DESC LIMIT ?',[limit])).map(toJob);
 export async function updateJob(id:string,result:PublishResult) {
  await db.run('UPDATE social_publish_jobs SET state=?,remote_id=COALESCE(?,remote_id),external_id=COALESCE(?,external_id),url=COALESCE(?,url),error=?,error_code=?,retryable=?,retry_after=?,phase=COALESCE(?,phase),updated_at=? WHERE id=?',[result.state,result.remoteId||null,result.externalId||null,result.url||null,result.error||null,result.errorCode||null,result.retryable?1:0,result.retryAfter||null,result.phase||null,new Date().toISOString(),id]);
 }
