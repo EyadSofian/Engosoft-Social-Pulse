@@ -25,7 +25,7 @@ const creativeRef = z.object({ requestId: z.string().max(60), directionId: z.str
 const captions = z.partialRecord(z.enum(CHANNELS), z.string().max(5000));
 
 const publicUser = (user: AuthUser) => ({ id: user.id, name: user.name, email: user.email, role: user.role, departmentId: user.departmentId, title: user.title, status: user.status, lastActiveAt: user.lastActiveAt, permissionOverrides: user.permissionOverrides });
-const withMoves = (user: AuthUser) => (item: StoredContent) => ({ ...item, moves: allowedMoves(user, item), editable: canEdit(user, item) && contentIsMutable(item) });
+const withMoves = (user: AuthUser) => (item: StoredContent) => ({ ...item, moves: allowedMoves(user, item), editable: canEdit(user, item) && contentIsMutable(item), canSchedule: userCan(user, 'content.schedule') });
 
 async function checkTemplate(ref: z.infer<typeof svgTemplateRef>) {
   if (ref.outputPreset && (!publishingPreset(ref.outputPreset) || publishingPreset(ref.outputPreset)!.format !== ref.format)) throw new WorkspaceError(400, 'مقاس النشر غير صالح أو لا يطابق التصميم.');

@@ -10,6 +10,8 @@ export interface PipelineItem {
   published?: { platform: string; permalink: string; publishedAt: string; metrics: Record<string, number | null> }[];
   moves: { to: ContentStatus; needsNote: boolean }[];
   editable: boolean;
+  /** This person may put posts on the calendar (offered when approving). */
+  canSchedule?: boolean;
 }
 export interface PipelineEvent { id: string; actorId: string; kind: 'created' | 'transition' | 'comment' | 'version' | 'caption'; from: string | null; to: string | null; body: string; createdAt: string }
 export interface PipelineVersion { id: string; imageUrl: string; storyUrl: string | null; studio: unknown; note: string; createdBy: string; createdAt: string }
@@ -31,18 +33,6 @@ export const STATUS_LABEL: Record<ContentStatus, Text> = {
   ready_for_review: { en: 'In review', ar: 'في المراجعة' }, changes_requested: { en: 'Changes requested', ar: 'مطلوب تعديل' },
   approved: { en: 'Approved', ar: 'معتمد' }, scheduled: { en: 'Scheduled', ar: 'مجدول' }, published: { en: 'Published', ar: 'منشور' },
   archived: { en: 'Archived', ar: 'مؤرشف' }, cancelled: { en: 'Cancelled', ar: 'ملغي' },
-};
-
-/** The button label for moving an item to a status. */
-export const MOVE_LABEL: Partial<Record<ContentStatus, Text>> = {
-  ready_for_review: { en: 'Send to marketing', ar: 'أرسله إلى التسويق' },
-  approved: { en: 'Approve', ar: 'اعتمد' },
-  changes_requested: { en: 'Request changes', ar: 'اطلب تعديلًا' },
-  scheduled: { en: 'Schedule', ar: 'جدوِل النشر' },
-  in_production: { en: 'Back to production', ar: 'أعِده للتنفيذ' },
-  draft: { en: 'Back to draft', ar: 'أعِده مسودة' },
-  cancelled: { en: 'Cancel', ar: 'إلغاء' },
-  archived: { en: 'Archive', ar: 'أرشفة' },
 };
 
 export const CHANNEL_LABEL: Record<Channel, string> = { facebook: 'Facebook', instagram: 'Instagram', whatsapp: 'WhatsApp', linkedin: 'LinkedIn', tiktok: 'TikTok', snapchat: 'Snapchat', youtube: 'YouTube', website: 'Website' };

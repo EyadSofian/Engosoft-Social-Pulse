@@ -1,21 +1,19 @@
 import { useCallback, useEffect, useMemo, useState } from 'react';
-import { DateTime } from 'luxon';
 import { AnimatePresence, motion } from 'motion/react';
-import { CheckCircle2, Clock, ExternalLink, Image as ImageIcon, Loader2, MessageSquare, Paintbrush, Search, Send, X } from 'lucide-react';
+import { CheckCircle2, ExternalLink, Image as ImageIcon, Loader2, MessageSquare, Paintbrush, Search, Send, X } from 'lucide-react';
 import { useQueryState, useRouter } from '../../app/router/router';
 import { Button } from '../../components/ui/Button';
 import { useAuth } from '../../features/auth/AuthProvider';
-import { CHANNEL_LABEL, MOVE_LABEL, STATUS_LABEL, type Channel, type PipelineDetail, type PipelineItem, type TeamMember } from '../../features/content-pipeline/types';
+import { CHANNEL_LABEL, STATUS_LABEL, type Channel, type PipelineDetail, type PipelineItem, type TeamMember } from '../../features/content-pipeline/types';
 import type { ContentStatus } from '../../domain/content';
 import { useI18n } from '../../i18n/I18nProvider';
 import { api, errorMessage } from '../../lib/api';
 import { ApprovalCard } from '../../features/content-pipeline/ApprovalCard';
 import { ContentCopilot } from '../../features/content/ContentCopilot';
-import { suggestedSlots } from '../../domain/content-voice';
+import { NextStep, type MoveInput } from '../../features/content-pipeline/NextStep';
 import { PageHeader } from '../../shell/Header';
 import { usePageMeta } from '../../shell/ShellContext';
 import { useOverlay } from '../../hooks/ui';
-import { businessZone } from '../../lib/format';
 
 type Scope = 'all' | 'mine' | 'department';
 type Tab = 'all' | 'review' | 'approved' | 'rejected' | 'drafts';
@@ -105,15 +103,13 @@ export function ContentBoardPage({ openId }: { openId?: string }) {
 }
 
 function ContentDrawer({ id, team, onClose, onChanged }: { id: string; team: TeamMember[]; onClose: () => void; onChanged: () => void }) {
-  const { t, tx, dir, date, lang } = useI18n();
+  const { t, tx, dir, date } = useI18n();
   const overlay = useOverlay(true, onClose);
   const { can } = useAuth();
   const { navigate } = useRouter();
   const [item, setItem] = useState<PipelineDetail | null>(null);
   const [error, setError] = useState('');
   const [busy, setBusy] = useState(false);
-  const [note, setNote] = useState('');
-  const [when, setWhen] = useState('');
   const [comment, setComment] = useState('');
   const [captions, setCaptions] = useState<Partial<Record<Channel, string>>>({});
   const [preview, setPreview] = useState<string | null>(null);
@@ -121,21 +117,21 @@ function ContentDrawer({ id, team, onClose, onChanged }: { id: string; team: Tea
   useEffect(() => { void load(); }, [load]);
   const nameOf = (uid: string) => team.find((m) => m.id === uid)?.name ?? (uid === 'system' ? t('Sync', 'المزامنة') : '—');
 
-  /** Runs one action, then clears only the field that action used: saving captions keeps a half-written comment. */
-  const act = async (work: () => Promise<unknown>, clear?: 'note' | 'comment') => {
+  /** Runs one action and reports whether it worked; a comment is cleared only when it was the one sent. */
+  const act = async (work: () => Promise<unknown>, clear?: 'comment') => {
     setBusy(true); setError('');
-    try { await work(); await load(); onChanged(); if (clear === 'note') { setNote(''); setWhen(''); } if (clear === 'comment') setComment(''); }
+    let ok = false;
+    try { await work(); await load(); onChanged(); if (clear === 'comment') setComment(''); ok = true; }
     catch (e) { setError(errorMessage(e, t('That did not work.', 'لم تنجح العملية.'))); }
     setBusy(false);
+    return ok;
   };
   const captionsChanged = item && JSON.stringify(captions) !== JSON.stringify(item.captions);
-  const nowLocal = DateTime.now().setZone(businessZone()).toFormat("yyyy-LL-dd'T'HH:mm");
-  const whenPast = Boolean(when) && when < nowLocal;
   // Edited captions travel with the post: they are saved before it moves (sent for review, approved, scheduled).
-  const move = (to: ContentStatus) => act(async () => {
-    if (captionsChanged) await api(`/api/content/${id}`, { method: 'PATCH', body: { captions } });
-    await api(`/api/content/${id}/transition`, { body: { to, ...(note.trim() ? { note } : {}), ...(to === 'scheduled' && when ? { scheduledAt: DateTime.fromISO(when, { zone: businessZone() }).toUTC().toISO() } : {}) } });
-  }, 'note');
+  const move = (to: ContentStatus, input: MoveInput) => act(async () => {
+    if (captionsChanged && item?.editable) await api(`/api/content/${id}`, { method: 'PATCH', body: { captions } });
+    await api(`/api/content/${id}/transition`, { body: { to, ...input } });
+  });
   const image = preview ?? item?.creative?.imageUrl;
 
   return <div className="ui-overlay">
@@ -147,7 +143,7 @@ function ContentDrawer({ id, team, onClose, onChanged }: { id: string; team: Tea
         <button type="button" className="content-drawer__close" onClick={onClose} aria-label={t('Close', 'إغلاق')}><X size={18} /></button>
       </header>
       {!item && !error && <Loader2 className="creative-job__spin" size={22} />}
-      {error && <p role="alert" className="creative-home__error">{error}</p>}
+      {error && !item && <p role="alert" className="creative-home__error">{error}</p>}
       {item && <div className="content-drawer__body content-drawer__layout">
         <div className="content-drawer__post">
         <div className="content-drawer__media">
@@ -161,19 +157,8 @@ function ContentDrawer({ id, team, onClose, onChanged }: { id: string; team: Tea
           {item.published.map((p) => <a key={p.permalink} href={p.permalink} target="_blank" rel="noreferrer" className="content-live">{p.platform} · {t('views', 'مشاهدات')} {p.metrics.views ?? '—'} · {t('reach', 'وصول')} {p.metrics.reach ?? '—'} <ExternalLink size={13} /></a>)}
         </section> : null}
 
-        {item.moves.length > 0 && <section className="content-drawer__section content-drawer__actions"><h3>{t('Next step', 'الخطوة التالية')}</h3>
-          {item.moves.some((m) => m.needsNote) && <textarea rows={2} value={note} onChange={(e) => setNote(e.target.value)} placeholder={t('Note for the owner (required to request changes or cancel)', 'ملاحظة لصاحب المنشور (مطلوبة عند طلب التعديل أو الإلغاء)')} dir="auto" />}
-          {item.moves.some((m) => m.to === 'scheduled') && <label>{t('Publish at', 'ميعاد النشر')} · {businessZone()}<input type="datetime-local" min={nowLocal} value={when} onChange={(e) => setWhen(e.target.value)} /></label>}
-          {item.moves.some((m) => m.to === 'scheduled') && <div className="content-slots" aria-label={t('Suggested times', 'مواعيد مقترحة')}>
-            <span><Clock size={13} /> {t('Best times', 'أفضل وقت')}</span>
-            {suggestedSlots(item.channels, businessZone()).map((slot) => <button key={slot.at} type="button" aria-pressed={when === slot.at} onClick={() => setWhen(slot.at)}>
-              {DateTime.fromISO(slot.at, { zone: businessZone() }).setLocale(lang === 'ar' ? 'ar' : 'en').toFormat(lang === 'ar' ? 'ccc h:mm a' : 'ccc h:mm a')}
-            </button>)}
-            <small>{t('for the Saudi audience', 'لجمهور السعودية')}</small>
-          </div>}
-          {whenPast && <small role="alert" className="creative-home__error">{t('This time has already passed. Choose a future time.', 'هذا الموعد مضى بالفعل. اختر موعدًا قادمًا.')}</small>}
-          <div className="content-drawer__buttons">{item.moves.map((m) => <Button key={m.to} variant={m.to === 'approved' || m.to === 'ready_for_review' || m.to === 'scheduled' ? 'primary' : 'secondary'} disabled={busy || (m.needsNote && !note.trim()) || (m.to === 'scheduled' && (!when || whenPast))} onClick={() => void move(m.to)}>{tx(MOVE_LABEL[m.to] ?? STATUS_LABEL[m.to])}</Button>)}</div>
-        </section>}
+        <NextStep key={item.status} item={item} busy={busy} onMove={move} />
+        {error && <p role="alert" className="creative-home__error">{error}</p>}
 
         {item.versions.length > 1 && <section className="content-drawer__section content-drawer__section--late"><h3>{t('Versions', 'النسخ')}</h3>
           <div className="content-versions">{item.versions.map((v) => <button key={v.id} type="button" aria-pressed={image === v.imageUrl} onClick={() => setPreview(v.imageUrl)}><img src={v.imageUrl} alt="" /><small dir="auto">{v.note}</small></button>)}</div>

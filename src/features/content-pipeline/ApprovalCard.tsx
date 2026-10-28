@@ -1,4 +1,4 @@
-import { Check, Clock3, Image as ImageIcon } from 'lucide-react';
+import { CalendarClock, Check, Clock3, Image as ImageIcon } from 'lucide-react';
 import { Button } from '../../components/ui/Button';
 import { useI18n } from '../../i18n/I18nProvider';
 import { CHANNEL_LABEL, STATUS_LABEL, type PipelineItem } from './types';
@@ -25,6 +25,8 @@ export function ApprovalCard({
   const canApprove =
     item.status === 'ready_for_review' &&
     item.moves.some((m) => m.to === 'approved');
+  // An approved post's next step is its publish time, picked in the preview.
+  const canSchedule = item.status === 'approved' && item.moves.some((m) => m.to === 'scheduled');
   return (
     <article className="ca-card glass" data-status={item.status}>
       <button
@@ -66,12 +68,27 @@ export function ApprovalCard({
               <i key={c}>{CHANNEL_LABEL[c]}</i>
             ))}
           </span>
-          <small className="board-card__when">
-            <Clock3 size={12} />
-            {date(item.scheduledAt ?? item.createdAt, 'dayShort')}
-          </small>
+          {item.status === 'scheduled' && item.scheduledAt ? (
+            <small className="board-card__when" data-scheduled title={t('Publishes', 'ينشر')}>
+              <CalendarClock size={12} />
+              {date(item.scheduledAt, 'dateTime')}
+            </small>
+          ) : (
+            <small className="board-card__when" title={t('Created', 'أُنشئ')}>
+              <Clock3 size={12} />
+              {date(item.createdAt, 'dayShort')}
+            </small>
+          )}
         </span>
       </div>
+      {canSchedule && (
+        <div className="ca-card__actions">
+          <Button variant="secondary" size="sm" onClick={onOpen}>
+            <CalendarClock size={14} />
+            {t('Pick a publish time', 'حدد ميعاد النشر')}
+          </Button>
+        </div>
+      )}
       {canApprove && (
         <div className="ca-card__actions">
           <Button

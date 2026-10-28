@@ -170,3 +170,46 @@ test('Studio keeps original text appearances through validation, saving and reop
   const unsafe={...doc,layers:[{...layer,source:{...layer.source,file:'../private.png'}}]};
   assert.equal((await request(`/api/studio/${id}/render`,'POST',{doc:unsafe},'manager')).status,400);
 });
+
+test('approval flow: approve with a time, move the time, unschedule, and a bad time changes nothing', async () => {
+  const creative = { requestId: 'reference-design', directionId: 'feed', imageUrl: '/api/uploads/00000000-0000-4000-a000-000000000001.png', svgTemplate: { id: builtinTemplates()[0].id, values: { title: 'دورة الجدولة' }, format: 'feed', context: '' } };
+  const { id } = await (await request('/api/content', 'POST', { title: 'دورة الجدولة', channels: ['instagram', 'facebook'], creative })).json() as { id: string };
+  const move = (body: object, role = 'manager') => request(`/api/content/${id}/transition`, 'POST', body, role);
+  type Detail = { status: string; scheduledAt: string | null; planIds: string[]; moves: { to: string }[]; canSchedule: boolean };
+  const detail = async (role = 'manager') => await (await request(`/api/content/${id}`, 'GET', undefined, role)).json() as Detail;
+  const soon = new Date(Date.now() + 86_400_000).toISOString();
+  const later = new Date(Date.now() + 3 * 86_400_000).toISOString();
+
+  assert.equal((await move({ to: 'ready_for_review' }, 'ops')).status, 200);
+  // A past time is refused before anything changes: the post is still waiting for approval.
+  assert.equal((await move({ to: 'approved', scheduledAt: new Date(Date.now() - 86_400_000).toISOString() })).status, 400);
+  assert.equal((await detail()).status, 'ready_for_review');
+  // Someone who cannot schedule may not approve with a time.
+  assert.equal((await detail('ops')).canSchedule, false);
+
+  // Approve and schedule in one step.
+  assert.equal((await move({ to: 'approved', scheduledAt: soon })).status, 200);
+  let now = await detail();
+  assert.equal(now.status, 'scheduled');
+  assert.equal(now.scheduledAt, soon);
+  assert.equal(now.planIds.length, 2);
+  const firstPlans = now.planIds;
+  // A scheduled post offers "change the time" and "unschedule", never a second approval.
+  assert.deepEqual(now.moves.map((m) => m.to).sort(), ['approved', 'scheduled']);
+
+  // Moving the time replaces the calendar plans.
+  assert.equal((await move({ to: 'scheduled', scheduledAt: later })).status, 200);
+  now = await detail();
+  assert.equal(now.status, 'scheduled');
+  assert.equal(now.scheduledAt, later);
+  assert.notDeepEqual(now.planIds, firstPlans);
+  for (const planId of firstPlans) assert.equal((await db.get<{ status: string }>('SELECT status FROM plans WHERE id=?', [planId]))?.status ?? 'cancelled', 'cancelled');
+
+  // Unscheduling takes it off the calendar and leaves it approved, ready for a new time.
+  assert.equal((await move({ to: 'approved' })).status, 200);
+  now = await detail();
+  assert.equal(now.status, 'approved');
+  assert.equal(now.scheduledAt, null);
+  assert.deepEqual(now.planIds, []);
+  assert.ok(now.moves.some((m) => m.to === 'scheduled'));
+});

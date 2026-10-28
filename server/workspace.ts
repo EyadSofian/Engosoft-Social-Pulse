@@ -158,13 +158,48 @@ export async function addComment(user: AuthUser, contentId: string, body: string
 
 export class WorkspaceError extends Error { constructor(public status: number, message: string) { super(message); } }
 
-/** Which moves this user may make now. */
+/** Which moves this user may make now. A scheduled post can also be moved to a new time (scheduled → scheduled). */
 export function allowedMoves(user: AuthUser, item: StoredContent): { to: ContentStatus; needsNote: boolean }[] {
-  return TRANSITIONS[item.status].filter((move) => move.permission ? userCan(user, move.permission as Permission) : canEdit(user, item))
+  const moves = TRANSITIONS[item.status].filter((move) => move.permission ? userCan(user, move.permission as Permission) : canEdit(user, item))
     .filter((move) => move.to !== 'published') // publish is proven by sync, never clicked
     .map((move) => ({ to: move.to, needsNote: move.needs === 'note' }));
+  if (item.status === 'scheduled' && userCan(user, 'content.schedule')) moves.unshift({ to: 'scheduled', needsNote: false });
+  return moves;
 }
 
+async function cancelPlans(item: StoredContent) {
+  for (const planId of item.planIds) {
+    const plan = await getPlan(planId);
+    if (plan) await savePlan({ ...plan, status: 'cancelled' });
+  }
+}
+
+/** Puts a post on the calendar: one plan per trackable channel, so the calendar, alerts and sync matching cover it. */
+function publishTime(scheduledAt: string | undefined): Date {
+  const when = scheduledAt ? new Date(scheduledAt) : null;
+  if (!when || Number.isNaN(when.getTime()) || when.getTime() < Date.now() - 60_000) throw new WorkspaceError(400, 'اختر موعد نشر في المستقبل.');
+  return when;
+}
+
+async function schedulePlans(user: AuthUser, item: StoredContent, scheduledAt: string | undefined): Promise<Date> {
+  const when = publishTime(scheduledAt);
+  await cancelPlans(item);
+  const planIds: string[] = [];
+  for (const channel of item.channels) {
+    const platform = TRACKED[channel];
+    if (!platform) continue;
+    const plan = await savePlan(newPlan({ platform, title: item.title, caption: item.captions[channel] ?? '', scheduledAt: when.toISOString(), status: 'scheduled', owner: user.name, contentType: 'post', campaign: item.id, notes: `content:${item.id}` }));
+    planIds.push(plan.id);
+  }
+  await db.run('UPDATE content_items SET scheduled_at=?, plan_ids_json=? WHERE id=?', [when.toISOString(), JSON.stringify(planIds), item.id]);
+  return when;
+}
+
+/**
+ * Moves a post along the pipeline. Approving can take a publish time, which approves and schedules in one step
+ * when the approver may schedule. Scheduling a scheduled post moves it to the new time; going back to approved
+ * takes it off the calendar.
+ */
 export async function transition(user: AuthUser, id: string, to: ContentStatus, input: { note?: string; scheduledAt?: string }): Promise<StoredContent> {
   const item = await getContent(id);
   if (!item || !canSee(user, item)) throw new WorkspaceError(404, 'المحتوى غير موجود.');
@@ -172,29 +207,30 @@ export async function transition(user: AuthUser, id: string, to: ContentStatus, 
   if (!move) throw new WorkspaceError(403, 'هذه الخطوة غير متاحة لك الآن.');
   if (move.needsNote && !input.note?.trim()) throw new WorkspaceError(400, 'اكتب سبب أو ملاحظة.');
   if (to === 'ready_for_review' && !item.creative) throw new WorkspaceError(400, 'أضف التصميم أولًا قبل إرساله للمراجعة.');
-  let planIds = item.planIds;
-  if (item.status === 'scheduled' && to === 'approved') {
-    for (const planId of item.planIds) {
-      const plan = await getPlan(planId);
-      if (plan) await savePlan({ ...plan, status: 'cancelled' });
-    }
+  const andSchedule = to === 'approved' && item.status === 'ready_for_review' && Boolean(input.scheduledAt);
+  if (andSchedule && !userCan(user, 'content.schedule')) throw new WorkspaceError(403, 'لا تملك صلاحية جدولة النشر؛ اعتمد المنشور فقط.');
+  // Nothing changes when the time is wrong.
+  if (to === 'scheduled' || andSchedule) publishTime(input.scheduledAt);
+
+  if (item.status === 'scheduled' && to !== 'scheduled') {
+    await cancelPlans(item);
     await db.run('UPDATE content_items SET scheduled_at=NULL, plan_ids_json=? WHERE id=?', ['[]', id]);
   }
   if (to === 'scheduled') {
-    const when = input.scheduledAt ? new Date(input.scheduledAt) : null;
-    if (!when || Number.isNaN(when.getTime()) || when.getTime() < Date.now() - 60_000) throw new WorkspaceError(400, 'اختر موعد نشر في المستقبل.');
-    // One plan per trackable channel, so the calendar, alerts and sync matching cover this post.
-    planIds = [];
-    for (const channel of item.channels) {
-      const platform = TRACKED[channel];
-      if (!platform) continue;
-      const plan = await savePlan(newPlan({ platform, title: item.title, caption: item.captions[channel] ?? '', scheduledAt: when.toISOString(), status: 'scheduled', owner: user.name, contentType: 'post', campaign: item.id, notes: `content:${item.id}` }));
-      planIds.push(plan.id);
-    }
-    await db.run('UPDATE content_items SET scheduled_at=?, plan_ids_json=? WHERE id=?', [when.toISOString(), JSON.stringify(planIds), id]);
+    await schedulePlans(user, item, input.scheduledAt);
+    const rescheduled = item.status === 'scheduled';
+    await db.run('UPDATE content_items SET status=?, updated_at=? WHERE id=?', [to, new Date().toISOString(), id]);
+    await log(id, user.id, 'transition', input.note?.trim() || (rescheduled ? 'تغيّر موعد النشر' : ''), item.status, to);
+    return (await getContent(id))!;
   }
   await db.run('UPDATE content_items SET status=?, updated_at=? WHERE id=?', [to, new Date().toISOString(), id]);
   await log(id, user.id, 'transition', input.note?.trim() ?? '', item.status, to);
+  if (andSchedule) {
+    const approved = (await getContent(id))!;
+    await schedulePlans(user, approved, input.scheduledAt);
+    await db.run('UPDATE content_items SET status=?, updated_at=? WHERE id=?', ['scheduled', new Date().toISOString(), id]);
+    await log(id, user.id, 'transition', '', 'approved', 'scheduled');
+  }
   return (await getContent(id))!;
 }
 
