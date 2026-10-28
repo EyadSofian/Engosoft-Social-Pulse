@@ -5,6 +5,7 @@ import type { SocialAccount } from '../social/types.js';
 import { blankMetrics, type ConnectorResult, type ObservedPost } from '../types.js';
 import { json, numberOrNull, text } from './http.js';
 import { providerAccessToken } from './tokens.js';
+import { ProviderError } from '../social/http.js';
 
 type SnapResponse={request_status?:string;spotlights?:{spotlight?:Record<string,unknown>}[];stories?:{story?:Record<string,unknown>}[];paging?:{next_page_id?:string};assets?:{timeseries?:{fields?:{field?:{field_name?:string;fieldName?:string};stats?:{value?:string}[]}[]}[]}[]};
 function statsValue(body:SnapResponse,name:string):number|null {
@@ -50,5 +51,5 @@ export async function syncSnapchat(account?:SocialAccount):Promise<ConnectorResu
      checkpoints.push({accountId:accountId('snapchat',id),kind:`snap_${type}`,value:savedCursor});
    }
    return {platform:'snapchat',status:'connected',message:`تم جلب ${posts.length} قصة وSpotlight.${process.env.SNAP_PROFILE_REFRESH_TOKEN?' تجديد OAuth مفعّل.':' اضبط refresh token لاستمرار المزامنة بعد انتهاء access token.'}`,posts,checkpoints};
- }catch(e){return {platform:'snapchat',status:'error',message:e instanceof Error?e.message:'تعذّر الاتصال بـSnapchat',posts:[]};}
+ }catch(e){return {platform:'snapchat',status:'error',message:e instanceof ProviderError&&e.status===403?'Snapchat رفض الوصول إلى محتوى Public Profile (HTTP 403). تحقّق من تفعيل التطبيق للـPublic Profile API وصلاحيات Stories/Spotlights لدى Snap؛ وجود صلاحية OAuth وحده لا يؤكد وصول المحتوى.':e instanceof Error?e.message:'تعذّر الاتصال بـSnapchat',posts:[]};}
 }

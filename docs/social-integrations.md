@@ -2,6 +2,33 @@
 
 Checked 28 October 2026 (Africa/Cairo). No public content was published during implementation.
 
+## Final connection checkpoint
+
+- Latest source `91d3894` deployed successfully as
+  `2c5245e8-eb3c-4c38-8b5f-80a9cc4dfa6d`; health returned 200. Runtime now has the
+  dedicated YouTube Web client, Meta Business Login configuration and Snapchat profile ID.
+- Snapchat owner signed into Engosoft Global as Organization Admin. Public Profile
+  **Engo soft / engosoft7**, ID `dbb456ef-5b21-4f7a-8dd1-e4fbecde6417`, was identified.
+  OAuth app **n8n-engosoft**, client ID `5064c3f4-64e1-4043-890e-00ce69c0ca6a`, now
+  includes Social Pulse's exact callback, preserving `https://engosoft.com`.
+  Owner-approved OAuth completed with snapchat-profile-api and encrypted refresh
+  credentials. Authorized GET `/v1/public_profiles/{id}` returned 200/SUCCESS and the
+  exact profile identity. GET `/stories` and `/spotlights` both returned 403 with an
+  empty application/grpc response. The account remains sync_failed and cannot publish.
+  Ask the Snap contact to verify Public Profile content API access/allowlisting for
+  the client ID above and the owner's profile membership. Public-prefixed profile
+  lookup also returned 403; do not confuse working profile identity with content access.
+- YouTube reaches Google's **Google hasn’t verified this app** screen. The owner
+  chose to complete this later. No channel credential or upload was created. Continue
+  the normal channel-owner authorization when ready; security warnings require the
+  user to act directly. APIs and Web client setup are already complete.
+- TikTok live smoke after combined reauthorization imported 100 videos successfully;
+  both video.publish and video.upload remained in the encrypted grant. Inbox capability
+  is available, Direct Post remains approval_required, and zero publication jobs exist.
+
+The earlier checkpoints below record the rollout chronology; this checkpoint supersedes
+their outstanding deployment/Snapchat statements.
+
 ## Verified live setup
 
 Deployment `64cb0982-bd6b-413d-81a0-6b2fc5e0b857` became SUCCESS after Railway's
