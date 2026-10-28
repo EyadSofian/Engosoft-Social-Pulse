@@ -10,11 +10,15 @@ import type { Credential, SocialProvider } from './types.js';
 export const socialProviders:SocialProvider[]=['facebook','instagram','tiktok','snapchat','youtube'];
 const hash=(s:string)=>createHash('sha256').update(s).digest('hex');
 export const equalState=(a:string,b:string)=>Boolean(a&&b&&Buffer.byteLength(a)===Buffer.byteLength(b)&&timingSafeEqual(Buffer.from(a),Buffer.from(b)));
+export function metaTokenExpiry(info:{expires_at?:number;data_access_expires_at?:number}):number {
+ const limits=[info.expires_at,info.data_access_expires_at].filter((v):v is number=>typeof v==='number'&&Number.isFinite(v)&&v>0);
+ return limits.length?Math.min(...limits)*1000:0;
+}
 export function oauthScopes(p:SocialProvider,mode:string):string[] {
- const publishing=mode==='publishing';
+ const publishing=mode==='publishing'||mode==='publishing-and-draft';
  if(p==='facebook')return ['pages_show_list','pages_read_engagement','read_insights',...(publishing?['pages_manage_posts','publish_video']:[])];
  if(p==='instagram')return ['pages_show_list','pages_read_engagement','instagram_basic','instagram_manage_insights',...(publishing?['instagram_content_publish']:[])];
- if(p==='tiktok')return ['user.info.basic','video.list',...(publishing?['video.publish']:mode==='draft'?['video.upload']:[])];
+ if(p==='tiktok')return ['user.info.basic','video.list',...(publishing?['video.publish']:[]),...(['draft','publishing-and-draft'].includes(mode)?['video.upload']:[])];
  if(p==='snapchat')return ['snapchat-profile-api'];
  return ['https://www.googleapis.com/auth/youtube.readonly','https://www.googleapis.com/auth/yt-analytics.readonly',...(publishing?['https://www.googleapis.com/auth/youtube.upload']:[])];
 }
@@ -36,8 +40,8 @@ export function registerSocialOAuth(app:express.Express) {
   app.get(`/api/oauth/${provider}/start`,requirePermission('connections.manage'),async(req,res)=>{
    try {
     const c=configuredCallback(provider),state=randomBytes(32).toString('base64url');
-    const mode=['publishing','draft'].includes(String(req.query.mode))?String(req.query.mode):'read';
-    if(mode==='draft'&&provider!=='tiktok')return res.status(400).json({error:'Draft upload is only available for TikTok.'});
+    const mode=['publishing','draft','publishing-and-draft'].includes(String(req.query.mode))?String(req.query.mode):'read';
+    if(['draft','publishing-and-draft'].includes(mode)&&provider!=='tiktok')return res.status(400).json({error:'Draft upload is only available for TikTok.'});
     await db.run('DELETE FROM social_oauth_states WHERE expires_at<?',[Date.now()]);
     await db.run('INSERT INTO social_oauth_states(hash,provider,owner_id,mode,expires_at) VALUES(?,?,?,?,?)',[hash(state),provider,req.user!.id,mode,Date.now()+600_000]);
     res.cookie(`social_${provider}_state`,state,{httpOnly:true,secure:c.redirect!.startsWith('https:'),sameSite:'lax',maxAge:600_000,path:`/api/oauth/${provider}`});
@@ -78,7 +82,14 @@ export function registerSocialOAuth(app:express.Express) {
      const exchange=new URLSearchParams({grant_type:'fb_exchange_token',client_id:c.client!,client_secret:c.secret!,fb_exchange_token:token.accessToken});
      const renewed=await request<Record<string,any>>(c.token,{method:'POST',headers:{'Content-Type':'application/x-www-form-urlencoded'},body:exchange});
      if(!renewed.access_token)throw new Error('Meta long-lived token exchange failed.');
-     token.accessToken=renewed.access_token;token.expiresAt=renewed.expires_in?Date.now()+Number(renewed.expires_in)*1000:token.expiresAt;
+     token.accessToken=renewed.access_token;
+     // Meta can return a non-expiring token without expires_in. Its debugger is
+     // authoritative; retaining the short exchange's default would expire it in an hour.
+     const debugUrl=new URL(`${c.token.slice(0,c.token.lastIndexOf('/oauth/'))}/debug_token`);
+     debugUrl.searchParams.set('input_token',token.accessToken);
+     const debug=await request<Record<string,any>>(debugUrl.toString(),{headers:{Authorization:`Bearer ${c.client}|${c.secret}`}},true);
+     if(!debug.data?.is_valid||String(debug.data.app_id)!==c.client)throw new Error('Meta token verification failed.');
+     token.expiresAt=metaTokenExpiry(debug.data);
     }
     const source=`oauth:${provider}:${randomUUID()}`;
     // Verify account identity before saving; discovery never returns credentials to the caller/browser.
