@@ -1,5 +1,5 @@
 import { createHash, randomUUID } from 'node:crypto';
-import { db, defineSchema } from './db.js';
+import { db, defineSchema, defineColumn } from './db.js';
 import type { ConnectorResult, ObservedPost, Plan, Platform } from './types.js';
 
 export { db };
@@ -26,6 +26,9 @@ CREATE TABLE IF NOT EXISTS oauth_states (state_hash TEXT PRIMARY KEY, expires_at
 CREATE TABLE IF NOT EXISTS alerts (id TEXT PRIMARY KEY, plan_id TEXT NOT NULL, kind TEXT NOT NULL, message TEXT NOT NULL,
  created_at TEXT NOT NULL, delivered_at TEXT NOT NULL DEFAULT '', dismissed_at TEXT NOT NULL DEFAULT '', UNIQUE(plan_id, kind));
 `);
+
+defineColumn('connector_status','last_success_at','TEXT');
+defineColumn('connector_status','partial',"INTEGER NOT NULL DEFAULT 0");
 
 const toPlan = (r: Record<string, unknown>): Plan => ({
   id:String(r.id), platform:r.platform as Platform, accountId:String(r.account_id), title:String(r.title), caption:String(r.caption), scheduledAt:String(r.scheduled_at), status:r.status as Plan['status'], permalink:String(r.permalink), externalId:String(r.external_id), owner:String(r.owner), contentType:String(r.content_type), campaign:String(r.campaign), notes:String(r.notes), sourceKey:String(r.source_key), createdAt:String(r.created_at), updatedAt:String(r.updated_at)
@@ -75,10 +78,13 @@ export async function saveConnectorResult(result: ConnectorResult) {
  ON CONFLICT(platform,external_id) DO UPDATE SET account_id=excluded.account_id,account_name=excluded.account_name,permalink=excluded.permalink,title=excluded.title,published_at=excluded.published_at,content_type=excluded.content_type,thumbnail=excluded.thumbnail,metrics_json=excluded.metrics_json,fetched_at=excluded.fetched_at`, {...post, metricsJson:JSON.stringify(post.metrics), fetchedAt:now});
    for (const day of result.website ?? []) await tx.run('INSERT INTO website_daily (date,views,sessions,engaged_sessions,fetched_at) VALUES (@date,@views,@sessions,@engagedSessions,@fetchedAt) ON CONFLICT(date) DO UPDATE SET views=excluded.views,sessions=excluded.sessions,engaged_sessions=excluded.engaged_sessions,fetched_at=excluded.fetched_at', {...day,fetchedAt:now});
    for (const page of result.websitePages ?? []) await tx.run('INSERT INTO website_page_daily (date,path,title,views,active_users,engagement_seconds,fetched_at) VALUES (@date,@path,@title,@views,@activeUsers,@engagementSeconds,@fetchedAt) ON CONFLICT(date,path) DO UPDATE SET title=excluded.title,views=excluded.views,active_users=excluded.active_users,engagement_seconds=excluded.engagement_seconds,fetched_at=excluded.fetched_at', {...page,fetchedAt:now});
+   for(const c of result.checkpoints||[]) await tx.run('INSERT INTO social_checkpoints(account_id,kind,value) VALUES(?,?,?) ON CONFLICT(account_id,kind) DO UPDATE SET value=excluded.value',[c.accountId,c.kind,c.value]);
    await tx.run('INSERT INTO connector_status(platform,status,message,checked_at) VALUES(?,?,?,?) ON CONFLICT(platform) DO UPDATE SET status=excluded.status,message=excluded.message,checked_at=excluded.checked_at',[result.platform,result.status,result.message,now]);
+   await tx.run('UPDATE connector_status SET partial=? WHERE platform=?',[result.partial?1:0,result.platform]);
+   if(result.status==='connected')await tx.run('UPDATE connector_status SET last_success_at=? WHERE platform=?',[now,result.platform]);
  });
 }
-export const getConnectorStatuses = () => db.all('SELECT platform,status,message,checked_at AS "checkedAt" FROM connector_status');
+export const getConnectorStatuses = () => db.all('SELECT platform,status,message,checked_at AS "checkedAt",last_success_at AS "lastSuccessAt",partial FROM connector_status');
 export const getWebsiteDaily = () => db.all('SELECT date,views,sessions,engaged_sessions AS "engagedSessions" FROM website_daily ORDER BY date ASC');
 export const getWebsitePages = () => db.all('SELECT date,path,title,views,active_users AS "activeUsers",engagement_seconds AS "engagementSeconds" FROM website_page_daily ORDER BY date DESC,views DESC');
 export async function getEncryptedToken(platform:Platform):Promise<string|undefined> {

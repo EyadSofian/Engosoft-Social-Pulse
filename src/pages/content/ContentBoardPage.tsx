@@ -1,3 +1,4 @@
+import { PublishContent } from '../../features/publishing/PublishContent';
 import { useCallback, useEffect, useMemo, useState } from 'react';
 import { AnimatePresence, motion } from 'motion/react';
 import { CheckCircle2, ExternalLink, Image as ImageIcon, Loader2, MessageSquare, Paintbrush, Search, Send, X } from 'lucide-react';
@@ -158,6 +159,7 @@ function ContentDrawer({ id, team, onClose, onChanged }: { id: string; team: Tea
         </section> : null}
 
         <NextStep key={item.status} item={item} busy={busy} onMove={move} />
+        <PublishContent item={item} />
         {error && <p role="alert" className="creative-home__error">{error}</p>}
 
         {item.versions.length > 1 && <section className="content-drawer__section content-drawer__section--late"><h3>{t('Versions', 'النسخ')}</h3>

@@ -1,3 +1,4 @@
+import { hasPendingPublication } from './social/store.js';
 /**
  * Stored content pipeline shared by every department: posts, their creative versions, review rounds,
  * comments and an activity log. Scheduling creates rows in the existing `plans` table, so the calendar,
@@ -32,7 +33,7 @@ CREATE INDEX IF NOT EXISTS content_versions_by_item ON content_versions(content_
 
 export type Channel = 'facebook' | 'instagram' | 'whatsapp' | 'linkedin' | 'tiktok' | 'snapchat' | 'youtube' | 'website';
 /** Channels the sync can prove published; the others are tracked by status only. */
-const TRACKED: Partial<Record<Channel, Platform>> = { facebook: 'facebook', instagram: 'instagram', tiktok: 'tiktok', snapchat: 'snapchat' };
+const TRACKED: Partial<Record<Channel, Platform>> = { facebook: 'facebook', instagram: 'instagram', tiktok: 'tiktok', snapchat: 'snapchat', youtube: 'youtube' };
 
 export interface CreativeRef { requestId: string; directionId: string; imageUrl: string; storyUrl?: string; landscapeUrl?: string; youtubeUrl?: string; model?: string; directionName?: string; svgTemplate?: { id: string; values: Record<string, string>; format?: 'feed' | 'square' | 'story' | 'landscape'; context?: string; outputPreset?: string } }
 export interface StoredContent {
@@ -203,6 +204,7 @@ async function schedulePlans(user: AuthUser, item: StoredContent, scheduledAt: s
 export async function transition(user: AuthUser, id: string, to: ContentStatus, input: { note?: string; scheduledAt?: string }): Promise<StoredContent> {
   const item = await getContent(id);
   if (!item || !canSee(user, item)) throw new WorkspaceError(404, 'المحتوى غير موجود.');
+  if(await hasPendingPublication(item.id))throw new WorkspaceError(409, 'يوجد طلب نشر قيد المعالجة؛ تحقق من نتيجته قبل تغيير المحتوى أو سحب اعتماده.');
   const move = allowedMoves(user, item).find((entry) => entry.to === to);
   if (!move) throw new WorkspaceError(403, 'هذه الخطوة غير متاحة لك الآن.');
   if (move.needsNote && !input.note?.trim()) throw new WorkspaceError(400, 'اكتب سبب أو ملاحظة.');

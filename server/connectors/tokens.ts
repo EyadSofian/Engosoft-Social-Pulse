@@ -70,3 +70,9 @@ async function resolveAccessToken(config:Config):Promise<string>{
  await saveEncryptedToken(config.platform,encrypt(config.platform,next,secret));
  return next.accessToken;
 }
+
+export async function oauthTokenHealth(platform:Provider) {
+ const encrypted=await getEncryptedToken(platform),secret=key();
+ if(!encrypted||!secret)return {expiresAt:null,refreshEnabled:Boolean(process.env[configs[platform].refreshEnv]),state:'environment'};
+ try{const t=decrypt(platform,encrypted,secret);return {expiresAt:new Date(t.expiresAt).toISOString(),refreshEnabled:Boolean(t.refreshToken),state:t.expiresAt>Date.now()?'valid':t.refreshToken?'refresh_due':'reconnect_required'};}catch{return {expiresAt:null,refreshEnabled:false,state:'reconnect_required'};}
+}

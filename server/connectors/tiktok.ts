@@ -1,19 +1,29 @@
+import { accessToken } from '../social/credentials.js';
+import { accountId, checkpoint, getAccount } from '../social/store.js';
+import { ProviderError } from '../social/http.js';
+import type { SocialAccount } from '../social/types.js';
 import { blankMetrics, type ConnectorResult, type ObservedPost } from '../types.js';
 import { json, numberOrNull, text } from './http.js';
 import { hasSavedOAuthToken, providerAccessToken } from './tokens.js';
 import { getOldestObservedPublishedAt } from '../store.js';
 
-export async function syncTikTok():Promise<ConnectorResult>{
- if(!process.env.TIKTOK_DISPLAY_ACCESS_TOKEN&&!process.env.TIKTOK_DISPLAY_REFRESH_TOKEN&&!(await hasSavedOAuthToken('tiktok')))return {platform:'tiktok',status:'needs_setup',message:'اربط حساب TikTok من صفحة المنصات بصلاحيتَي user.info.basic وvideo.list.',posts:[]};
+export async function syncTikTok(account?:SocialAccount):Promise<ConnectorResult>{
+ if(!account&&!process.env.TIKTOK_DISPLAY_ACCESS_TOKEN&&!process.env.TIKTOK_DISPLAY_REFRESH_TOKEN&&!(await hasSavedOAuthToken('tiktok')))return {platform:'tiktok',status:'needs_setup',message:'اربط حساب TikTok من صفحة المنصات بصلاحيتَي user.info.basic وvideo.list.',posts:[]};
  try{
-   const token=await providerAccessToken('tiktok');
+   const token=account?await accessToken(account):await providerAccessToken('tiktok');
    const profile=await json<{data?:{user?:{open_id?:string;display_name?:string}};error?:{code?:string}}>('https://open.tiktokapis.com/v2/user/info/?fields=open_id,display_name',{headers:{Authorization:`Bearer ${token}`}});
    if(profile.error?.code&&profile.error.code!=='ok')throw new Error(`TikTok profile API code ${profile.error.code}`);
    const user=profile.data?.user;
+   if(!user?.open_id||account&&user.open_id!==account.externalId)throw new Error('TikTok account identity could not be verified.');
+   const connection=await getAccount(accountId('tiktok',user.open_id));
+   if(connection?.status==='disconnected')return {platform:'tiktok',status:'needs_setup',message:'TikTok disconnected.',posts:[]};
+   const history=await checkpoint(accountId('tiktok',user.open_id),'tiktok_history');let historyCursor=history||'';
    const posts:ObservedPost[]=[];let cursor:number|undefined;let hasMore=false;let pageError=false;
    const oldestSaved=await getOldestObservedPublishedAt('tiktok',text(user?.open_id));
    for(let page=0;page<25;page++){
-     if(page===5&&oldestSaved){
+     if(page===5&&history==='complete')break;
+     if(page===5&&history&&history!=='complete')cursor=Number(history);
+     if(page===5&&!history&&oldestSaved){
        const oldestCursor=Date.parse(oldestSaved)-1;
        if(Number.isFinite(oldestCursor)&&(!cursor||oldestCursor<cursor))cursor=oldestCursor;
      }
@@ -26,7 +36,7 @@ export async function syncTikTok():Promise<ConnectorResult>{
            });
            break;
          }catch(error){
-           if(attempt===2)throw error;
+           if(attempt===2||error instanceof ProviderError&&!error.retryable)throw error;
            await new Promise(resolve=>setTimeout(resolve,500*(attempt+1)));
          }
        }
@@ -47,11 +57,12 @@ export async function syncTikTok():Promise<ConnectorResult>{
        posts.push({platform:'tiktok',accountId:text(user?.open_id),accountName:text(user?.display_name)||'TikTok',externalId:id,permalink:text(video.share_url),title:text(video.title)||text(video.video_description)||'TikTok video',publishedAt:new Date(Number(video.create_time)*1000).toISOString(),contentType:'video',thumbnail:text(video.cover_image_url),metrics});
      }
      hasMore=Boolean(body.data?.has_more);
-     if(!hasMore || !body.data?.cursor)break;
+     if(!hasMore || !body.data?.cursor){historyCursor='complete';break;}
+     if(page>=5)historyCursor=String(body.data.cursor);
      cursor=body.data.cursor;
    }
    const refreshEnabled=Boolean(process.env.TIKTOK_DISPLAY_REFRESH_TOKEN||(await hasSavedOAuthToken('tiktok')));
    const accountName=text(user?.display_name).trim()||'TikTok';
-   return {platform:'tiktok',status:'connected',message:`الحساب المرتبط: ${accountName}. تم تحديث ${posts.length} فيديو.${pageError?' تعذّر جلب بعض الفيديوهات الأقدم مؤقتًا؛ سنحاول في المزامنة التالية.':hasMore?' سيُستكمل جلب الفيديوهات الأقدم في المزامنة التالية.':''}${refreshEnabled?' تجديد OAuth مفعّل.':' اضبط refresh token لاستمرار المزامنة بعد انتهاء access token.'}`,posts};
+   return {platform:'tiktok',partial:pageError,status:'connected',message:`الحساب المرتبط: ${accountName}. تم تحديث ${posts.length} فيديو.${pageError?' تعذّر جلب بعض الفيديوهات الأقدم مؤقتًا؛ سنحاول في المزامنة التالية.':hasMore&&historyCursor!=='complete'?' سيُستكمل جلب الفيديوهات الأقدم في المزامنة التالية.':''}${refreshEnabled?' تجديد OAuth مفعّل.':' اضبط refresh token لاستمرار المزامنة بعد انتهاء access token.'}`,posts,checkpoints:historyCursor?[{accountId:accountId('tiktok',user.open_id),kind:'tiktok_history',value:historyCursor}]:[]};
  }catch(e){return {platform:'tiktok',status:'error',message:e instanceof Error?e.message:'تعذّر الاتصال بـTikTok',posts:[]};}
 }

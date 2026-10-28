@@ -12,6 +12,7 @@ export interface PipelineItem {
   editable: boolean;
   /** This person may put posts on the calendar (offered when approving). */
   canSchedule?: boolean;
+  canPublish?: boolean;
 }
 export interface PipelineEvent { id: string; actorId: string; kind: 'created' | 'transition' | 'comment' | 'version' | 'caption'; from: string | null; to: string | null; body: string; createdAt: string }
 export interface PipelineVersion { id: string; imageUrl: string; storyUrl: string | null; studio: unknown; note: string; createdBy: string; createdAt: string }

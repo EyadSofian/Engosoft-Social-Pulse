@@ -1,4 +1,4 @@
-export type Platform = 'facebook' | 'instagram' | 'tiktok' | 'snapchat' | 'website';
+export type Platform = 'facebook' | 'instagram' | 'tiktok' | 'snapchat' | 'youtube' | 'website';
 export type PlanState = 'published' | 'upcoming' | 'due' | 'missed' | 'draft' | 'cancelled';
 export type PlanStatus = 'draft' | 'approved' | 'scheduled' | 'published' | 'cancelled';
 export type ConnectorStatus = 'connected' | 'needs_setup' | 'error';
@@ -59,6 +59,8 @@ export interface Alert {
 }
 
 export interface Connector {
+  lastSuccessAt?: string;
+  partial?: boolean;
   platform: Platform;
   status: ConnectorStatus;
   message: string;
