@@ -10,8 +10,9 @@ import { TRANSITIONS, type ContentStatus } from '../src/domain/content.js';
 import type { Permission } from '../src/domain/users.js';
 import { userCan, type AuthUser } from './auth.js';
 import { matchingPost, newPlan } from './domain.js';
-import { db, defineSchema } from './db.js';
-import { getObserved, getPlan, savePlan } from './store.js';
+import { db, defineColumn, defineSchema } from './db.js';
+import { isGoal, type Goal } from '../src/domain/goals.js';
+import { getObserved, getPlan, getPlans, savePlan } from './store.js';
 import type { ObservedPost, Platform } from './types.js';
 
 defineSchema(`
@@ -31,6 +32,12 @@ CREATE TABLE IF NOT EXISTS content_events (
 CREATE INDEX IF NOT EXISTS content_events_by_item ON content_events(content_id, created_at);
 CREATE INDEX IF NOT EXISTS content_versions_by_item ON content_versions(content_id, created_at);
 `);
+/** Why the post exists (reach, engagement, leads, traffic). */
+defineColumn('content_items', 'goal', "TEXT NOT NULL DEFAULT ''");
+/** The day the post is planned for before anyone schedules it; the calendar shows the post there meanwhile. */
+defineColumn('content_items', 'planned_for', 'TEXT');
+/** The calendar plan row this post was made for. */
+defineColumn('content_items', 'slot_id', 'TEXT');
 
 export type Channel = 'facebook' | 'instagram' | 'whatsapp' | 'linkedin' | 'tiktok' | 'snapchat' | 'youtube' | 'website';
 /** Channels the sync can prove published; the others are tracked by status only. */
@@ -41,6 +48,7 @@ export interface StoredContent {
   id: string; title: string; status: ContentStatus; departmentId: string | null; ownerId: string;
   channels: Channel[]; captions: Partial<Record<Channel, string>>; creative: CreativeRef | null;
   scheduledAt: string | null; planIds: string[]; templateId: string | null; createdAt: string; updatedAt: string;
+  goal: Goal | null; plannedFor: string | null; slotId: string | null;
   /** Filled when sync has matched a scheduled plan with a real published post. */
   published?: { platform: string; permalink: string; publishedAt: string; metrics: Record<string, number | null> }[];
 }
@@ -53,6 +61,7 @@ const toContent = (r: Record<string, unknown>): StoredContent => ({
   ownerId: String(r.owner_id), channels: parse(r.channels_json, []), captions: parse(r.captions_json, {}), creative: parse(r.creative_json, null),
   scheduledAt: (r.scheduled_at as string | null) ?? null, planIds: parse(r.plan_ids_json, []), templateId: (r.template_id as string | null) ?? null,
   createdAt: String(r.created_at), updatedAt: String(r.updated_at),
+  goal: isGoal(r.goal) ? r.goal : null, plannedFor: (r.planned_for as string | null) ?? null, slotId: (r.slot_id as string | null) ?? null,
 });
 
 async function log(contentId: string, actorId: string, kind: ContentEvent['kind'], body = '', from: string | null = null, to: string | null = null) {
@@ -110,18 +119,44 @@ export async function listContent(user: AuthUser): Promise<StoredContent[]> {
   return Promise.all(rows.map(toContent).filter((item) => canSee(user, item)).map((item) => withPublishProof(item, posts)));
 }
 
-export async function createContent(user: AuthUser, input: { title: string; channels: Channel[]; captions: Partial<Record<Channel, string>>; creative: CreativeRef | null; templateId?: string | null }): Promise<StoredContent> {
+export interface PostPlanInput { goal?: Goal | null; plannedFor?: string | null; slotId?: string | null }
+
+/**
+ * A plan row (an imported or typed calendar line) that nobody has made yet. Making a post for it links the two:
+ * the row stops counting as "not made", and the post inherits its day and goal unless the person chose others.
+ */
+async function openSlot(slotId: string) {
+  const slot = await getPlan(slotId);
+  if (!slot || slot.status === 'cancelled') throw new WorkspaceError(400, 'خانة الخطة غير موجودة.');
+  if (slot.notes.startsWith('content:')) throw new WorkspaceError(409, 'هذه الخانة لها منشور بالفعل.');
+  return slot;
+}
+
+export async function createContent(user: AuthUser, input: { title: string; channels: Channel[]; captions: Partial<Record<Channel, string>>; creative: CreativeRef | null; templateId?: string | null } & PostPlanInput): Promise<StoredContent> {
   const id = randomUUID(), now = new Date().toISOString();
-  await db.run('INSERT INTO content_items (id,title,status,department_id,owner_id,channels_json,captions_json,creative_json,template_id,created_at,updated_at) VALUES (?,?,?,?,?,?,?,?,?,?,?)',
-    [id, input.title, 'draft', user.departmentId, user.id, JSON.stringify(input.channels), JSON.stringify(input.captions), input.creative ? JSON.stringify(input.creative) : null, input.templateId ?? null, now, now]);
+  const slot = input.slotId ? await openSlot(input.slotId) : null;
+  const goal = input.goal ?? (isGoal(slot?.goal) ? slot.goal : null);
+  const plannedFor = input.plannedFor ?? slot?.scheduledAt ?? null;
+  await db.run('INSERT INTO content_items (id,title,status,department_id,owner_id,channels_json,captions_json,creative_json,template_id,created_at,updated_at,goal,planned_for,slot_id) VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?)',
+    [id, input.title, 'draft', user.departmentId, user.id, JSON.stringify(input.channels), JSON.stringify(input.captions), input.creative ? JSON.stringify(input.creative) : null, input.templateId ?? null, now, now, goal ?? '', plannedFor, slot?.id ?? null]);
+  // One spreadsheet line for several platforms is one row per platform: the post takes all the rows it covers.
+  if (slot) for (const row of (await getPlans()).filter((plan) => plan.id === slot.id || (plan.title === slot.title && plan.scheduledAt === slot.scheduledAt && plan.status !== 'cancelled' && !plan.notes.startsWith('content:') && input.channels.includes(plan.platform as Channel))))
+    await savePlan({ ...row, notes: `content:${id}` });
   await log(id, user.id, 'created', input.title);
   if (input.creative) await addVersion(user, id, { imageUrl: input.creative.imageUrl, storyUrl: input.creative.storyUrl ?? null, studio: null, note: input.creative.directionName ?? 'AI creative' });
   return (await getContent(id))!;
 }
 
-export async function updateContent(user: AuthUser, id: string, patch: { title?: string; channels?: Channel[]; captions?: Partial<Record<Channel, string>>; creative?: CreativeRef }): Promise<StoredContent> {
+export async function updateContent(user: AuthUser, id: string, patch: { title?: string; channels?: Channel[]; captions?: Partial<Record<Channel, string>>; creative?: CreativeRef; goal?: Goal | null; plannedFor?: string | null }): Promise<StoredContent> {
   const item = await getContent(id);
   if (!item) throw new WorkspaceError(404, 'المحتوى غير موجود.');
+  if (!canEdit(user, item) && !userCan(user, 'content.schedule')) throw new WorkspaceError(403, 'لا تملك صلاحية تعديل هذا المحتوى.');
+  // Goal and planned day are planning, not the approved design: the owner or a planner may change them until the post is scheduled.
+  if (patch.goal !== undefined || patch.plannedFor !== undefined) {
+    if (['scheduled', 'published', 'archived', 'cancelled'].includes(item.status)) throw new WorkspaceError(409, 'المنشور مجدول بالفعل؛ غيّر موعده من النشر.');
+    await db.run('UPDATE content_items SET goal=?, planned_for=?, updated_at=? WHERE id=?', [patch.goal === undefined ? item.goal ?? '' : patch.goal ?? '', patch.plannedFor === undefined ? item.plannedFor : patch.plannedFor, new Date().toISOString(), id]);
+    if (patch.title === undefined && patch.channels === undefined && patch.captions === undefined && patch.creative === undefined) return (await getContent(id))!;
+  }
   if (!canEdit(user, item)) throw new WorkspaceError(403, 'لا تملك صلاحية تعديل هذا المحتوى.');
   requireMutable(item);
   await db.run('UPDATE content_items SET title=?, channels_json=?, captions_json=?, creative_json=?, updated_at=? WHERE id=?', [
@@ -185,11 +220,14 @@ function publishTime(scheduledAt: string | undefined): Date {
 async function schedulePlans(user: AuthUser, item: StoredContent, scheduledAt: string | undefined): Promise<Date> {
   const when = publishTime(scheduledAt);
   await cancelPlans(item);
+  // The post's own calendar rows replace the plan rows it was made for.
+  if (item.slotId) for (const row of (await getPlans()).filter((plan) => plan.notes === `content:${item.id}` && plan.status !== 'cancelled' && !item.planIds.includes(plan.id)))
+    await savePlan({ ...row, status: 'cancelled' });
   const planIds: string[] = [];
   for (const channel of item.channels) {
     const platform = TRACKED[channel];
     if (!platform) continue;
-    const plan = await savePlan(newPlan({ platform, title: item.title, caption: item.captions[channel] ?? '', scheduledAt: when.toISOString(), status: 'scheduled', owner: user.name, contentType: 'post', campaign: item.id, notes: `content:${item.id}` }));
+    const plan = await savePlan(newPlan({ platform, title: item.title, caption: item.captions[channel] ?? '', scheduledAt: when.toISOString(), status: 'scheduled', owner: user.name, contentType: 'post', goal: item.goal ?? '', campaign: item.id, notes: `content:${item.id}` }));
     planIds.push(plan.id);
   }
   await db.run('UPDATE content_items SET scheduled_at=?, plan_ids_json=? WHERE id=?', [when.toISOString(), JSON.stringify(planIds), item.id]);
@@ -235,6 +273,27 @@ export async function transition(user: AuthUser, id: string, to: ContentStatus, 
     await db.run('UPDATE content_items SET status=?, updated_at=? WHERE id=?', ['scheduled', new Date().toISOString(), id]);
     await log(id, user.id, 'transition', '', 'approved', 'scheduled');
   }
+  return (await getContent(id))!;
+}
+
+/**
+ * Editing an approved or scheduled post: it goes back to "changes requested" with the reason, leaves the
+ * calendar and the automatic-publishing queue, and keeps its day as the planned day. It must be approved again
+ * before it can publish, so the owner, anyone who may edit it, or an approver can do this.
+ */
+export async function reopenContent(user: AuthUser, id: string, note: string): Promise<StoredContent> {
+  const item = await getContent(id);
+  if (!item || !canSee(user, item)) throw new WorkspaceError(404, 'المحتوى غير موجود.');
+  if (!['approved', 'scheduled'].includes(item.status)) throw new WorkspaceError(409, 'المنشور مفتوح للتعديل بالفعل.');
+  if (!canEdit(user, item) && item.ownerId !== user.id && !userCan(user, 'content.approve')) throw new WorkspaceError(403, 'لا تملك صلاحية تعديل هذا المنشور.');
+  if (!note.trim()) throw new WorkspaceError(400, 'اكتب سبب التعديل.');
+  if (await hasPendingPublication(item.id)) throw new WorkspaceError(409, 'يوجد طلب نشر قيد المعالجة؛ تحقق من نتيجته قبل تعديل المنشور.');
+  if (item.status === 'scheduled') {
+    await cancelPlans(item);
+    await cancelQueued(id, 'The post was reopened for changes.');
+  }
+  await db.run('UPDATE content_items SET status=?, scheduled_at=NULL, plan_ids_json=?, planned_for=COALESCE(?, planned_for), updated_at=? WHERE id=?', ['changes_requested', item.status === 'scheduled' ? '[]' : JSON.stringify(item.planIds), item.scheduledAt, new Date().toISOString(), id]);
+  await log(id, user.id, 'transition', note.trim().slice(0, 2000), item.status, 'changes_requested');
   return (await getContent(id))!;
 }
 

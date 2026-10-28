@@ -142,11 +142,11 @@ app.get('/api/dashboard',async(req,res)=>{
  const enriched=plans.map(plan=>({...plan,computedState:planState(plan,posts,now,grace)}));
  const enrichedPosts=posts.map(post=>({...post,engagementRate:engagementRate(post)}));
  res.setHeader('Cache-Control','no-store');
- res.json({generatedAt:now.toISOString(),timeZone:process.env.BUSINESS_TIME_ZONE||'Africa/Cairo',posts:userCan(req.user!,'analytics.view')?enrichedPosts:[],plans:userCan(req.user!,'plans.view_all')||userCan(req.user!,'content.schedule')?enriched:[],alerts:userCan(req.user!,'analytics.view')?alerts:[],connectors:userCan(req.user!,'analytics.view')||userCan(req.user!,'connections.manage')?connectors:[],website:userCan(req.user!,'analytics.view')?website:[],websitePages:userCan(req.user!,'analytics.view')?websitePages:[]});
+ res.json({generatedAt:now.toISOString(),timeZone:process.env.BUSINESS_TIME_ZONE||'Africa/Cairo',posts:userCan(req.user!,'analytics.view')?enrichedPosts:[],plans:userCan(req.user!,'plans.view_all')||userCan(req.user!,'content.schedule')||userCan(req.user!,'content.create')?enriched:[],alerts:userCan(req.user!,'analytics.view')?alerts:[],connectors:userCan(req.user!,'analytics.view')||userCan(req.user!,'connections.manage')?connectors:[],website:userCan(req.user!,'analytics.view')?website:[],websitePages:userCan(req.user!,'analytics.view')?websitePages:[]});
 });
 const planStatus=z.enum(['draft','approved','scheduled','published','cancelled']);
 const planSchema=z.object({
- id:z.string().uuid().optional(),platform:z.string().refine(isPlatform),accountId:z.string().max(120).default(''),title:z.string().trim().min(1).max(300),caption:z.string().max(5000).default(''),scheduledAt:z.iso.datetime(),status:planStatus.default('scheduled'),permalink:z.string().max(1000).default(''),externalId:z.string().max(200).default(''),owner:z.string().max(120).default(''),contentType:z.string().max(60).default('post'),campaign:z.string().max(120).default(''),notes:z.string().max(1000).default('')
+ id:z.string().uuid().optional(),platform:z.string().refine(isPlatform),accountId:z.string().max(120).default(''),title:z.string().trim().min(1).max(300),caption:z.string().max(5000).default(''),scheduledAt:z.iso.datetime(),status:planStatus.default('scheduled'),permalink:z.string().max(1000).default(''),externalId:z.string().max(200).default(''),owner:z.string().max(120).default(''),contentType:z.string().max(60).default('post'),goal:z.enum(['','reach','engagement','leads','traffic']).default(''),campaign:z.string().max(120).default(''),notes:z.string().max(1000).default('')
 });
 const planPatchSchema=z.object({scheduledAt:z.iso.datetime().optional(),status:planStatus.optional(),permalink:z.string().max(1000).optional(),externalId:z.string().max(200).optional()}).strict();
 const PROOF_REQUIRED='أضف رابط المنشور أو معرّفه لتأكيد النشر.';
@@ -177,7 +177,7 @@ app.post('/api/calendar/import',requirePermission('content.schedule'),express.ra
   let imported=0;for(const plan of data.plans)if(await saveImportedPlan(plan))imported++;
   await checkAlerts();
   res.json({imported,duplicates:data.plans.length-imported,errors:data.errors});
- }catch{res.status(400).json({error:'تعذّر قراءة ملف التقويم.'});}
+ }catch{res.status(400).json({error:'تعذّر قراءة ملف الخطة. تأكد أن أول سطر فيه أسماء الأعمدة (التاريخ، الوقت، المنصة، العنوان)، وأن الخانة التي فيها أكثر من منصة مكتوبة بين علامتي تنصيص أو مفصولة بـ /.'});}
 });
 app.post('/api/sync',requirePermission('connections.manage'),async(_req,res)=>{try{res.json({results:await runSync()});}catch{res.status(502).json({error:'تعذّر مزامنة المصادر.'});}});
 app.post('/api/alerts/check',async(_req,res)=>res.json({created:await checkAlerts()}));

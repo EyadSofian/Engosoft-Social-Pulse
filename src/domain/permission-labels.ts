@@ -40,8 +40,18 @@ export const PERMISSION_LABELS: Record<
   },
   'design.free': {
     group: 'design',
-    en: 'Free design and Studio',
-    ar: 'التصميم الحر والاستوديو',
+    en: 'Design with AI and the Studio',
+    ar: 'التصميم بالذكاء الاصطناعي والاستوديو',
+  },
+  'design.templates': {
+    group: 'design',
+    en: 'Use ready templates',
+    ar: 'استخدام القوالب الجاهزة',
+  },
+  'design.upload': {
+    group: 'design',
+    en: 'Upload finished designs',
+    ar: 'رفع تصميم جاهز',
   },
   'templates.manage': {
     group: 'design',
@@ -89,4 +99,28 @@ export const PERMISSION_LABELS: Record<
     en: 'Access administration',
     ar: 'دخول إدارة النظام',
   },
+};
+
+/** One line on what each permission lets a person do, shown under its switch. */
+export const PERMISSION_HINTS: Record<Permission, { en: string; ar: string }> = {
+  'content.create': { en: 'Start new posts and send them for approval.', ar: 'يبدأ منشورات جديدة ويرسلها للاعتماد.' },
+  'content.edit_own': { en: 'Change the posts they made, until approval.', ar: 'يعدّل منشوراته حتى الاعتماد.' },
+  'content.edit_department': { en: 'Change posts from their whole department.', ar: 'يعدّل منشورات قسمه كله.' },
+  'content.edit_any': { en: 'See and change posts from every department.', ar: 'يرى ويعدّل منشورات كل الأقسام.' },
+  'content.approve': { en: 'Approve posts or send them back with a note.', ar: 'يعتمد المنشورات أو يرجعها بملاحظة.' },
+  'content.schedule': { en: 'Upload the plan, give approved posts a time, move or remove it.', ar: 'يرفع الخطة، ويحدد موعد المعتمد، ويغيّره أو يلغيه.' },
+  'content.publish': { en: 'Send approved posts to the connected accounts, now or at a time.', ar: 'ينشر المعتمد على الحسابات المربوطة، الآن أو في موعد.' },
+  'design.free': { en: 'Generate designs with AI and edit freely in the Studio.', ar: 'يولّد تصميمات بالذكاء الاصطناعي ويعدّل بحرية في الاستوديو.' },
+  'design.templates': { en: 'Make posts from the approved ready templates.', ar: 'يعمل منشورات من القوالب الجاهزة المعتمدة.' },
+  'design.upload': { en: 'Upload a design finished in another program.', ar: 'يرفع تصميمًا جاهزًا معمولًا في برنامج آخر.' },
+  'templates.manage': { en: 'Add and change templates and course profiles.', ar: 'يضيف ويعدّل القوالب وملفات الدورات.' },
+  'task.assign': { en: 'Give tasks to other people.', ar: 'يسند مهام لأشخاص آخرين.' },
+  'analytics.view': { en: 'See results and analytics.', ar: 'يرى النتائج والتحليلات.' },
+  'analytics.view_all': { en: 'See every department’s results.', ar: 'يرى نتائج كل الأقسام.' },
+  'credits.view': { en: 'See their own AI usage.', ar: 'يرى استهلاكه من الذكاء الاصطناعي.' },
+  'credits.view_all': { en: 'See the whole team’s AI usage.', ar: 'يرى استهلاك الفريق كله.' },
+  'plans.view_all': { en: 'See every department’s plan and posts.', ar: 'يرى خطط ومنشورات كل الأقسام.' },
+  'users.manage': { en: 'Add people, change roles and permissions.', ar: 'يضيف أشخاصًا ويغيّر الأدوار والصلاحيات.' },
+  'connections.manage': { en: 'Connect and disconnect platform accounts.', ar: 'يربط حسابات المنصات ويفصلها.' },
+  'admin.access': { en: 'System settings.', ar: 'إعدادات النظام.' },
 };

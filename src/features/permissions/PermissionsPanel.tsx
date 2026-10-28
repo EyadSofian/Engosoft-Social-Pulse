@@ -7,13 +7,13 @@ import {
   type Permission,
   type Role,
 } from '../../domain/users';
-import { PERMISSION_LABELS } from '../../domain/permission-labels';
+import { PERMISSION_HINTS, PERMISSION_LABELS } from '../../domain/permission-labels';
 import { useAuth, type SessionUser } from '../auth/AuthProvider';
 import { useI18n } from '../../i18n/I18nProvider';
 import { api, errorMessage } from '../../lib/api';
 const GROUPS = [
+  { id: 'design', en: 'Ways of creating', ar: 'طرق الإنشاء' },
   { id: 'content', en: 'Content', ar: 'المحتوى' },
-  { id: 'design', en: 'Design & courses', ar: 'التصميم والدورات' },
   { id: 'workflow', en: 'Review & publishing', ar: 'المراجعة والنشر' },
   { id: 'reports', en: 'Reports', ar: 'التقارير' },
   { id: 'admin', en: 'Administration', ar: 'الإدارة' },
@@ -203,45 +203,36 @@ export function PermissionsPanel() {
                         ROLES[target.role].permissions.includes(p);
                       const effective = overrides[p] ?? inherited;
                       return (
-                        <label className="permissions__row" key={p}>
+                        <div className="permissions__row" key={p} data-custom={overrides[p] !== undefined || undefined}>
                           <span>
                             <b>{tx(PERMISSION_LABELS[p])}</b>
-                            <small>
-                              {t('Role default: ', 'افتراضي الدور: ')}
-                              {inherited
-                                ? t('allowed', 'مسموح')
-                                : t('denied', 'غير مسموح')}
+                            <small>{tx(PERMISSION_HINTS[p])}</small>
+                            <small className="permissions__default">
+                              {overrides[p] !== undefined
+                                ? <>{t('Customized for this person', 'مخصص لهذا الشخص')} · <button type="button" disabled={locked || busy} onClick={() => setOverrides((old) => { const next = { ...old }; delete next[p]; return next; })}>{t('Back to role', 'رجوع للدور')}</button></>
+                                : t(`From the role: ${inherited ? 'on' : 'off'}`, `من الدور: ${inherited ? 'مفعّل' : 'غير مفعّل'}`)}
                             </small>
                           </span>
-                          <select
+                          <button
+                            type="button"
+                            role="switch"
+                            className="permissions__switch"
+                            aria-checked={effective}
                             aria-label={tx(PERMISSION_LABELS[p])}
                             disabled={locked || busy}
-                            value={
-                              overrides[p] === undefined
-                                ? 'inherit'
-                                : String(overrides[p])
-                            }
-                            onChange={(e) =>
+                            onClick={() =>
                               setOverrides((old) => {
                                 const next = { ...old };
-                                if (e.target.value === 'inherit')
-                                  delete next[p];
-                                else next[p] = e.target.value === 'true';
+                                // Matching the role again removes the override, so role changes keep applying.
+                                if (!effective === inherited) delete next[p];
+                                else next[p] = !effective;
                                 return next;
                               })
                             }
                           >
-                            <option value="inherit">
-                              {t('Inherit role', 'حسب الدور')}
-                            </option>
-                            <option value="true">{t('Allow', 'اسمح')}</option>
-                            <option value="false">{t('Deny', 'امنع')}</option>
-                          </select>
-                          <i
-                            className="permissions__dot"
-                            data-enabled={effective}
-                          />
-                        </label>
+                            <i />
+                          </button>
+                        </div>
                       );
                     })}
                   </section>

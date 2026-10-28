@@ -43,6 +43,8 @@ export interface ApiPlan {
   externalId: string;
   owner: string;
   contentType: string;
+  /** reach, engagement, leads or traffic; empty or missing when the plan names none. */
+  goal?: string;
   campaign: string;
   notes: string;
   computedState: PlanState;

@@ -20,6 +20,20 @@ export interface JobRow { id: string; contentId: string; accountId: string; prov
 export interface PublishTarget { accountId: string; provider: Channel; name: string; ready: boolean; reason: 'advanced' | 'disconnected' | 'no_media' | 'authorization' | null }
 export interface PublishingBoard { accounts: PublishAccount[]; queue: QueueRow[]; jobs: JobRow[] }
 
+/** How each platform gets its posts: by itself at the time, from the post page with its own choices, or by hand. */
+export type PublishWay = 'auto' | 'post_page' | 'manual';
+export const PLATFORMS: { channel: Channel; name: string; way: PublishWay }[] = [
+  { channel: 'facebook', name: 'Facebook', way: 'auto' },
+  { channel: 'instagram', name: 'Instagram', way: 'auto' },
+  { channel: 'tiktok', name: 'TikTok', way: 'post_page' },
+  { channel: 'youtube', name: 'YouTube', way: 'post_page' },
+  { channel: 'snapchat', name: 'Snapchat', way: 'post_page' },
+  { channel: 'linkedin', name: 'LinkedIn', way: 'manual' },
+  { channel: 'whatsapp', name: 'WhatsApp', way: 'manual' },
+  { channel: 'website', name: 'Website', way: 'manual' },
+];
+export const platformOf = (channel: Channel) => PLATFORMS.find((platform) => platform.channel === channel)!;
+
 /** Accounts, the automatic-publishing queue and recent results; null until loaded, and for people who cannot publish. */
 export function usePublishingBoard() {
   const { can } = useAuth();
@@ -140,14 +154,24 @@ export function PublishDialog({ item, open, onClose, onDone, day }: { item: Pipe
         <section>
           <h3 className="publish-step"><span>1</span>{t('Where?', 'أين؟')}</h3>
           {!targets && !error && <p className="u-sm u-muted">{t('Loading accounts…', 'جارٍ تحميل الحسابات…')}</p>}
-          {targets && !targets.length && <p className="u-sm u-muted">{t('No connected account matches this post’s platforms.', 'لا يوجد حساب مربوط من منصات هذا المنشور.')} {can('connections.manage') && <Link to="/connections">{t('Connect accounts', 'اربط الحسابات')}</Link>}</p>}
+          {targets && !targets.length && !item.channels.length && <p className="u-sm u-muted">{t('This post has no platforms.', 'هذا المنشور بلا منصات.')}</p>}
           <ul className="publish-targets">{targets?.map((target) => <li key={target.accountId}>
             <label data-disabled={!target.ready || undefined}>
               <input type="checkbox" checked={selected.has(target.accountId)} disabled={!target.ready} onChange={() => toggle(target.accountId)} />
               <ChannelIcon channel={target.provider} size={16} />
               <span className="u-grow"><b dir="auto">{target.name}</b>{!target.ready && <small>{reasonText(target)}{target.reason === 'advanced' && <> <Link to={`/content/${item.id}`}>{t('Post page', 'صفحة المنشور')}</Link></>}</small>}</span>
             </label>
-          </li>)}</ul>
+          </li>)}
+            {targets && item.channels.filter((channel) => !targets.some((target) => target.provider === channel)).map((channel) => {
+              const platform = platformOf(channel);
+              return <li key={channel}><label data-disabled>
+                <input type="checkbox" disabled />
+                <ChannelIcon channel={channel} size={16} />
+                <span className="u-grow"><b>{platform.name}</b><small>{platform.way === 'manual' ? t('Published by hand: it goes on the calendar with a reminder.', 'يُنشر يدويًا: يوضع في التقويم مع تذكير.') : <>{t('No connected account.', 'لا يوجد حساب مربوط.')} {can('connections.manage') && <Link to="/connections">{t('Connect', 'اربط')}</Link>}</>}</small></span>
+              </label></li>;
+            })}
+          </ul>
+          <p className="u-xs u-muted">{t('Another platform? Edit the post to add it with its caption; it is approved again before publishing.', 'منصة أخرى؟ عدّل المنشور لإضافتها مع نصها، ثم يُعتمد مرة أخرى قبل النشر.')}</p>
         </section>
         <section>
           <h3 className="publish-step"><span>2</span>{t('When?', 'متى؟')}</h3>

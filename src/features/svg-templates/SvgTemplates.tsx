@@ -6,6 +6,7 @@ import { useRouter } from '../../app/router/router';
 import { ChannelIcon } from '../../components/data-display/ChannelIcon';
 import { Button } from '../../components/ui/Button';
 import { useI18n } from '../../i18n/I18nProvider';
+import { readPostPlan, takePostPlan } from '../content/postPlan';
 import { api, errorMessage } from '../../lib/api';
 import { CoursePicker, runOf } from '../creative-studio/CoursePicker';
 import { CREATIVE_PLATFORMS, PLATFORM_FORMATS, type CreativePlatform } from '../creative-studio/platforms';
@@ -15,6 +16,12 @@ import { courseCopy, courseTemplateCopy } from '../../domain/course-copy';
 import { publishingPreset } from '../../domain/output-presets';
 import { PublishingPresetPicker } from '../publishing/PublishingPresetPicker';
 import { useAuth } from '../auth/AuthProvider';
+
+/** The platforms of the plan row a post is being made for, when there is one. */
+const plannedChannels = (): CreativePlatform[] | undefined => {
+  const planned = (readPostPlan().channels ?? []).filter((c): c is CreativePlatform => (CREATIVE_PLATFORMS as string[]).includes(c));
+  return planned.length ? planned : undefined;
+};
 
 export function useSvgTemplates() {
   const [items, setItems] = useState<SvgTemplate[] | null>(null);
@@ -297,7 +304,7 @@ function ReferenceComposer({ template, initialValues, contentId, initialChannels
   const [values, setValues] = useState<Record<string, string>>(saved.values ?? initialValues ?? sampleValues(template.fields));
   const [context, setContext] = useState<string>(saved.context ?? initialContext ?? '');
   const [format, setFormat] = useState<TemplateFormat>(saved.format ?? initialFormat ?? template.format);
-  const [channels, setChannels] = useState<CreativePlatform[]>(initialChannels ?? saved.channels ?? ['instagram', 'facebook']);
+  const [channels, setChannels] = useState<CreativePlatform[]>(initialChannels ?? plannedChannels() ?? saved.channels ?? ['instagram', 'facebook']);
   const [presetId, setPresetId] = useState<string>(saved.presetId ?? initialPreset ?? '');
   const preset = publishingPreset(presetId);
   const [caption, setCaption] = useState<string>(saved.caption ?? '');
@@ -364,7 +371,7 @@ function ReferenceComposer({ template, initialValues, contentId, initialChannels
       if (id && savedSignature.current !== signature) await api(`/api/content/${id}/versions`, { body: { imageUrl, studio: { svgTemplate }, note: t('New design from the approved reference', 'تصميم جديد من المرجع المعتمد') } });
       if (id) await api(`/api/content/${id}`, { method: 'PATCH', body: { title: values.title.slice(0, 300), ...(!contentId ? { channels, captions: Object.fromEntries(channels.map((c) => [c, caption])) } : {}) } });
       if (!id) {
-        const item = await api<{ id: string }>('/api/content', { body: { title: values.title.slice(0, 300), channels, captions: Object.fromEntries(channels.map((c) => [c, caption])), creative: { requestId: 'reference-design', directionId: format, imageUrl, model: 'reference-guided', directionName: template.name, svgTemplate } } });
+        const item = await api<{ id: string }>('/api/content', { body: { ...takePostPlan(), title: values.title.slice(0, 300), channels, captions: Object.fromEntries(channels.map((c) => [c, caption])), creative: { requestId: 'reference-design', directionId: format, imageUrl, model: 'reference-guided', directionName: template.name, svgTemplate } } });
         id = item.id;
         setCreatedId(id);
         void api(`/api/svg-templates/${template.id}/used`, { body: {} }).catch(() => {});
@@ -421,7 +428,7 @@ function SvgTemplateComposer({ template, initialValues, contentId, initialChanne
   const { t } = useI18n();
   const { navigate } = useRouter();
   const [values, setValues] = useState<Record<string, string>>(() => ({ ...sampleValues(template.fields), ...initialValues }));
-  const [channels, setChannels] = useState<CreativePlatform[]>(initialChannels ?? ['instagram', 'facebook']);
+  const [channels, setChannels] = useState<CreativePlatform[]>(initialChannels ?? plannedChannels() ?? ['instagram', 'facebook']);
   const [captions, setCaptions] = useState<Partial<Record<CreativePlatform, string>>>({});
   const [dialect, setDialect] = usePreferredDialect();
   const [busy, setBusy] = useState('');
@@ -459,7 +466,7 @@ function SvgTemplateComposer({ template, initialValues, contentId, initialChanne
         navigate(`/content/${contentId}`);
       } else {
         const item = await api<{ id: string }>('/api/content', {
-          body: { title: title.slice(0, 300), channels, captions: Object.fromEntries(channels.map((c) => [c, captions[c] ?? ''])), creative: { requestId: 'svg-template', directionId: 'svg', imageUrl: url, model: 'svg-template', directionName: template.name.slice(0, 200), svgTemplate } },
+          body: { ...takePostPlan(), title: title.slice(0, 300), channels, captions: Object.fromEntries(channels.map((c) => [c, captions[c] ?? ''])), creative: { requestId: 'svg-template', directionId: 'svg', imageUrl: url, model: 'svg-template', directionName: template.name.slice(0, 200), svgTemplate } },
         });
         void api(`/api/svg-templates/${template.id}/used`, { body: {} }).catch(() => {});
         if (send) await api(`/api/content/${item.id}/transition`, { body: { to: 'ready_for_review' } });

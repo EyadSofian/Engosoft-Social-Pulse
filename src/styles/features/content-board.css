@@ -311,3 +311,4 @@
   .sug__hooks em { opacity: 1; }
   .cop-sheet__panel { max-height: 92vh; }
 }
+.board-card__chips i { display: inline-flex; align-items: center; gap: 4px; }

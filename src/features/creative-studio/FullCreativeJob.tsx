@@ -4,6 +4,7 @@ import { AlertTriangle, BookmarkPlus, CheckCircle2, Download, FileText, Globe, L
 import { useRouter } from '../../app/router/router';
 import { Button } from '../../components/ui/Button';
 import { useI18n } from '../../i18n/I18nProvider';
+import { takePostPlan } from '../content/postPlan';
 import { api, errorMessage } from '../../lib/api';
 import type { CreativeJob, PublicResult, PublicRun } from '../../../server/creative-intelligence/generation/jobs';
 import { updateActiveCreative } from './activeCreative';
@@ -159,7 +160,7 @@ function ResultActions({ run, result, story, landscape, video, platforms, prompt
     try {
       if (!created.current) {
         const captions = Object.fromEntries(platforms.map((p) => [p, run.brief.captions?.[p] || run.brief.caption]));
-        const item = await api<{ id: string }>('/api/content', { body: { title: run.brief.canonicalCopy.headline, channels: platforms, captions, creative: { requestId: run.requestId, directionId: result.directionId, imageUrl: result.imageUrl, ...(story?.imageUrl ? { storyUrl: story.imageUrl } : {}), ...(landscape?.imageUrl ? { landscapeUrl: landscape.imageUrl } : {}), ...(video?.imageUrl ? { youtubeUrl: video.imageUrl } : {}), model: result.model, directionName: direction.name } } });
+        const item = await api<{ id: string }>('/api/content', { body: { ...takePostPlan(), title: run.brief.canonicalCopy.headline, channels: platforms, captions, creative: { requestId: run.requestId, directionId: result.directionId, imageUrl: result.imageUrl, ...(story?.imageUrl ? { storyUrl: story.imageUrl } : {}), ...(landscape?.imageUrl ? { landscapeUrl: landscape.imageUrl } : {}), ...(video?.imageUrl ? { youtubeUrl: video.imageUrl } : {}), model: result.model, directionName: direction.name } } });
         created.current = item.id;
       }
       if (send) await api(`/api/content/${created.current}/transition`, { body: { to: 'ready_for_review' } });

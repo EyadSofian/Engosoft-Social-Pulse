@@ -45,7 +45,7 @@ const users = {
   manager: await makeUser('marketing_manager'),
 };
 // Operations: a Content Creator limited to approved templates.
-await db.run('UPDATE users SET permission_overrides=? WHERE id=?', [JSON.stringify({ 'design.free': false }), users.ops.id]);
+await db.run('UPDATE users SET permission_overrides=? WHERE id=?', [JSON.stringify({ 'design.free': false, 'design.upload': false }), users.ops.id]);
 const tokens = Object.fromEntries(
   await Promise.all(
     Object.entries(users).map(async ([key, user]) => [
@@ -242,7 +242,7 @@ test('course search remains available without Odoo, searches all imported course
   }
 });
 
-test('permissions directory includes five roles and eighteen capabilities without exposing credentials', async () => {
+test('permissions directory includes five roles and twenty capabilities without exposing credentials', async () => {
   const result = await (await request('/api/permissions')).json();
   assert.equal(result.roles.length, 5);
   assert.deepEqual(result.permissions, ALL_PERMISSIONS);

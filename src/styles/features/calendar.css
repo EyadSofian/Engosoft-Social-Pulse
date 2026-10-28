@@ -156,3 +156,15 @@
 .mc-pick b { display: block; font-size: 13px; line-height: 1.45; }
 @media (hover: none) { .mc-add { opacity: 1; } }
 .mc-legend > .mc-legend__auto::before, .mc-legend > .mc-legend__plan::before { content: none; }
+
+/* Plan rows waiting for a post, and posts shown on their planned day */
+.mc-slot { display: flex; align-items: center; gap: 5px; width: 100%; padding: 3px 7px; border: 1.5px dashed var(--border-strong); border-radius: 7px; background: var(--surface); color: var(--text-muted); font: inherit; font-size: 11px; font-weight: 700; line-height: 1.6; text-align: start; cursor: pointer; }
+.mc-slot:hover { border-color: var(--brand); color: var(--brand-ink); }
+.mc-slot[data-goal='reach'] { border-color: color-mix(in srgb, var(--brand) 55%, transparent); }
+.mc-slot[data-goal='engagement'] { border-color: color-mix(in srgb, var(--accent) 60%, transparent); }
+.mc-slot[data-goal='leads'] { border-color: color-mix(in srgb, var(--success) 60%, transparent); }
+.mc-slot[data-goal='traffic'] { border-color: color-mix(in srgb, var(--info) 60%, transparent); }
+.mc-planned { display: inline-block; padding: 0 6px; border-radius: 999px; background: var(--surface-active); color: var(--text-muted); font-size: 10.5px; font-weight: 700; }
+.mc-chip[data-planned] { border-style: dashed; }
+.mc-card .goal-badge { justify-self: start; font-size: 10.5px; padding: 1px 6px; }
+.mc-row__meta .goal-badge { font-size: 10.5px; padding: 0 6px; }

@@ -3,7 +3,11 @@ import { DateTime } from 'luxon';
 import { CalendarClock, CalendarPlus, ChevronLeft, ChevronRight, Image as ImageIcon, Plus, Search, Send, Sparkles, Zap } from 'lucide-react';
 import { useLiveData } from '../../app/providers/LiveDataProvider';
 import { Dialog } from '../../components/overlay/Overlay';
-import { PublishDialog, usePublishingBoard } from '../../features/publishing/PublishDialog';
+import { CHANNELS } from '../../domain/shared';
+import { platformOf, PublishDialog, usePublishingBoard } from '../../features/publishing/PublishDialog';
+import { GoalBadge } from '../../features/content-pipeline/PostPlan';
+import { GOAL_INFO } from '../../domain/goals';
+import { planSlots, type Slot } from '../../features/content-pipeline/slots';
 import { Link, useQueryState } from '../../app/router/router';
 import { ChannelIcon } from '../../components/data-display/ChannelIcon';
 import { Button } from '../../components/ui/Button';
@@ -24,8 +28,10 @@ interface OdooScheduleEntry { id: string; title: string; startsAt: string; endsA
 const AutoPublish = createContext<Set<string>>(new Set());
 /** Opens the schedule-a-post picker for a day; null when the person cannot schedule. */
 const AddToDay = createContext<((day: string) => void) | null>(null);
+const OpenSlot = createContext<(slot: Slot) => void>(() => {});
+/** Where a post sits on the grid: its publish time, or the day it is planned for until then. */
+const dayTime = (item: PipelineItem) => item.scheduledAt ?? item.plannedFor;
 
-const CHANNELS: Channel[] = ['facebook', 'instagram', 'linkedin', 'tiktok', 'snapchat', 'whatsapp', 'website'];
 const STATUS_FILTERS: { value: string; statuses: ContentStatus[]; en: string; ar: string }[] = [
   { value: 'all', statuses: [], en: 'All statuses', ar: 'كل الحالات' },
   { value: 'review', statuses: ['ready_for_review'], en: 'Needs approval', ar: 'بانتظار الاعتماد' },
@@ -53,6 +59,7 @@ export function ContentCalendar() {
   const { store } = useLiveData();
   const [picking, setPicking] = useState<string | null>(null);
   const [publishing, setPublishing] = useState<{ item: PipelineItem; day?: string } | null>(null);
+  const [slot, setSlot] = useState<Slot | null>(null);
   const auto = useMemo(() => new Set((board?.queue ?? []).filter((row) => row.state === 'queued' || row.state === 'sending').map((row) => row.contentId)), [board]);
   const [search, setSearch] = useState('');
   const [showRail, setShowRail] = useState(false);
@@ -96,14 +103,15 @@ export function ContentCalendar() {
   const byDay = useMemo(() => {
     const map = new Map<string, PipelineItem[]>();
     for (const item of visible) {
-      if (!item.scheduledAt) continue;
-      const key = dayOf(item.scheduledAt);
+      const when = dayTime(item);
+      if (!when) continue;
+      const key = dayOf(when);
       map.set(key, [...(map.get(key) ?? []), item]);
     }
-    for (const list of map.values()) list.sort((a, b) => a.scheduledAt!.localeCompare(b.scheduledAt!));
+    for (const list of map.values()) list.sort((a, b) => dayTime(a)!.localeCompare(dayTime(b)!));
     return map;
   }, [visible]);
-  const unscheduled = useMemo(() => visible.filter((item) => !item.scheduledAt && item.status !== 'published' && item.status !== 'idea')
+  const unscheduled = useMemo(() => visible.filter((item) => !dayTime(item) && item.status !== 'published' && item.status !== 'idea')
     .sort((a, b) => ORDER.indexOf(a.status) - ORDER.indexOf(b.status)), [visible]);
 
   const occasions = useMemo(() => (layers.has('info') ? occasionsFor(cells.map((cell) => cell.key)) : new Map<string, Occasion[]>()), [cells.map((c) => c.key).join(','), query]);
@@ -115,13 +123,12 @@ export function ContentCalendar() {
   }, [odoo, query]);
   // Imported calendar plans that no post is linked to yet: planned, but nobody has made them.
   const planned = useMemo(() => {
-    const map = new Map<string, { id: string; title: string }[]>();
+    const map = new Map<string, Slot[]>();
     if (store.phase !== 'ready') return map;
-    for (const plan of store.data.plans) {
-      if (plan.status === 'cancelled' || plan.notes.startsWith('content:')) continue;
-      if (platforms.size && !platforms.has(plan.platform)) continue;
-      const key = dayOf(plan.scheduledAt);
-      map.set(key, [...(map.get(key) ?? []), { id: plan.id, title: plan.title }]);
+    for (const slot of planSlots(store.data.plans)) {
+      if (platforms.size && !slot.platforms.some((platform) => platforms.has(platform))) continue;
+      const key = dayOf(slot.scheduledAt);
+      map.set(key, [...(map.get(key) ?? []), slot]);
     }
     return map;
   // eslint-disable-next-line react-hooks/exhaustive-deps
@@ -137,6 +144,7 @@ export function ContentCalendar() {
   const days = mode === 'list' ? rangeDays : [];
 
   return (
+    <OpenSlot.Provider value={setSlot}>
     <AutoPublish.Provider value={auto}>
     <AddToDay.Provider value={canAdd ? setPicking : null}>
     <div className="mc">
@@ -161,7 +169,7 @@ export function ContentCalendar() {
 
       <div className="mc-filters">
         <div className="mc-platforms" role="group" aria-label={t('Platforms', 'المنصات')}>
-          {CHANNELS.map((channel) => <button key={channel} type="button" aria-label={channel} aria-pressed={platforms.has(channel)} onClick={() => togglePlatform(channel)} title={channel}><ChannelIcon channel={channel} size={15} /></button>)}
+          {CHANNELS.map((channel) => <button key={channel} type="button" aria-label={platformOf(channel).name} aria-pressed={platforms.has(channel)} onClick={() => togglePlatform(channel)} title={platformOf(channel).name}><ChannelIcon channel={channel} size={15} /></button>)}
           {platforms.size > 0 && <button type="button" className="mc-clear" onClick={() => setQuery({ p: null })}>{t('Clear', 'مسح')}</button>}
         </div>
         <button type="button" className="mc-layer" aria-pressed={layers.has('info')} onClick={() => toggleLayer('info')}><Sparkles size={13} /> {t('Courses & occasions', 'الدورات والمناسبات')}</button>
@@ -207,7 +215,7 @@ export function ContentCalendar() {
           </ul>
         </aside>}
       </div>
-      <div className="mc-legend"><span data-tone="neutral">{t('Draft', 'مسودة')}</span><span data-tone="brand">{t('In review / scheduled', 'للمراجعة / مجدول')}</span><span data-tone="success">{t('Approved / published', 'معتمد / منشور')}</span><span data-tone="warning">{t('Changes requested', 'مطلوب تعديل')}</span><span className="mc-legend__auto"><Zap size={11} /> {t('Publishes automatically', 'يُنشر تلقائيًا')}</span><span className="mc-legend__plan">{t('Planned, not made yet', 'مخطط ولم يُصمَّم')}</span><small>{zone()}</small></div>
+      <div className="mc-legend"><span data-tone="neutral">{t('Draft', 'مسودة')}</span><span data-tone="brand">{t('In review / scheduled', 'للمراجعة / مجدول')}</span><span data-tone="success">{t('Approved / published', 'معتمد / منشور')}</span><span data-tone="warning">{t('Changes requested', 'مطلوب تعديل')}</span><span className="mc-legend__auto"><Zap size={11} /> {t('Publishes automatically', 'يُنشر تلقائيًا')}</span><span className="mc-legend__plan">{t('Planned, not made yet: press to make it', 'مخطط ولم يُصمَّم: اضغط لعمله')}</span><small>{zone()}</small></div>
 
       <Dialog open={picking !== null} onClose={() => setPicking(null)} title={t('Schedule a post', 'جدولة منشور')} description={picking ? date(picking, 'weekdayDate') : undefined}>
         {ready.length ? <ul className="mc-pick">{ready.map((item) => <li key={item.id}><button type="button" onClick={() => { setPublishing({ item, day: picking ?? undefined }); setPicking(null); }}>
@@ -218,9 +226,22 @@ export function ContentCalendar() {
         </div>}
       </Dialog>
       {publishing && <PublishDialog item={publishing.item} day={publishing.day} open onClose={() => setPublishing(null)} onDone={published} />}
+      <Dialog open={slot !== null} onClose={() => setSlot(null)} title={t('Planned, not made yet', 'مخطط ولم يُصمَّم بعد')} description={slot ? <span dir="auto">{slot.title}</span> : undefined}
+        footer={slot && <>
+          {can('content.schedule') && <Button variant="ghost" onClick={async () => { const ids = slot.ids; setSlot(null); for (const id of ids) await store.deletePlan(id).catch(() => {}); void store.reload(); }}>{t('Remove from the plan', 'احذف من الخطة')}</Button>}
+          {can('content.create') && <Button variant="primary" icon={<Plus size={15} />} onClick={() => { const s = slot; setSlot(null); create.open({ title: s.title, caption: s.caption, slotId: s.id, goal: s.goal, plannedFor: s.scheduledAt, channels: s.platforms }); }}>{t('Make this post', 'اعمل المنشور')}</Button>}
+        </>}>
+        {slot && <dl className="post-plan__facts">
+          <div><dt>{t('Day', 'اليوم')}</dt><dd>{date(slot.scheduledAt, 'weekdayDate')} · {date(slot.scheduledAt, 'time')}</dd></div>
+          <div><dt>{t('Platforms', 'المنصات')}</dt><dd>{slot.platforms.map((platform) => <span key={platform} className="post-plan__when"><ChannelIcon channel={platform} size={15} /> {platformOf(platform).name}</span>)}</dd></div>
+          <div><dt>{t('Goal', 'الهدف')}</dt><dd>{slot.goal ? <GoalBadge goal={slot.goal} /> : <span className="u-muted">{t('Not set in the plan', 'غير محدد في الخطة')}</span>}</dd></div>
+          {slot.caption && <div><dt>{t('Notes', 'النص')}</dt><dd dir="auto">{slot.caption}</dd></div>}
+        </dl>}
+      </Dialog>
     </div>
     </AddToDay.Provider>
     </AutoPublish.Provider>
+    </OpenSlot.Provider>
   );
 }
 
@@ -240,6 +261,12 @@ function StatusPill({ status }: { status: ContentStatus }) {
   return <span className="mc-status" data-tone={tone(status)}>{tx(STATUS_LABEL[status])}</span>;
 }
 
+/** A post shown on its planned day, before anyone has given it a publish time. */
+function PlannedTag() {
+  const { t } = useI18n();
+  return <span className="mc-planned">{t('Planned', 'مستهدف')}</span>;
+}
+
 function AutoMark({ item }: { item: PipelineItem }) {
   const { t } = useI18n();
   return useContext(AutoPublish).has(item.id) ? <Zap size={11} className="mc-auto" aria-label={t('Publishes automatically', 'يُنشر تلقائيًا')} /> : null;
@@ -253,7 +280,8 @@ function PostRow({ item, compact }: { item: PipelineItem; compact?: boolean }) {
       <span className="mc-row__body">
         <b dir="auto">{item.title}</b>
         <span className="mc-row__meta">
-          {item.scheduledAt && <span className="u-tnum">{date(item.scheduledAt, 'time')}</span>}
+          {item.scheduledAt ? <span className="u-tnum">{date(item.scheduledAt, 'time')}</span> : item.plannedFor ? <PlannedTag /> : null}
+          {item.goal && <GoalBadge goal={item.goal} />}
           <AutoMark item={item} />
           <span className="mc-channels">{item.channels.map((channel) => <ChannelIcon key={channel} channel={channel} size={12} />)}</span>
         </span>
@@ -263,12 +291,13 @@ function PostRow({ item, compact }: { item: PipelineItem; compact?: boolean }) {
   );
 }
 
-function DayColumn({ cell, mode, today, past, posts, occasions, sessions, planned }: { cell: DayCell; mode: Mode; today: boolean; past: boolean; posts: PipelineItem[]; occasions: Occasion[]; sessions: OdooScheduleEntry[]; planned: { id: string; title: string }[] }) {
-  const { t, date, num } = useI18n();
+function DayColumn({ cell, mode, today, past, posts, occasions, sessions, planned }: { cell: DayCell; mode: Mode; today: boolean; past: boolean; posts: PipelineItem[]; occasions: Occasion[]; sessions: OdooScheduleEntry[]; planned: Slot[] }) {
+  const { t, date, num, tx } = useI18n();
   const [, setQuery] = useQueryState();
   const add = useContext(AddToDay);
+  const openSlot = useContext(OpenSlot);
   const max = mode === 'week' ? posts.length : 3;
-  const info = [...planned.map((p) => ({ key: `plan-${p.id}`, label: p.title, kind: 'plan' as const })), ...occasions.map((o) => ({ key: o.key, label: o.name, kind: 'occasion' as const })), ...sessions.map((s) => ({ key: `odoo-${s.id}`, label: s.title, kind: 'course' as const }))];
+  const info = [...occasions.map((o) => ({ key: o.key, label: o.name, kind: 'occasion' as const })), ...sessions.map((s) => ({ key: `odoo-${s.id}`, label: s.title, kind: 'course' as const }))];
   const hidden = posts.length - max;
   return (
     <div className="mc-day" role="gridcell" data-today={today || undefined} data-out={(mode === 'month' && !cell.inMonth) || undefined} data-weekend={cell.weekend || undefined}>
@@ -277,7 +306,10 @@ function DayColumn({ cell, mode, today, past, posts, occasions, sessions, planne
         <b className="u-tnum" data-today={today || undefined}>{cell.date.day}</b>
       </span>
       {info.slice(0, mode === 'week' ? 6 : 1).map((entry) => <span key={entry.key} className="mc-info" data-kind={entry.kind} title={entry.label} dir="auto"><span className="u-truncate">{entry.label}</span></span>)}
-      {mode === 'week' && posts.length === 0 && <span className="mc-day__empty">{t('No posts', 'لا توجد منشورات')}</span>}
+      {planned.slice(0, mode === 'week' ? 8 : 2).map((slot) => <button key={slot.id} type="button" className="mc-slot" data-goal={slot.goal ?? undefined} onClick={() => openSlot(slot)} title={`${slot.title}${slot.goal ? ` · ${tx(GOAL_INFO[slot.goal].label)}` : ''}`}>
+        {slot.platforms.map((platform) => <ChannelIcon key={platform} channel={platform} size={11} />)}<span className="u-truncate" dir="auto">{slot.title}</span>
+      </button>)}
+      {mode === 'week' && posts.length === 0 && planned.length === 0 && <span className="mc-day__empty">{t('No posts', 'لا توجد منشورات')}</span>}
       {mode === 'week'
         ? posts.slice(0, max).map((item) => <WeekCard key={item.id} item={item} />)
         : <ul className="mc-day__chips">{posts.slice(0, max).map((item) => <li key={item.id}><MonthChip item={item} /></li>)}</ul>}
@@ -293,8 +325,9 @@ function WeekCard({ item }: { item: PipelineItem }) {
     <Link to={`/content/${item.id}`} className="mc-card" data-tone={tone(item.status)}>
       <Thumb item={item} size="md" />
       <span className="mc-card__body">
-        <span className="mc-card__time u-tnum">{item.scheduledAt ? date(item.scheduledAt, 'time') : ''} <AutoMark item={item} /></span>
+        <span className="mc-card__time u-tnum">{item.scheduledAt ? date(item.scheduledAt, 'time') : <PlannedTag />} <AutoMark item={item} /></span>
         <b dir="auto">{item.title}</b>
+        {item.goal && <GoalBadge goal={item.goal} />}
         <span className="mc-card__foot"><span className="mc-channels">{item.channels.map((channel) => <ChannelIcon key={channel} channel={channel} size={12} />)}</span><StatusPill status={item.status} /></span>
       </span>
     </Link>
@@ -304,7 +337,7 @@ function WeekCard({ item }: { item: PipelineItem }) {
 function MonthChip({ item }: { item: PipelineItem }) {
   const { date } = useI18n();
   return (
-    <Link to={`/content/${item.id}`} className="mc-chip" data-tone={tone(item.status)} title={item.title}>
+    <Link to={`/content/${item.id}`} className="mc-chip" data-tone={tone(item.status)} data-planned={!item.scheduledAt || undefined} title={item.title}>
       <Thumb item={item} size="sm" />
       <span className="mc-chip__time u-tnum">{item.scheduledAt ? date(item.scheduledAt, 'time') : ''}</span>
       <AutoMark item={item} />

@@ -97,12 +97,12 @@ test('course editor renders stored audience and goals, distinguishes drafts, and
   assert.ok(approved.includes('disabled=""'));
 });
 
-test('role directory renders every capability, with the Content Creator limited to four defaults', () => {
+test('role directory renders every capability, with the Content Creator limited to six defaults', () => {
   const html = render(
     createElement(PermissionsRoleDetail, { role: ROLES.creator }),
   );
-  assert.equal((html.match(/class="permissions__row"/g) || []).length, 18);
-  assert.equal((html.match(/data-enabled="true"/g) || []).length, 4);
+  assert.equal((html.match(/class="permissions__row"/g) || []).length, 20);
+  assert.equal((html.match(/data-enabled="true"/g) || []).length, 6);
   assert.ok(html.includes('منشئ محتوى'));
   assert.ok(html.includes('الاعتماد وطلب التعديلات'));
 });
@@ -123,6 +123,9 @@ const item: PipelineItem = {
   scheduledAt: null,
   planIds: [],
   templateId: null,
+  goal: null,
+  plannedFor: null,
+  slotId: null,
   createdAt: '2026-10-27T10:00:00Z',
   updatedAt: '2026-10-27T10:00:00Z',
   moves: [{ to: 'approved', needsNote: false }],

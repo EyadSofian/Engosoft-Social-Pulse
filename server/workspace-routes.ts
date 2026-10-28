@@ -7,12 +7,13 @@ import { z } from 'zod';
 import { DEPARTMENTS, ROLES } from '../src/domain/catalog.js';
 import { CONTENT_STATUSES, type ContentStatus } from '../src/domain/content.js';
 import { ALL_PERMISSIONS, type Permission } from '../src/domain/users.js';
+import { GOALS, type Goal } from '../src/domain/goals.js';
 import {
   authenticate, clearFailedLogins, createSession, createUser, endSession, isDepartment, isRole, listUsers, loginBlocked,
   readCookie, recordFailedLogin, requirePermission, requireUser, SESSION_COOKIE, updateUser, userCan, getUser, type AuthUser,
 } from './auth.js';
 import {
-  addComment, addVersion, allowedMoves, canEdit, canSee, contentIsMutable, createContent, getContent, listContent, listEvents, listVersions, transition, updateContent, WorkspaceError, type StoredContent,
+  addComment, addVersion, allowedMoves, reopenContent, canEdit, canSee, contentIsMutable, createContent, getContent, listContent, listEvents, listVersions, transition, updateContent, WorkspaceError, type StoredContent,
 } from './workspace.js';
 import { db, defineSchema } from './db.js';
 import { notifyContent } from './notify.js';
@@ -24,8 +25,18 @@ const svgTemplateRef = z.object({ id: z.string().uuid(), values: z.record(z.stri
 const creativeRef = z.object({ requestId: z.string().max(60), directionId: z.string().max(40), imageUrl: creativeUrl, storyUrl: creativeUrl.optional(), landscapeUrl: creativeUrl.optional(), youtubeUrl: creativeUrl.optional(), model: z.string().max(60).optional(), directionName: z.string().max(200).optional(), svgTemplate: svgTemplateRef.optional() });
 const captions = z.partialRecord(z.enum(CHANNELS), z.string().max(5000));
 
+const postPlan = { goal: z.enum(GOALS as [Goal, ...Goal[]]).nullable().optional(), plannedFor: z.iso.datetime().nullable().optional(), slotId: z.string().max(80).nullable().optional() };
+
+/** Which of the three ways a post's design was made; each way is its own permission. */
+type DesignWay = 'template' | 'upload' | 'ai';
+const designWay = (creative: z.infer<typeof creativeRef> | null): DesignWay => creative?.svgTemplate ? 'template' : creative?.imageUrl.startsWith('/api/uploads/') ? 'upload' : 'ai';
+const WAY_PERMISSION: Record<DesignWay, Permission> = { template: 'design.templates', upload: 'design.upload', ai: 'design.free' };
+const WAY_REFUSAL: Record<DesignWay, string> = { template: 'استخدام القوالب ليس ضمن صلاحياتك.', upload: 'رفع التصميمات الجاهزة ليس ضمن صلاحياتك.', ai: 'التصميم بالذكاء الاصطناعي ليس ضمن صلاحياتك؛ استخدم قالبًا جاهزًا.' };
+
 const publicUser = (user: AuthUser) => ({ id: user.id, name: user.name, email: user.email, role: user.role, departmentId: user.departmentId, title: user.title, status: user.status, lastActiveAt: user.lastActiveAt, permissionOverrides: user.permissionOverrides });
-const withMoves = (user: AuthUser) => (item: StoredContent) => ({ ...item, moves: allowedMoves(user, item), editable: canEdit(user, item) && contentIsMutable(item), canSchedule: userCan(user, 'content.schedule'), canPublish: userCan(user, 'content.publish') });
+const withMoves = (user: AuthUser) => (item: StoredContent) => ({ ...item, moves: allowedMoves(user, item), editable: canEdit(user, item) && contentIsMutable(item), canSchedule: userCan(user, 'content.schedule'), canPublish: userCan(user, 'content.publish'),
+  /** An approved or scheduled post this person may send back for changes. */
+  canReopen: ['approved', 'scheduled'].includes(item.status) && (canEdit(user, item) || item.ownerId === user.id || userCan(user, 'content.approve')) });
 
 async function checkTemplate(ref: z.infer<typeof svgTemplateRef>) {
   if (ref.outputPreset && (!publishingPreset(ref.outputPreset) || publishingPreset(ref.outputPreset)!.format !== ref.format)) throw new WorkspaceError(400, 'مقاس النشر غير صالح أو لا يطابق التصميم.');
@@ -122,8 +133,9 @@ export function registerWorkspaceRoutes(app: express.Express) {
   });
   app.post('/api/content', requireUser, requirePermission('content.create'), async (req, res) => {
     try {
-      const input = z.object({ title: z.string().trim().min(2).max(300), channels: z.array(z.enum(CHANNELS)).min(1).max(8), captions: captions.default({}), creative: creativeRef.nullable(), templateId: z.string().max(80).nullable().optional() }).parse(req.body);
-      if (!userCan(req.user!, 'design.free') && !input.creative?.svgTemplate) return res.status(403).json({ error: 'تصمّم من القوالب المعتمدة فقط.', code: 'forbidden' });
+      const input = z.object({ title: z.string().trim().min(2).max(300), channels: z.array(z.enum(CHANNELS)).min(1).max(8), captions: captions.default({}), creative: creativeRef.nullable(), templateId: z.string().max(80).nullable().optional(), ...postPlan }).parse(req.body);
+      const way = designWay(input.creative);
+      if (!userCan(req.user!, WAY_PERMISSION[way])) return res.status(403).json({ error: WAY_REFUSAL[way], code: 'forbidden' });
       if (input.creative?.svgTemplate) await checkTemplate(input.creative.svgTemplate);
       // New posts start within each platform's rules (hashtag count, links, length).
       const fitted = Object.fromEntries(Object.entries(input.captions).map(([c, text]) => [c, text ? fitCaption(c as Channel, text) : text]));
@@ -140,7 +152,7 @@ export function registerWorkspaceRoutes(app: express.Express) {
   });
   app.patch('/api/content/:id', requireUser, async (req, res) => {
     try {
-      const patch = z.object({ title: z.string().trim().min(2).max(300).optional(), channels: z.array(z.enum(CHANNELS)).min(1).max(8).optional(), captions: captions.optional() }).parse(req.body);
+      const patch = z.object({ title: z.string().trim().min(2).max(300).optional(), channels: z.array(z.enum(CHANNELS)).min(1).max(8).optional(), captions: captions.optional(), goal: postPlan.goal, plannedFor: postPlan.plannedFor }).parse(req.body);
       res.json(withMoves(req.user!)(await updateContent(req.user!, String(req.params.id), patch)));
     } catch (error) { fail(res, error); }
   });
@@ -150,6 +162,12 @@ export function registerWorkspaceRoutes(app: express.Express) {
       const item = await transition(req.user!, String(req.params.id), input.to, input);
       void notifyContent(req.user!, item, input.to);
       res.json(withMoves(req.user!)(item));
+    } catch (error) { fail(res, error); }
+  });
+  app.post('/api/content/:id/reopen', requireUser, async (req, res) => {
+    try {
+      const { note } = z.object({ note: z.string().trim().min(1).max(2000) }).parse(req.body);
+      res.json(withMoves(req.user!)(await reopenContent(req.user!, String(req.params.id), note)));
     } catch (error) { fail(res, error); }
   });
   app.post('/api/content/:id/comments', requireUser, async (req, res) => {
@@ -164,7 +182,8 @@ export function registerWorkspaceRoutes(app: express.Express) {
       const item = await getContent(String(req.params.id));
       if (!item || !canEdit(req.user!, item)) return res.status(404).json({ error: 'المحتوى غير موجود.' });
       const input = z.object({ imageUrl: creativeUrl, storyUrl: creativeUrl.nullable().default(null), studio: z.unknown().optional().refine((v) => !(v && typeof v === 'object' && 'svgTemplate' in v) || svgTemplateRef.safeParse((v as { svgTemplate: unknown }).svgTemplate).success), note: z.string().max(300).default('Studio edit') }).parse(req.body);
-      if (!userCan(req.user!, 'design.free') && !(input.studio && typeof input.studio === 'object' && 'svgTemplate' in input.studio)) return res.status(403).json({ error: 'تعدّل من القوالب المعتمدة فقط.', code: 'forbidden' });
+      const fromTemplate = Boolean(input.studio && typeof input.studio === 'object' && 'svgTemplate' in input.studio);
+      if (!userCan(req.user!, fromTemplate ? 'design.templates' : 'design.free')) return res.status(403).json({ error: fromTemplate ? WAY_REFUSAL.template : WAY_REFUSAL.ai, code: 'forbidden' });
       if (input.studio && typeof input.studio === 'object' && 'svgTemplate' in input.studio) await checkTemplate(svgTemplateRef.parse(input.studio.svgTemplate));
       res.status(201).json(await addVersion(req.user!, item.id, { ...input, studio: input.studio ?? null }));
     } catch (error) { fail(res, error); }
