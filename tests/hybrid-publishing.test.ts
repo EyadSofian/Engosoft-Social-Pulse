@@ -161,3 +161,82 @@ test('publishing-service settings enforce permissions, explicit consent, CSRF an
  assert.equal((await local(path+'/buffer',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({apiKey:'new-buffer-api-secret'})})).status,400);
  assert.equal((await local(path+'/buffer/check',{method:'POST',headers:{Origin:'https://other.test'}})).status,403);
 });
+
+const photoMedia=(count=2)=>Array.from({length:count},()=>({id:randomUUID(),file:'/unused.jpg',url:'/api/social/assets/'+randomUUID(),type:'image' as const,mimeType:'image/jpeg',bytes:100,width:1080,height:1920}));
+const photoInput:PublishInput={...input,kind:'carousel',photoCoverIndex:1,autoAddMusic:false};
+const photoCreator={creator:{nickname:'Engosoft',canPostMore:true},privacyLevels:[{value:'PUBLIC_TO_EVERYONE'}],postingLimits:{interactionSettings:{allow_comment:{enabled:true},allow_duet:null,allow_stitch:null}}};
+const photoPost=(draft=false)=>({post:{_id:'photo-post',status:'published',platforms:[{platform:'tiktok',accountId:'zernio-target',status:'published',platformPostUrl:draft?undefined:'https://www.tiktok.com/@engosoft_official/photo/1234567890',platformSpecificData:{isDraft:draft}}]}});
+const photoMock=(override:(s:string,w:boolean,b:any,p:string)=>Response|void=()=>undefined)=>mock((s,w,b,p)=>override(s,w,b,p)||(p.includes('/creator-info')?Response.json(photoCreator):undefined));
+
+test('photo carousel uses only Zernio and preserves photo order, cover, full caption and disclosures',async()=>{
+ const a=await fixture(),images=photoMedia(35),caption='نص معتمد '.repeat(350);let bufferCalls=0,writes=0;
+ photoMock((s,w,b)=>{if(s==='buffer')bufferCalls++;if(w){writes++;assert.equal(b.content,'عنوان معتمد');assert.equal(b.mediaItems.length,35);assert.deepEqual(b.mediaItems.map((m:any)=>new URL(m.url).pathname),images.map(m=>'/api/social/media/'+m.id));assert.ok(b.mediaItems.every((m:any)=>m.type==='image'));assert.equal(b.tiktokSettings.description,caption);assert.equal(b.tiktokSettings.photoCoverIndex,34);assert.equal(b.tiktokSettings.mediaType,'photo');assert.equal(b.tiktokSettings.allowComment,true);assert.equal(b.tiktokSettings.autoAddMusic,false);assert.equal(b.tiktokSettings.isBrandOrganicPost,true);assert.equal(b.tiktokSettings.brandPartnerPromote,true);assert.equal(b.tiktokSettings.contentPreviewConfirmed,true);assert.equal(b.tiktokSettings.expressConsentGiven,true);assert.ok(!('allowDuet' in b.tiktokSettings));assert.ok(!('allowStitch' in b.tiktokSettings));return Response.json(photoPost());}});
+ const result=await hybrid.submitHybrid(a,{...photoInput,photoCoverIndex:34,brandOrganic:true,brandContent:true,disableComment:false},caption,images,job(),async()=>{},'عنوان معتمد #وسم');
+ assert.equal(result.state,'published');assert.equal(result.url,'https://www.tiktok.com/@engosoft_official/photo/1234567890');assert.equal(result.externalId,'1234567890');assert.equal(bufferCalls,0);assert.equal(writes,1);
+});
+test('single image is a photo post and auto-music is explicitly opt-in',async()=>{
+ const a=await fixture();photoMock((_s,w,b)=>{if(w){assert.equal(b.mediaItems.length,1);assert.equal(b.tiktokSettings.autoAddMusic,true);assert.equal(b.tiktokSettings.photoCoverIndex,0);return Response.json(photoPost());}});
+ assert.equal((await hybrid.submitHybrid(a,{...photoInput,kind:'image',photoCoverIndex:0,autoAddMusic:true},'Caption',photoMedia(1),job(),async()=>{})).state,'published');
+});
+test('AI photo direct posts are rejected before any request; inbox delivery never claims public publication',async()=>{
+ const a=await fixture(),images=photoMedia(),j=job();let writes=0;
+ photoMock((_s,w,b,p)=>{if(p.endsWith('/posts/photo-post'))return Response.json(photoPost(true));if(w){writes++;assert.equal(b.tiktokSettings.draft,true);assert.ok(!('videoMadeWithAi' in b.tiktokSettings));return Response.json(photoPost(true));}});
+ await assert.rejects(()=>hybrid.submitHybrid(a,{...photoInput,isAiGenerated:true},'Caption',images,j,async()=>{}),/AI-generated photos/);assert.equal(writes,0);
+ const result=await hybrid.submitHybrid(a,{...photoInput,mode:'draft',isAiGenerated:true},'Caption',images,j,async()=>{});
+ assert.equal(result.state,'awaiting_user');assert.equal(result.url,undefined);assert.equal(result.externalId,undefined);
+ assert.equal((await hybrid.pollHybrid({...j,phase:'hybrid:zernio'})).state,'awaiting_user');assert.equal(writes,1);
+});
+test('photo creator settings are checked with mediaType=photo and a changed restriction blocks writes',async()=>{
+ const a=await fixture();let writes=0,photoReads=0;
+ photoMock((_s,w,_b,path)=>{if(w)writes++;if(path.includes('/creator-info')){assert.equal(new URL(path).searchParams.get('mediaType'),'photo');photoReads++;return Response.json({...photoCreator,privacyLevels:[{value:'SELF_ONLY'}]});}});
+ const result=await hybrid.submitHybrid(a,photoInput,'Caption',photoMedia(),job(),async()=>{});
+ assert.equal(result.state,'failed');assert.equal(writes,0);assert.equal(photoReads,1);
+});
+test('photo timeout cannot switch to Buffer, resubmit, or lose its pending service attempt',async()=>{
+ const a=await fixture(),j=job();let writes=0,bufferCalls=0;
+ photoMock((s,w)=>{if(s==='buffer')bufferCalls++;if(w){writes++;throw new Error('ambiguous photo write');}});
+ assert.equal((await hybrid.submitHybrid(a,photoInput,'Caption',photoMedia(),j,async()=>{})).state,'unknown');
+ assert.equal((await hybrid.submitHybrid(a,photoInput,'Caption',photoMedia(),j,async()=>{})).state,'unknown');
+ assert.equal((await hybrid.pollHybrid(j)).state,'unknown');assert.equal(writes,1);assert.equal(bufferCalls,0);
+});
+test('photo validation rejects mixed media, invalid count, cover, description and promotional auto-music',()=>{
+ const images=photoMedia();
+ assert.throws(()=>hybrid.validateHybrid(photoInput,'Caption',images,'#only_hashtag https://example.com'),/photo title/);
+ for(const [i,m,c] of [
+  [photoInput,[images[0],media[0]],'caption'],[photoInput,photoMedia(36),'caption'],[photoInput,photoMedia(1),'caption'],
+  [{...photoInput,kind:'image'},images,'caption'],[{...photoInput,photoCoverIndex:2},images,'caption'],
+  [{...photoInput,photoCoverIndex:-1},images,'caption'],[photoInput,images,'x'.repeat(4001)],
+  [{...photoInput,brandOrganic:true,autoAddMusic:true},images,'caption'],
+ ] as [PublishInput,ReturnType<typeof photoMedia>|typeof media,string][])assert.throws(()=>hybrid.validateHybrid(i,c,m));
+});
+test('Buffer alone does not unlock photo publishing or expose video creator settings as photo settings',async()=>{
+ const a=await fixture(['buffer']);photoMock();
+ assert.equal(await hybrid.hybridConfigured(a.id,'image'),false);assert.equal(await hybrid.hybridConfigured(a.id,'carousel'),false);
+ await assert.rejects(()=>hybrid.hybridCreator(a,'photo'),/media type/);
+ const r=await local('/api/social/connections'),p=(await r.json()).providers.find((p:any)=>p.provider==='tiktok'),account=p.accounts.find((x:any)=>x.id===a.id);
+ assert.equal(account.capabilities.publish_video,'available');assert.notEqual(account.capabilities.publish_image,'available');assert.notEqual(account.capabilities.publish_carousel,'available');
+});
+test('upload, review and publish two photos end-to-end preserves approval and content ownership',async()=>{
+ const sharp=(await import('sharp')).default;
+ const image=await sharp({create:{width:1080,height:1920,channels:4,background:'#9a271a'}}).png().toBuffer();
+ const a=await fixture(),item=await ws.createContent(admin,{title:'Approved photo title',channels:['tiktok'],captions:{tiktok:'الوصف الكامل #انجوسوفت'},creative:null});
+ const upload=()=>local(`/api/social/content/${item.id}/image`,{method:'POST',headers:{'Content-Type':'image/png'},body:new Uint8Array(image)});
+ acting=employee;assert.equal((await upload()).status,403);acting=admin;
+ const first=await upload(),second=await upload();assert.equal(first.status,200);assert.equal(second.status,200);const images=[await first.json(),await second.json()];assert.ok(images.every(m=>m.mimeType==='image/jpeg'&&m.width===1080&&m.height===1920));
+ const socialMedia=await import('../server/social/media');
+ const other=await ws.createContent(admin,{title:'Other content',channels:['tiktok'],captions:{},creative:null});await assert.rejects(()=>socialMedia.resolveMedia(other,[images[0].url]),/attached to this content/);
+ await ws.transition(admin,item.id,'ready_for_review',{});await ws.transition(admin,item.id,'approved',{});
+ assert.equal((await upload()).status,409);await assert.rejects(()=>socialMedia.attachImage(item.id,image),/review/);
+ let writes=0;photoMock((_s,w,b)=>{if(w){writes++;assert.equal(b.content,'Approved photo title');assert.equal(b.tiktokSettings.description,'الوصف الكامل #انجوسوفت');return Response.json(photoPost());}});
+ const body={...photoInput,contentId:item.id,accountId:a.id,media:images.map(m=>({url:m.url})),photoCoverIndex:1};
+ const publish=()=>local('/api/social/publish',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify(body)});
+ const results=await Promise.all([publish(),publish()]);assert.ok(results.every(r=>r.status===200));const jobs=await Promise.all(results.map(r=>r.json()));assert.equal(jobs[0].id,jobs[1].id);assert.equal(jobs[0].state,'published');assert.equal(writes,1);
+ const connections=await (await local('/api/social/connections')).json(),connected=connections.providers.find((p:any)=>p.provider==='tiktok').accounts.find((x:any)=>x.id===a.id);assert.equal(connected.capabilities.publish_image,'available');assert.equal(connected.capabilities.publish_carousel,'available');
+});
+test('image upload rejects disguised SVG and malformed bytes before storing media',async()=>{
+ const item=await ws.createContent(admin,{title:'Invalid image',channels:['tiktok'],captions:{},creative:null});
+ for(const data of ['<svg xmlns="http://www.w3.org/2000/svg" width="1080" height="1920"></svg>','not an image']){
+  const r=await local(`/api/social/content/${item.id}/image`,{method:'POST',headers:{'Content-Type':'image/png'},body:data});assert.equal(r.status,400);
+ }
+ assert.equal((await db.get<any>('SELECT count(*) AS total FROM social_media WHERE content_id=?',[item.id]))?.total,0);
+});

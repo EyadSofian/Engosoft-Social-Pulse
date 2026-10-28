@@ -6,16 +6,16 @@ import { requirePermission, userCan } from '../auth.js';
 import { canEdit, canSee, contentIsMutable, getContent } from '../workspace.js';
 import { registerSocialOAuth, socialProviders } from './oauth.js';
 import { disconnect, getAccount, listAccounts } from './store.js';
-import { capabilities } from './capabilities.js';
+import { capabilities, requiredCapability } from './capabilities.js';
 import { configuredCallback } from './oauth.js';
-import { attachVideo, contentMedia, validMediaSignature } from './media.js';
+import { attachImage, attachVideo, contentMedia, validMediaSignature } from './media.js';
 import { contentJobs, getJob, publish, checkJob, reconcileJob } from './publishing.js';
 import { creatorInfo } from './publish-providers.js';
 import { IdentityConfirmationRequired, publishingServices, hybridConfigured, hybridSummary, connectPublishingService, checkPublishingService, hybridCreator } from './hybrid.js';
 import { runSync } from '../sync.js';
 import { youtubeAnalytics } from '../connectors/youtube.js';
 import type { PublishInput, SocialProvider } from './types.js';
-const inputSchema=z.object({contentId:z.string().min(1),accountId:z.string().min(1),kind:z.enum(['text','image','video','carousel']),media:z.array(z.object({url:z.string().max(2048)})).max(35).default([]),mode:z.enum(['direct','draft']).default('direct'),privacy:z.string().optional(),categoryId:z.string().regex(/^\d+$/).optional(),tags:z.array(z.string().max(100)).max(50).optional(),madeForKids:z.boolean().optional(),disableComment:z.boolean().optional(),disableDuet:z.boolean().optional(),disableStitch:z.boolean().optional(),brandContent:z.boolean().optional(),brandOrganic:z.boolean().optional(),retry:z.boolean().optional(),snapTarget:z.enum(['story','spotlight']).optional(),locale:z.string().regex(/^[a-z]{2}_[A-Z]{2}$/).optional(),bufferDefaultsConsent:z.boolean().optional(),isAiGenerated:z.boolean().optional(),consent:z.literal(true)});
+const inputSchema=z.object({contentId:z.string().min(1),accountId:z.string().min(1),kind:z.enum(['text','image','video','carousel']),media:z.array(z.object({url:z.string().max(2048)})).max(35).default([]),mode:z.enum(['direct','draft']).default('direct'),privacy:z.string().optional(),categoryId:z.string().regex(/^\d+$/).optional(),tags:z.array(z.string().max(100)).max(50).optional(),madeForKids:z.boolean().optional(),disableComment:z.boolean().optional(),disableDuet:z.boolean().optional(),disableStitch:z.boolean().optional(),brandContent:z.boolean().optional(),brandOrganic:z.boolean().optional(),retry:z.boolean().optional(),snapTarget:z.enum(['story','spotlight']).optional(),locale:z.string().regex(/^[a-z]{2}_[A-Z]{2}$/).optional(),bufferDefaultsConsent:z.boolean().optional(),isAiGenerated:z.boolean().optional(),photoCoverIndex:z.number().int().min(0).max(34).optional(),autoAddMusic:z.boolean().optional(),consent:z.literal(true)});
 let syncRunning:Promise<unknown>|null=null;
 export function registerSocialRoutes(app:express.Express) {
  registerSocialOAuth(app);
@@ -23,7 +23,7 @@ export function registerSocialRoutes(app:express.Express) {
  app.get('/api/social/connections',async(req,res)=>{
   if(!userCan(req.user!,'connections.manage')&&!userCan(req.user!,'analytics.view')&&!userCan(req.user!,'content.publish'))return res.status(403).json({error:'Permission required.'});
   const accounts=await listAccounts();
-  for(const a of accounts)if(a.provider==='tiktok')a.metadata={...a.metadata,hybridPublishing:await hybridConfigured(a.id)};
+  for(const a of accounts)if(a.provider==='tiktok')a.metadata={...a.metadata,hybridPublishing:await hybridConfigured(a.id),hybridPhotoPublishing:await hybridConfigured(a.id,'image')};
   const health=Object.fromEntries(await Promise.all(accounts.map(async a=>[a.id,await tokenHealth(a)])));
   res.setHeader('Cache-Control','no-store');
   res.json({providers:socialProviders.map(p=>{
@@ -60,8 +60,10 @@ export function registerSocialRoutes(app:express.Express) {
   try{const r=await syncRunning;res.json({results:r});}catch{res.status(502).json({error:'Synchronization failed.'});}finally{syncRunning=null;}
  });
  app.get('/api/social/accounts/:id/creator',requirePermission('content.publish'),async(req,res)=>{
-  const a=await getAccount(String(req.params.id));if(!a||a.provider!=='tiktok'||a.status!=='connected'||!await hybridConfigured(a.id)&&capabilities('tiktok',a).publish_video!=='available')return res.status(409).json({error:'TikTok publishing consent and approval required.'});
-  try{res.json(await hybridConfigured(a.id)?await hybridCreator(a):await creatorInfo(a));}catch{res.status(502).json({error:'Creator settings unavailable.'});}
+  const mediaType=z.enum(['video','photo']).safeParse(req.query.mediaType||'video');if(!mediaType.success)return res.status(400).json({error:'Choose video or photo creator settings.'});
+  const a=await getAccount(String(req.params.id)),kind=mediaType.data==='photo'?'image':'video';
+  if(!a||a.provider!=='tiktok'||a.status!=='connected'||!await hybridConfigured(a.id,kind)&&capabilities('tiktok',a)[requiredCapability(kind,'direct')]!=='available')return res.status(409).json({error:'TikTok publishing consent and approval required.'});
+  try{res.json(await hybridConfigured(a.id,kind)?await hybridCreator(a,mediaType.data):await creatorInfo(a));}catch{res.status(502).json({error:'Creator settings unavailable.'});}
  });
  app.get('/api/social/accounts/:id/analytics',requirePermission('analytics.view'),async(req,res)=>{
   const a=await getAccount(String(req.params.id));const start=String(req.query.startDate||''),end=String(req.query.endDate||'');
@@ -78,6 +80,12 @@ export function registerSocialRoutes(app:express.Express) {
   if(!contentIsMutable(item))return res.status(409).json({error:'Return content for review before changing approved media.'});
   if(!Buffer.isBuffer(req.body))return res.status(400).json({error:'Upload an MP4 file.'});
   try {res.json(await attachVideo(item.id,req.body));}catch{res.status(400).json({error:'Use a standard MP4 export with duration and resolution metadata, up to 200 MB.'});}
+ });
+ app.post('/api/social/content/:id/image',express.raw({type:['image/jpeg','image/png','image/webp'],limit:'8mb'}),async(req,res)=>{
+  const item=await getContent(String(req.params.id));if(!item||!canEdit(req.user!,item))return res.status(403).end();
+  if(!contentIsMutable(item))return res.status(409).json({error:'Return content for review before changing approved media.'});
+  if(!Buffer.isBuffer(req.body))return res.status(400).json({error:'Upload a JPEG, PNG or WebP image.'});
+  try {res.json(await attachImage(item.id,req.body));}catch{res.status(400).json({error:'Use a still JPEG, PNG or WebP image up to 8 MB (40 megapixels maximum).'});}
  });
  app.get('/api/social/assets/:id',async(req,res)=>{
   const r=await db.get<{path:string;content_id:string}>('SELECT path,content_id FROM social_media WHERE id=?',[String(req.params.id)]);const item=r?await getContent(r.content_id):undefined;

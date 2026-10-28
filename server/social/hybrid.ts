@@ -5,11 +5,12 @@ import { loadSecret, seal } from './store.js';
 import { postJSON } from './http.js';
 import { publicMediaUrl, type PreparedMedia } from './media.js';
 import type { PublishInput, PublishJob, PublishResult, SocialAccount } from './types.js';
+import { tiktokPhotoTitle } from '../../src/domain/tiktok-publishing.js';
 
 export const publishingServices = ['buffer', 'zernio'] as const;
 export type PublishingService = typeof publishingServices[number];
 interface Route { account_id:string; service:PublishingService; target_id:string; username:string; service_username:string|null; credential_id:string; enabled:number; verified_at:string; status:string; cooldown_until:number; error:string|null }
-interface Attempt { job_id:string; service:PublishingService; target_id:string; username:string; credential_id:string; state:string; remote_id:string|null; error_code:string|null; created_at:string; updated_at:string }
+interface Attempt { job_id:string; service:PublishingService; target_id:string; username:string; credential_id:string; mode:'direct'|'draft'; state:string; remote_id:string|null; error_code:string|null; created_at:string; updated_at:string }
 interface Target { id:string; username:string; connected:boolean }
 defineSchema(`
 CREATE TABLE IF NOT EXISTS social_publishing_routes (
@@ -20,11 +21,12 @@ CREATE TABLE IF NOT EXISTS social_publishing_routes (
 );
 CREATE TABLE IF NOT EXISTS social_publishing_attempts (
  job_id TEXT NOT NULL, service TEXT NOT NULL, target_id TEXT NOT NULL, username TEXT NOT NULL,
- credential_id TEXT NOT NULL, state TEXT NOT NULL, remote_id TEXT, error_code TEXT,
+ credential_id TEXT NOT NULL, mode TEXT NOT NULL DEFAULT 'direct', state TEXT NOT NULL, remote_id TEXT, error_code TEXT,
  created_at TEXT NOT NULL, updated_at TEXT NOT NULL, PRIMARY KEY(job_id,service)
 );
 `);
 defineColumn('social_publishing_routes','service_username','TEXT');
+defineColumn('social_publishing_attempts','mode',"TEXT NOT NULL DEFAULT 'direct'");
 const normalize = (name:unknown) => String(name||'').trim().replace(/^@/,'').toLowerCase();
 const bufferEndpoint = 'https://api.buffer.com';
 const zernioEndpoint = 'https://zernio.com/api/v1';
@@ -85,7 +87,7 @@ async function checkTarget(service:PublishingService,key:string,id:string,userna
  }
 }
 export const hybridRoutes=(id:string)=>db.all<Route>('SELECT * FROM social_publishing_routes WHERE account_id=?',[id]);
-export async function hybridConfigured(id:string) {return (await hybridRoutes(id)).some(r=>Boolean(r.enabled));}
+export async function hybridConfigured(id:string,kind='video') {return (await hybridRoutes(id)).some(r=>Boolean(r.enabled)&&(kind==='video'||r.service==='zernio'));}
 export async function hybridSummary(id:string) {
  const rows=await hybridRoutes(id);
  return publishingServices.map(service=>{const r=rows.find(r=>r.service===service);return {service,configured:Boolean(r),enabled:Boolean(r?.enabled),username:r?.username||null,status:r?.status||'unconfigured',verifiedAt:r?.verified_at||null,cooldownUntil:r?.cooldown_until||0,error:r?.error||null};});
@@ -125,25 +127,25 @@ export function bufferEligible(input:PublishInput) {
  // Never silently discard those settings. Promotional posts always use Zernio.
  return input.mode==='direct'&&input.kind==='video'&&input.privacy==='PUBLIC_TO_EVERYONE'&&!input.brandContent&&!input.brandOrganic&&input.bufferDefaultsConsent===true;
 }
-export async function hybridCreator(account:SocialAccount) {
+export async function hybridCreator(account:SocialAccount,mediaType:'video'|'photo'='video') {
  const routes=await hybridRoutes(account.id),route=routes.find(r=>r.service==='zernio'&&r.enabled);
  if(route) {
   try {
    const key=await keyFor(route);await checkTarget(route.service,key,route.target_id,route.service_username||route.username);
-   const info=await api('zernio',key,`/accounts/${encodeURIComponent(route.target_id)}/tiktok/creator-info`);
-   return {creator_username:route.username,creator_nickname:info.creator?.nickname||account.name,privacy_level_options:(info.privacyLevels||[]).map((p:any)=>p.value).filter((p:string)=>p==='PUBLIC_TO_EVERYONE'),max_video_post_duration_sec:info.postingLimits?.maxVideoDurationSec,comment_disabled:info.postingLimits?.interactionSettings?.allow_comment?.enabled===false,duet_disabled:info.postingLimits?.interactionSettings?.allow_duet?.enabled===false,stitch_disabled:info.postingLimits?.interactionSettings?.allow_stitch?.enabled===false,hybrid:true,bufferDefaultsRequired:true};
+   const info=await api('zernio',key,`/accounts/${encodeURIComponent(route.target_id)}/tiktok/creator-info?mediaType=${mediaType}`);
+   return {creator_username:route.username,creator_nickname:info.creator?.nickname||account.name,privacy_level_options:(info.privacyLevels||[]).map((p:any)=>p.value).filter((p:string)=>p==='PUBLIC_TO_EVERYONE'),max_video_post_duration_sec:info.postingLimits?.maxVideoDurationSec,comment_disabled:info.postingLimits?.interactionSettings?.allow_comment?.enabled===false,duet_disabled:info.postingLimits?.interactionSettings?.allow_duet?.enabled===false,stitch_disabled:info.postingLimits?.interactionSettings?.allow_stitch?.enabled===false,hybrid:true,bufferDefaultsRequired:mediaType==='video',photoPublishing:mediaType==='photo',aiPhotoRequiresInbox:mediaType==='photo'};
   } catch { /* A connected Buffer channel can still offer publishing with its own settings. */ }
  }
  const buffer=routes.find(r=>r.service==='buffer'&&r.enabled);
- if(!buffer)throw new Error('No publishing service is available.');
+ if(!buffer||mediaType==='photo')throw new Error('No publishing service is available for this media type.');
  await checkTarget('buffer',await keyFor(buffer),buffer.target_id,buffer.service_username||buffer.username);
  return {creator_username:buffer.username,creator_nickname:account.name,privacy_level_options:['PUBLIC_TO_EVERYONE'],hybrid:true,bufferDefaultsRequired:true,bufferOnly:true};
 }
 const phase=(service:PublishingService)=>`hybrid:${service}`;
 const postUrl=(value:unknown,username:string)=>{
- try {const u=new URL(String(value));return u.protocol==='https:'&&['www.tiktok.com','tiktok.com'].includes(u.hostname)&&normalize(u.pathname.split('/')[1])===username&&/^\/@[^/]+\/video\/\d+\/?$/.test(u.pathname)?u.href:undefined;}catch{return undefined;}
+ try {const u=new URL(String(value));return u.protocol==='https:'&&['www.tiktok.com','tiktok.com'].includes(u.hostname)&&normalize(u.pathname.split('/')[1])===username&&/^\/@[^/]+\/(video|photo)\/\d+\/?$/.test(u.pathname)?u.href:undefined;}catch{return undefined;}
 };
-function resultFrom(service:PublishingService,data:any,attempt:{target_id:string;username:string}):PublishResult {
+function resultFrom(service:PublishingService,data:any,attempt:{target_id:string;username:string;mode?:'direct'|'draft'}):PublishResult {
  const post=service==='buffer'?data:data.post;
  if(service==='buffer') {
   if(post?.channelId!==attempt.target_id)throw new ServiceError('post_account_mismatch','unknown');
@@ -154,7 +156,11 @@ function resultFrom(service:PublishingService,data:any,attempt:{target_id:string
  }
  const entries=post?.platforms||[],entry=entries.find((p:any)=>p.platform==='tiktok'&&String(p.accountId?._id||p.accountId)===attempt.target_id);
  if(!entry||entries.length!==1)throw new ServiceError('post_account_mismatch','unknown');
- const proof=postUrl(entry.platformPostUrl,attempt.username),rawId=String(entry.platformPostId||''),id=/^\d+$/.test(rawId)?rawId:proof?.match(/\/video\/(\d+)/)?.[1],url=proof||(id?`https://www.tiktok.com/@${attempt.username}/video/${id}`:undefined);
+ if(attempt.mode==='draft'||entry.platformSpecificData?.isDraft===true) {
+  if(entry.status==='published'&&attempt.mode==='draft'&&entry.platformSpecificData?.isDraft===true)return {state:'awaiting_user',remoteId:post._id,phase:phase(service)};
+  if(entry.status==='published')return {state:'unknown',remoteId:post._id,errorCode:'delivery_mode_unconfirmed',phase:phase(service)};
+ }
+ const proof=postUrl(entry.platformPostUrl,attempt.username),rawId=String(entry.platformPostId||''),id=/^\d+$/.test(rawId)?rawId:proof?.match(/\/(?:video|photo)\/(\d+)/)?.[1],url=proof;
  if(entry.status==='published'&&id)return {state:'published',remoteId:post._id,externalId:id,url,phase:phase(service)};
  if(['failed','cancelled'].includes(entry.status)||['draft','pending_approval','cancelled','failed'].includes(post.status))return {state:'unknown',remoteId:post._id,errorCode:'service_publication_unconfirmed',error:'Review the existing Zernio post. No backup upload was started.',phase:phase(service)};
  return {state:'processing',remoteId:post._id,phase:phase(service)};
@@ -162,20 +168,37 @@ function resultFrom(service:PublishingService,data:any,attempt:{target_id:string
 async function saveAttempt(jobId:string,service:PublishingService,result:PublishResult) {
  await db.run('UPDATE social_publishing_attempts SET state=?,remote_id=COALESCE(?,remote_id),error_code=?,updated_at=? WHERE job_id=? AND service=?',[result.state,result.remoteId||null,result.errorCode||null,new Date().toISOString(),jobId,service]);
 }
-export function validateHybrid(input:PublishInput,caption:string,media:PreparedMedia[]) {
- if(input.kind!=='video'||input.mode!=='direct'||media.length!==1||input.privacy!=='PUBLIC_TO_EVERYONE')throw new Error('Hybrid publishing currently supports one public TikTok video.');
- if(caption.length>2200||(media[0].duration||0)<3)throw new Error('TikTok videos need at least 3 seconds and captions up to 2,200 characters.');
+export function validateHybrid(input:PublishInput,caption:string,media:PreparedMedia[],title?:string) {
+ if(input.privacy!=='PUBLIC_TO_EVERYONE')throw new Error('Choose public TikTok privacy explicitly.');
+ if(input.kind==='video') {
+  if(input.mode!=='direct'||media.length!==1||media[0].type!=='video')throw new Error('Choose one TikTok video for direct publishing.');
+  if(caption.length>2200||(media[0].duration||0)<3)throw new Error('TikTok videos need at least 3 seconds and captions up to 2,200 characters.');
+ } else {
+  if(!['image','carousel'].includes(input.kind)||media.some(m=>m.type!=='image')||!media.length||media.length>35||input.kind==='image'&&media.length!==1||input.kind==='carousel'&&media.length<2)throw new Error('Choose one image or a carousel of 2–35 images, without videos.');
+  if(caption.length>4000)throw new Error('TikTok photo descriptions are limited to 4,000 characters.');
+  if(title!==undefined&&!tiktokPhotoTitle(title))throw new Error('The approved content needs a photo title without hashtags or URLs.');
+  const cover=input.photoCoverIndex??0;if(!Number.isInteger(cover)||cover<0||cover>=media.length)throw new Error('Choose a cover from the selected photos.');
+  if(input.autoAddMusic&&(input.brandContent||input.brandOrganic))throw new Error('Automatic recommended music is only supported for non-promotional photos.');
+  if(input.mode==='direct'&&input.isAiGenerated)throw new Error('Send AI-generated photos to the TikTok inbox and enable the AI disclosure in TikTok before publishing.');
+ }
 }
-export async function submitHybrid(account:SocialAccount,input:PublishInput,caption:string,media:PreparedMedia[],job:PublishJob,persist:(r:PublishResult)=>Promise<void>):Promise<PublishResult> {
- validateHybrid(input,caption,media);
+export async function submitHybrid(account:SocialAccount,input:PublishInput,caption:string,media:PreparedMedia[],job:PublishJob,persist:(r:PublishResult)=>Promise<void>,title=caption):Promise<PublishResult> {
+ validateHybrid(input,caption,media,title);
+ const photo=input.kind==='image'||input.kind==='carousel',photoTitle=tiktokPhotoTitle(title);
  const routes=await hybridRoutes(account.id);let last='no_eligible_service';
  for(const service of publishingServices) {
   const route=routes.find(r=>r.service===service&&r.enabled);
   if(!route||route.cooldown_until>Date.now()||service==='buffer'&&!bufferEligible(input))continue;
   let key:string;
-  try{key=await keyFor(route);await checkTarget(service,key,route.target_id,route.service_username||route.username);}catch(e){await routeError(route,e);if(e instanceof ServiceError&&e.disposition==='failed')return {state:'failed',errorCode:e.code,error:e.message};last=e instanceof ServiceError?e.code:'preflight_failed';continue;}
+  try{
+   key=await keyFor(route);await checkTarget(service,key,route.target_id,route.service_username||route.username);
+   if(photo) {
+    const info=await api('zernio',key,`/accounts/${encodeURIComponent(route.target_id)}/tiktok/creator-info?mediaType=photo`);
+    if(!info.privacyLevels?.some((p:any)=>p.value===input.privacy)||info.creator?.canPostMore===false||input.disableComment===false&&info.postingLimits?.interactionSettings?.allow_comment?.enabled===false)throw new ServiceError('photo_settings_unavailable','failed');
+   }
+  }catch(e){await routeError(route,e);if(e instanceof ServiceError&&e.disposition==='failed')return {state:'failed',errorCode:e.code,error:e.message};last=e instanceof ServiceError?e.code:'preflight_failed';continue;}
   const now=new Date().toISOString();
-  const inserted=await db.run("INSERT INTO social_publishing_attempts(job_id,service,target_id,username,credential_id,state,created_at,updated_at) VALUES(?,?,?,?,?,'submitting',?,?) ON CONFLICT(job_id,service) DO NOTHING",[job.id,service,route.target_id,route.username,route.credential_id,now,now]);
+  const inserted=await db.run("INSERT INTO social_publishing_attempts(job_id,service,target_id,username,credential_id,mode,state,created_at,updated_at) VALUES(?,?,?,?,?,?,'submitting',?,?) ON CONFLICT(job_id,service) DO NOTHING",[job.id,service,route.target_id,route.username,route.credential_id,input.mode,now,now]);
   if(!inserted.changes)return {state:'unknown',errorCode:'existing_service_attempt',phase:phase(service)};
   await persist({state:'processing',phase:phase(service)});
   try {
@@ -189,11 +212,11 @@ export async function submitHybrid(account:SocialAccount,input:PublishInput,capt
     await persist({state:'processing',remoteId:value.post.id,phase:phase(service)});
     result=resultFrom(service,value.post,route);
    } else {
-    const r=await api(service,key,'/posts',{content:caption,mediaItems:[{type:'video',url:publicMediaUrl(media[0].id)}],platforms:[{platform:'tiktok',accountId:route.target_id}],publishNow:true,tiktokSettings:{privacyLevel:input.privacy,allowComment:input.disableComment===false,allowDuet:input.disableDuet===false,allowStitch:input.disableStitch===false,commercialContentType:input.brandOrganic?'brand_organic':input.brandContent?'brand_content':'none',brandPartnerPromote:input.brandContent===true,isBrandOrganicPost:input.brandOrganic===true,contentPreviewConfirmed:true,expressConsentGiven:true,videoMadeWithAi:input.isAiGenerated===true}},true,job.id);
+    const r=await api(service,key,'/posts',{content:photo?photoTitle:caption,mediaItems:media.map(m=>({type:m.type,url:publicMediaUrl(m.id)})),platforms:[{platform:'tiktok',accountId:route.target_id}],publishNow:true,tiktokSettings:{privacyLevel:input.privacy,allowComment:input.disableComment===false,...(photo?{mediaType:'photo',description:caption,photoCoverIndex:input.photoCoverIndex??0,autoAddMusic:input.autoAddMusic===true,draft:input.mode==='draft'}:{allowDuet:input.disableDuet===false,allowStitch:input.disableStitch===false,videoMadeWithAi:input.isAiGenerated===true}),commercialContentType:input.brandOrganic?'brand_organic':input.brandContent?'brand_content':'none',brandPartnerPromote:input.brandContent===true,isBrandOrganicPost:input.brandOrganic===true,contentPreviewConfirmed:true,expressConsentGiven:true}},true,job.id);
     if(!r.post?._id)throw new ServiceError('missing_remote_id','unknown');
     await saveAttempt(job.id,service,{state:'processing',remoteId:r.post._id});
     await persist({state:'processing',remoteId:r.post._id,phase:phase(service)});
-    result=resultFrom(service,r,route);
+    result=resultFrom(service,r,{...route,mode:input.mode});
    }
    await saveAttempt(job.id,service,result);return result;
   } catch(e) {
