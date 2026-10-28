@@ -85,7 +85,7 @@ export class OpenAIImageProvider implements CreativeImageProvider {
 /** Structured JSON from an OpenAI text/vision model through the Responses API. */
 export async function openAIJson<T>(input: {
   apiKey: string; model: string; instructions: string; schemaName: string; schema: object;
-  content: ({ type: 'input_text'; text: string } | { type: 'input_image'; image_url: string; detail: 'low' | 'high' | 'auto' })[];
+  content: ({ type: 'input_text'; text: string } | { type: 'input_image'; image_url: string; detail: 'low' | 'high' | 'auto' } | { type: 'input_file'; filename: string; file_data: string })[];
   reasoning?: 'minimal' | 'low' | 'medium' | 'high';
 }): Promise<T> {
   const response = await fetchWithRetry('https://api.openai.com/v1/responses', () => ({

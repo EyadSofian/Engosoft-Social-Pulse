@@ -209,7 +209,7 @@ function FieldsForm({ template, values, onChange, onCourseCopy }: { template: Sv
               const merged = { ...values, ...cleared, ...(profile ? courseTemplateCopy(profile, template.fields) : {}), ...filled, ...courseValues(profile, template.fields) };
               onChange(Object.fromEntries(template.fields.map(field => [field.key, field.type === 'image' ? merged[field.key] ?? '' : (merged[field.key] ?? '').slice(0, field.maxChars ?? 2000)])));
               onCourseCopy?.(profile ? courseCopy(profile) : { caption: '' }, profile);
-              setNote(profile ? (profile.reviewStatus === 'suggested' ? t('Copy filled from a suggested profile. Review it before submitting.', 'تم ملء النص من ملف مقترح. راجعه قبل الإرسال للاعتماد.') : t('Copy filled from the approved course profile. You can edit it below.', 'تم ملء النص من ملف الدورة المعتمد. يمكنك تعديله بالأسفل.')) : usesCourse ? t('No goals are recorded for this course yet; ask marketing to add them in Settings → Courses.', 'لا توجد أهداف مسجلة لهذه الدورة بعد؛ اطلب من التسويق إضافتها من الإعدادات ← الدورات.') : '');
+              setNote(profile ? (profile.reviewStatus === 'suggested' ? t('Copy filled from a suggested profile. Review it before submitting.', 'تم ملء النص من ملف مقترح. راجعه قبل الإرسال للاعتماد.') : t('Copy filled from the approved course profile. You can edit it below.', 'تم ملء النص من ملف الدورة المعتمد. يمكنك تعديله بالأسفل.')) : usesCourse ? t('No goals are recorded for this course yet; ask marketing to add them on the Courses page.', 'لا توجد أهداف مسجلة لهذه الدورة بعد؛ اطلب من التسويق إضافتها من صفحة الدورات.') : '');
               setPicking(false);
             }} />
           ) : (
@@ -263,13 +263,17 @@ function ReferenceComposer({ template, initialValues, contentId, initialChannels
   const [imageUrl, setImageUrl] = useState<string>(saved.imageUrl ?? initialImageUrl ?? '');
   const [jobId, setJobId] = useState<string>(saved.jobId ?? '');
   const [createdId, setCreatedId] = useState<string>(contentId ?? saved.createdId ?? '');
+  /** Every image made for the current content (generated or edited), newest last; any of them can be saved. */
+  const [versions, setVersions] = useState<string[]>(saved.versions ?? (initialImageUrl ? [initialImageUrl] : []));
+  const [jobKind, setJobKind] = useState<'generate' | 'edit'>(saved.jobKind ?? 'generate');
+  const [change, setChange] = useState('');
   const savedSignature = useRef<string>(saved.savedSignature ?? '');
   const [renderedFor, setRenderedFor] = useState<string>(saved.renderedFor ?? (initialImageUrl ? JSON.stringify({ values: initialValues, format: initialFormat ?? template.format, context: initialContext ?? '', presetId: initialPreset ?? '' }) : ''));
   const [busy, setBusy] = useState('');
   const [error, setError] = useState('');
   const signature = JSON.stringify({ values, format, context, presetId });
   const current = Boolean(imageUrl && renderedFor === signature);
-  useEffect(() => { try { sessionStorage.setItem(draftKey, JSON.stringify({ values, format, context, presetId, channels, caption, imageUrl, jobId, renderedFor, createdId, savedSignature: savedSignature.current })); } catch { /* Private storage: the current session still works. */ } }, [draftKey, values, format, context, presetId, channels, caption, imageUrl, jobId, renderedFor, createdId]);
+  useEffect(() => { try { sessionStorage.setItem(draftKey, JSON.stringify({ values, format, context, presetId, channels, caption, imageUrl, jobId, jobKind, versions, renderedFor, createdId, savedSignature: savedSignature.current })); } catch { /* Private storage: the current session still works. */ } }, [draftKey, values, format, context, presetId, channels, caption, imageUrl, jobId, jobKind, versions, renderedFor, createdId]);
   useEffect(() => {
     if (!jobId) return;
     let alive = true;
@@ -278,7 +282,7 @@ function ReferenceComposer({ template, initialValues, contentId, initialChannels
       try {
         const job = await api<{ status: string; result?: { imageUrl: string }; error?: string }>(`/api/reference-design/jobs/${jobId}`);
         if (!alive) return;
-        if (job.status === 'done' && job.result) { setImageUrl(job.result.imageUrl); setJobId(''); }
+        if (job.status === 'done' && job.result) { const url = job.result.imageUrl; setImageUrl(url); setVersions((list) => [...list.filter((v) => v !== url), url].slice(-8)); setJobId(''); }
         else if (job.status === 'failed') { setError(job.error ?? t('Could not generate the design.', 'تعذّر توليد التصميم.')); setJobId(''); }
         else timer = setTimeout(poll, 2500);
       } catch (e) { if (alive) { setError(errorMessage(e, '')); setJobId(''); } }
@@ -290,10 +294,26 @@ function ReferenceComposer({ template, initialValues, contentId, initialChannels
     setBusy('generate'); setError('');
     try {
       const result = await api<{ jobId: string }>(`/api/svg-templates/${template.id}/render`, { body: { values, context, format, ...(presetId ? { outputPreset: presetId } : {}) } });
-      setRenderedFor(signature); setImageUrl(''); setJobId(result.jobId);
+      setRenderedFor(signature); setImageUrl(''); setVersions([]); setJobKind('generate'); setJobId(result.jobId);
     } catch (e) { setError(errorMessage(e, '')); }
     setBusy('');
   };
+  /** One change to the current design; the layout, the copy and the logo placement stay. */
+  const applyChange = async (request = change) => {
+    if (!current || request.trim().length < 3 || busy || jobId) return;
+    setBusy('edit'); setError('');
+    try {
+      const result = await api<{ jobId: string }>(`/api/svg-templates/${template.id}/edit`, { body: { imageUrl, instruction: request.trim(), values, format, ...(presetId ? { outputPreset: presetId } : {}) } });
+      setJobKind('edit'); setJobId(result.jobId); setChange('');
+    } catch (e) { setError(errorMessage(e, '')); }
+    setBusy('');
+  };
+  const quickChanges = [
+    t('Fix the spelling of all text', 'صحّح كتابة كل النصوص'),
+    t('Make the photo brighter and sharper', 'خلّي الصورة أفتح وأوضح'),
+    t('Make the headline stand out more', 'خلّي العنوان أوضح وأبرز'),
+    t('Simplify the background', 'بسّط الخلفية'),
+  ];
   const save = async (send: boolean) => {
     if (!current || busy || jobId) return;
     setBusy(send ? 'send' : 'save'); setError('');
@@ -321,7 +341,10 @@ function ReferenceComposer({ template, initialValues, contentId, initialChannels
       <span className="tpl-reference-label">{imageUrl ? t('Your generated design', 'تصميمك المولّد') : t('Visual reference', 'المرجع البصري')}</span>
       <TemplatePreview template={imageUrl ? { ...template, sourceImage: imageUrl, width: preset?.width ?? (format === 'landscape' ? 1200 : 1080), height: preset?.height ?? (format === 'story' ? 1920 : format === 'square' ? 1080 : format === 'landscape' ? 630 : 1350) } : template} className="tpl-composer__preview" />
       {imageUrl && <a href={template.sourceImage} target="_blank" rel="noreferrer" className="ui-link">{t('Compare with the reference', 'قارن بالمرجع')}</a>}
-      {jobId && <p role="status"><Loader2 size={15} className="creative-job__spin" /> {t('Creating new artwork in this visual family…', 'جارٍ توليد تصميم جديد من نفس العائلة البصرية…')}</p>}
+      {jobId && <p role="status"><Loader2 size={15} className="creative-job__spin" /> {jobKind === 'edit' ? t('Applying your change; the layout and copy stay…', 'جارٍ تنفيذ التعديل مع الحفاظ على التوزيع والنص…') : t('Creating new artwork in this visual family…', 'جارٍ توليد تصميم جديد من نفس العائلة البصرية…')}</p>}
+      {versions.length > 1 && <div className="tpl-versions" role="radiogroup" aria-label={t('Versions', 'النسخ')}>
+        {versions.map((url, i) => <button key={url} type="button" role="radio" aria-checked={imageUrl === url} disabled={Boolean(jobId)} onClick={() => setImageUrl(url)}><img src={url} alt="" /><small>{i === 0 ? t('First', 'الأولى') : t(`Edit ${i}`, `تعديل ${i}`)}</small></button>)}
+      </div>}
     </div>
     <div className="tpl-composer__panel glass">
       <div className="tpl-composer__title"><h3>{template.name}</h3>{onClose && <button type="button" className="content-drawer__close" aria-label={t('Close', 'إغلاق')} onClick={onClose}><X size={16} /></button>}</div>
@@ -337,6 +360,15 @@ function ReferenceComposer({ template, initialValues, contentId, initialChannels
       </fieldset>
       <Button variant="primary" busy={Boolean(jobId) || busy === 'generate'} disabled={Boolean(jobId || busy) || !values.title?.trim()} onClick={() => void generate()}><Sparkles size={16} />{imageUrl ? t('Generate another design', 'ولّد تصميمًا آخر') : t('Generate a new design', 'ولّد تصميمًا جديدًا')}</Button>
       {!contentId && <><div className="creative-home__platforms tpl-composer__platforms">{CREATIVE_PLATFORMS.map((channel) => <button key={channel} type="button" aria-pressed={channels.includes(channel)} onClick={() => setChannels((c) => c.includes(channel) ? c.filter((p) => p !== channel) : [...c, channel])}><ChannelIcon channel={channel} size={14} />{PLATFORM_FORMATS[channel].label}</button>)}</div><label className="tpl-fields__field">{t('Caption', 'النص المرافق')}<textarea rows={3} value={caption} onChange={(e) => setCaption(e.target.value)} /></label></>}
+      {current && <div className="tpl-change">
+        <label className="tpl-fields__field">{t('Change something in this design', 'عدّل شيئًا في هذا التصميم')}
+          <textarea rows={2} dir="auto" maxLength={600} value={change} disabled={Boolean(jobId || busy)} onChange={(e) => setChange(e.target.value)} onKeyDown={(e) => { if (e.key === 'Enter' && (e.metaKey || e.ctrlKey)) { e.preventDefault(); void applyChange(); } }}
+            placeholder={t('e.g. make the engineer wear a helmet, fix the spelling of the headline', 'مثلًا: خلّي المهندس لابس خوذة، صحّح كتابة العنوان')} />
+        </label>
+        <div className="tpl-change__chips">{quickChanges.map((q) => <button key={q} type="button" disabled={Boolean(jobId || busy)} onClick={() => void applyChange(q)}>{q}</button>)}</div>
+        <Button variant="secondary" icon={<Wand2 size={15} />} disabled={change.trim().length < 3 || Boolean(jobId || busy)} busy={busy === 'edit'} onClick={() => void applyChange()}>{t('Apply the change', 'نفّذ التعديل')}</Button>
+        <small className="u-muted">{t('Keeps the layout, your copy and the logo; changes only what you ask. Each change uses one image. Earlier versions stay above to pick from.', 'يحافظ على التوزيع ونصك والشعار، ويغيّر ما تطلبه فقط. كل تعديل يستهلك صورة واحدة، والنسخ السابقة تبقى فوق للاختيار.')}</small>
+      </div>}
       {imageUrl && !current && <p className="u-sm u-muted">{t('The content changed. Generate the updated design before saving.', 'تغيّرت البيانات؛ ولّد التصميم بالتحديثات قبل الحفظ.')}</p>}
       <div className="tpl-composer__actions"><Button variant="primary" disabled={!current || Boolean(busy || jobId) || !channels.length} busy={busy === 'send'} onClick={() => void save(!contentId)}><Send size={15} />{contentId ? t('Save a new version', 'احفظ نسخة جديدة') : t('Send for approval', 'أرسل للاعتماد')}</Button>{!contentId && <Button variant="secondary" disabled={!current || Boolean(busy || jobId) || !channels.length} onClick={() => void save(false)}>{t('Save draft', 'احفظ مسودة')}</Button>}{current && <a href={imageUrl} download className="ui-link">PNG</a>}</div>
       {error && <p role="alert" className="creative-home__error">{error}</p>}

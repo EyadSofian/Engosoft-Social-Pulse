@@ -133,6 +133,7 @@ const PURPOSES: [RegExp, string][] = [
   [/full-creative\/.+\/adapt/, 'adapt'],
   [/full-creative/, 'generate'],
   [/ai-edit/, 'studio_ai_edit'],
+  [/studio\/.+\/command/, 'studio_command'],
   [/decompose/, 'studio_layers'],
   [/svg-templates\/generate/, 'template_generate'],
   [/svg-templates\/.+\/revise/, 'template_revise'],

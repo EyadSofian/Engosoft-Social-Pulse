@@ -111,3 +111,17 @@
 @media (prefers-reduced-motion: reduce) {
   .tpl-forming * { animation: none !important; }
 }
+
+/* Changing a generated reference design, and its versions */
+.tpl-change { display: grid; gap: 8px; padding: 12px; border: 1px dashed var(--border-strong); border-radius: 12px; }
+.tpl-change__chips { display: flex; flex-wrap: wrap; gap: 6px; }
+.tpl-change__chips button { padding: 5px 9px; border: 1px solid var(--border); border-radius: 9px; background: var(--surface); color: var(--text-muted); font: inherit; font-size: 12px; cursor: pointer; }
+.tpl-change__chips button:hover:not(:disabled) { border-color: var(--brand); color: var(--brand-ink); }
+.tpl-change__chips button:disabled { opacity: 0.5; cursor: default; }
+.tpl-change small { font-size: 11.5px; line-height: 1.7; }
+.tpl-versions { display: flex; gap: 8px; overflow-x: auto; padding: 4px 2px; }
+.tpl-versions button { flex: none; display: grid; gap: 3px; width: 72px; padding: 3px; border: 2px solid var(--border); border-radius: 10px; background: var(--surface); cursor: pointer; }
+.tpl-versions button[aria-checked='true'] { border-color: var(--brand); }
+.tpl-versions button:disabled { opacity: 0.6; cursor: default; }
+.tpl-versions img { width: 100%; aspect-ratio: 4 / 5; object-fit: cover; border-radius: 6px; }
+.tpl-versions small { font-size: 10.5px; color: var(--text-muted); text-align: center; }

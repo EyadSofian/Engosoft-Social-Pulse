@@ -1,4 +1,4 @@
-import { useEffect, useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import { AnimatePresence, motion } from 'motion/react';
 import { AlertTriangle, BookmarkPlus, CheckCircle2, Download, FileText, Globe, Loader2, Send, Smartphone, XCircle } from 'lucide-react';
 import { useRouter } from '../../app/router/router';
@@ -45,6 +45,9 @@ export function FullCreativeJob({ jobId, requestId, platforms, prompt, onRestart
   const [adapting, setAdapting] = useState<Record<string, string>>({});
   const [error, setError] = useState('');
   const extras = extraFormats(platforms);
+  // Adaptations keep polling only while this card is on screen.
+  const alive = useRef({ stopped: false });
+  useEffect(() => { const signal = { stopped: false }; alive.current = signal; return () => { signal.stopped = true; }; }, []);
 
   useEffect(() => {
     const signal = { stopped: false };
@@ -69,7 +72,7 @@ export function FullCreativeJob({ jobId, requestId, platforms, prompt, onRestart
     setAdapting((s) => ({ ...s, [key]: 'queued' }));
     try {
       const { jobId: adaptId } = await api<{ jobId: string }>(`/api/ai/full-creative/${run.requestId}/adapt`, { body: { directionId, format } });
-      await poll(adaptId, (next) => { setAdapting((s) => ({ ...s, [key]: next.stage })); if (next.run) setRun(next.run); if (next.status === 'failed') setError(next.error ?? ''); }, { stopped: false });
+      await poll(adaptId, (next) => { setAdapting((s) => ({ ...s, [key]: next.stage })); if (next.run) setRun(next.run); if (next.status === 'failed') setError(next.error ?? ''); }, alive.current);
     } catch (e) { setError(errorMessage(e, '')); }
     setAdapting((s) => { const { [key]: _done, ...rest } = s; return rest; });
   };
@@ -149,13 +152,18 @@ function ResultActions({ run, result, story, landscape, video, platforms, prompt
   const [busy, setBusy] = useState('');
   const [saved, setSaved] = useState('');
   const [error, setError] = useState('');
+  // Once the post exists, a retry (after a failed "send") reuses it instead of creating a second copy.
+  const created = useRef('');
   const save = async (send: boolean) => {
     setBusy(send ? 'send' : 'draft'); setError('');
     try {
-      const captions = Object.fromEntries(platforms.map((p) => [p, run.brief.captions?.[p] || run.brief.caption]));
-      const item = await api<{ id: string }>('/api/content', { body: { title: run.brief.canonicalCopy.headline, channels: platforms, captions, creative: { requestId: run.requestId, directionId: result.directionId, imageUrl: result.imageUrl, ...(story?.imageUrl ? { storyUrl: story.imageUrl } : {}), ...(landscape?.imageUrl ? { landscapeUrl: landscape.imageUrl } : {}), ...(video?.imageUrl ? { youtubeUrl: video.imageUrl } : {}), model: result.model, directionName: direction.name } } });
-      if (send) await api(`/api/content/${item.id}/transition`, { body: { to: 'ready_for_review' } });
-      navigate(`/content/${item.id}`);
+      if (!created.current) {
+        const captions = Object.fromEntries(platforms.map((p) => [p, run.brief.captions?.[p] || run.brief.caption]));
+        const item = await api<{ id: string }>('/api/content', { body: { title: run.brief.canonicalCopy.headline, channels: platforms, captions, creative: { requestId: run.requestId, directionId: result.directionId, imageUrl: result.imageUrl, ...(story?.imageUrl ? { storyUrl: story.imageUrl } : {}), ...(landscape?.imageUrl ? { landscapeUrl: landscape.imageUrl } : {}), ...(video?.imageUrl ? { youtubeUrl: video.imageUrl } : {}), model: result.model, directionName: direction.name } } });
+        created.current = item.id;
+      }
+      if (send) await api(`/api/content/${created.current}/transition`, { body: { to: 'ready_for_review' } });
+      navigate(`/content/${created.current}`);
     } catch (e) { setError(errorMessage(e, '')); }
     setBusy('');
   };
@@ -192,7 +200,7 @@ function Details({ result }: { result: PublicResult }) {
   return <details className="creative-job__details">
     <summary>{t('Checks', 'المراجعات')}</summary>
     <ul>
-      <li>{t('Logo', 'الشعار')}: {logo.requiresCreativeRepair ? logo.reason : `${logo.variantId} · ${logo.placement.anchor} · ${logo.placement.width}px${logo.policy === 'engineering-default' ? t(' · outside guideline pairings, contrast-checked', ' · خارج الأزواج المعتمدة، متراجع التباين') : ''}`}{result.repaired ? t(' · corner repaired', ' · اتصلّح الركن') : ''}</li>
+      <li>{t('Logo', 'الشعار')}: {logo.requiresCreativeRepair ? logo.reason : `${logo.variantId} · ${logo.placement.anchor} · ${logo.placement.width}px${logo.policy === 'engineering-default' ? t(' · outside guideline pairings, contrast-checked', ' · خارج الأزواج المعتمدة، مع التحقق من التباين') : ''}`}{result.repaired ? t(' · corner repaired', ' · تم إصلاح الركن') : ''}</li>
       <li>{t('Text', 'النص')}: {result.copyChecks.map((c) => `${c.field} ${t(VERDICT[c.verdict][0], VERDICT[c.verdict][1])}`).join(' · ')}</li>
       {result.refinements && result.refinements.length > 0 && <li>{t('Repaired by the critic', 'أصلحه الناقد')}: {result.refinements.join(' · ')}</li>}
       <li>{t('Critic', 'المُقيّم')}: {t('design', 'تصميم')} {result.inspection.scores.design}/10 · {t('marketing', 'تسويق')} {result.inspection.scores.marketing}/10 · {t('image', 'صورة')} {result.inspection.scores.imageQuality}/10 · {t('brand', 'هوية')} {result.inspection.scores.brandFit}/10</li>

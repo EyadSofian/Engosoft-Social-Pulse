@@ -18,7 +18,7 @@ import { compositeLogo, verifyComposite } from '../logo-resolution/compositor.js
 import { reservedZoneBox, resolveLogo, type Corner, type LogoDecision, type NoLogoDecision } from '../logo-resolution/resolver.js';
 import type { SafeArea } from '../logo-resolution/validator.js';
 import { checkCopy, copyPasses, type CanonicalCopy, type CopyCheck } from '../typography-validation/copy-check.js';
-import { compileDesignPrompt, DEFAULT_SETTINGS, ENGINE_SKILL_VERSIONS, ENGINE_VERSION, planDesign, planStrategy, type DesignDecision, type EngineSettings, type ReferenceInput, type StrategyDecision } from '../skills/engine.js';
+import { compileDesignPrompt, DEFAULT_SETTINGS, ENGINE_SKILL_VERSIONS, ENGINE_VERSION, planDesign, planStrategy, type DesignDecision, type EngineSettings, type ReferenceInput, type StrategyDecision, type UserReference } from '../skills/engine.js';
 import { THEMES, type ThemeId } from '../skills/themes.js';
 import { looksUnfilled, pasteInside } from './patch.js';
 import { openAIJson, OpenAIImageProvider, type CreativeImageProvider, type ImageQuality } from './provider.js';
@@ -74,6 +74,10 @@ export interface FullCreativeRequest {
   settings?: Partial<EngineSettings>;
   /** 'legacy' runs the previous single-prompt director (kept for A/B evaluation). */
   engine?: 'skills' | 'legacy';
+  /** The objective picked on the Create page, when it is not left to the request. */
+  objective?: string;
+  /** Files attached on the Create page. The saved trace keeps their names only. */
+  attachments?: UserReference[];
 }
 export interface FullCreativeResult {
   directionId: string;
@@ -150,12 +154,12 @@ export async function planCreative(prompt: string, format: CreativeFormat, count
  * Design-engine planning: the strategy stage (idea, copy, hooks, captions, references, themes), then a design
  * plan per direction (layout, weight, spacing, type, image, light, colour, brand, logo, compositing).
  */
-export async function planCreativeWithEngine(prompt: string, format: CreativeFormat, count: number, context: VerifiedCourseContext | undefined, env: NodeJS.ProcessEnv, style: string | undefined, requested: Partial<EngineSettings> | undefined, onDesigning?: () => void): Promise<CreativeBriefPlan> {
+export async function planCreativeWithEngine(prompt: string, format: CreativeFormat, count: number, context: VerifiedCourseContext | undefined, env: NodeJS.ProcessEnv, style: string | undefined, requested: Partial<EngineSettings> | undefined, onDesigning?: () => void, extra: { objective?: string; attachments?: UserReference[] } = {}): Promise<CreativeBriefPlan> {
   const settings: EngineSettings = { ...DEFAULT_SETTINGS, ...requested };
   const facts = factLines(context);
   const factContext = context ? JSON.stringify({ course: context.facts.title.value, lines: facts, registration: context.facts.registrationUrl?.value ?? null }) : 'none — do not imply any date or schedule';
   const spec = CREATIVE_FORMATS[format];
-  const { decision: strategy, references } = await planStrategy({ prompt, format: spec.label, count, facts, factContext, settings, style, env });
+  const { decision: strategy, references } = await planStrategy({ prompt, format: spec.label, count, facts, factContext, settings, style, objective: extra.objective, attachments: extra.attachments, env });
   onDesigning?.();
   const planned = strategy.themeDirector.directions;
   const designs = await Promise.all(planned.map((direction) => planDesign({ strategy, direction, format: { label: spec.label, ...spec.output }, facts, settings, env })));
@@ -350,8 +354,8 @@ export async function generateFullCreative(request: FullCreativeRequest, env = p
   const context = odoo.status === 'matched' ? odoo.context : undefined;
   onProgress?.({ stage: 'planning' });
   const brief = request.engine === 'legacy'
-    ? await planCreative(request.prompt, format, count, context, env, request.style)
-    : await planCreativeWithEngine(request.prompt, format, count, context, env, request.style, request.settings, () => onProgress?.({ stage: 'designing' }));
+    ? await planCreative(request.objective ? `${request.prompt}\nObjective: ${request.objective}` : request.prompt, format, count, context, env, request.style)
+    : await planCreativeWithEngine(request.prompt, format, count, context, env, request.style, request.settings, () => onProgress?.({ stage: 'designing' }), { objective: request.objective, attachments: request.attachments });
   brief.directions = brief.directions.map((d, i) => ({ ...d, id: `d${i + 1}` }));
   onProgress?.({ stage: 'generating', brief });
   const provider = new OpenAIImageProvider(env.OPENAI_API_KEY ?? '', request.model ?? (env.OPENAI_IMAGE_MODEL?.trim() || 'gpt-image-2.5-flare'));
@@ -364,7 +368,8 @@ export async function generateFullCreative(request: FullCreativeRequest, env = p
     prompt: promptFor(brief, brief.directions[index], format), model: provider.model, latencyMs: 0,
   });
   const run: FullCreativeRun = {
-    requestId, createdAt: new Date().toISOString(), request, brief, results, versions: FULL_CREATIVE_VERSIONS, outputDir,
+    // Attachments can be megabytes of base64: the trace keeps what was attached, not the files.
+    requestId, createdAt: new Date().toISOString(), request: { ...request, attachments: request.attachments?.map(({ name, mime }) => ({ name, mime, dataUrl: '' })) }, brief, results, versions: FULL_CREATIVE_VERSIONS, outputDir,
     context: context
       ? { status: 'matched', event: { id: context.event.id, title: context.event.title, startsAt: context.event.startsAt }, facts: Object.fromEntries(Object.entries(context.facts).map(([k, v]) => [k, v!.value])) }
       : { status: odoo.status, message: 'message' in odoo ? odoo.message : undefined },

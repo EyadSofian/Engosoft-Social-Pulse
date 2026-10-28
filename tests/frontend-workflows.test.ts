@@ -76,7 +76,10 @@ test('course editor renders stored audience and goals, distinguishes drafts, and
     }),
   );
   assert.ok(html.includes('المهندسون'));
-  assert.ok(html.includes('هدف أول\nهدف ثان'));
+  // Each goal is its own row, so each can be reordered or removed.
+  assert.ok(html.includes('value="هدف أول"'));
+  assert.ok(html.includes('value="هدف ثان"'));
+  assert.ok(html.includes('2/12'));
   assert.ok(html.includes('مسودة مقترحة'));
   assert.ok(html.includes('&lt;script&gt;'));
   assert.ok(!html.includes('<script>'));

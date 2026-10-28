@@ -1,10 +1,10 @@
 import type { LucideIcon } from 'lucide-react';
-import { CalendarDays, ChartColumn, ChartSpline, Layers, LayoutDashboard, Library, Newspaper, Settings, Wallet, WandSparkles } from 'lucide-react';
+import { CalendarDays, ChartColumn, ChartSpline, GraduationCap, Layers, LayoutDashboard, Library, Newspaper, Settings, Wallet, WandSparkles } from 'lucide-react';
 import type { Text } from '../domain/shared';
 import type { User } from '../domain/users';
 import { hasPermission } from '../features/workspace/permissions';
 
-export type NavId = 'home' | 'content' | 'calendar' | 'overview' | 'tracking' | 'analytics' | 'performance' | 'library' | 'usage' | 'settings';
+export type NavId = 'home' | 'content' | 'calendar' | 'courses' | 'overview' | 'tracking' | 'analytics' | 'performance' | 'library' | 'usage' | 'settings';
 
 export interface NavItem {
   id: NavId;
@@ -32,6 +32,8 @@ export const NAV: NavGroup[] = [
       { id: 'home', path: '/', label: { en: 'Create', ar: 'إنشاء' }, icon: WandSparkles, visible: (user) => hasPermission(user, 'content.create') },
       { id: 'content', path: '/content', label: { en: 'Content & approval', ar: 'المحتوى والاعتماد' }, icon: Layers, visible: everyone },
       { id: 'calendar', path: '/calendar', label: { en: 'Calendar', ar: 'التقويم' }, icon: CalendarDays, visible: everyone },
+      // Marketing reviews course content here; anyone who makes posts can read it.
+      { id: 'courses', path: '/courses', label: { en: 'Courses', ar: 'الدورات' }, icon: GraduationCap, visible: (user) => hasPermission(user, 'templates.manage') || hasPermission(user, 'content.create') },
       { id: 'library', path: '/library', label: { en: 'Library', ar: 'المكتبة' }, icon: Library, visible: everyone },
     ],
   },
@@ -50,7 +52,7 @@ export const NAV: NavGroup[] = [
     label: { en: 'System', ar: 'النظام' },
     items: [
       { id: 'usage', path: '/usage', label: { en: 'AI usage', ar: 'الاستهلاك' }, icon: Wallet, visible: (user) => hasPermission(user, 'credits.view') || hasPermission(user, 'credits.view_all') },
-      { id: 'settings', path: '/settings', label: { en: 'Settings', ar: 'الإعدادات' }, icon: Settings, visible: (user) => hasPermission(user, 'users.manage') || hasPermission(user, 'connections.manage') || hasPermission(user, 'templates.manage') },
+      { id: 'settings', path: '/settings', label: { en: 'Settings', ar: 'الإعدادات' }, icon: Settings, visible: (user) => hasPermission(user, 'users.manage') || hasPermission(user, 'connections.manage') },
     ],
   },
 ];

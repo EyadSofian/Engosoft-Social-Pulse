@@ -5,19 +5,30 @@ import { requirePermission, requireUser } from './auth.js';
 import { requireAiBudget } from './usage.js';
 import { loadFullCreativeRun } from './creative-intelligence/generation/full-creative.js';
 import { aiEdit, decompose, extractObject, originalWithoutLogo, outlineLayer, renderStudio, saveUpload, studioPath, studioUrl, type StudioDoc } from './creative-intelligence/studio/studio.js';
+import { runStudioCommand } from './creative-intelligence/studio/edit-router.js';
 import { HEX_COLOR, migrateStudioDoc, STUDIO_FILE, STUDIO_VERSION } from '../src/domain/studio.js';
 import { addVersion, canEdit, contentIsMutable, getContent, listVersions } from './workspace.js';
 import { markOfVariant, type LogoMark } from './creative-intelligence/brand/design-language.js';
 import type { Corner } from './creative-intelligence/logo-resolution/resolver.js';
 
-interface StudioJob { id: string; ownerId: string; status: 'running' | 'done' | 'failed'; doc?: StudioDoc; error?: string }
+/** A finished step's document, plus what an AI edit wants the editor to show (candidates, notes, what changed). */
+type StudioOutcome = StudioDoc | { doc: StudioDoc };
+interface StudioJob { id: string; ownerId: string; status: 'running' | 'done' | 'failed'; doc?: StudioDoc; result?: Record<string, unknown>; error?: string }
 const jobs = new Map<string, StudioJob>();
-function startStudioJob(ownerId: string, work: () => Promise<StudioDoc>): StudioJob {
+function startStudioJob(ownerId: string, work: () => Promise<StudioOutcome>): StudioJob {
   const job: StudioJob = { id: randomUUID(), ownerId, status: 'running' };
   jobs.set(job.id, job);
   if (jobs.size > 50) jobs.delete(jobs.keys().next().value!);
-  void work().then((doc) => { job.status = 'done'; job.doc = doc; }).catch((error) => { job.status = 'failed'; job.error = error instanceof Error ? error.message : 'Studio step failed'; });
+  void work().then((outcome) => {
+    if ('version' in outcome) job.doc = outcome;
+    else { const { doc: next, ...rest } = outcome; job.doc = next; job.result = rest as Record<string, unknown>; }
+    job.status = 'done';
+  }).catch((error) => { job.status = 'failed'; job.error = error instanceof Error ? error.message : 'Studio step failed'; });
   return job;
+}
+/** Approved headline, facts and CTA of the run: what a text edit may restate without a warning. */
+function approvedCopyOf(requestId: string): string[] {
+  try { const c = loadFullCreativeRun(requestId).brief.canonicalCopy; return [c.headline, c.subheadline, ...(c.facts ?? []), c.cta].filter((s): s is string => Boolean(s)); } catch { return []; }
 }
 
 const box = z.object({ x: z.number().min(0), y: z.number().min(0), width: z.number().positive(), height: z.number().positive() });
@@ -89,18 +100,27 @@ export function registerStudioRoutes(app: express.Express) {
     const format = formatOf(directionId, requestId);
     const job = startStudioJob(req.user!.id, async () => {
       const original = await originalWithoutLogo(requestId, directionId, sizeOf(format));
-      let approvedCopy: string[] = [];
-      try { const c = loadFullCreativeRun(requestId).brief.canonicalCopy; approvedCopy = [c.headline, c.subheadline, ...(c.facts ?? []), c.cta].filter((s): s is string => Boolean(s)); } catch { /* run trace missing: transcription only */ }
-      return decompose({ original, format, approvedCopy, mode: parsed.data.mode });
+      return decompose({ original, format, approvedCopy: approvedCopyOf(requestId), mode: parsed.data.mode });
     });
     res.status(202).json({ jobId: job.id });
   });
   app.post('/api/studio/:contentId/ai-edit', requireUser, requirePermission('design.free'), requireAiBudget, async (req, res) => {
     const item = await editableItem(req, res);
     if (!item) return;
-    const parsed = z.object({ doc, box, instruction: z.string().trim().min(3).max(600) }).safeParse(req.body);
+    const parsed = z.object({ doc, box, instruction: z.string().trim().min(3).max(600), variants: z.union([z.literal(1), z.literal(2)]).default(1) }).safeParse(req.body);
     if (!parsed.success) return res.status(400).json({ error: 'حدّد منطقة واكتب التعديل.' });
-    const job = startStudioJob(req.user!.id, () => aiEdit(parsed.data.doc as StudioDoc, parsed.data.box, parsed.data.instruction, formatOf(item.creative!.directionId, item.creative!.requestId)));
+    const job = startStudioJob(req.user!.id, () => aiEdit(parsed.data.doc as StudioDoc, parsed.data.box, parsed.data.instruction, formatOf(item.creative!.directionId, item.creative!.requestId), process.env, { variants: parsed.data.variants }));
+    res.status(202).json({ jobId: job.id });
+  });
+  /** One request in the person's words: text and shape changes are applied exactly, picture changes are edited in place. */
+  app.post('/api/studio/:contentId/command', requireUser, requirePermission('design.free'), requireAiBudget, async (req, res) => {
+    const item = await editableItem(req, res);
+    if (!item) return;
+    if (!process.env.OPENAI_API_KEY?.trim()) return res.status(503).json({ error: 'أضف OPENAI_API_KEY على الخادم.' });
+    const parsed = z.object({ doc, command: z.string().trim().min(3).max(600), selection: z.array(z.string().max(24)).max(150).default([]), box: box.optional() }).safeParse(req.body);
+    if (!parsed.success) return res.status(400).json({ error: 'اكتب التعديل المطلوب (3 أحرف على الأقل).' });
+    const { command, selection, box: region } = parsed.data;
+    const job = startStudioJob(req.user!.id, () => runStudioCommand({ doc: parsed.data.doc as StudioDoc, command, selection, region, approvedCopy: approvedCopyOf(item.creative!.requestId) }));
     res.status(202).json({ jobId: job.id });
   });
   app.post('/api/studio/:contentId/extract', requireUser, requirePermission('design.free'), requireAiBudget, async (req, res) => {

@@ -1,6 +1,6 @@
 import { useEffect, useRef, useState } from 'react';
 import { AnimatePresence, motion } from 'motion/react';
-import { ArrowLeft, Coins, FileUp, GraduationCap, ImagePlus, LayoutTemplate, Sparkles, Wand2 } from 'lucide-react';
+import { ArrowLeft, Coins, GraduationCap, ImagePlus, LayoutTemplate, Sparkles, Wand2 } from 'lucide-react';
 import { Link, useRouter } from '../../app/router/router';
 import { Button } from '../../components/ui/Button';
 import { CREATE_PREFILL_KEY, type CreatePrefill } from '../../features/content/CreateContent';
@@ -81,7 +81,8 @@ export function CreationHomePage() {
   const [references, setReferences] = useState<CreativeReference[]>([]);
   const [message, setMessage] = useState('');
   const [creating, setCreating] = useState(false);
-  const [mode, setMode] = useState<'ai' | 'template'>(() => (free && query.has('creative') ? 'ai' : 'template'));
+  // Coming back while a design is still running reopens it instead of hiding it behind the template mode.
+  const [mode, setMode] = useState<'ai' | 'template'>(() => (free && (query.has('creative') || getActiveCreative()?.status === 'running') ? 'ai' : 'template'));
   // A run in progress (or just finished) survives leaving the page; ?creative= opens one from a notification.
   const active = getActiveCreative();
   const opened = query.get('creative');
@@ -125,6 +126,7 @@ export function CreationHomePage() {
     const incoming: CreativeReference[] = [];
     for (const file of [...list].slice(0, 6 - references.length)) {
       if (file.size > 2_000_000) { setMessage(t(`${file.name} exceeds 2 MB.`, `${file.name} أكبر من ٢ ميجابايت.`)); continue; }
+      if (!/^image\/(png|jpeg|webp)$|^application\/pdf$|^text\//.test(file.type) && !/\.(txt|md|pdf)$/i.test(file.name)) { setMessage(t(`${file.name}: use an image, PDF or text file.`, `${file.name}: استخدم صورة أو PDF أو ملفًا نصيًا.`)); continue; }
       incoming.push({ name: file.name, mime: file.type || 'application/octet-stream', size: file.size, dataUrl: await asDataUrl(file) });
     }
     setReferences((current) => [...current, ...incoming]);
@@ -137,9 +139,8 @@ export function CreationHomePage() {
     try {
       // The master is a 4:5 feed post when any feed platform is selected; 9:16 and website versions are adapted from it.
       const format = masterFormat(platforms);
-      const response = await fetch('/api/ai/full-creative', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ prompt, format, directions: 2, settings: designSettings, ...(template ? { templateId: template.id } : {}) }) });
-      const body = await response.json();
-      if (!response.ok) throw new Error(body.error || t('Generation could not start.', 'تعذّر بدء التوليد.'));
+      const attachments = references.filter((file) => file.dataUrl).map(({ name, mime, dataUrl }) => ({ name, mime, dataUrl: dataUrl! }));
+      const body = await api<{ jobId: string; requestId?: string }>('/api/ai/full-creative', { body: { prompt, format, directions: 2, settings: designSettings, ...(objective !== 'auto' ? { objective } : {}), ...(attachments.length ? { attachments } : {}), ...(template ? { templateId: template.id } : {}) } });
       setJobId(body.jobId); setRequestId(body.requestId ?? ''); setStage('generating');
       setActiveCreative({ jobId: body.jobId, requestId: body.requestId ?? '', prompt, platforms, startedAt: new Date().toISOString(), status: 'running' });
     } catch (error) { setMessage(error instanceof Error ? error.message : String(error)); }
@@ -164,9 +165,8 @@ export function CreationHomePage() {
       {stage === 'compose' && <>
         <div className="creative-home__composer"><span className="creative-home__composer-icon"><Sparkles size={20} /></span><textarea value={prompt} onChange={(event) => { setPrompt(event.target.value); if (!platformTouched) { const found = detectPlatforms(event.target.value); if (found.length) setPlatforms(found); } }} rows={4} placeholder={t('Example: Create a CFM course post for Facebook, Instagram and WhatsApp next week…', 'مثال: صمّم منشورًا عن دورة CFM التي تبدأ الأسبوع القادم لفيسبوك وإنستجرام وواتساب…')} aria-label={t('Describe the content to create', 'صف المحتوى الذي تريد إنشاءه')} dir="auto" /></div>
         <div className="creative-home__tools">
-          <input ref={upload} hidden type="file" multiple accept="image/*,.pdf,.docx,.txt,.md" onChange={(event) => void addFiles(event.target.files)} />
-          <button type="button" onClick={() => upload.current?.click()}><FileUp size={16} />{t('Add reference', 'أضف مرجعًا')}</button>
-          <button type="button" onClick={() => upload.current?.click()}><ImagePlus size={16} />{t('Upload image / file', 'ارفع صورة أو ملفًا')}</button>
+          <input ref={upload} hidden type="file" multiple accept="image/png,image/jpeg,image/webp,application/pdf,.pdf,.txt,.md,text/plain,text/markdown" onChange={(event) => void addFiles(event.target.files)} />
+          <button type="button" disabled={references.length >= 6} onClick={() => upload.current?.click()}><ImagePlus size={16} />{t('Attach an image or file', 'أرفق صورة أو ملفًا')}</button>
           <button type="button" onClick={() => setSourcePanel(sourcePanel === 'post' ? null : 'post')}>{t('Use existing post', 'استخدم منشورًا سابقًا')}</button>
           <button type="button" onClick={() => setSourcePanel(sourcePanel === 'course' ? null : 'course')}><GraduationCap size={16} />{t('Choose a course from Odoo', 'اختر دورة من Odoo')}</button>
         </div>
@@ -182,7 +182,7 @@ export function CreationHomePage() {
         <div className="creative-home__platforms" role="group" aria-label={t('Platforms', 'المنصات')}>{CREATIVE_PLATFORMS.map((platform) => <button key={platform} type="button" aria-pressed={platforms.includes(platform)} onClick={() => togglePlatform(platform)}><span className="creative-home__platform-icon"><ChannelIcon channel={platform} size={15} /></span>{PLATFORM_FORMATS[platform].label}</button>)}</div>
         <DesignSettings value={designSettings} onChange={setDesignSettings} />
         <div className="creative-home__options"><label>{t('Objective', 'الهدف')}<select value={objective} onChange={(event) => setObjective(event.target.value as Objective | 'auto')}>{OBJECTIVES.map((entry) => <option key={entry.value} value={entry.value}>{t(entry.en, entry.ar)}</option>)}</select></label></div>
-        <div className="creative-home__action"><p className="u-xs">{t('Images, PDF and text inform AI. DOCX is retained as a reference. Up to 6 files, 2 MB each.', 'تُرسَل الصور وملفات PDF والنصوص إلى الذكاء الاصطناعي، ويُحفظ ملف DOCX مرجعًا. حتى ٦ ملفات، ٢ ميجابايت لكل ملف.')}</p><Button variant="primary" className="cta-create" disabled={creating} busy={creating} onClick={() => void startFullCreative()}>{!creating && <Sparkles size={17} className="cta-create__spark" />}{creating ? t('Starting…', 'جارٍ البدء…') : t('Design the post', 'صمّم المنشور')}</Button></div>
+        <div className="creative-home__action"><p className="u-xs">{t('Attached images, PDFs and text files are read by the AI as context. Up to 6 files, 2 MB each.', 'يقرأ الذكاء الاصطناعي الصور وملفات PDF والنصوص المرفقة كسياق للتصميم. حتى ٦ ملفات، ٢ ميجابايت لكل ملف.')}</p><Button variant="primary" className="cta-create" disabled={creating} busy={creating} onClick={() => void startFullCreative()}>{!creating && <Sparkles size={17} className="cta-create__spark" />}{creating ? t('Starting…', 'جارٍ البدء…') : t('Design the post', 'صمّم المنشور')}</Button></div>
       </>}
       {stage === 'generating' && (jobId || requestId) && <FullCreativeJob key={`${jobId}:${requestId}`} jobId={jobId} requestId={requestId} platforms={platforms} prompt={prompt} onRestart={() => { setStage('compose'); setJobId(''); setRequestId(''); clearActiveCreative(); }} />}
       {message && <p role="alert" className="creative-home__error">{message}</p>}

@@ -115,17 +115,22 @@ function ContentDrawer({ id, team, onClose, onChanged }: { id: string; team: Tea
   const [comment, setComment] = useState('');
   const [captions, setCaptions] = useState<Partial<Record<Channel, string>>>({});
   const [preview, setPreview] = useState<string | null>(null);
+  const [copied, setCopied] = useState<Channel | null>(null);
+  useEffect(() => { if (!copied) return; const timer = setTimeout(() => setCopied(null), 1600); return () => clearTimeout(timer); }, [copied]);
   const load = useCallback(() => api<PipelineDetail>(`/api/content/${id}`).then((d) => { setItem(d); setCaptions(d.captions); }).catch((e) => setError(errorMessage(e, 'Not found'))), [id]);
   useEffect(() => { void load(); }, [load]);
   const nameOf = (uid: string) => team.find((m) => m.id === uid)?.name ?? (uid === 'system' ? t('Sync', 'المزامنة') : '—');
 
-  const act = async (work: () => Promise<unknown>) => {
+  /** Runs one action, then clears only the field that action used: saving captions keeps a half-written comment. */
+  const act = async (work: () => Promise<unknown>, clear?: 'note' | 'comment') => {
     setBusy(true); setError('');
-    try { await work(); await load(); onChanged(); setNote(''); setComment(''); }
+    try { await work(); await load(); onChanged(); if (clear === 'note') { setNote(''); setWhen(''); } if (clear === 'comment') setComment(''); }
     catch (e) { setError(errorMessage(e, t('That did not work.', 'لم تنجح العملية.'))); }
     setBusy(false);
   };
-  const move = (to: ContentStatus) => act(() => api(`/api/content/${id}/transition`, { body: { to, ...(note.trim() ? { note } : {}), ...(to === 'scheduled' && when ? { scheduledAt: DateTime.fromISO(when, { zone: businessZone() }).toUTC().toISO() } : {}) } }));
+  const nowLocal = DateTime.now().setZone(businessZone()).toFormat("yyyy-LL-dd'T'HH:mm");
+  const whenPast = Boolean(when) && when < nowLocal;
+  const move = (to: ContentStatus) => act(() => api(`/api/content/${id}/transition`, { body: { to, ...(note.trim() ? { note } : {}), ...(to === 'scheduled' && when ? { scheduledAt: DateTime.fromISO(when, { zone: businessZone() }).toUTC().toISO() } : {}) } }), 'note');
   const captionsChanged = item && JSON.stringify(captions) !== JSON.stringify(item.captions);
   const image = preview ?? item?.creative?.imageUrl;
 
@@ -153,14 +158,15 @@ function ContentDrawer({ id, team, onClose, onChanged }: { id: string; team: Tea
 
         {item.moves.length > 0 && <section className="content-drawer__section content-drawer__actions"><h3>{t('Next step', 'الخطوة التالية')}</h3>
           {item.moves.some((m) => m.needsNote) && <textarea rows={2} value={note} onChange={(e) => setNote(e.target.value)} placeholder={t('Note for the owner (required to request changes or cancel)', 'ملاحظة لصاحب المنشور (مطلوبة عند طلب التعديل أو الإلغاء)')} dir="auto" />}
-          {item.moves.some((m) => m.to === 'scheduled') && <label>{t('Publish at', 'ميعاد النشر')} · {businessZone()}<input type="datetime-local" value={when} onChange={(e) => setWhen(e.target.value)} /></label>}
-          <div className="content-drawer__buttons">{item.moves.map((m) => <Button key={m.to} variant={m.to === 'approved' || m.to === 'ready_for_review' || m.to === 'scheduled' ? 'primary' : 'secondary'} disabled={busy || (m.needsNote && !note.trim()) || (m.to === 'scheduled' && !when)} onClick={() => void move(m.to)}>{tx(MOVE_LABEL[m.to] ?? STATUS_LABEL[m.to])}</Button>)}</div>
+          {item.moves.some((m) => m.to === 'scheduled') && <label>{t('Publish at', 'ميعاد النشر')} · {businessZone()}<input type="datetime-local" min={nowLocal} value={when} onChange={(e) => setWhen(e.target.value)} /></label>}
+          {whenPast && <small role="alert" className="creative-home__error">{t('This time has already passed. Choose a future time.', 'هذا الموعد مضى بالفعل. اختر موعدًا قادمًا.')}</small>}
+          <div className="content-drawer__buttons">{item.moves.map((m) => <Button key={m.to} variant={m.to === 'approved' || m.to === 'ready_for_review' || m.to === 'scheduled' ? 'primary' : 'secondary'} disabled={busy || (m.needsNote && !note.trim()) || (m.to === 'scheduled' && (!when || whenPast))} onClick={() => void move(m.to)}>{tx(MOVE_LABEL[m.to] ?? STATUS_LABEL[m.to])}</Button>)}</div>
         </section>}
 
         <section className="content-drawer__section"><h3>{t('Captions', 'النص المرافق')}</h3>
           {item.channels.map((channel) => <label key={channel} className="content-caption">{CHANNEL_LABEL[channel]}
             <textarea rows={channel === 'facebook' || channel === 'linkedin' ? 5 : 3} dir="auto" value={captions[channel] ?? ''} disabled={!item.editable} onChange={(e) => setCaptions((c) => ({ ...c, [channel]: e.target.value }))} />
-            <button type="button" className="ui-link" onClick={() => void navigator.clipboard.writeText(captions[channel] ?? '')}>{t('Copy', 'انسخ')}</button>
+            <button type="button" className="ui-link" onClick={() => void navigator.clipboard.writeText(captions[channel] ?? '').then(() => setCopied(channel), () => setError(t('Copy is blocked in this browser; select the text instead.', 'المتصفح منع النسخ؛ حدّد النص وانسخه يدويًا.')))}>{copied === channel ? t('Copied', 'تم النسخ') : t('Copy', 'انسخ')}</button>
           </label>)}
           {captionsChanged && <Button variant="primary" disabled={busy} onClick={() => void act(() => api(`/api/content/${id}`, { method: 'PATCH', body: { captions } }))}>{t('Save captions', 'احفظ النص المرافق')}</Button>}
         </section>
@@ -174,7 +180,7 @@ function ContentDrawer({ id, team, onClose, onChanged }: { id: string; team: Tea
             <b>{nameOf(e.actorId)}</b> <span>{e.kind === 'transition' && e.to ? `→ ${tx(STATUS_LABEL[e.to as ContentStatus] ?? { en: e.to, ar: e.to })}` : e.kind === 'comment' ? '' : e.kind === 'created' ? t('created', 'أنشأ') : e.kind === 'version' ? t('new version', 'نسخة جديدة') : t('edited captions', 'عدّل النص المرافق')}</span>
             {e.body && <p dir="auto">{e.body}</p>}<time>{date(e.createdAt, 'dateTime')}</time>
           </li>)}</ol>
-          <div className="content-comment"><input value={comment} onChange={(e) => setComment(e.target.value)} placeholder={t('Write a comment', 'اكتب تعليقًا')} dir="auto" /><Button variant="secondary" disabled={busy || !comment.trim()} onClick={() => void act(() => api(`/api/content/${id}/comments`, { body: { body: comment } }))}><Send size={14} /></Button></div>
+          <div className="content-comment"><input value={comment} onChange={(e) => setComment(e.target.value)} placeholder={t('Write a comment', 'اكتب تعليقًا')} dir="auto" /><Button variant="secondary" disabled={busy || !comment.trim()} onClick={() => void act(() => api(`/api/content/${id}/comments`, { body: { body: comment } }), 'comment')}><Send size={14} /></Button></div>
         </section>
       </div>}
     </motion.aside>

@@ -9,6 +9,7 @@ import { runCommand, type StudioCommand } from '../../features/studio/commands';
 import { docColors, movable, moveLayers, moveLayerTo, newImage, newShape, newText, pasteLayers, removeLayers, updateLayer, updateLayers, type ShapePreset, type TextPreset } from '../../features/studio/edit';
 import { StudioCanvas, type Tool } from '../../features/studio/StudioCanvas';
 import { StudioPanel } from '../../features/studio/StudioPanel';
+import { StudioAiPanel, type AiOutcome } from '../../features/studio/StudioAiPanel';
 import { selectionMenu, StudioContextMenu, StudioQuickBar } from '../../features/studio/StudioQuickBar';
 import { useHistory } from '../../features/studio/useHistory';
 import { useOutlines } from '../../features/studio/useOutlines';
@@ -18,14 +19,17 @@ import { EmptyState } from '../../components/feedback/States';
 import { useAuth } from '../../features/auth/AuthProvider';
 import { usePageMeta } from '../../shell/ShellContext';
 
-async function waitForJob(jobId: string): Promise<StudioDoc> {
+/** What an AI step reports besides the document (see server/studio-routes.ts). */
+interface JobResult { understood?: string; applied?: string[]; warnings?: string[]; notes?: string[]; refused?: string; candidates?: string[]; imageEdits?: number }
+async function waitForResult(jobId: string): Promise<{ doc: StudioDoc; result: JobResult }> {
   for (;;) {
-    await new Promise((r) => setTimeout(r, 2500));
-    const job = await api<{ status: string; doc?: StudioDoc; error?: string }>(`/api/studio/jobs/${jobId}`);
-    if (job.status === 'done' && job.doc) return migrateStudioDoc(job.doc)!;
+    await new Promise((r) => setTimeout(r, 2000));
+    const job = await api<{ status: string; doc?: StudioDoc; result?: JobResult; error?: string }>(`/api/studio/jobs/${jobId}`);
+    if (job.status === 'done' && job.doc) return { doc: migrateStudioDoc(job.doc)!, result: job.result ?? {} };
     if (job.status === 'failed') throw new Error(job.error || 'Studio step failed');
   }
 }
+const waitForJob = async (jobId: string) => (await waitForResult(jobId)).doc;
 const typing = (target: EventTarget | null) => target instanceof HTMLElement && (target.isContentEditable || /^(INPUT|TEXTAREA|SELECT)$/.test(target.tagName));
 const readAsDataUrl = (file: Blob) => new Promise<string>((resolve, reject) => { const r = new FileReader(); r.onload = () => resolve(String(r.result)); r.onerror = () => reject(r.error); r.readAsDataURL(file); });
 
@@ -62,7 +66,10 @@ function StudioEditor({ id }: { id: string }) {
   const [tool, setTool] = useState<Tool>('select');
   const [region, setRegion] = useState<Box | null>(null);
   const [highlight, setHighlight] = useState<Box | null>(null);
-  const [instruction, setInstruction] = useState('');
+  const [aiOutcome, setAiOutcome] = useState<AiOutcome | null>(null);
+  /** The last assistant request with the document it started from, for "try again". */
+  const lastAi = useRef<{ request: string; variants: 1 | 2; region: Box | null; selection: string[]; from: StudioDoc } | null>(null);
+  const [peek, setPeek] = useState(false);
   const [working, setWorking] = useState<null | 'ai' | 'extract' | 'upload'>(null);
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState('');
@@ -237,13 +244,28 @@ function StudioEditor({ id }: { id: string }) {
       setSelection([]); setPhase('editing');
     } catch (e) { setError(errorMessage(e, '')); setPhase(doc ? 'editing' : 'intro'); }
   };
-  const runAiEdit = async () => {
-    if (!doc || !region || !instruction.trim()) return;
-    setWorking('ai'); setError('');
+  /**
+   * The assistant: a request (with the drawn area or the selected layers as context) goes to the edit router;
+   * two versions of an area go straight to the region edit. The result is one undo step.
+   */
+  const runAssistant = async (request: string, variants: 1 | 2, again?: NonNullable<typeof lastAi.current>) => {
+    const from = again?.from ?? doc;
+    if (!from) return;
+    const area = again ? again.region : region, picked = again ? again.selection : selection;
+    lastAi.current = { request, variants, region: area, selection: picked, from };
+    setWorking('ai'); setError(''); setAiOutcome(null);
     try {
-      const { jobId } = await api<{ jobId: string }>(`/api/studio/${id}/ai-edit`, { body: { doc, box: region, instruction } });
-      const next = await waitForJob(jobId);
-      history.apply({ ...doc, baseFile: next.baseFile }); setRegion(null); setInstruction(''); setTool('select');
+      const { jobId } = area && variants === 2
+        ? await api<{ jobId: string }>(`/api/studio/${id}/ai-edit`, { body: { doc: from, box: area, instruction: request, variants } })
+        : await api<{ jobId: string }>(`/api/studio/${id}/command`, { body: { doc: from, command: request, selection: picked, ...(area ? { box: area } : {}) } });
+      const { doc: next, result } = await waitForResult(jobId);
+      const pixels = next.baseFile !== from.baseFile;
+      history.apply(area && variants === 2 ? { ...from, baseFile: next.baseFile } : next);
+      setAiOutcome({
+        understood: result.understood, refused: result.refused, before: from.baseFile, pixels, candidates: result.candidates,
+        applied: result.applied ?? (pixels ? [t('Edited the area', 'تم تعديل المنطقة')] : []), warnings: result.warnings ?? [], notes: result.notes ?? [],
+      });
+      setRegion(null);
     } catch (e) { setError(errorMessage(e, '')); }
     setWorking(null);
   };
@@ -293,7 +315,7 @@ function StudioEditor({ id }: { id: string }) {
       <button type="button" className="ui-link" onClick={() => navigate(`/content/${id}`)}><ArrowRight size={15} className="studio__back" /> {t('Back to the post', 'رجوع للمنشور')}</button>
       {phase === 'editing' && <div className="studio__tools" role="toolbar" aria-label={t('Tools', 'الأدوات')}>
         <button type="button" aria-pressed={tool === 'select'} onClick={() => { setTool('select'); setRegion(null); }} title={t('Select (V)', 'تحديد (V)')}><MousePointer2 size={15} /> <span>{t('Select', 'تحديد')}</span></button>
-        <button type="button" aria-pressed={tool === 'ai'} onClick={() => { setTool('ai'); setSelection([]); }} title={t('Draw a box and describe the change', 'ارسم مربعًا واكتب التعديل')}><Wand2 size={15} /> <span>{t('AI edit', 'تعديل بالذكاء')}</span></button>
+        <button type="button" aria-pressed={tool === 'ai'} onClick={() => setTool('ai')} title={t('Describe any change; draw a box to limit it to one area', 'اكتب أي تعديل؛ وارسم مربعًا لحصره في منطقة')}><Wand2 size={15} /> <span>{t('AI edit', 'تعديل بالذكاء')}</span></button>
         <span className="studio__tools-sep" aria-hidden />
         <Menu label={t('Add text', 'أضف نصًا')} align="start" trigger={(p) => <button type="button" {...p} title={t('Add text (T)', 'أضف نصًا (T)')}><Type size={15} /> <span>{t('Text', 'نص')}</span></button>} items={[
           { key: 'h', label: t('Heading', 'عنوان رئيسي'), icon: <Heading1 size={15} />, onSelect: () => addText('heading') },
@@ -344,30 +366,24 @@ function StudioEditor({ id }: { id: string }) {
     {phase === 'editing' && doc && <div className="studio__workspace">
       <div className="studio__canvas-wrap">
         <StudioCanvas doc={doc} outlines={outlines} selection={selection} tool={tool} region={region} highlight={highlight} working={Boolean(working)}
-          editing={editing} compare={compare} originalUrl={imageUrl}
+          editing={editing} compare={compare} originalUrl={imageUrl} baseOverride={peek && aiOutcome?.pixels ? aiOutcome.before : undefined}
           toolbar={<StudioQuickBar doc={doc} selection={selection} colors={colors} onPatch={patchSelection} onCommit={history.commit} onCommand={command} onEditText={editText} onMore={setMenu} />}
           onSelect={select} onLive={history.live} onCommit={history.commit} onRegion={setRegion} onEdit={setEditing}
           onContextMenu={setMenu} onDropFiles={(files, at) => { for (const f of files.slice(0, 4)) void upload(f, at); }} />
         {working && <p className="studio__status glass" role="status"><Loader2 className="creative-job__spin" size={15} /> {working === 'extract' ? t('Lifting the object into a layer…', 'جارٍ فصل العنصر في طبقة…') : working === 'upload' ? t('Adding the image…', 'جارٍ إضافة الصورة…') : t('Editing with AI…', 'جارٍ التعديل بالذكاء الاصطناعي…')}</p>}
-        {tool === 'ai' && !working && <p className="studio__status glass"><MousePointerClick size={15} /> {region ? t('Describe the change in the panel.', 'اكتب التعديل في اللوحة الجانبية.') : t('Draw a box over the area to change.', 'ارسم مربعًا حول المنطقة المراد تغييرها.')}</p>}
+        {tool === 'ai' && !working && <p className="studio__status glass"><MousePointerClick size={15} /> {region ? t('Describe the change in the panel.', 'اكتب التعديل في اللوحة الجانبية.') : t('Write the change in the panel, or draw a box over one area.', 'اكتب التعديل في اللوحة، أو ارسم مربعًا حول منطقة.')}</p>}
       </div>
       {tool === 'ai' ? (
-        <aside className="studio__panel glass">
-          <section className="studio__section">
-            <h3><Wand2 size={16} /> {t('Edit an area with AI', 'عدّل منطقة بالذكاء الاصطناعي')}</h3>
-            <p className="u-sm u-muted">{t('Draw a box over what to change in the background, then describe it. Only that area changes; layers stay on top.', 'ارسم مربعًا حول ما تريد تغييره في الخلفية واكتب التعديل. تتغير هذه المنطقة وحدها وتبقى الطبقات فوقها.')}</p>
-            <textarea className="studio__text" rows={3} dir="auto" value={instruction} onChange={(e) => setInstruction(e.target.value)} placeholder={t('e.g. replace the tablet with a laptop', 'مثلًا: استبدل الجهاز اللوحي بحاسوب محمول')}
-              onKeyDown={(e) => { if (e.key === 'Enter' && (e.metaKey || e.ctrlKey)) void runAiEdit(); }} />
-            <Button variant="primary" disabled={!region || !instruction.trim() || Boolean(working)} busy={working === 'ai'} onClick={() => void runAiEdit()}>{t('Apply', 'نفّذ')}</Button>
-            {!region && <small className="u-muted">{t('Draw a box on the image first.', 'ارسم مربعًا على الصورة أولًا.')}</small>}
-          </section>
-        </aside>
+        <StudioAiPanel region={region} selectionCount={selection.length} working={working === 'ai'} outcome={aiOutcome} baseFile={doc.baseFile}
+          onRun={(request, variants) => void runAssistant(request, variants)} onClearRegion={() => setRegion(null)} onClearSelection={() => setSelection([])}
+          onPick={(file) => history.apply({ ...doc, baseFile: file })} onUndo={() => { history.undo(); setAiOutcome(null); }}
+          onRetry={() => { const last = lastAi.current; if (last) void runAssistant(last.request, last.variants, last); }} onPeek={setPeek} />
       ) : (
         <StudioPanel doc={doc} selection={selection} heights={heights} colors={colors} busy={Boolean(working)}
           onSelect={(ids, additive) => setSelection(additive ? [...new Set([...selection, ...ids])] : ids)}
           onPatch={patchSelection} onPatchLayer={patchLayer} onCommit={history.commit} onCommand={command}
           onReorder={(layerId, index) => history.apply(moveLayerTo(doc, layerId, index))}
-          onExtract={(o) => void extract(o)} onAiObject={(o) => { setTool('ai'); setSelection([]); setRegion(o.box); setInstruction(''); }} onHighlight={(o) => setHighlight(o?.box ?? null)} />
+          onExtract={(o) => void extract(o)} onAiObject={(o) => { setTool('ai'); setSelection([]); setRegion(o.box); }} onHighlight={(o) => setHighlight(o?.box ?? null)} />
       )}
     </div>}
 

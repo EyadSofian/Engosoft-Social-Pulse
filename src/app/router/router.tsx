@@ -24,6 +24,11 @@ const LEGACY_HASH: Record<string, string> = {
   connections: '/connections',
 };
 
+/** Bookmarked pages that moved: course content left Settings for its own page. */
+function upgradeMovedPaths() {
+  if (window.location.pathname.replace(/\/+$/, '') === '/settings' && new URLSearchParams(window.location.search).get('tab') === 'courses') window.history.replaceState(null, '', '/courses');
+}
+
 function upgradeLegacyHash() {
   const match = window.location.hash.match(/^#\/?([a-z]+)(\?.*)?$/);
   if (!match) return;
@@ -39,6 +44,7 @@ const read = (): Location => ({ path: window.location.pathname.replace(/\/+$/, '
 export function RouterProvider({ children }: { children: ReactNode }) {
   const [location, setLocation] = useState<Location>(() => {
     upgradeLegacyHash();
+    upgradeMovedPaths();
     return read();
   });
 

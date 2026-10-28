@@ -1,6 +1,7 @@
 import type { JSX } from 'react';
 import { AnalyticsPage } from '../pages/analytics/AnalyticsPage';
 import { CalendarPage } from '../pages/calendar/CalendarPage';
+import { CoursesPage } from '../pages/courses/CoursesPage';
 import { ContentBoardPage } from '../pages/content/ContentBoardPage';
 import { CreationHomePage } from '../pages/home/CreationHomePage';
 import { ContentTrackingPage, InsightsPage, OverviewPage } from '../pages/insights/InsightsPage';
@@ -29,6 +30,7 @@ export const ROUTES: RouteDef[] = [
   { pattern: '/tracking', nav: 'tracking', render: () => <ContentTrackingPage /> },
   { pattern: '/analytics', nav: 'analytics', render: () => <InsightsPage /> },
   { pattern: '/performance', nav: 'performance', render: () => <AnalyticsPage /> },
+  { pattern: '/courses', nav: 'courses', render: () => <CoursesPage /> },
   { pattern: '/library', nav: 'library', render: () => <LibraryPage /> },
   { pattern: '/library/templates/:id', nav: 'library', render: ({ id }) => <TemplatePage key={id} id={id} /> },
   { pattern: '/usage', nav: 'usage', render: () => <UsagePage /> },

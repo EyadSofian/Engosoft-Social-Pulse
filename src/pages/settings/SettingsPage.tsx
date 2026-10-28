@@ -1,9 +1,8 @@
 import { useCallback, useEffect, useState, type FormEvent } from 'react';
 import { motion } from 'motion/react';
-import { BellRing, GraduationCap, KeyRound, Mail, Plug, Send, UserPlus, Users } from 'lucide-react';
-import { useQueryState } from '../../app/router/router';
+import { BellRing, KeyRound, Mail, Plug, Send, UserPlus, Users } from 'lucide-react';
+import { useQueryState, useRouter } from '../../app/router/router';
 import { PermissionsPanel } from '../../features/permissions/PermissionsPanel';
-import { CourseProfilesPanel } from '../../features/course-profiles/CourseProfilesPanel';
 import { Button } from '../../components/ui/Button';
 import { useAuth, type SessionUser } from '../../features/auth/AuthProvider';
 import type { DepartmentId, RoleId } from '../../domain/users';
@@ -13,14 +12,18 @@ import { PageHeader } from '../../shell/Header';
 import { usePageMeta } from '../../shell/ShellContext';
 import { ConnectionsPage } from '../connections/ConnectionsPage';
 
-export function SettingsPage({ initialTab }: { initialTab?: 'team' | 'permissions' | 'notifications' | 'courses' | 'connections' } = {}) {
+export function SettingsPage({ initialTab }: { initialTab?: 'team' | 'permissions' | 'notifications' | 'connections' } = {}) {
   const { t } = useI18n();
   const { can } = useAuth();
+  const { navigate } = useRouter();
   const [params, setParams] = useQueryState();
-  type SettingsTab = 'team' | 'permissions' | 'notifications' | 'courses' | 'connections';
-  const permitted = (value: string): value is SettingsTab => value === 'connections' ? can('connections.manage') : value === 'courses' ? can('templates.manage') : ['team', 'permissions', 'notifications'].includes(value) && can('users.manage');
+  type SettingsTab = 'team' | 'permissions' | 'notifications' | 'connections';
+  const permitted = (value: string): value is SettingsTab => value === 'connections' ? can('connections.manage') : ['team', 'permissions', 'notifications'].includes(value) && can('users.manage');
   const requested = params.get('tab') || initialTab || '';
-  const tab: SettingsTab = permitted(requested) ? requested : can('users.manage') ? 'team' : can('templates.manage') ? 'courses' : 'connections';
+  // Course content moved to its own page; an old in-app link lands there.
+  const toCourses = requested === 'courses';
+  useEffect(() => { if (toCourses) navigate('/courses', { replace: true }); }, [toCourses, navigate]);
+  const tab: SettingsTab = permitted(requested) ? requested : can('users.manage') ? 'team' : 'connections';
   const setTab = (value: SettingsTab) => setParams({ tab: value });
   usePageMeta(t('Settings', 'الإعدادات'), [{ label: t('Settings', 'الإعدادات') }]);
   return <div className="u-stack u-stack--lg">
@@ -29,11 +32,10 @@ export function SettingsPage({ initialTab }: { initialTab?: 'team' | 'permission
       {can('users.manage') && <button type="button" role="tab" aria-selected={tab === 'team'} aria-pressed={tab === 'team'} onClick={() => setTab('team')}><Users size={15} /> {t('Team', 'الفريق')}</button>}
       {can('users.manage') && <button type="button" role="tab" aria-selected={tab === 'permissions'} aria-pressed={tab === 'permissions'} onClick={() => setTab('permissions')}>{t('Permissions', 'الصلاحيات')}</button>}
       {can('users.manage') && <button type="button" role="tab" aria-selected={tab === 'notifications'} aria-pressed={tab === 'notifications'} onClick={() => setTab('notifications')}><BellRing size={15} /> {t('Notifications', 'الإشعارات')}</button>}
-      {can('templates.manage') && <button type="button" role="tab" aria-selected={tab === 'courses'} aria-pressed={tab === 'courses'} onClick={() => setTab('courses')}><GraduationCap size={15} /> {t('Course library', 'مكتبة الدورات')}</button>}
       {can('connections.manage') && <button type="button" role="tab" aria-selected={tab === 'connections'} aria-pressed={tab === 'connections'} onClick={() => setTab('connections')}><Plug size={15} /> {t('Connections', 'ربط المنصات')}</button>}
     </div>
     <motion.div key={tab} initial={{ opacity: 0, y: 6 }} animate={{ opacity: 1, y: 0 }} transition={{ duration: 0.2 }}>
-      {tab === 'team' ? <TeamSettings /> : tab === 'permissions' ? <PermissionsPanel /> : tab === 'notifications' ? <NotificationSettings /> : tab === 'courses' ? <CourseProfilesPanel /> : <ConnectionsPage />}
+      {toCourses ? null : tab === 'team' ? <TeamSettings /> : tab === 'permissions' ? <PermissionsPanel /> : tab === 'notifications' ? <NotificationSettings /> : <ConnectionsPage />}
     </motion.div>
   </div>;
 }

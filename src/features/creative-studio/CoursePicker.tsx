@@ -1,6 +1,7 @@
 import { useEffect, useState } from 'react';
 import { CalendarClock, GraduationCap, Loader2, MonitorPlay, Search } from 'lucide-react';
 import { useI18n } from '../../i18n/I18nProvider';
+import { api, errorMessage } from '../../lib/api';
 import type { OdooEvent } from '../svg-templates/render';
 
 export interface OdooCourse { id: string; kind: 'course' | 'elearning'; name: string; category: string; description: string; url?: string; price?: number; nextRuns: OdooEvent[] }
@@ -22,10 +23,10 @@ export function CoursePicker({ onPick, autoFocus }: { onPick: (pick: CoursePick)
     let alive = true;
     setLoading(true);
     const timer = setTimeout(() => {
-      fetch(`/api/odoo/courses?q=${encodeURIComponent(query.trim())}`)
-        .then((r) => r.json())
+      // Through api(): an expired session shows the sign-in screen instead of an empty list.
+      api<{ courses: OdooCourse[]; events: OdooEvent[]; status: string; message?: string }>(`/api/odoo/courses?q=${encodeURIComponent(query.trim())}`)
         .then((value) => alive && setData(value))
-        .catch(() => alive && setData({ courses: [], events: [], status: 'error' }))
+        .catch((e) => alive && setData({ courses: [], events: [], status: 'error', message: errorMessage(e, '') }))
         .finally(() => alive && setLoading(false));
     }, query ? 250 : 0);
     return () => { alive = false; clearTimeout(timer); };

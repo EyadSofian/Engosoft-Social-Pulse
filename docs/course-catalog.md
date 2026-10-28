@@ -19,3 +19,7 @@ python -m venv /tmp/engosoft-catalog
 The snapshot is committed at `server/data/engosoft-website-courses.json`; source HTML remains outside the repository. Update the snapshot, review the diff, and restart/import to add newly found entries. Deliberately deleted imported records will be restored by the next insert-only import.
 
 `/api/odoo/courses` searches the saved profiles immediately, even when Odoo is unavailable; remote next-run data refreshes in the background. Creation fills matching template fields and a caption from the selected profile, respects field lengths, and warns when the profile is still suggested. Picking another course clears fields tied to the previous source.
+
+## Reviewing the catalog
+
+The **Courses** page (`/courses`) is a review queue. It shows how many profiles are approved, filters by review status, missing details and field, and searches Arabic and English names together (أوتوكاد finds AutoCAD). Each goal and outcome is its own row (Enter adds one, pasted bullet lists split into rows). Problems are shown beside the field with the server's limits: a source link must be `https://`, at most 12 goals or outcomes of 300 characters each. "Approve & next" saves and opens the next course waiting for review. Unsaved edits are kept in the browser and offered again after a reload or an expired session. A preview shows the copy a course post will get. People who create posts but cannot edit courses see the same page read-only.

@@ -43,6 +43,7 @@ The sidebar has three groups. Items are hidden when the current role cannot use 
 | | Content | `/content`, `/content/:id` (drawer) | Everyone |
 | | Studio | `/studio/:id` (opened from a content item) | Everyone who can open the item |
 | | Calendar | `/calendar` (`?view=live` for the publishing calendar) | Everyone |
+| | Courses | `/courses` (old `/settings?tab=courses` links redirect) | Edit and approve with `templates.manage`; read-only with `content.create` |
 | | Library | `/library`, `/library/templates/:id` | Everyone |
 | Tracking | Overview | `/overview` | Roles with `analytics.view` |
 | | Content performance | `/tracking` | Roles with `analytics.view` |

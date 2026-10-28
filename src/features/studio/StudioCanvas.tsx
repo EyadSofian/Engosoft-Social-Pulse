@@ -44,7 +44,7 @@ interface Drag {
  * brand-font outline, so what you see is what the saved image shows. Zoom with ⌘/Ctrl + wheel or the
  * zoom bar, pan with Space + drag or the middle button.
  */
-export function StudioCanvas({ doc, outlines, selection, tool, region, highlight, working, editing, compare, originalUrl, toolbar, onSelect, onLive, onCommit, onRegion, onEdit, onContextMenu, onDropFiles }: {
+export function StudioCanvas({ doc, outlines, selection, tool, region, highlight, working, editing, compare, originalUrl, baseOverride, toolbar, onSelect, onLive, onCommit, onRegion, onEdit, onContextMenu, onDropFiles }: {
   doc: StudioDoc;
   outlines: Map<string, Outline>;
   selection: string[];
@@ -56,6 +56,8 @@ export function StudioCanvas({ doc, outlines, selection, tool, region, highlight
   editing: string | null;
   /** Show the original design instead of the layers. */
   compare: boolean;
+  /** Background shown instead of the document's while peeking at the state before an AI edit. */
+  baseOverride?: string;
   originalUrl: string;
   /** Quick actions shown above the selection. */
   toolbar?: ReactNode;
@@ -369,7 +371,7 @@ export function StudioCanvas({ doc, outlines, selection, tool, region, highlight
         onDoubleClick={onDoubleClick} onContextMenu={onContext} onDragOver={(e) => { if (e.dataTransfer.types.includes('Files')) e.preventDefault(); }} onDrop={onDrop}>
         <div className="studio__inner" style={{ width: innerW, height: innerH }}>
           <div ref={stage} className="studio__stage" style={{ left: offX, top: offY, width: stageW, height: stageH }}>
-            <img className="studio__base" src={compare && originalUrl ? originalUrl : `/api/studio/${doc.baseFile}`} alt="" draggable={false} />
+            <img className="studio__base" src={compare && originalUrl ? originalUrl : `/api/studio/${baseOverride ?? doc.baseFile}`} alt="" draggable={false} />
             {!compare && <svg className="studio__svg" viewBox={`0 0 ${doc.width} ${doc.height}`} aria-hidden>
               <defs>
                 {doc.layers.map((l) => {

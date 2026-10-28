@@ -86,7 +86,11 @@ app.post('/api/ai/post-image',requirePermission('design.free'),requireAiBudget,a
 const fullCreativeCalls=new Map<string,number[]>();
 const fullCreativeRequest=z.object({prompt:z.string().trim().min(5).max(2000),format:z.enum(['feed','story','landscape','video']).default('feed'),directions:z.literal(2).default(2),templateId:z.string().uuid().optional(),
  settings:z.object({theme:z.enum(['auto',...THEME_IDS]).optional(),creativity:z.enum(['safe','balanced','experimental']).optional(),imageStyle:z.enum(['auto','photo','graphic']).optional(),detail:z.enum(['auto','minimal','detailed']).optional(),referenceStrength:z.enum(['loose','balanced','strong']).optional()}).optional(),
- engine:z.enum(['skills','legacy']).optional()});
+ engine:z.enum(['skills','legacy']).optional(),
+ objective:z.enum(['course_launch','course_schedule','certificate','education','event','general']).optional(),
+ // Images, PDFs and text attached on the Create page (up to 6, 2 MB each before base64).
+ attachments:z.array(z.object({name:z.string().max(200),mime:z.string().max(100),dataUrl:z.string().max(2_800_000).regex(/^data:[\w.+/-]+;base64,/)})).max(6).optional()});
+const OBJECTIVE_TEXT={course_launch:'Course announcement',course_schedule:'Course schedule',certificate:'Certificate or achievement',education:'Educational content',event:'Event or occasion',general:'General post'} as const;
 const localOnly=(res:express.Response)=>{if(!process.env.OPENAI_API_KEY?.trim()){res.status(503).json({error:'أضف OPENAI_API_KEY على الخادم.'});return true;}return false;};
 const limited=(req:express.Request,res:express.Response)=>{const who=req.ip||'local';const now=Date.now();const recent=(fullCreativeCalls.get(who)||[]).filter(at=>now-at<10*60_000);if(recent.length>=6){res.status(429).json({error:'بلغت الحد المؤقت: 6 طلبات تصميم خلال 10 دقائق.'});return true;}fullCreativeCalls.set(who,[...recent,now]);return false;};
 app.post('/api/ai/full-creative',requirePermission('design.free'),requireAiBudget,async(req,res)=>{
@@ -95,7 +99,7 @@ app.post('/api/ai/full-creative',requirePermission('design.free'),requireAiBudge
  if(limited(req,res))return;
  const template=parsed.data.templateId?await getTemplate(parsed.data.templateId):undefined;if(template)await countTemplateUse(template.id);
  const requestId=randomUUID();
- const job=startJob('generate',req.user!.id,(setStage)=>generateFullCreative({...parsed.data,style:template?.style,requestId,ownerId:req.user!.id},process.env,setStage),requestId);
+ const job=startJob('generate',req.user!.id,(setStage)=>generateFullCreative({...parsed.data,objective:parsed.data.objective&&OBJECTIVE_TEXT[parsed.data.objective],style:template?.style,requestId,ownerId:req.user!.id},process.env,setStage),requestId);
  res.status(202).json({jobId:job.id,requestId});
 });
 app.post('/api/ai/full-creative/:requestId/adapt',requirePermission('design.free'),requireAiBudget,(req,res)=>{

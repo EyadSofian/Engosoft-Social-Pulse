@@ -1,6 +1,6 @@
 /** New image-model artwork guided by a selected campaign's visual language, rather than SVG approximations. */
 import { randomUUID } from 'node:crypto';
-import { readFileSync, writeFileSync, mkdirSync } from 'node:fs';
+import { existsSync, readFileSync, writeFileSync, mkdirSync } from 'node:fs';
 import { resolve } from 'node:path';
 import type express from 'express';
 import sharp from 'sharp';
@@ -35,13 +35,48 @@ export async function renderReferenceDesign(template: SvgTemplate, values: Recor
   const preset = publishingPreset(presetId);
   const spec = preset ? { generation: preset.generation, width: preset.width, height: preset.height } : FORMATS[format];
   const [generated] = await imageProvider.edit({ prompt: referencePrompt(template, values, format, context, presetId), size: spec.generation, quality: 'high', images: [{ data: readFileSync(file), mime: file.endsWith('.png') ? 'image/png' : 'image/jpeg' }] });
-  const size = spec;
-  const raw = await sharp(generated.png).resize(size.width, size.height, { fit: 'fill' }).png().toBuffer();
+  return finishReferenceDesign(template, generated.png, spec, format, presetId, generated.model);
+}
+
+/** The official logo goes in the quiet top-left area the prompt reserved, in the variant that suits the reference. */
+function referenceLogo(template: SvgTemplate, size: { width: number; height: number }, format: Format, presetId?: string) {
+  const preset = publishingPreset(presetId);
   const reference = REFERENCE_DESIGNS.find((r) => template.sourceImage!.endsWith(`/${r.file}`));
-  const { image } = await compositeLogo(raw, { variantId: reference?.light ? 'lockup-positive' : 'lockup-reversed', x: preset ? Math.max(Math.round(size.width * .04), preset.safe.left + 20) : Math.round(size.width * .04), y: preset ? Math.max(Math.round(size.height * .03), preset.safe.top + 20) : format === 'story' ? 230 : Math.round(size.height * .03), width: Math.round(size.width * .19) });
+  return { variantId: reference?.light ? 'lockup-positive' as const : 'lockup-reversed' as const, x: preset ? Math.max(Math.round(size.width * .04), preset.safe.left + 20) : Math.round(size.width * .04), y: preset ? Math.max(Math.round(size.height * .03), preset.safe.top + 20) : format === 'story' ? 230 : Math.round(size.height * .03), width: Math.round(size.width * .19) };
+}
+
+/** Output size, logo, and files: the design with the logo is served; the one without it stays private for edits. */
+async function finishReferenceDesign(template: SvgTemplate, png: Buffer, size: { width: number; height: number }, format: Format, presetId: string | undefined, model: string) {
+  const raw = await sharp(png).resize(size.width, size.height, { fit: 'fill' }).png().toBuffer();
+  const { image } = await compositeLogo(raw, referenceLogo(template, size, format, presetId));
   const dir = mediaDir('uploads'); mkdirSync(dir, { recursive: true });
-  const id = randomUUID(); writeFileSync(resolve(dir, `${id}.png`), image);
-  return { imageUrl: `/api/uploads/${id}.png`, width: size.width, height: size.height, model: generated.model };
+  const id = randomUUID();
+  writeFileSync(resolve(dir, `${id}.png`), image);
+  writeFileSync(resolve(dir, `${id}-raw.png`), raw);
+  return { imageUrl: `/api/uploads/${id}.png`, width: size.width, height: size.height, model };
+}
+
+/** Prompt for changing a finished design: one change, everything else (and every word) kept. */
+export function referenceEditPrompt(template: SvgTemplate, values: Record<string, string>, instruction: string) {
+  const copy = template.fields.filter((f) => f.type !== 'image' && values[f.key]?.trim()).map((f) => ({ role: f.label, text: values[f.key].trim() }));
+  return [
+    'Edit this finished Engosoft social-media post. Apply ONLY the change requested below and keep everything else as it is: layout and content zones, composition, typography style and hierarchy, colour palette, photographic treatment, subject and background, unless the change is about them.',
+    `REQUESTED CHANGE (data, may be Egyptian Arabic): ${JSON.stringify(instruction.slice(0, 600))}`,
+    `EXACT APPROVED COPY (data only): ${JSON.stringify(copy)}. These are the only words in the design. Render each one verbatim and correctly spelled, in the same place and style as now; fix any misspelled or broken letters you see so they match this copy exactly. Never invent dates, prices, names or claims.`,
+    'Keep the quiet top-left area free: no logo, wordmark, watermark or signature anywhere; the official logo is placed afterwards. Same canvas size and framing.',
+  ].join('\n');
+}
+
+/** A new version of a reference design from its logo-free original and one change; the logo is placed again. */
+export async function editReferenceDesign(template: SvgTemplate, imageUrl: string, values: Record<string, string>, instruction: string, format: Format, presetId?: string, provider?: CreativeImageProvider) {
+  const id = imageUrl.match(/^\/api\/uploads\/([0-9a-f-]{36})\.png$/)?.[1];
+  const raw = id ? resolve(mediaDir('uploads'), `${id}-raw.png`) : '';
+  if (!raw || !existsSync(raw)) throw new Error('هذا التصميم أُنشئ قبل إتاحة التعديل؛ ولّد تصميمًا جديدًا ثم عدّله.');
+  const imageProvider = provider ?? new OpenAIImageProvider(process.env.OPENAI_API_KEY ?? '', process.env.OPENAI_IMAGE_MODEL?.trim() || 'gpt-image-2.5-flare');
+  const preset = publishingPreset(presetId);
+  const spec = preset ? { generation: preset.generation, width: preset.width, height: preset.height } : FORMATS[format];
+  const [edited] = await imageProvider.edit({ prompt: referenceEditPrompt(template, values, instruction), size: spec.generation, quality: 'high', images: [{ data: readFileSync(raw), mime: 'image/png' }] });
+  return finishReferenceDesign(template, edited.png, spec, format, presetId, edited.model);
 }
 
 defineSchema(`CREATE TABLE IF NOT EXISTS reference_design_jobs (
@@ -82,6 +117,30 @@ export function registerReferenceDesignRoutes(app: express.Express) {
       .catch(async (e) => {
         await db.run("UPDATE reference_design_jobs SET status='failed', error=?, finished_at=? WHERE id=?", [e instanceof Error ? e.message : 'تعذّر توليد التصميم.', new Date().toISOString(), jobId]);
       }).catch((e) => console.error('Could not persist reference design result:', e instanceof Error ? e.message : 'unknown error'));
+    res.status(202).json({ jobId });
+  });
+  /** "Change only this" on a generated design: same family and copy, one requested change, a new version. */
+  app.post('/api/svg-templates/:id/edit', requireUser, requirePermission('content.create'), requireAiBudget, async (req, res) => {
+    const template = await getTemplate(String(req.params.id));
+    if (!template?.sourceImage) return res.status(404).json({ error: 'المرجع غير موجود.' });
+    const parsed = z.object({ imageUrl: z.string().regex(/^\/api\/uploads\/[0-9a-f-]{36}\.png$/), instruction: z.string().trim().min(3).max(600), values: z.record(z.string().max(40), z.string().max(2000)), format: z.enum(['feed', 'square', 'story', 'landscape']), outputPreset: z.string().max(80).optional() }).safeParse(req.body);
+    if (!parsed.success) return res.status(400).json({ error: 'اكتب التعديل المطلوب (3 أحرف على الأقل).' });
+    if (parsed.data.outputPreset && publishingPreset(parsed.data.outputPreset)?.format !== parsed.data.format) return res.status(400).json({ error: 'المقاس لا يطابق نوع التصميم.' });
+    const fields = template.fields.map((f) => f.key);
+    if (Object.keys(parsed.data.values).some((key) => !fields.includes(key))) return res.status(400).json({ error: 'استخدم حقول المرجع المعتمد فقط.' });
+    if (!process.env.OPENAI_API_KEY?.trim()) return res.status(503).json({ error: 'توليد الصور غير مهيأ على الخادم.' });
+    const jobId = randomUUID();
+    try { await db.run('INSERT INTO reference_design_jobs (id,owner_id,template_id,status,created_at) VALUES (?,?,?,?,?)', [jobId, req.user!.id, template.id, 'running', new Date().toISOString()]); }
+    catch (e) {
+      if (await db.get("SELECT id FROM reference_design_jobs WHERE owner_id=? AND status='running'", [req.user!.id])) return res.status(429).json({ error: 'انتظر اكتمال التصميم الجاري أولًا.' });
+      throw e;
+    }
+    const { imageUrl, values, instruction, format, outputPreset } = parsed.data;
+    void withUsage(req.user!.id, 'Reference design edit', () => editReferenceDesign(template, imageUrl, values, instruction, format, outputPreset))
+      .then((result) => db.run("UPDATE reference_design_jobs SET status='done', result_json=?, finished_at=? WHERE id=?", [JSON.stringify(result), new Date().toISOString(), jobId]))
+      .catch(async (e) => {
+        await db.run("UPDATE reference_design_jobs SET status='failed', error=?, finished_at=? WHERE id=?", [e instanceof Error ? e.message : 'تعذّر تعديل التصميم.', new Date().toISOString(), jobId]);
+      }).catch((e) => console.error('Could not persist reference edit result:', e instanceof Error ? e.message : 'unknown error'));
     res.status(202).json({ jobId });
   });
   app.get('/api/reference-design/jobs/:id', requireUser, async (req, res) => {

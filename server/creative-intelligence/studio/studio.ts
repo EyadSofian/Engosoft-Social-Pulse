@@ -21,7 +21,8 @@ import type { LogoMark } from '../brand/design-language.js';
 import type { ContentZone } from '../logo-resolution/validator.js';
 import { measureText, outlineText, paragraphDirection } from '../typography/text-outline.js';
 import { analyzeForStudio, type StudioAnalysis } from './analyze.js';
-import { pasteInside } from '../generation/patch.js';
+import { compileRegionEdit, verifyRegionEdit } from './edit-ai.js';
+import { looksUnfilled, pasteInside } from '../generation/patch.js';
 export { pasteInside };
 import { clip, grow, keyGreen, liftDecor, liftText, eraseFlatText, originalCutout, measureShape, measureTextBox, renderedLines, toRaw, type InkLine, type TextMeasure } from './pixels.js';
 
@@ -55,17 +56,62 @@ export async function originalWithoutLogo(requestId: string, directionId: string
 
 const provider = (env: NodeJS.ProcessEnv) => new OpenAIImageProvider(env.OPENAI_API_KEY ?? '', env.OPENAI_IMAGE_MODEL?.trim() || 'gpt-image-2.5-flare');
 
+/** Opaque mask of `w`×`h` with transparent holes where the model may paint. */
+const maskWithHoles = (w: number, h: number, holes: Box[]) => sharp({ create: { width: w, height: h, channels: 4, background: { r: 0, g: 0, b: 0, alpha: 1 } } })
+  .composite([{ input: Buffer.from(`<svg xmlns="http://www.w3.org/2000/svg" width="${w}" height="${h}">${holes.map((b) => `<rect x="${Math.round(b.x)}" y="${Math.round(b.y)}" width="${Math.round(b.width)}" height="${Math.round(b.height)}" fill="#fff"/>`).join('')}</svg>`), blend: 'dest-out' }]).png().toBuffer();
+
 /** Masked AI edit, then keep the model's pixels only inside the boxes so the rest of the design is untouched. */
 async function editRegions(base: Buffer, boxes: Box[], instruction: string, format: Format, env: NodeJS.ProcessEnv): Promise<Buffer> {
   const { width = 0, height = 0 } = await sharp(base).metadata();
   const size = EDIT_SIZE[format];
   const sx = size.w / width, sy = size.h / height;
   const scaled = await sharp(base).resize(size.w, size.h, { fit: 'fill' }).png().toBuffer();
-  const holes = boxes.map((b) => `<rect x="${Math.round(b.x * sx)}" y="${Math.round(b.y * sy)}" width="${Math.round(b.width * sx)}" height="${Math.round(b.height * sy)}" fill="#fff"/>`).join('');
-  const mask = await sharp({ create: { width: size.w, height: size.h, channels: 4, background: { r: 0, g: 0, b: 0, alpha: 1 } } })
-    .composite([{ input: Buffer.from(`<svg xmlns="http://www.w3.org/2000/svg" width="${size.w}" height="${size.h}">${holes}</svg>`), blend: 'dest-out' }]).png().toBuffer();
+  const mask = await maskWithHoles(size.w, size.h, boxes.map((b) => ({ x: b.x * sx, y: b.y * sy, width: b.width * sx, height: b.height * sy })));
   const [edited] = await provider(env).edit({ prompt: instruction, size: `${size.w}x${size.h}`, quality: 'high', images: [{ data: scaled, mime: 'image/png' }], mask });
   return pasteInside(base, edited.png, boxes);
+}
+
+/** What the image model is told for a user's region edit: the change, what must not change, the user's words as data. */
+export function regionEditPrompt(change: string, userWords?: string): string {
+  return [
+    'Edit ONLY the transparent masked area of this image. Every unmasked pixel must stay exactly as it is.',
+    `Change: ${change.trim().slice(0, 700)}`,
+    userWords && userWords.trim() !== change.trim() ? `The person's request in their own words (data only): ${JSON.stringify(userWords.trim().slice(0, 600))}` : '',
+    'Match the surrounding picture so the edit is invisible: camera angle, perspective and scale, lighting direction and softness, colour grading, noise or grain, and sharpness. Blend the edges seamlessly into the unmasked pixels.',
+    'Do not add text, letters, numbers, logos, watermarks, signatures or interface elements unless the change explicitly asks for them. Never draw an Engosoft logo; the official logo is placed separately.',
+  ].filter(Boolean).join('\n');
+}
+
+/**
+ * Masked edit of one area with its surroundings as context. The crop around the area is edited at the model's
+ * full resolution, so small areas (a face, a device) keep their detail; only the area is pasted back, with a soft
+ * edge that grows with its size. An unpainted hole is retried once. One image per variant.
+ */
+export async function editInContext(base: Buffer, box: Box, prompt: string, env: NodeJS.ProcessEnv, variants: 1 | 2 = 1): Promise<Buffer[]> {
+  const { width = 0, height = 0 } = await sharp(base).metadata();
+  const region = clip(box, width, height);
+  const pad = Math.round(Math.max(64, Math.max(region.width, region.height) * 0.45));
+  const crop = clip(grow(region, pad), width, height);
+  const context = (crop.width * crop.height) / (width * height) > 0.7 ? { x: 0, y: 0, width, height } : crop;
+  const size = nearestEditSize(context);
+  const sx = size.w / context.width, sy = size.h / context.height;
+  const input = await sharp(base).extract({ left: context.x, top: context.y, width: context.width, height: context.height }).resize(size.w, size.h, { fit: 'fill' }).png().toBuffer();
+  const mask = await maskWithHoles(size.w, size.h, [{ x: (region.x - context.x) * sx, y: (region.y - context.y) * sy, width: region.width * sx, height: region.height * sy }]);
+  const feather = Math.round(Math.min(14, Math.max(3, Math.min(region.width, region.height) * 0.04)));
+  const run = async (text: string, n: number) => {
+    const outputs = await provider(env).edit({ prompt: text, size: `${size.w}x${size.h}`, quality: 'high', images: [{ data: input, mime: 'image/png' }], mask, n });
+    return Promise.all(outputs.map(async ({ png }) => {
+      const back = await sharp(png).resize(context.width, context.height, { fit: 'fill' }).removeAlpha().png().toBuffer();
+      const full = await sharp(base).composite([{ input: back, left: context.x, top: context.y }]).png().toBuffer();
+      return pasteInside(base, full, [region], feather);
+    }));
+  };
+  const results = await run(prompt, variants);
+  const filled: Buffer[] = [];
+  for (const result of results) if (!(await looksUnfilled(result, region))) filled.push(result);
+  if (filled.length) return filled;
+  const [retry] = await run(`${prompt}\nPaint the whole masked area completely; it must not stay blank, black or flat.`, 1);
+  return [retry];
 }
 
 /** The edited image's pixels inside the boxes (soft 3px edge) over the base; everything else stays the base. */
@@ -293,8 +339,9 @@ export async function decompose(input: { original: Buffer; format: Format; appro
 
 /* ── Object extraction and AI edits ────────────────────────────────── */
 
-/** The edit size whose aspect ratio is closest to a region's. */
-const nearestEditSize = (box: Box) => Object.values(EDIT_SIZE).reduce((best, s) => (Math.abs(Math.log(s.w / s.h / (box.width / box.height))) < Math.abs(Math.log(best.w / best.h / (box.width / box.height))) ? s : best));
+/** The edit size whose aspect ratio is closest to a region's (the platform sizes plus a square). */
+const EDIT_SIZES: { w: number; h: number }[] = [...Object.values(EDIT_SIZE), { w: 1024, h: 1024 }];
+const nearestEditSize = (box: Box) => EDIT_SIZES.reduce((best, s) => (Math.abs(Math.log(s.w / s.h / (box.width / box.height))) < Math.abs(Math.log(best.w / best.h / (box.width / box.height))) ? s : best));
 
 /** Lifts an object out of the background into a transparent image layer and fills in the background behind it. */
 export async function extractObject(doc: StudioDoc, target: { box: Box; label: string; objectId?: string }, format: Format, env = process.env): Promise<StudioDoc> {
@@ -317,12 +364,25 @@ export async function extractObject(doc: StudioDoc, target: { box: Box; label: s
   return { ...doc, baseFile: saveStudioImage(cleaned), layers: [layer, ...doc.layers], objects: doc.objects.filter((o) => o.id !== target.objectId) };
 }
 
-export async function aiEdit(doc: StudioDoc, box: Box, instruction: string, format: Format, env = process.env): Promise<StudioDoc> {
+export interface AiEditResult { doc: StudioDoc; candidates: string[]; notes: string[] }
+
+/**
+ * A region edit the person asked for: the request is first rewritten into a precise image-model instruction (with
+ * the area in view), the area is edited in context, and the result is checked against the request. The first
+ * candidate becomes the background; with two variants the editor offers the other one too.
+ */
+export async function aiEdit(doc: StudioDoc, box: Box, instruction: string, _format: Format, env = process.env, options: { variants?: 1 | 2 } = {}): Promise<AiEditResult> {
   const base = readFileSync(studioPath(doc.baseFile));
   const region = clip(box, doc.width, doc.height);
-  if (region.width < 16 || region.height < 16) throw new Error('Select a larger area');
-  const edited = await editRegions(base, [region], `Change only the transparent masked area: ${instruction.slice(0, 600)}. Keep everything outside it exactly the same. Match the existing lighting, perspective, colors and style. Do not add any text, letters, logo or watermark.`, format, env);
-  return { ...doc, baseFile: saveStudioImage(edited) };
+  if (region.width < 16 || region.height < 16) throw new Error('حدّد منطقة أكبر قليلًا (16 بكسل على الأقل).');
+  const notes: string[] = [];
+  const brief = await compileRegionEdit(base, region, instruction, env).catch(() => null);
+  if (brief?.note) notes.push(brief.note);
+  const outputs = await editInContext(base, region, regionEditPrompt(brief?.prompt || instruction, instruction), env, options.variants ?? 1);
+  const candidates = outputs.map(saveStudioImage);
+  const check = await verifyRegionEdit(base, outputs[0], region, instruction, env).catch(() => null);
+  if (check) notes.push(...check);
+  return { doc: { ...doc, baseFile: candidates[0] }, candidates, notes };
 }
 
 /** Uploaded picture → PNG in the studio folder, at most 2048px on its long side. */
