@@ -1,3 +1,4 @@
+import { getAccount, accountId } from '../social/store.js';
 import { blankMetrics, type ConnectorResult, type ObservedPost } from '../types.js';
 import { json, numberOrNull, text } from './http.js';
 
@@ -15,6 +16,7 @@ async function list<T>(path:string,token:string,params:Record<string,string>,max
   for(let page=0;page<maxPages;page++){
     const body=next?await json<GraphList<T>>(next,{headers:{Authorization:`Bearer ${token}`}}):await graph<GraphList<T>>(path,token,params);
     output.push(...(body.data||[]));next=body.paging?.next||'';if(!next) break;
+    if(new URL(next).origin!=='https://graph.facebook.com')throw new Error('Unexpected Meta pagination host.');
   }
   return output;
 }
@@ -46,14 +48,14 @@ async function mapConcurrent<T,R>(items:T[],limit:number,work:(item:T)=>Promise<
  }));
  return results;
 }
-export async function syncMeta():Promise<ConnectorResult[]> {
- const token=process.env.META_ACCESS_TOKEN?.trim();
+export async function syncMeta(options?:{token:string;pageIds?:string[]}):Promise<ConnectorResult[]> {
+ const token=options?.token||process.env.META_ACCESS_TOKEN?.trim();
  if(!token) return [
   {platform:'facebook',status:'needs_setup',message:'META_ACCESS_TOKEN غير مضبوط.',posts:[]},
   {platform:'instagram',status:'needs_setup',message:'اربط حساب Instagram Professional وصفحات Meta أولًا.',posts:[]}
  ];
  try {
-   const ids=(process.env.META_PAGE_IDS||'').split(',').map(x=>x.trim()).filter(Boolean);
+   const ids=options?.pageIds||(process.env.META_PAGE_IDS||'').split(',').map(x=>x.trim()).filter(Boolean);
    let pages:Page[]=[];
    try {pages=await list<Page>('me/accounts',token,{fields:'id,name,access_token',limit:'100'},2);} catch { /* A Page token may not list accounts. */ }
    if(ids.length) pages=ids.map(id=>pages.find(p=>p.id===id)||{id,name:`Page ${id}`});
@@ -68,6 +70,7 @@ export async function syncMeta():Promise<ConnectorResult[]> {
    const igErrors:string[]=[];const fbErrors:string[]=[];let fbDetail='';
    for(const page of pages){
      const pageToken=page.access_token||token;
+     const fbDisabled=(await getAccount(accountId('facebook',page.id)))?.status==='disconnected';
      try {
        const fields=[
          'id,message,permalink_url,created_time,full_picture,shares,likes.summary(true),comments.summary(true)',
@@ -103,6 +106,7 @@ export async function syncMeta():Promise<ConnectorResult[]> {
      try {
        const info=await graph<{instagram_business_account?:{id:string}}>(page.id,pageToken,{fields:'instagram_business_account'});
        const igId=info.instagram_business_account?.id;
+       if(igId&&(await getAccount(accountId('instagram',igId)))?.status==='disconnected')continue;
        if(!igId) {igErrors.push(`${page.name}: لا يوجد Instagram Professional مرتبط.`);continue;}
        const raw=await list<Record<string,unknown>>(`${igId}/media`,pageToken,{fields:'id,caption,media_type,permalink,timestamp,like_count,comments_count,thumbnail_url,media_url',limit:'50'},3);
        const pagePosts=await mapConcurrent(raw,4,async p=>{
@@ -113,16 +117,16 @@ export async function syncMeta():Promise<ConnectorResult[]> {
          // Meta removed the Instagram media `impressions` metric in Graph API v22+.
          // Keep the field visible as unavailable while collecting supported insights.
          const extra=canReadIgInsights?await optionalInsights(id,token,['reach','saved','shares','views','total_interactions']):{};
-         m.reach=extra.reach;m.saves=extra.saved;m.shares=extra.shares;m.views=extra.views;
-         m.engagement=extra.total_interactions;
+         m.reach=extra.reach??null;m.saves=extra.saved??null;m.shares=extra.shares??null;m.views=extra.views??null;
+         m.engagement=extra.total_interactions??null;
          return {platform:'instagram' as const,accountId:igId,accountName:page.name,externalId:id,permalink:text(p.permalink),title:text(p.caption).slice(0,220)||'Instagram post',publishedAt:text(p.timestamp),contentType:text(p.media_type).toLowerCase()||'post',thumbnail:text(p.thumbnail_url)||text(p.media_url),metrics:m};
        });
        instagram.push(...pagePosts.filter((post)=>post!==undefined));
      }catch(e){const message=e instanceof Error?e.message:'تعذّر القراءة';igErrors.push(`${page.name}: ${message.includes('code 10')?'صلاحية instagram_basic/instagram_manage_insights غير متاحة لهذا التوكن.':message}`);}
    }
    return [
-     {platform:'facebook',status:fbErrors.length&&!facebook.length?'error':'connected',message:fbErrors.join(' ')||`تم جلب ${facebook.length} منشور. مشاهدات المحتوى متاحة لـ ${facebookMediaViews} منشور، والمشاهدون الفريدون لـ ${facebookUniqueViewers} منشور. ${fbDetail}`,posts:facebook},
-     {platform:'instagram',status:igErrors.length&&!instagram.length?'error':'connected',message:igErrors.join(' ')||`تم جلب ${instagram.length} منشور.${canReadIgInsights?'':' reach/views/saves تحتاج صلاحية instagram_manage_insights.'}`,posts:instagram}
+     {platform:'facebook',partial:fbErrors.length>0&&facebook.length>0,status:fbErrors.length&&!facebook.length?'error':'connected',message:fbErrors.join(' ')||`تم جلب ${facebook.length} منشور. مشاهدات المحتوى متاحة لـ ${facebookMediaViews} منشور، والمشاهدون الفريدون لـ ${facebookUniqueViewers} منشور. ${fbDetail}`,posts:facebook},
+     {platform:'instagram',partial:igErrors.length>0&&instagram.length>0,status:igErrors.length&&!instagram.length?'error':'connected',message:igErrors.join(' ')||`تم جلب ${instagram.length} منشور.${canReadIgInsights?'':' reach/views/saves تحتاج صلاحية instagram_manage_insights.'}`,posts:instagram}
    ];
  }catch(e){const message=e instanceof Error?e.message:'تعذّر الاتصال بـMeta';return [{platform:'facebook',status:'error',message,posts:[]},{platform:'instagram',status:'error',message,posts:[]}];}
 }

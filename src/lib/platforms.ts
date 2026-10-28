@@ -1,13 +1,14 @@
 import type { ConnectorStatus, PlanState, PlanStatus, Platform } from '../types';
 
 /** Display order is fixed: the platform palette is validated for these neighbours. */
-export const PLATFORMS: Platform[] = ['facebook', 'instagram', 'tiktok', 'snapchat', 'website'];
+export const PLATFORMS: Platform[] = ['facebook', 'instagram', 'tiktok', 'snapchat', 'youtube', 'website'];
 
 export const platformName: Record<Platform, string> = {
   facebook: 'فيسبوك',
   instagram: 'إنستجرام',
   tiktok: 'تيك توك',
   snapchat: 'سناب شات',
+  youtube: 'يوتيوب',
   website: 'الموقع',
 };
 
@@ -16,6 +17,7 @@ export const platformLatin: Record<Platform, string> = {
   instagram: 'Instagram',
   tiktok: 'TikTok',
   snapchat: 'Snapchat',
+  youtube: 'YouTube',
   website: 'Website',
 };
 
@@ -97,6 +99,7 @@ export const connectorGuide: Record<Platform, ConnectorGuide> = {
     ],
     env: ['SNAP_PROFILE_ACCESS_TOKEN', 'SNAP_PROFILE_REFRESH_TOKEN', 'SNAP_PROFILE_ID', 'SNAP_CLIENT_ID', 'SNAP_CLIENT_SECRET'],
   },
+  youtube: { reads: 'فيديوهات القناة وإحصاءاتها وتحليلاتها بموافقة المالك.', steps: ['فعّل YouTube Data API v3 وYouTube Analytics API ثم اربط القناة عبر OAuth.'], env: ['YOUTUBE_CLIENT_ID','YOUTUBE_CLIENT_SECRET','YOUTUBE_REDIRECT_URI'] },
   website: {
     reads: 'مشاهدات الموقع اليومية وأداء كل صفحة خلال آخر 90 يومًا من Google Analytics 4.',
     steps: [

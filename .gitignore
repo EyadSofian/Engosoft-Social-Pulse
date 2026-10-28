@@ -20,3 +20,6 @@ data/studio/
 
 # Uploaded template exports (local history, not source).
 data/uploads/
+
+# Approved publishing media stays on the private persistent volume.
+data/social/

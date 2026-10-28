@@ -1,3 +1,4 @@
+import { SocialConnectionDetails, type ProviderConnection } from '../../features/publishing/SocialConnections';
 import { useEffect, useMemo, useState } from 'react';
 import { CircleAlert, CircleCheck, CircleDashed, RefreshCw } from 'lucide-react';
 import { useQueryState } from '../../app/router/router';
@@ -23,6 +24,7 @@ const GUIDE: Record<Platform, { reads: [string, string]; env: string[] }> = {
   instagram: { reads: ['Professional account media with likes, comments, reach, saves and views.', 'منشورات الحساب الاحترافي مع الإعجابات والتعليقات والوصول والحفظ والمشاهدات.'], env: ['META_ACCESS_TOKEN'] },
   tiktok: { reads: ['Account videos with views, likes, comments and shares (Display API, OAuth).', 'فيديوهات الحساب مع المشاهدات والإعجابات والتعليقات والمشاركات (Display API عبر OAuth).'], env: ['TIKTOK_CLIENT_KEY', 'TIKTOK_CLIENT_SECRET', 'TIKTOK_REDIRECT_URI', 'TOKEN_ENCRYPTION_KEY'] },
   snapchat: { reads: ['Public Profile stories and Spotlight with views, reach, favourites and shares.', 'القصص والـSpotlight للملف العام مع المشاهدات والوصول والمفضلة والمشاركات.'], env: ['SNAP_PROFILE_ID', 'SNAP_PROFILE_ACCESS_TOKEN', 'SNAP_PROFILE_REFRESH_TOKEN', 'SNAP_CLIENT_ID', 'SNAP_CLIENT_SECRET'] },
+  youtube: { reads: ['Channel videos, statistics and authorized Analytics reports.', 'فيديوهات القناة وإحصاءاتها وتقارير التحليلات المصرح بها.'], env: ['YOUTUBE_CLIENT_ID','YOUTUBE_CLIENT_SECRET','YOUTUBE_REDIRECT_URI'] },
   website: { reads: ['Daily website views and per-page performance for the last 90 days (GA4).', 'مشاهدات الموقع اليومية وأداء كل صفحة لآخر 90 يومًا (GA4).'], env: ['GA4_PROPERTY_ID', 'GOOGLE_ANALYTICS_CLIENT_ID', 'GOOGLE_ANALYTICS_CLIENT_SECRET', 'GOOGLE_ANALYTICS_REFRESH_TOKEN'] },
 };
 
@@ -47,6 +49,9 @@ const TIKTOK_RESULT: Record<string, ['success' | 'error', string, string]> = {
 export function ConnectionsPage() {
   const { t } = useI18n();
   const { store, runSync } = useLiveData();
+  const [social,setSocial]=useState<ProviderConnection[]>([]);
+  const reloadSocial=()=>{void fetch('/api/social/connections').then(r=>r.ok?r.json():Promise.reject()).then(d=>setSocial(d.providers)).catch(()=>{});};
+  useEffect(reloadSocial,[store.data.generatedAt]);
   const { can } = useWorkspace();
   const toast = useToast();
   const [query, setQuery] = useQueryState();
@@ -86,7 +91,7 @@ export function ConnectionsPage() {
           {store.staleError && <DataNotice status="stale" message={store.staleError} onRetry={() => void store.reload()} />}
           <div className="connector-grid">
             {store.data.connectors.map((connector) => (
-              <ConnectorCard key={connector.platform} connector={connector} manage={manage} />
+              <ConnectorCard key={connector.platform} connector={connector} manage={manage} connection={social.find(p=>p.provider===connector.platform)} onReload={()=>{reloadSocial();void store.reload();}} />
             ))}
             <FutureCard />
             <Card className="connector"><CardHeader title="Odoo" description={t('Courses and events schedule', 'مواعيد الدورات والإيفنتات')} actions={<Badge tone={odoo.status === 'connected' ? 'success' : odoo.status === 'error' ? 'danger' : 'neutral'}>{odoo.status === 'connected' ? t('Connected', 'متصل') : odoo.status === 'loading' ? t('Checking', 'جارٍ الفحص') : t('Needs setup', 'يحتاج إعداد')}</Badge>} /><CardBody><p className="u-sm">{odoo.status === 'connected' ? t(`${odoo.events.length} upcoming dates are available in the Calendar and Post Designer.`, `${odoo.events.length} موعد قادم متاح في التقويم ومصمم المنشورات.`) : odoo.message}</p><p className="u-xs u-muted" dir="ltr">ODOO_URL · ODOO_API_KEY · ODOO_DATABASE</p></CardBody></Card>
@@ -98,7 +103,7 @@ export function ConnectionsPage() {
   );
 }
 
-function ConnectorCard({ connector, manage }: { connector: Connector; manage: boolean }) {
+function ConnectorCard({ connector, manage, connection, onReload }: { connector: Connector; manage: boolean; connection?:ProviderConnection;onReload:()=>void }) {
   const { t, num, date, relative } = useI18n();
   const { store } = useLiveData();
   const now = useClock();
@@ -108,8 +113,9 @@ function ConnectorCard({ connector, manage }: { connector: Connector; manage: bo
   const missing = METRIC_NAMES.filter((metric) => !available.includes(metric));
   const guide = GUIDE[connector.platform];
   const website = connector.platform === 'website';
-  const tone = connector.status === 'connected' ? 'success' : connector.status === 'error' ? 'danger' : 'neutral';
-  const Icon = connector.status === 'connected' ? CircleCheck : connector.status === 'error' ? CircleAlert : CircleDashed;
+  const displayStatus=connection?.accounts.length&&connection.accounts.every(a=>a.status==='disconnected')?'needs_setup':connection?.accounts.length&&!connection.accounts.some(a=>a.status==='connected')?'error':connector.status;
+  const tone = displayStatus === 'connected' ? 'success' : displayStatus === 'error' ? 'danger' : 'neutral';
+  const Icon = displayStatus === 'connected' ? CircleCheck : displayStatus === 'error' ? CircleAlert : CircleDashed;
 
   return (
     <Card className="connector">
@@ -122,7 +128,7 @@ function ConnectorCard({ connector, manage }: { connector: Connector; manage: bo
         description={PROVIDER[connector.platform]}
         actions={
           <Badge tone={tone} dot>
-            <Icon size={12} aria-hidden /> {connector.status === 'connected' ? t('Connected', 'متصل') : connector.status === 'error' ? t('Error', 'خطأ') : t('Needs setup', 'يحتاج إعداد')}
+            <Icon size={12} aria-hidden /> {displayStatus === 'connected' ? connector.partial ? t('Partially connected', 'متصل جزئيًا') : t('Connected', 'متصل') : displayStatus === 'error' ? t('Error', 'خطأ') : t('Needs setup', 'يحتاج إعداد')}
           </Badge>
         }
       />
@@ -136,7 +142,7 @@ function ConnectorCard({ connector, manage }: { connector: Connector; manage: bo
           <DefinitionList
             items={[
               { label: t('Last check', 'آخر فحص'), value: connector.checkedAt ? <span title={date(connector.checkedAt, 'dateTime')}>{relative(connector.checkedAt, now)}</span> : '—' },
-              { label: t('Last successful sync', 'آخر مزامنة ناجحة'), value: connector.status === 'connected' && connector.checkedAt ? relative(connector.checkedAt, now) : t('— (not recorded separately yet)', '— (لا يُسجل منفصلًا بعد)') },
+              { label: t('Last successful sync', 'آخر مزامنة ناجحة'), value: connector.lastSuccessAt ? relative(connector.lastSuccessAt, now) : t('— (not recorded separately yet)', '— (لا يُسجل منفصلًا بعد)') },
               ...(website
                 ? [{ label: t('Days stored', 'أيام محفوظة'), value: num(store.data.website.length) }]
                 : [
@@ -179,11 +185,7 @@ function ConnectorCard({ connector, manage }: { connector: Connector; manage: bo
               ))}
             </ul>
           </details>
-          {connector.platform === 'tiktok' && manage && (
-            <a className="ui-btn ui-btn--secondary ui-btn--sm" href="/api/oauth/tiktok/start">
-              <span className="ui-btn__label">{connector.status === 'connected' ? t('Reconnect TikTok', 'أعد ربط TikTok') : t('Connect TikTok', 'اربط TikTok')}</span>
-            </a>
-          )}
+          <SocialConnectionDetails connection={connection} manage={manage} onReload={onReload} />
         </div>
       </CardBody>
     </Card>
@@ -204,7 +206,7 @@ function FutureCard() {
         actions={<Badge>{t('Not available yet', 'غير متاح بعد')}</Badge>}
       />
       <CardBody>
-        <p className="u-sm u-muted">{t('LinkedIn content can be planned and approved today, but there is no connector, so its posts are not measured. X and YouTube are also planned.', 'يمكن تخطيط محتوى LinkedIn واعتماده اليوم، لكن لا يوجد موصل، فلا تُقاس منشوراته. X وYouTube مخطط لهما أيضًا.')}</p>
+        <p className="u-sm u-muted">{t('LinkedIn content can be planned and approved today, but there is no connector, so its posts are not measured. X is also planned.', 'يمكن تخطيط محتوى LinkedIn واعتماده اليوم، لكن لا يوجد موصل، فلا تُقاس منشوراته. X مخطط له أيضًا.')}</p>
       </CardBody>
     </Card>
   );

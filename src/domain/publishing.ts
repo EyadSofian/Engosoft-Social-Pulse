@@ -58,5 +58,6 @@ export const PROVIDER: Record<Platform, string> = {
   instagram: 'Meta Graph API (Instagram)',
   tiktok: 'TikTok Display API',
   snapchat: 'Snapchat Public Profile API',
+  youtube: 'YouTube Data API v3',
   website: 'Google Analytics 4 Data API',
 };

@@ -41,7 +41,7 @@ HOST=0.0.0.0 npm start
 
 إذا صار البوست `published`، ضع **Published URL** أو **External Post ID**. المطابقة الآلية تستخدم المعرف أو رابطًا مطابقًا بدقة؛ تشابه النص وحده لا يؤكد النشر. أي بوست معتمد أو مجدول يقترب موعده خلال ساعة يولّد تذكيرًا مرة واحدة. بعد الموعد ومدة السماح (`ALERT_GRACE_MINUTES`, الافتراضي 15 دقيقة) يولّد تنبيه «لم يتم تأكيد النشر». التنبيهات داخل التطبيق متاحة دائمًا، ويمكن إرسالها إلى Telegram عند ضبط `TELEGRAM_BOT_TOKEN` و`TELEGRAM_CHAT_ID`. إذا تعطّل موصل منصة، يطلب التنبيه مراجعة يدوية بدل الجزم بأن البوست لم يُنشر. تنبيهات المتصفح تعمل عندما يكون التطبيق مفتوحًا وقد أذن المستخدم بها.
 
-النسخة الحالية **للتخطيط والرصد والتنبيه**. لا تنشر المحتوى تلقائيًا على المنصات؛ نشره يحتاج موافقات API وتدفق أصول/وسائط مناسب لكل منصة.
+الجدولة تظل للتخطيط والرصد والتنبيه ولا تنشر تلقائيًا. يتيح درج المحتوى إرسال المحتوى المعتمد للنشر يدويًا عبر API الرسمي عندما تتوافر صلاحيات الحساب واعتماد التطبيق. تفاصيل التنفيذ وحدود كل منصة وإجراءات التفويض في [دليل الربط الرسمي](docs/social-integrations.md).
 
 ## إعداد المصادر
 
@@ -51,6 +51,7 @@ HOST=0.0.0.0 npm start
 | Instagram | توكن Meta نفسه، وحساب Professional مرتبط بصفحة | منشورات الحساب وحقول media insights التي يسمح بها التوكن |
 | TikTok | ربط OAuth من صفحة المنصات؛ `TIKTOK_CLIENT_KEY`, `TIKTOK_CLIENT_SECRET`, `TIKTOK_REDIRECT_URI`, `TOKEN_ENCRYPTION_KEY` | فيديوهات الحساب العام، المشاهدات، الإعجابات، التعليقات، المشاركات؛ تُخزّن refresh tokens مشفرة على السيرفر |
 | Snapchat | `SNAP_PROFILE_ACCESS_TOKEN`, `SNAP_PROFILE_ID`، وللتجديد `SNAP_PROFILE_REFRESH_TOKEN`, `SNAP_CLIENT_ID`, `SNAP_CLIENT_SECRET` | Stories وSpotlights ومشاهداتها وreach وfavorites وshares من Public Profile API |
+| YouTube | `YOUTUBE_CLIENT_ID`, `YOUTUBE_CLIENT_SECRET`, `YOUTUBE_REDIRECT_URI` وموافقة مالك القناة | فيديوهات القناة وإحصاءاتها وتقارير Analytics؛ رفع الفيديو بتفويض منفصل |
 | Website | `GA4_PROPERTY_ID`, `GOOGLE_ANALYTICS_CLIENT_ID`, `GOOGLE_ANALYTICS_CLIENT_SECRET`, `GOOGLE_ANALYTICS_REFRESH_TOKEN` | مشاهدات الموقع اليومية وأداء كل مسار صفحة خلال 90 يومًا |
 
 الـtokens الموجودة في Insights Hub حاليًا موجهة أساسًا للإعلانات. توكن TikTok Marketing API لا يحل محل TikTok Display API user token. إعدادات Google Ads لا تعطي `analytics.readonly` لـGA4. Snapchat Public Profile API يحتاج OAuth scope باسم `snapchat-profile-api` وقد يتطلب allowlisting. الواجهة تُظهر الخطأ أو نقص الإعدادات بدل عرض أرقام وهمية. **X مؤجّل** لحين تزويد حسابه وصلاحياته.
