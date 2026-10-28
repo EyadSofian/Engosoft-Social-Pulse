@@ -100,6 +100,24 @@ test('OAuth callback rejects missing, mismatched, expired and replayed state',as
  await db.run('UPDATE social_oauth_states SET expires_at=0 WHERE hash=?',[createHash('sha256').update(state).digest('hex')]);
  assert.equal((await local(`/api/oauth/tiktok/callback?state=${state}&code=secret`,{headers:{cookie}})).status,400);
 });
+test('Meta business publishing configuration is isolated from read consent and other providers',async()=>{
+ const names=['META_APP_ID','META_APP_SECRET','META_REDIRECT_URI','META_INSTAGRAM_REDIRECT_URI','META_PUBLISH_LOGIN_CONFIG_ID','META_READ_LOGIN_CONFIG_ID'];
+ const saved=Object.fromEntries(names.map(name=>[name,process.env[name]]));
+ Object.assign(process.env,{META_APP_ID:'meta-client',META_APP_SECRET:'meta-secret',META_REDIRECT_URI:'http://127.0.0.1:4100/api/oauth/facebook/callback',META_INSTAGRAM_REDIRECT_URI:'http://127.0.0.1:4100/api/oauth/instagram/callback',META_PUBLISH_LOGIN_CONFIG_ID:'123456'});
+ delete process.env.META_READ_LOGIN_CONFIG_ID;
+ try {
+  for(const provider of ['facebook','instagram']) {
+   const publish=new URL((await local(`/api/oauth/${provider}/start?mode=publishing`)).headers.get('location')!);
+   assert.equal(publish.searchParams.get('config_id'),'123456');assert.equal(publish.searchParams.has('scope'),false);assert.equal(publish.searchParams.get('response_type'),'code');assert.ok(publish.searchParams.get('state'));
+   const read=new URL((await local(`/api/oauth/${provider}/start`)).headers.get('location')!);
+   assert.equal(read.searchParams.has('config_id'),false);assert.ok(!/pages_manage_posts|instagram_content_publish|publish_video/.test(read.searchParams.get('scope')!));
+  }
+  process.env.META_READ_LOGIN_CONFIG_ID='654321';
+  const read=new URL((await local('/api/oauth/facebook/start')).headers.get('location')!);assert.equal(read.searchParams.get('config_id'),'654321');assert.equal(read.searchParams.has('scope'),false);
+  const tiktok=new URL((await local('/api/oauth/tiktok/start?mode=publishing')).headers.get('location')!);assert.equal(tiktok.searchParams.has('config_id'),false);assert.match(tiktok.searchParams.get('scope')!,/video.publish/);
+  process.env.META_PUBLISH_LOGIN_CONFIG_ID='invalid';assert.equal((await local('/api/oauth/facebook/start?mode=publishing')).status,503);
+ } finally {for(const name of names){if(saved[name]===undefined)delete process.env[name];else process.env[name]=saved[name];}}
+});
 test('OAuth code exchange saves separate encrypted account credentials',async()=>{
  const start=await local('/api/oauth/tiktok/start'),state=new URL(start.headers.get('location')!).searchParams.get('state')!,cookie=start.headers.get('set-cookie')!.split(';')[0];
  mock((url,init)=>url.includes('/oauth/token/')?Response.json({access_token:'new-token',refresh_token:'new-refresh',scope:'user.info.basic,video.list',expires_in:86400}):Response.json({data:{user:{open_id:'new-user',display_name:'Authorized'}},error:{code:'ok'}}));

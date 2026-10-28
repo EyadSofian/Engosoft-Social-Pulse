@@ -42,6 +42,15 @@ export function registerSocialOAuth(app:express.Express) {
     await db.run('INSERT INTO social_oauth_states(hash,provider,owner_id,mode,expires_at) VALUES(?,?,?,?,?)',[hash(state),provider,req.user!.id,mode,Date.now()+600_000]);
     res.cookie(`social_${provider}_state`,state,{httpOnly:true,secure:c.redirect!.startsWith('https:'),sameSite:'lax',maxAge:600_000,path:`/api/oauth/${provider}`});
     const u=new URL(c.authorize);u.search=new URLSearchParams({[c.clientField]:c.client!,redirect_uri:c.redirect!,response_type:'code',scope:oauthScopes(provider,mode).join(provider==='youtube'?' ':','),state}).toString();
+    if(provider==='facebook'||provider==='instagram') {
+     // Business Login configurations define their own permission set. Never use a
+     // publishing configuration for a read-only connection.
+     const config=mode==='publishing'?process.env.META_PUBLISH_LOGIN_CONFIG_ID:process.env.META_READ_LOGIN_CONFIG_ID;
+     if(config) {
+      if(!/^\d+$/.test(config))throw new Error('Invalid Meta Login configuration ID.');
+      u.searchParams.delete('scope');u.searchParams.set('config_id',config);
+     }
+    }
     if(provider==='youtube') {u.searchParams.set('access_type','offline');u.searchParams.set('prompt','consent');u.searchParams.set('include_granted_scopes','true');}
     res.setHeader('Cache-Control','no-store');res.redirect(u.toString());
    }catch {res.status(503).json({error:'Configure OAuth client, secret, exact callback URL and encryption key for this provider.'});}

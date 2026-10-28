@@ -80,7 +80,18 @@ the current Meta app's Facebook Login settings, then use Connections → Authori
 - `https://web-production-d07de.up.railway.app/api/oauth/facebook/callback`
 - `https://web-production-d07de.up.railway.app/api/oauth/instagram/callback`
 
-Matching `META_REDIRECT_URI` and `META_INSTAGRAM_REDIRECT_URI` are configured on Railway.
+Both callbacks were saved in Engosoft_test (app 2083451515603693), preserving the
+existing Chatwoot callback. Matching `META_REDIRECT_URI` and
+`META_INSTAGRAM_REDIRECT_URI` are configured on Railway. With the owner's approval,
+the user-token Business Login configuration **Social Pulse Publishing** was created
+(4744652375858071): pages_manage_posts, pages_show_list, publish_video,
+instagram_content_publish, pages_read_engagement, instagram_basic,
+instagram_manage_insights and read_insights. `META_PUBLISH_LOGIN_CONFIG_ID` selects
+this configuration only for explicit publishing consent, replacing the scope query.
+The optional `META_READ_LOGIN_CONFIG_ID` must reference a separate minimal read
+configuration; otherwise read consent keeps the existing scope-based flow. Configuring
+the app does not grant those permissions to the existing token: account reauthorization
+is still required after the new server deployment becomes available.
 Obtain the relevant publishing permission's app access/review and the Page
 CREATE_CONTENT/MANAGE role. Complete Page Publishing Authorization if Meta requires it.
 The existing linked-Professional-account authentication method is preserved.
@@ -88,12 +99,13 @@ Unlinked Pages need a Professional Instagram account linked by their administrat
 
 ### TikTok
 
-Developer app “Engosoft N8n”, Sandbox “Social Pulse Demo”, has Login Kit and only
-user.info.basic/video.list configured. @engosoft_official is an existing target user.
-Production is a Draft with no submitted review/demo. Content Posting API is absent
-from the Sandbox products; video.publish/video.upload are not authorized.
+Developer app “Engosoft N8n”, Sandbox “Social Pulse Demo”, retains Login Kit and
+user.info.basic/video.list. With the owner's approval, Content Posting API was added,
+Direct Post enabled, and video.publish/video.upload saved and confirmed after reload.
+@engosoft_official is an existing target user. Production is still a Draft with no
+submitted review/demo. Existing account tokens still need publishing reauthorization.
 
-Enable Content Posting API with the appropriate scope, then reauthorize from Connections.
+Reauthorize from Connections with the appropriate publishing or inbox-upload scope.
 For authorized private Sandbox tests only, set `TIKTOK_SANDBOX_POSTING=true`; privacy
 must be SELF_ONLY and TikTok's unaudited account restrictions still apply. General
 Direct Post requires audit approval, not merely Display API review. Only set
@@ -125,17 +137,18 @@ my_profile returned HTTP 403. Advertising credentials do not establish organic a
 
 ### YouTube
 
-A read-only console inspection found the selected Google Cloud project “Engosoft-n8n”
-has existing Web OAuth clients but neither YouTube Data API v3 nor YouTube Analytics API
-in its enabled API list. Enable those APIs in the intended channel integration project,
-configure its OAuth audience/test users/consent and a Web client with redirect:
+The Google account Engosoft AiBot owns project **Engosoft Insights Hub**
+(`engosoft-insights-hub`, number 65809133944). The reused Insights Hub Google client
+was discovered to be a Desktop client, unsuitable for this web callback. With explicit
+owner approval, a separate Web client **Engosoft Social Pulse YouTube** was created
+(65809133944-ipmck8qhjh9ve76gles4mf6n4ac7f20c.apps.googleusercontent.com), preserving
+all existing clients. Its only redirect is:
 
 `https://web-production-d07de.up.railway.app/api/oauth/youtube/callback`
 
-The existing Insights Hub Google OAuth client ID/secret were reused securely as
-YOUTUBE_CLIENT_ID/YOUTUBE_CLIENT_SECRET; YOUTUBE_REDIRECT_URI is configured on Railway.
-This client differs from the two clients in the currently selected Engosoft-n8n project:
-configure API enablement and the redirect in the Google Cloud project that owns the reused client,
+The new Web client replaces only the initially copied YouTube client pair in Social
+Pulse Railway; the source Hub credentials and clients remain untouched. Enable
+YouTube Data API v3/YouTube Analytics API and check consent audience in this project,
 then have the channel owner connect. Its Ads refresh token was not imported. Read consent requests youtube.readonly and
 yt-analytics.readonly; publishing separately adds youtube.upload. API keys and
 Google Ads/Sheets scopes do not grant owner upload/Analytics authorization.
