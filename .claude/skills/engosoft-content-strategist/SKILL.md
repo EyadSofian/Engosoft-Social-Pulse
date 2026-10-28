@@ -5,16 +5,21 @@ description: Plan and write the full content kit for one Engosoft post — angle
 
 # Engosoft content strategist
 
-One post → one **content kit**. The kit is written once from the post's verified facts and shown beside the post in the approval drawer (**مساعد المحتوى**). It never edits approved copy by itself: people apply what they like.
+The panel beside each post (**نص المنشور**) has two parts, deliberately simple:
+
+1. **The caption** — one box per platform, one dialect choice, one primary button «اكتب بالذكاء» that writes every platform straight into the box (undo available), an «حسّن» menu, preview and copy. Server: `server/captions.ts`; every caption is fitted on the way in (`fitCaption`: extra hashtags dropped, links handled, length capped), including posts created from the Create page.
+2. **More for this post** (on demand) — the ideas kit: angle, hooks, a video script, a carousel and stories, trends and occasions, timing, hashtags and keywords. It never touches the caption.
 
 ```
 post facts (title, approved copy, template fields, existing captions)
-  + dialect · tone · goal (chosen in the panel)
+  + dialect (and video format) chosen in the panel
   + upcoming occasions (src/lib/occasions.ts) and, when scanned, live trends
   → CONTENT stage (runtime skills in server/creative-intelligence/skills/content.ts)
-      kit-strategist · hook-writer-social · platform-copywriter · script-writer · carousel-writer · hashtag-strategist
-  → local checks (platform-content.ts analyzeCaption, unverifiedNumbers) → saved in content_kits
+      kit-strategist · hook-writer-social · script-writer · carousel-writer · hashtag-strategist
+  → unverifiedNumbers check → saved in content_kits
 ```
+
+Posts made on the Create page get their first captions from `caption-writer` (strategy stage) with the same platform rules and the per-platform register (Saudi white for short-form, Standard Arabic for LinkedIn/YouTube/website). Approved posts keep their caption locked; the panel says how to change it.
 
 | File | Owns |
 |---|---|

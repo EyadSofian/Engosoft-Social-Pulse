@@ -124,5 +124,6 @@ export const hashtagStrategist: DesignSkill<'hashtag-strategist'> = {
   schema: obj({ core: list(str()), niche: list(str()), local: list(str()), keywords: list(str()) }),
 };
 
-export const contentSkills = (channels: Channel[], format: ScriptFormat, seconds: number) =>
-  [kitStrategist, socialHookWriter, platformCopywriter(channels), scriptWriter(format, seconds), carouselWriter, hashtagStrategist];
+/** The ideas kit beside a post. Captions are not part of it: they are written straight into the post's caption box. */
+export const contentSkills = (format: ScriptFormat, seconds: number) =>
+  [kitStrategist, socialHookWriter, scriptWriter(format, seconds), carouselWriter, hashtagStrategist];

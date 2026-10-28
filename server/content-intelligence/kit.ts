@@ -8,15 +8,14 @@ import type express from 'express';
 import { DateTime } from 'luxon';
 import { z } from 'zod';
 import { requireUser, userCan, type AuthUser } from '../auth.js';
-import { CAPTION_CHANNELS, contentFacts, fitCaption } from '../captions.js';
+import { contentFacts } from '../captions.js';
 import { contentSkills, voiceRules } from '../creative-intelligence/skills/content.js';
 import { runStage, skillVersions } from '../creative-intelligence/skills/types.js';
 import { db, defineSchema } from '../db.js';
 import { requireAiBudget } from '../usage.js';
 import { canEdit, canSee, getContent, type StoredContent } from '../workspace.js';
 import { DIALECTS, GOALS, SCRIPT_FORMATS, SCRIPT_INFO, TONES, type ContentKit, type Dialect, type Goal, type HookFormula, type KitScript, type ScriptFormat, type Tone } from '../../src/domain/content-voice.js';
-import { linksOf, unverifiedNumbers } from '../../src/domain/platform-content.js';
-import type { Channel } from '../../src/domain/shared.js';
+import { unverifiedNumbers } from '../../src/domain/platform-content.js';
 import { upcomingOccasions } from '../../src/lib/occasions.js';
 import { scanTrends } from './trends.js';
 
@@ -41,7 +40,6 @@ const saudiToday = () => DateTime.now().setZone('Asia/Riyadh').toISODate() ?? ne
 interface StageOut {
   kitStrategist: { idea: string; audience: string; insight: string; pillar: string; occasions: { day: string; name: string; idea: string }[] };
   hookWriterSocial: { hooks: { text: string; formula: HookFormula; spoken: string }[] };
-  platformCopywriter: { captions: { channel: string; text: string }[] };
   scriptWriter: KitScript;
   carouselWriter: { slides: { title: string; body: string }[]; stories: { frame: string; sticker: string }[] };
   hashtagStrategist: { core: string[]; niche: string[]; local: string[]; keywords: string[] };
@@ -53,12 +51,10 @@ const tags = (values: string[], max: number) => [...new Set(values.map(tag).filt
 /** Writes a fresh kit for a post. Captions are fitted to their platform; digits nobody supplied become warnings. */
 export async function generateKit(input: { item: StoredContent; user: AuthUser; dialect: Dialect; tone: Tone; goal: Goal; format: ScriptFormat; previous: ContentKit | null }, env: NodeJS.ProcessEnv = process.env): Promise<ContentKit> {
   const { item, dialect, tone, goal, format } = input;
-  const channels = item.channels.filter((c): c is Channel => (CAPTION_CHANNELS as readonly string[]).includes(c));
-  const writeFor = channels.length ? channels : (['instagram'] as Channel[]);
   const seconds = SCRIPT_INFO[format].seconds;
   const facts = contentFacts(item);
   const occasions = upcomingOccasions(saudiToday(), 45, 6);
-  const skills = contentSkills(writeFor, format, seconds);
+  const skills = contentSkills(format, seconds);
   const model = contentModel(env);
 
   const out = await runStage<StageOut>({
@@ -71,7 +67,7 @@ export async function generateKit(input: { item: StoredContent; user: AuthUser; 
     content: [{
       type: 'input_text',
       text: [
-        `Platforms: ${writeFor.join(', ')}`,
+        `Platforms the post is for: ${item.channels.join(', ')}`,
         `Video format: ${format}, ${seconds} seconds`,
         `Today (Saudi time): ${saudiToday()}`,
         `Upcoming occasions (data):\n${occasions.map((o) => `- ${o.day}: ${o.name}${o.region ? ` (${o.region})` : ''}${o.approximate ? ' — Hijri, ±1 day' : ''}`).join('\n') || '- none'}`,
@@ -81,14 +77,8 @@ export async function generateKit(input: { item: StoredContent; user: AuthUser; 
     }],
   });
 
-  const link = linksOf(facts)[0];
-  const captions: Partial<Record<Channel, string>> = {};
-  for (const entry of out.platformCopywriter.captions) {
-    const channel = entry.channel as Channel;
-    if (writeFor.includes(channel) && entry.text.trim() && !captions[channel]) captions[channel] = fitCaption(channel, entry.text, link);
-  }
   const script = out.scriptWriter;
-  const spoken = [...Object.values(captions), ...out.hookWriterSocial.hooks.flatMap((h) => [h.text, h.spoken]), ...script.scenes.flatMap((s) => [s.voiceover, s.onScreen]), script.cta, script.cover,
+  const spoken = [...out.hookWriterSocial.hooks.flatMap((h) => [h.text, h.spoken]), ...script.scenes.flatMap((s) => [s.voiceover, s.onScreen]), script.cta, script.cover,
     ...out.carouselWriter.slides.flatMap((s) => [s.title, s.body]), ...out.carouselWriter.stories.map((s) => s.frame)].join('\n');
   const unknown = unverifiedNumbers(spoken, [facts]);
   const known = new Set(occasions.map((o) => o.day));
@@ -97,7 +87,7 @@ export async function generateKit(input: { item: StoredContent; user: AuthUser; 
     dialect, tone, goal,
     angle: { idea: out.kitStrategist.idea, audience: out.kitStrategist.audience, insight: out.kitStrategist.insight, pillar: out.kitStrategist.pillar },
     hooks: out.hookWriterSocial.hooks.filter((h) => h.text.trim()).slice(0, 6),
-    captions,
+    captions: {},
     script: { ...script, format, seconds },
     carousel: out.carouselWriter.slides.slice(0, 10),
     stories: out.carouselWriter.stories.slice(0, 6),

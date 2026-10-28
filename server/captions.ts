@@ -57,6 +57,11 @@ export function fitCaption(channel: Channel, raw: string, link?: string): string
     if (link && !/الرابط في البايو|link in bio/i.test(text)) text += '\nالرابط في البايو';
   }
   if (spec.hashtags.max === 0) text = text.replace(/(^|\s)#[\p{L}\p{N}_]{2,}/gu, '$1').replace(/[ \t]{2,}/g, ' ').trim();
+  else {
+    // Keep the first hashtags up to the platform's maximum; the extra ones go.
+    let seen = 0;
+    text = text.replace(/(^|\s)(#[\p{L}\p{N}_]{2,})/gu, (match, lead: string) => (++seen > spec.hashtags.max ? lead : match)).replace(/[ \t]{2,}/g, ' ').replace(/\n[ \t]+\n/g, '\n\n').trim();
+  }
   const chars = [...text];
   if (chars.length > spec.limit) text = `${chars.slice(0, spec.limit - 1).join('').replace(/\s+\S*$/, '').trim()}…`;
   return text;

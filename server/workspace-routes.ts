@@ -1,3 +1,5 @@
+import { fitCaption } from './captions.js';
+import type { Channel } from '../src/domain/shared.js';
 import express from 'express';
 import { randomUUID } from 'node:crypto';
 import { publishingPreset } from '../src/domain/output-presets.js';
@@ -123,7 +125,9 @@ export function registerWorkspaceRoutes(app: express.Express) {
       const input = z.object({ title: z.string().trim().min(2).max(300), channels: z.array(z.enum(CHANNELS)).min(1).max(8), captions: captions.default({}), creative: creativeRef.nullable(), templateId: z.string().max(80).nullable().optional() }).parse(req.body);
       if (!userCan(req.user!, 'design.free') && !input.creative?.svgTemplate) return res.status(403).json({ error: 'تصمّم من القوالب المعتمدة فقط.', code: 'forbidden' });
       if (input.creative?.svgTemplate) await checkTemplate(input.creative.svgTemplate);
-      const item = await createContent(req.user!, input);
+      // New posts start within each platform's rules (hashtag count, links, length).
+      const fitted = Object.fromEntries(Object.entries(input.captions).map(([c, text]) => [c, text ? fitCaption(c as Channel, text) : text]));
+      const item = await createContent(req.user!, { ...input, captions: fitted });
       void notifyContent(req.user!, item, 'created');
       res.status(201).json(withMoves(req.user!)(item));
     } catch (error) { fail(res, error); }

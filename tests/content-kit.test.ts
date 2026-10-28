@@ -1,7 +1,7 @@
 import assert from 'node:assert/strict';
 import { test } from 'node:test';
 import { writeInstructions } from '../server/captions';
-import { contentSkills, voiceRules } from '../server/creative-intelligence/skills/content';
+import { contentSkills, platformCopywriter, voiceRules } from '../server/creative-intelligence/skills/content';
 import { stageInstructions, stageSchema } from '../server/creative-intelligence/skills/types';
 import { DIALECTS, POSTING_WINDOWS, SCRIPT_FORMATS, suggestedDialect } from '../src/domain/content-voice';
 import { CHANNELS } from '../src/domain/shared';
@@ -9,8 +9,8 @@ import { PLATFORM_SPECS, analyzeCaption } from '../src/domain/platform-content';
 import { upcomingOccasions } from '../src/lib/occasions';
 
 test('the content team is versioned and its stage schema is strict', () => {
-  const skills = contentSkills(['instagram', 'linkedin', 'tiktok'], 'reel', 30);
-  assert.deepEqual(skills.map((s) => s.id), ['kit-strategist', 'hook-writer-social', 'platform-copywriter', 'script-writer', 'carousel-writer', 'hashtag-strategist']);
+  const skills = contentSkills('reel', 30);
+  assert.deepEqual(skills.map((s) => s.id), ['kit-strategist', 'hook-writer-social', 'script-writer', 'carousel-writer', 'hashtag-strategist']);
   for (const s of skills) assert.match(s.version, new RegExp(`^${s.id}:v\\d+$`));
   const check = (node: Record<string, unknown>, path: string) => {
     if (node.type === 'object') {
@@ -22,9 +22,9 @@ test('the content team is versioned and its stage schema is strict', () => {
   };
   check(stageSchema(skills) as Record<string, unknown>, 'content');
   const instructions = stageInstructions('Team brief.', skills);
-  // Platform rules come from PLATFORM_SPECS, so the prompt and the on-screen checks never disagree.
-  assert.ok(instructions.includes(PLATFORM_SPECS.instagram.prompt));
-  assert.ok(!instructions.includes(PLATFORM_SPECS.snapchat.prompt));
+  for (const s of skills) assert.ok(instructions.includes(`## ${s.id} (${s.version})`));
+  // Platform rules come from PLATFORM_SPECS, so the prompts and the on-screen checks never disagree.
+  assert.ok(stageInstructions('', [platformCopywriter(['instagram'])]).includes(PLATFORM_SPECS.instagram.prompt));
 });
 
 test('each register has its own voice and the shared fact rules', () => {
@@ -57,4 +57,12 @@ test('citations a model leaves inside trend text move to the sources', async () 
   const found: { title: string; url: string }[] = [];
   assert.equal(plainText('Cityscape draws engineers ([saudicon.app](https://saudicon.app/x?utm_source=openai)). See [SPA](https://spa.gov.sa/a).', found), 'Cityscape draws engineers. See SPA.');
   assert.deepEqual(found.map((f) => f.url), ['https://saudicon.app/x?utm_source=openai', 'https://spa.gov.sa/a']);
+});
+
+test('captions are fitted to the platform, extra hashtags dropped', async () => {
+  const { fitCaption } = await import('../server/captions');
+  const out = fitCaption('instagram', 'افهم أهداف CFM\nتعرّف أكثر\n#Engosoft #CFM #a_b #c_d #e_f #g_h #i_j #k_l');
+  assert.equal(out.match(/#/g)?.length, 5);
+  assert.ok(out.startsWith('افهم أهداف CFM'));
+  assert.equal(fitCaption('whatsapp', 'سجّل الآن #CFM').includes('#'), false);
 });

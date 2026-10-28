@@ -180,8 +180,7 @@ function ContentDrawer({ id, team, onClose, onChanged }: { id: string; team: Tea
         </section>
         </div>
 
-        <ContentCopilot contentId={id} title={item.title} channels={item.channels} values={item.creative?.svgTemplate?.values}
-          captions={captions} onCaptions={setCaptions} editable={item.editable}
+        <ContentCopilot contentId={id} channels={item.channels} captions={captions} onCaptions={setCaptions} editable={item.editable}
           footer={captionsChanged ? <Button variant="primary" disabled={busy} onClick={() => void act(() => api(`/api/content/${id}`, { method: 'PATCH', body: { captions } }))}>{t('Save captions', 'احفظ النص المرافق')}</Button> : null} />
       </div>}
     </motion.aside>

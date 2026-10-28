@@ -1,3 +1,4 @@
+import { DialectPicker, usePreferredDialect } from '../content/ContentCopilot';
 import { useEffect, useId, useMemo, useRef, useState } from 'react';
 import { AnimatePresence, motion } from 'motion/react';
 import { CalendarClock, Code2, FileText, ImagePlus, Loader2, Save, Search, Send, Sparkles, Trash2, Wand2, X } from 'lucide-react';
@@ -422,6 +423,7 @@ function SvgTemplateComposer({ template, initialValues, contentId, initialChanne
   const [values, setValues] = useState<Record<string, string>>(() => ({ ...sampleValues(template.fields), ...initialValues }));
   const [channels, setChannels] = useState<CreativePlatform[]>(initialChannels ?? ['instagram', 'facebook']);
   const [captions, setCaptions] = useState<Partial<Record<CreativePlatform, string>>>({});
+  const [dialect, setDialect] = usePreferredDialect();
   const [busy, setBusy] = useState('');
   const [error, setError] = useState('');
   const facts = template.fields.filter((field) => field.type !== 'image').map((field) => `${field.label}: ${values[field.key] ?? ''}`).join('\n');
@@ -431,7 +433,7 @@ function SvgTemplateComposer({ template, initialValues, contentId, initialChanne
     setBusy('captions');
     setError('');
     try {
-      const result = await api<{ captions: Partial<Record<CreativePlatform, string>> }>('/api/ai/captions', { body: { facts, channels } });
+      const result = await api<{ captions: Partial<Record<CreativePlatform, string>> }>('/api/ai/captions', { body: { facts, channels, dialect } });
       setCaptions((current) => ({ ...current, ...result.captions }));
     } catch (e) {
       setError(errorMessage(e, ''));
@@ -508,6 +510,7 @@ function SvgTemplateComposer({ template, initialValues, contentId, initialChanne
                 <b>{t('Captions', 'النص المرافق')}</b>
                 <Button variant="subtle" size="sm" busy={busy === 'captions'} disabled={!channels.length || Boolean(busy)} onClick={() => void writeCaptions()}><Sparkles size={14} /> {t('Write with AI', 'اكتبه بالذكاء الاصطناعي')}</Button>
               </div>
+              <DialectPicker value={dialect} onChange={setDialect} />
               {channels.map((channel) => (
                 <label key={channel}>
                   <span><ChannelIcon channel={channel} size={13} /> {PLATFORM_FORMATS[channel].label}</span>

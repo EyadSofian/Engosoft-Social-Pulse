@@ -1,6 +1,8 @@
 /** Strategy-stage skills: what to make and why, the words, the references and the theme of each direction. */
 import { list, num, obj, oneOf, str, type DesignSkill } from './types.js';
 import { THEME_IDS } from './themes.js';
+import { PLATFORM_SPECS } from '../../../src/domain/platform-content.js';
+import { CHANNELS as CAPTION_CHANNELS_ALL } from '../../../src/domain/shared.js';
 
 export const creativeDirector: DesignSkill<'creative-director'> = {
   id: 'creative-director', version: 'creative-director:v2',
@@ -58,12 +60,13 @@ export const copywriter: DesignSkill<'copywriter'> = {
 };
 
 export const captionWriter: DesignSkill<'caption-writer'> = {
-  id: 'caption-writer', version: 'caption-writer:v1',
-  purpose: 'Writes the post captions, one per platform, in the voice of the post.',
+  id: 'caption-writer', version: 'caption-writer:v2',
+  purpose: 'Writes the post captions, one native caption per platform, in the register that platform\'s audience expects.',
   rules: [
-    'Open every caption with the hook idea in the first line — the line shown before "see more".',
-    'facebook: 4–7 lines, value, verified facts, registration link if given, 3–5 hashtags. instagram: 3–5 short lines, 6–10 relevant hashtags, no links (say "الرابط في البايو"). whatsapp: 2–3 direct lines and the link if given. linkedin: professional, 4–6 lines, 3 hashtags. tiktok and snapchat: one punchy line and 3 hashtags. website: a 2–4 sentence news-style paragraph with the link if given, no hashtags.',
-    'Use only verified facts. One clear call to action per caption. Emojis at most one or two, and only where they help scanning.',
+    'Open every caption with the hook idea in the first line — the line shown before "see more". Name the course and the problem it solves in plain searchable words.',
+    'Register per platform (unless the user writes English): instagram, tiktok, snapchat, whatsapp and facebook in the Saudi white dialect (ودّك، تبي، الحين، "سجّل الحين" — never Egyptian forms); linkedin, youtube and website in modern Standard Arabic. Product and certification names stay in Latin letters.',
+    ...CAPTION_CHANNELS_ALL.map((c) => PLATFORM_SPECS[c].prompt),
+    'Use only verified facts. One clear call to action per caption. Emojis at most one or two, and only where they help scanning. caption: the Instagram caption again.',
   ],
   schema: obj({ caption: str(), captions: obj({ facebook: str(), instagram: str(), whatsapp: str(), linkedin: str(), tiktok: str(), snapchat: str(), youtube: str(), website: str() }) }),
 };
