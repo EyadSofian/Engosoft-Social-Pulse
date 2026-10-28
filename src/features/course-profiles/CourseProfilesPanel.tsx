@@ -183,6 +183,14 @@ export function CourseProfilesPanel() {
     return sorted;
   }, [profiles, category, status, query, sort, categoryOf]);
 
+  // On wide screens the first course opens by itself, so the page never sits on an empty panel.
+  const autoOpened = useRef(false);
+  useEffect(() => {
+    if (autoOpened.current || !loaded || draft || !filtered.length || readStored(user.id)) return;
+    autoOpened.current = true;
+    if (window.matchMedia('(min-width: 1181px)').matches) { const first = filtered[0]; setDraft(draftOf(first)); setBase(draftOf(first)); }
+  }, [loaded, draft, filtered, user.id]);
+
   const position = draft ? filtered.findIndex((p) => p.courseId === draft.courseId) : -1;
   const confirmLeave = () => !dirty || window.confirm(t('You have unsaved changes on this course. Discard them?', 'لديك تعديلات غير محفوظة على هذه الدورة. هل تتجاهلها؟'));
   const open = (p: CourseProfile | null, force = false) => {
@@ -191,7 +199,7 @@ export function CourseProfilesPanel() {
     setDraft(next); setBase(p ? next : { ...next }); setNotice(''); setError(''); setRestored(false);
     writeStored(user.id, null);
     // On phones the editor replaces the list: start at its top.
-    if (window.matchMedia('(max-width: 960px)').matches) setTimeout(() => editorRef.current?.scrollIntoView({ block: 'start', behavior: 'smooth' }), 0);
+    if (window.matchMedia('(max-width: 1180px)').matches) setTimeout(() => editorRef.current?.scrollIntoView({ block: 'start', behavior: 'smooth' }), 0);
     return true;
   };
   const step = (dir: 1 | -1) => { const next = filtered[position + dir]; if (next) open(next); };
@@ -255,18 +263,19 @@ export function CourseProfilesPanel() {
       <section className="course-lib__overview glass" aria-label={t('Review progress', 'تقدّم المراجعة')}>
         <div className="course-lib__progress">
           <div className="course-lib__progress-text">
-            <b className="u-tnum">{stats.approved} / {stats.total}</b>
-            <span>{t('course profiles approved', 'ملف دورة معتمد')}</span>
+            <b className="u-tnum">{stats.approved}</b>
+            <span>{t(`of ${stats.total} course profiles approved`, `من ${stats.total} ملف دورة معتمد`)}</span>
+            <em className="u-tnum">{pct}%</em>
           </div>
-          <div className="course-lib__bar" role="progressbar" aria-valuemin={0} aria-valuemax={100} aria-valuenow={pct} aria-label={t('Approved', 'معتمد')}><span style={{ width: `${pct}%` }} /></div>
-          <small className="u-muted">{editor
-            ? t('Suggested profiles were drafted from course names. Check each one against the course page, then approve it.', 'الملفات المقترحة كُتبت تلقائيًا من أسماء الدورات. راجع كل ملف مع صفحة الدورة ثم اعتمده.')
+          <div className="course-lib__bar" role="progressbar" aria-valuemin={0} aria-valuemax={100} aria-valuenow={pct} aria-label={t('Approved', 'معتمد')}><span style={{ width: `${Math.max(pct, stats.approved ? 2 : 0)}%` }} /></div>
+          <small>{editor
+            ? t('Profiles were drafted from course names. Check each against its course page, then approve.', 'الملفات اتكتبت تلقائيًا من أسماء الدورات. راجع كل ملف مع صفحة الدورة واعتمده.')
             : t('Approved course details fill the course fields when you create a post.', 'بيانات الدورات المعتمدة تملأ حقول الدورة تلقائيًا عند إنشاء منشور.')}</small>
         </div>
         {editor && <div className="course-lib__overview-actions">
-          {stats.suggested > 0 && <Button variant="primary" icon={<ListChecks size={15} />} onClick={() => { setStatus('suggested'); setCategory('all'); setQuery(''); const first = profiles.filter((p) => p.reviewStatus === 'suggested').sort((a, b) => a.courseName.localeCompare(b.courseName, 'ar'))[0]; if (first) open(first); }}>{t(`Review next (${stats.suggested} left)`, `راجع التالي (متبقٍ ${stats.suggested})`)}</Button>}
+          {stats.suggested > 0 && <Button variant="primary" icon={<ListChecks size={15} />} onClick={() => { setStatus('suggested'); setCategory('all'); setQuery(''); const first = profiles.filter((p) => p.reviewStatus === 'suggested').sort((a, b) => a.courseName.localeCompare(b.courseName, 'ar'))[0]; if (first) open(first); }}>{t(`Review next · ${stats.suggested} left`, `راجع التالية · متبقٍ ${stats.suggested}`)}</Button>}
           <Button variant="secondary" icon={<Plus size={15} />} onClick={() => open(null)}>{t('Add a course', 'أضف دورة')}</Button>
-          <Button variant="ghost" icon={<RefreshCw size={14} />} busy={busy === 'sync'} disabled={Boolean(busy)} onClick={() => void sync()} title={t('Add courses newly found on the website or in Odoo. Existing edits are kept.', 'أضف الدورات الجديدة من الموقع أو Odoo. التعديلات الحالية لا تتغير.')}>{t('Sync catalog', 'مزامنة الكتالوج')}</Button>
+          <Button variant="ghost" icon={<RefreshCw size={14} />} busy={busy === 'sync'} disabled={Boolean(busy)} onClick={() => void sync()} title={t('Add courses newly found on the website or in Odoo. Existing edits are kept.', 'أضف الدورات الجديدة من الموقع أو Odoo. التعديلات الحالية لا تتغير.')}>{t('Sync', 'مزامنة')}</Button>
         </div>}
       </section>
 
@@ -284,22 +293,18 @@ export function CourseProfilesPanel() {
             <div className="course-lib__status" role="group" aria-label={t('Review status', 'حالة المراجعة')}>
               {([['suggested', t('To review', 'للمراجعة'), stats.suggested], ['approved', t('Approved', 'معتمدة'), stats.approved], ['incomplete', t('Incomplete', 'ناقصة'), stats.incomplete], ['all', t('All', 'الكل'), stats.total]] as const)
                 .filter(([value]) => editor || value !== 'suggested' || stats.suggested > 0)
-                .map(([value, label, count]) => <button key={value} type="button" aria-pressed={status === value} data-tone={value} onClick={() => { setStatus(value); setLimit(60); }}>{label}<i className="u-tnum">{count}</i></button>)}
+                .map(([value, label, count]) => <button key={value} type="button" aria-pressed={status === value} data-tone={value} onClick={() => { setStatus(value); setLimit(60); }}><span>{label}</span><i className="u-tnum">{count}</i></button>)}
             </div>
             <div className="course-lib__selects">
-              <label><span>{t('Field', 'التخصص')}</span>
-                <select value={category} onChange={(e) => { setCategory(e.target.value); setLimit(60); }}>
-                  <option value="all">{t(`All fields (${profiles.length})`, `كل التخصصات (${profiles.length})`)}</option>
-                  {categories.map(([name, count]) => <option key={name} value={name}>{name} ({count})</option>)}
-                </select>
-              </label>
-              <label><span>{t('Sort', 'الترتيب')}</span>
-                <select value={sort} disabled={Boolean(query.trim())} onChange={(e) => setSort(e.target.value as Sort)}>
-                  <option value="name">{t('Name', 'الاسم')}</option>
-                  <option value="updated">{t('Recently edited', 'الأحدث تعديلًا')}</option>
-                  <option value="missing">{t('Most missing info', 'الأكثر نقصًا')}</option>
-                </select>
-              </label>
+              <select aria-label={t('Field', 'التخصص')} value={category} onChange={(e) => { setCategory(e.target.value); setLimit(60); }}>
+                <option value="all">{t(`All fields (${profiles.length})`, `كل التخصصات (${profiles.length})`)}</option>
+                {categories.map(([name, count]) => <option key={name} value={name}>{name} ({count})</option>)}
+              </select>
+              <select aria-label={t('Sort', 'الترتيب')} value={sort} disabled={Boolean(query.trim())} onChange={(e) => setSort(e.target.value as Sort)}>
+                <option value="name">{t('Sort: name', 'الترتيب: الاسم')}</option>
+                <option value="updated">{t('Sort: recently edited', 'الترتيب: الأحدث تعديلًا')}</option>
+                <option value="missing">{t('Sort: most missing', 'الترتيب: الأكثر نقصًا')}</option>
+              </select>
             </div>
           </div>
           <p className="u-xs u-muted course-lib__count" aria-live="polite">{query.trim() ? t(`${filtered.length} matches`, `${filtered.length} نتيجة`) : t(`${filtered.length} courses`, `${filtered.length} دورة`)}</p>
@@ -311,9 +316,10 @@ export function CourseProfilesPanel() {
                 <button key={p.courseId} type="button" className="course-lib__item" aria-current={draft?.courseId === p.courseId ? 'true' : undefined} onClick={() => open(p)}>
                   <span className="course-lib__item-main">
                     <b dir="auto">{p.courseName}</b>
-                    <small dir="auto">{categoryOf(p)}{missing.length ? <em> · {t('missing', 'ينقصها')}: {missing.map((m) => t(MISSING_LABEL[m][0], MISSING_LABEL[m][1])).join('، ')}</em> : null}</small>
+                    <small dir="auto">{categoryOf(p)}</small>
+                    {missing.length > 0 && <span className="course-lib__missing">{t('Missing', 'ينقصها')}: {missing.map((m) => t(MISSING_LABEL[m][0], MISSING_LABEL[m][1])).join('، ')}</span>}
                   </span>
-                  <span className="course-lib__pill" data-status={p.reviewStatus === 'suggested' ? 'suggested' : 'approved'}>{p.reviewStatus === 'suggested' ? t('Review', 'للمراجعة') : t('Approved', 'معتمد')}</span>
+                  <span className="course-lib__pill" data-status={p.reviewStatus === 'suggested' ? 'suggested' : 'approved'}>{p.reviewStatus === 'suggested' ? <><i />{t('To review', 'للمراجعة')}</> : <><CheckCircle2 size={12} />{t('Approved', 'معتمد')}</>}</span>
                 </button>
               );
             })}

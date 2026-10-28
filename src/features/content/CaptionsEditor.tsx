@@ -3,7 +3,7 @@ import { AlertTriangle, Check, CheckCircle2, ChevronDown, Copy, Eye, EyeOff, Spa
 import { ChannelIcon } from '../../components/data-display/ChannelIcon';
 import { Button } from '../../components/ui/Button';
 import type { Channel } from '../../domain/shared';
-import type { Dialect } from '../../domain/content-voice';
+import { DIALECT_INFO as DIALECT_NAME, type Dialect } from '../../domain/content-voice';
 import { analyzeCaption, duplicatedChannels, linksOf, specOf, type CaptionReport, type CaptionSource } from '../../domain/platform-content';
 import { useI18n } from '../../i18n/I18nProvider';
 import { channelName } from '../../i18n/labels';
@@ -86,6 +86,7 @@ export function CaptionsEditor({ channels, value, onChange, readOnly, ai, onBusy
   const [flash, setFlash] = useState(0);
   useEffect(() => { if (!flash) return; const timer = setTimeout(() => setFlash(0), 1400); return () => clearTimeout(timer); }, [flash]);
   const menu = useRef<HTMLDetailsElement>(null);
+  const lastDialect = useRef(dialect);
   useEffect(() => { if (!channels.includes(active)) setActive(channels[0]); }, [channels, active]);
   useEffect(() => { if (!copied) return; const timer = setTimeout(() => setCopied(false), 1600); return () => clearTimeout(timer); }, [copied]);
   useEffect(() => { onBusy?.(Boolean(busy)); }, [busy, onBusy]);
@@ -138,6 +139,25 @@ export function CaptionsEditor({ channels, value, onChange, readOnly, ai, onBusy
     setWarnings((current) => ({ ...current, [active]: result.warnings?.[active] ?? [] }));
     setCustom('');
   };
+  /** Switching the dialect converts what is already written on every platform, keeping its facts and shape. */
+  const convert = async (to: Dialect) => {
+    if (!ai) return;
+    const targets = channels.filter((c) => (value[c] ?? '').trim());
+    if (!targets.length) return;
+    const result = await call('convert', () => Promise.all(targets.map((c) => 'contentId' in ai
+      ? api<{ captions: Captions; warnings: Record<string, string[]> }>(`/api/content/${ai.contentId}/captions/ai`, { body: { dialect: to, refine: { channel: c, text: value[c], intent: 'register' } } }).then((r) => [c, r.captions[c] ?? value[c], r.warnings?.[c] ?? []] as const)
+      : api<{ text: string; warnings: string[] }>('/api/ai/captions/refine', { body: { channel: c, text: value[c], facts: ai.facts, dialect: to, intent: 'register' } }).then((r) => [c, r.text, r.warnings] as const))));
+    if (!result) return;
+    apply(Object.fromEntries(result.map(([c, text]) => [c, text])), t(`Converted to ${DIALECT_NAME[to].en}`, `حوّلت النص إلى ${DIALECT_NAME[to].ar}`));
+    setWarnings((current) => ({ ...current, ...Object.fromEntries(result.map(([c, , w]) => [c, w])) }));
+  };
+  useEffect(() => {
+    const previous = lastDialect.current;
+    lastDialect.current = dialect;
+    if (previous && dialect && previous !== dialect && !readOnly && ai) void convert(dialect);
+    // Only a change of dialect starts a conversion.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [dialect]);
   const copy = () => void navigator.clipboard.writeText(text).then(() => setCopied(true), () => setError(t('Copy is blocked in this browser; select the text instead.', 'المتصفح منع النسخ؛ حدّد النص وانسخه يدويًا.')));
 
   const status = !text.trim() ? null : issues.length === 0
@@ -158,6 +178,7 @@ export function CaptionsEditor({ channels, value, onChange, readOnly, ai, onBusy
         </div>
       )}
 
+      {busy === 'convert' && <p className="caps__converting" role="status"><span className="ui-btn__spinner" /> {t(`Converting the caption to ${dialect ? DIALECT_NAME[dialect].en : ''}…`, `بنحوّل النص إلى ${dialect ? DIALECT_NAME[dialect].ar : ''}…`)}</p>}
       <div className="caps__box" data-flash={flash ? true : undefined} key={flash ? `f${flash}` : 'box'}>
         <textarea className="caps__text" dir="auto" rows={active === 'snapchat' || active === 'tiktok' ? 3 : 7} value={text} readOnly={readOnly}
           aria-label={t(`${channelName[active]} caption`, `نص ${channelName[active]}`)}

@@ -8,7 +8,7 @@
 
 :root {
   --p-youtube: #ff0033;
-  --font-sans: 'Plus Jakarta Sans', 'Almarai', system-ui, -apple-system, 'Segoe UI', sans-serif;
+  --font-sans: 'Plus Jakarta Sans', 'IBM Plex Sans Arabic', 'Almarai', system-ui, -apple-system, 'Segoe UI', sans-serif;
   --font-ar: 'Almarai', 'Plus Jakarta Sans', system-ui, sans-serif;
   --font-mono: ui-monospace, 'SF Mono', 'Cascadia Mono', Menlo, monospace;
 
@@ -72,13 +72,13 @@
   --surface-active: #e9eef6;
   --surface-inverse: #17191c;
 
-  --border: #e5e9f0;
-  --border-strong: #d6dce5;
+  --border: #dde3eb;
+  --border-strong: #c7cfdb;
   --border-focus: var(--brand);
 
   --text: #17191c;
-  --text-muted: #5f6b7d;
-  --text-subtle: #8a94a6;
+  --text-muted: #4d596b;
+  --text-subtle: #6b7588;
   --text-inverse: #ffffff;
 
   --success: #32b771;
@@ -142,12 +142,12 @@
   --surface-active: #232a36;
   --surface-inverse: #eef1f5;
 
-  --border: #252b36;
-  --border-strong: #323a48;
+  --border: #2a313d;
+  --border-strong: #3a4352;
 
   --text: #e9ecf1;
-  --text-muted: #a3acba;
-  --text-subtle: #7b8597;
+  --text-muted: #b1b9c6;
+  --text-subtle: #8d97a8;
   --text-inverse: #0d1015;
 
   --success: #3ccb83;

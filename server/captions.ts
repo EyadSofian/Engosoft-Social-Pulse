@@ -16,7 +16,7 @@ import { PLATFORM_SPECS, analyzeCaption, linksOf, unverifiedNumbers } from '../s
 import type { Channel } from '../src/domain/shared.js';
 
 export const CAPTION_CHANNELS = ['facebook', 'instagram', 'whatsapp', 'linkedin', 'tiktok', 'snapchat', 'youtube', 'website'] as const;
-export const REFINE_INTENTS = ['shorter', 'hook', 'hashtags', 'friendlier', 'formal', 'cta', 'fix'] as const;
+export const REFINE_INTENTS = ['shorter', 'hook', 'hashtags', 'friendlier', 'formal', 'cta', 'fix', 'register'] as const;
 export type RefineIntent = (typeof REFINE_INTENTS)[number];
 
 const INTENT_TEXT: Record<RefineIntent, string> = {
@@ -27,6 +27,7 @@ const INTENT_TEXT: Record<RefineIntent, string> = {
   formal: 'Make the tone more formal and authoritative, no slang or emojis. Same facts.',
   cta: 'Add or sharpen one clear call to action with the right next step for this platform (the link when given, or "الرابط في البايو" where links are not clickable).',
   fix: 'Fix every problem for this platform: length, hashtags, link handling, hook and call to action, using only the given facts.',
+  register: 'Rewrite this same caption in the register described above (it may currently be in another dialect). Keep its structure, line breaks, facts, numbers, link, hashtags and call to action; change only the wording so it reads natively in that register.',
 };
 
 const model = (env: NodeJS.ProcessEnv) => env.OPENAI_CAPTION_MODEL?.trim() || env.OPENAI_TEXT_MODEL?.trim() || 'gpt-4.1-mini';

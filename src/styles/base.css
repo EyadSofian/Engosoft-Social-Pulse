@@ -29,9 +29,11 @@ body {
 }
 
 /*
- * Arabic: Almarai carries the Arabic glyphs; Latin product names inside the
- * same string still render in Plus Jakarta Sans because it comes first in the
- * stack and has no Arabic glyphs. Arabic needs a little more line height.
+ * Arabic: IBM Plex Sans Arabic carries the interface's Arabic glyphs (it has the
+ * 500 and 600 weights the interface uses; the brand's Almarai stays on the
+ * creatives). Latin product names inside the same string still render in Plus
+ * Jakarta Sans because it comes first in the stack and has no Arabic glyphs.
+ * Arabic needs a little more line height.
  */
 :root[lang='ar'] body {
   line-height: 1.65;
