@@ -1,5 +1,5 @@
 import { contentMedia } from './social/media.js';
-import { hasPendingPublication } from './social/store.js';
+import { cancelQueued, hasPendingPublication, moveQueued } from './social/store.js';
 /**
  * Stored content pipeline shared by every department: posts, their creative versions, review rounds,
  * comments and an activity log. Scheduling creates rows in the existing `plans` table, so the calendar,
@@ -60,11 +60,10 @@ async function log(contentId: string, actorId: string, kind: ContentEvent['kind'
     [randomUUID(), contentId, actorId, kind, from, to, body, new Date().toISOString()]);
 }
 
-/** Marketing roles see everything; managers and staff see their department; production roles their own work. */
+/** Marketing roles see everything; everyone else sees their own work and their department's. */
 export function canSee(user: AuthUser, item: StoredContent): boolean {
   if (userCan(user, 'content.edit_any') || userCan(user, 'plans.view_all')) return true;
   if (item.ownerId === user.id) return true;
-  if (['designer', 'media_editor', 'freelancer'].includes(user.role)) return false;
   return item.departmentId !== null && item.departmentId === user.departmentId;
 }
 export function canEdit(user: AuthUser, item: StoredContent): boolean {
@@ -217,11 +216,13 @@ export async function transition(user: AuthUser, id: string, to: ContentStatus, 
 
   if (item.status === 'scheduled' && to !== 'scheduled') {
     await cancelPlans(item);
+    await cancelQueued(id, 'The post was taken off the calendar.');
     await db.run('UPDATE content_items SET scheduled_at=NULL, plan_ids_json=? WHERE id=?', ['[]', id]);
   }
   if (to === 'scheduled') {
-    await schedulePlans(user, item, input.scheduledAt);
+    const when = await schedulePlans(user, item, input.scheduledAt);
     const rescheduled = item.status === 'scheduled';
+    if (rescheduled) await moveQueued(id, when.toISOString());
     await db.run('UPDATE content_items SET status=?, updated_at=? WHERE id=?', [to, new Date().toISOString(), id]);
     await log(id, user.id, 'transition', input.note?.trim() || (rescheduled ? 'تغيّر موعد النشر' : ''), item.status, to);
     return (await getContent(id))!;

@@ -12,17 +12,8 @@ export interface Department {
   plansContent: boolean;
 }
 
-export type RoleId =
-  | 'admin'
-  | 'marketing_manager'
-  | 'publisher'
-  | 'department_manager'
-  | 'employee'
-  | 'designer'
-  | 'media_editor'
-  | 'lecturer'
-  | 'freelancer'
-  | 'operations';
+/** Five roles, from the person who makes posts up to the person who runs the system. Per-person overrides refine them. */
+export type RoleId = 'creator' | 'supervisor' | 'marketing_manager' | 'manager' | 'admin';
 
 export type Permission =
   | 'content.create'
@@ -103,16 +94,11 @@ export function homeProfileOf(user: User): HomeProfile {
   switch (user.role) {
     case 'admin':
       return 'admin';
+    case 'manager':
     case 'marketing_manager':
       return 'marketing_manager';
-    case 'publisher':
+    case 'supervisor':
       return 'publisher';
-    case 'designer':
-    case 'media_editor':
-    case 'freelancer':
-      return 'production';
-    case 'lecturer':
-      return 'education';
     default:
       break;
   }

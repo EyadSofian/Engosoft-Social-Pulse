@@ -1,6 +1,9 @@
-import { useEffect, useMemo, useState } from 'react';
+import { createContext, useContext, useEffect, useMemo, useState } from 'react';
 import { DateTime } from 'luxon';
-import { CalendarClock, CalendarPlus, ChevronLeft, ChevronRight, Image as ImageIcon, Plus, Search, Sparkles } from 'lucide-react';
+import { CalendarClock, CalendarPlus, ChevronLeft, ChevronRight, Image as ImageIcon, Plus, Search, Send, Sparkles, Zap } from 'lucide-react';
+import { useLiveData } from '../../app/providers/LiveDataProvider';
+import { Dialog } from '../../components/overlay/Overlay';
+import { PublishDialog, usePublishingBoard } from '../../features/publishing/PublishDialog';
 import { Link, useQueryState } from '../../app/router/router';
 import { ChannelIcon } from '../../components/data-display/ChannelIcon';
 import { Button } from '../../components/ui/Button';
@@ -17,6 +20,10 @@ import { occasionsFor, type Occasion } from '../../lib/occasions';
 
 type Mode = 'month' | 'week' | 'list';
 interface OdooScheduleEntry { id: string; title: string; startsAt: string; endsAt: string; source: string }
+/** Posts that will publish themselves (Facebook / Instagram queue), marked on every card. */
+const AutoPublish = createContext<Set<string>>(new Set());
+/** Opens the schedule-a-post picker for a day; null when the person cannot schedule. */
+const AddToDay = createContext<((day: string) => void) | null>(null);
 
 const CHANNELS: Channel[] = ['facebook', 'instagram', 'linkedin', 'tiktok', 'snapchat', 'whatsapp', 'website'];
 const STATUS_FILTERS: { value: string; statuses: ContentStatus[]; en: string; ar: string }[] = [
@@ -41,7 +48,12 @@ export function ContentCalendar() {
   const create = useCreateContent();
   const now = useClock();
   const [query, setQuery] = useQueryState();
-  const { items, error } = usePipeline();
+  const { items, error, reload } = usePipeline();
+  const { board, reload: reloadBoard } = usePublishingBoard();
+  const { store } = useLiveData();
+  const [picking, setPicking] = useState<string | null>(null);
+  const [publishing, setPublishing] = useState<{ item: PipelineItem; day?: string } | null>(null);
+  const auto = useMemo(() => new Set((board?.queue ?? []).filter((row) => row.state === 'queued' || row.state === 'sending').map((row) => row.contentId)), [board]);
   const [search, setSearch] = useState('');
   const [showRail, setShowRail] = useState(false);
   const [odoo, setOdoo] = useState<OdooScheduleEntry[]>([]);
@@ -101,6 +113,22 @@ export function ContentCalendar() {
     return map;
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [odoo, query]);
+  // Imported calendar plans that no post is linked to yet: planned, but nobody has made them.
+  const planned = useMemo(() => {
+    const map = new Map<string, { id: string; title: string }[]>();
+    if (store.phase !== 'ready') return map;
+    for (const plan of store.data.plans) {
+      if (plan.status === 'cancelled' || plan.notes.startsWith('content:')) continue;
+      if (platforms.size && !platforms.has(plan.platform)) continue;
+      const key = dayOf(plan.scheduledAt);
+      map.set(key, [...(map.get(key) ?? []), { id: plan.id, title: plan.title }]);
+    }
+    return map;
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [store, query]);
+  const ready = (items ?? []).filter((item) => item.status === 'approved');
+  const canAdd = can('content.schedule');
+  const published = () => { void reload(); void reloadBoard(); };
 
   const rangeStart = cells[0].key;
   const rangeEnd = cells[cells.length - 1].key;
@@ -109,6 +137,8 @@ export function ContentCalendar() {
   const days = mode === 'list' ? rangeDays : [];
 
   return (
+    <AutoPublish.Provider value={auto}>
+    <AddToDay.Provider value={canAdd ? setPicking : null}>
     <div className="mc">
       <div className="mc-toolbar glass">
         <div className="mc-toolbar__nav">
@@ -162,7 +192,7 @@ export function ContentCalendar() {
                 </span>)}
               </div>
               <div className="mc-grid__body">
-                {cells.map((cell) => <DayColumn key={cell.key} cell={cell} mode={mode} today={cell.key === today} posts={byDay.get(cell.key) ?? []} occasions={occasions.get(cell.key) ?? []} sessions={sessions.get(cell.key) ?? []} />)}
+                {cells.map((cell) => <DayColumn key={cell.key} cell={cell} mode={mode} today={cell.key === today} past={cell.key < today} posts={byDay.get(cell.key) ?? []} occasions={occasions.get(cell.key) ?? []} sessions={sessions.get(cell.key) ?? []} planned={planned.get(cell.key) ?? []} />)}
               </div>
             </div>
           )}
@@ -170,15 +200,27 @@ export function ContentCalendar() {
 
         {showRail && <aside className="mc-rail glass" aria-label={t('Waiting for a date', 'بانتظار موعد')}>
           <h3><CalendarClock size={15} /> {t('Not scheduled yet', 'غير مجدولة بعد')} <i className="u-tnum">{unscheduled.length}</i></h3>
-          <p className="u-xs u-muted">{t('Approved posts come first. Open one to pick its publishing time.', 'المعتمدة أولًا. افتح المنشور لاختيار ميعاد نشره.')}</p>
+          <p className="u-xs u-muted">{t('Approved posts come first and can be scheduled from here.', 'المعتمدة أولًا ويمكن جدولتها من هنا.')}</p>
           <ul>
-            {unscheduled.slice(0, 14).map((item) => <li key={item.id}><PostRow item={item} compact /></li>)}
+            {unscheduled.slice(0, 14).map((item) => <li key={item.id}><PostRow item={item} compact />{canAdd && item.status === 'approved' && <button type="button" className="mc-schedule" onClick={() => setPublishing({ item })}><Send size={13} /> {t('Schedule', 'جدولة')}</button>}</li>)}
             {unscheduled.length === 0 && <li className="mc-rail__empty">{t('Everything has a date.', 'كل المنشورات لها موعد.')}</li>}
           </ul>
         </aside>}
       </div>
-      <div className="mc-legend"><span data-tone="neutral">{t('Draft', 'مسودة')}</span><span data-tone="brand">{t('In review / scheduled', 'للمراجعة / مجدول')}</span><span data-tone="success">{t('Approved / published', 'معتمد / منشور')}</span><span data-tone="warning">{t('Changes requested', 'مطلوب تعديل')}</span><small>{zone()}</small></div>
+      <div className="mc-legend"><span data-tone="neutral">{t('Draft', 'مسودة')}</span><span data-tone="brand">{t('In review / scheduled', 'للمراجعة / مجدول')}</span><span data-tone="success">{t('Approved / published', 'معتمد / منشور')}</span><span data-tone="warning">{t('Changes requested', 'مطلوب تعديل')}</span><span className="mc-legend__auto"><Zap size={11} /> {t('Publishes automatically', 'يُنشر تلقائيًا')}</span><span className="mc-legend__plan">{t('Planned, not made yet', 'مخطط ولم يُصمَّم')}</span><small>{zone()}</small></div>
+
+      <Dialog open={picking !== null} onClose={() => setPicking(null)} title={t('Schedule a post', 'جدولة منشور')} description={picking ? date(picking, 'weekdayDate') : undefined}>
+        {ready.length ? <ul className="mc-pick">{ready.map((item) => <li key={item.id}><button type="button" onClick={() => { setPublishing({ item, day: picking ?? undefined }); setPicking(null); }}>
+          <Thumb item={item} size="md" /><span className="u-grow"><b dir="auto">{item.title}</b><span className="mc-channels">{item.channels.map((channel) => <ChannelIcon key={channel} channel={channel} size={12} />)}</span></span><Send size={15} />
+        </button></li>)}</ul> : <div className="u-stack">
+          <p className="u-sm u-muted">{t('No approved post is waiting for a date. Posts appear here after approval.', 'لا يوجد منشور معتمد ينتظر موعدًا. تظهر المنشورات هنا بعد اعتمادها.')}</p>
+          {can('content.create') && <div><Button variant="primary" icon={<Plus size={15} />} onClick={() => { setPicking(null); create.open(); }}>{t('Create a post', 'أنشئ منشورًا')}</Button></div>}
+        </div>}
+      </Dialog>
+      {publishing && <PublishDialog item={publishing.item} day={publishing.day} open onClose={() => setPublishing(null)} onDone={published} />}
     </div>
+    </AddToDay.Provider>
+    </AutoPublish.Provider>
   );
 }
 
@@ -198,6 +240,11 @@ function StatusPill({ status }: { status: ContentStatus }) {
   return <span className="mc-status" data-tone={tone(status)}>{tx(STATUS_LABEL[status])}</span>;
 }
 
+function AutoMark({ item }: { item: PipelineItem }) {
+  const { t } = useI18n();
+  return useContext(AutoPublish).has(item.id) ? <Zap size={11} className="mc-auto" aria-label={t('Publishes automatically', 'يُنشر تلقائيًا')} /> : null;
+}
+
 function PostRow({ item, compact }: { item: PipelineItem; compact?: boolean }) {
   const { date } = useI18n();
   return (
@@ -207,6 +254,7 @@ function PostRow({ item, compact }: { item: PipelineItem; compact?: boolean }) {
         <b dir="auto">{item.title}</b>
         <span className="mc-row__meta">
           {item.scheduledAt && <span className="u-tnum">{date(item.scheduledAt, 'time')}</span>}
+          <AutoMark item={item} />
           <span className="mc-channels">{item.channels.map((channel) => <ChannelIcon key={channel} channel={channel} size={12} />)}</span>
         </span>
       </span>
@@ -215,11 +263,12 @@ function PostRow({ item, compact }: { item: PipelineItem; compact?: boolean }) {
   );
 }
 
-function DayColumn({ cell, mode, today, posts, occasions, sessions }: { cell: DayCell; mode: Mode; today: boolean; posts: PipelineItem[]; occasions: Occasion[]; sessions: OdooScheduleEntry[] }) {
+function DayColumn({ cell, mode, today, past, posts, occasions, sessions, planned }: { cell: DayCell; mode: Mode; today: boolean; past: boolean; posts: PipelineItem[]; occasions: Occasion[]; sessions: OdooScheduleEntry[]; planned: { id: string; title: string }[] }) {
   const { t, date, num } = useI18n();
   const [, setQuery] = useQueryState();
+  const add = useContext(AddToDay);
   const max = mode === 'week' ? posts.length : 3;
-  const info = [...occasions.map((o) => ({ key: o.key, label: o.name, kind: 'occasion' as const })), ...sessions.map((s) => ({ key: `odoo-${s.id}`, label: s.title, kind: 'course' as const }))];
+  const info = [...planned.map((p) => ({ key: `plan-${p.id}`, label: p.title, kind: 'plan' as const })), ...occasions.map((o) => ({ key: o.key, label: o.name, kind: 'occasion' as const })), ...sessions.map((s) => ({ key: `odoo-${s.id}`, label: s.title, kind: 'course' as const }))];
   const hidden = posts.length - max;
   return (
     <div className="mc-day" role="gridcell" data-today={today || undefined} data-out={(mode === 'month' && !cell.inMonth) || undefined} data-weekend={cell.weekend || undefined}>
@@ -233,6 +282,7 @@ function DayColumn({ cell, mode, today, posts, occasions, sessions }: { cell: Da
         ? posts.slice(0, max).map((item) => <WeekCard key={item.id} item={item} />)
         : <ul className="mc-day__chips">{posts.slice(0, max).map((item) => <li key={item.id}><MonthChip item={item} /></li>)}</ul>}
       {hidden > 0 && <button type="button" className="mc-more" onClick={() => setQuery({ mode: 'week', date: cell.key })}>{t(`+${num(hidden)} more`, `+${num(hidden)} أخرى`)}</button>}
+      {add && !past && <button type="button" className="mc-add" onClick={() => add(cell.key)} aria-label={t(`Schedule a post on ${date(cell.key, 'weekdayDate')}`, `جدولة منشور يوم ${date(cell.key, 'weekdayDate')}`)} title={t('Schedule a post on this day', 'جدولة منشور في هذا اليوم')}><Plus size={13} />{mode === 'week' && <span>{t('Schedule', 'جدولة')}</span>}</button>}
     </div>
   );
 }
@@ -243,7 +293,7 @@ function WeekCard({ item }: { item: PipelineItem }) {
     <Link to={`/content/${item.id}`} className="mc-card" data-tone={tone(item.status)}>
       <Thumb item={item} size="md" />
       <span className="mc-card__body">
-        <span className="mc-card__time u-tnum">{item.scheduledAt ? date(item.scheduledAt, 'time') : ''}</span>
+        <span className="mc-card__time u-tnum">{item.scheduledAt ? date(item.scheduledAt, 'time') : ''} <AutoMark item={item} /></span>
         <b dir="auto">{item.title}</b>
         <span className="mc-card__foot"><span className="mc-channels">{item.channels.map((channel) => <ChannelIcon key={channel} channel={channel} size={12} />)}</span><StatusPill status={item.status} /></span>
       </span>
@@ -257,6 +307,7 @@ function MonthChip({ item }: { item: PipelineItem }) {
     <Link to={`/content/${item.id}`} className="mc-chip" data-tone={tone(item.status)} title={item.title}>
       <Thumb item={item} size="sm" />
       <span className="mc-chip__time u-tnum">{item.scheduledAt ? date(item.scheduledAt, 'time') : ''}</span>
+      <AutoMark item={item} />
       <span className="u-truncate" dir="auto">{item.title}</span>
     </Link>
   );

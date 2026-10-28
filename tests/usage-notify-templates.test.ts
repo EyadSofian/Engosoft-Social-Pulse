@@ -15,9 +15,9 @@ const ws = await import('../server/workspace');
 const settings = await import('../server/settings');
 await (await import('../server/db')).initDb();
 
-const ops = await auth.createUser({ email: 'ops2@engosoft.test', name: 'Ops Author', role: 'employee', departmentId: 'operations', password: 'ops-password-12' });
+const ops = await auth.createUser({ email: 'ops2@engosoft.test', name: 'Ops Author', role: 'creator', departmentId: 'operations', password: 'ops-password-12' });
 const manager = await auth.createUser({ email: 'mm2@engosoft.test', name: 'Marketing Lead', role: 'marketing_manager', departmentId: 'marketing', password: 'mm-password-12' });
-const watcher = await auth.createUser({ email: 'watch@engosoft.test', name: 'Watcher', role: 'employee', departmentId: 'hr', password: 'watch-password-1' });
+const watcher = await auth.createUser({ email: 'watch@engosoft.test', name: 'Watcher', role: 'creator', departmentId: 'hr', password: 'watch-password-1' });
 
 const notificationsFor = (userId: string) => store.db.all<{ kind: string; title: string; link: string }>('SELECT * FROM notifications WHERE user_id=?', [userId]);
 

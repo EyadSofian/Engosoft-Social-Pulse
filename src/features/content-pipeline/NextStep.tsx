@@ -46,9 +46,10 @@ function WhenPicker({ value, onChange, channels }: { value: string; onChange: (n
 /**
  * Where a post stands and the one thing to do next, for this person. Each stage shows only its own actions,
  * named for what they do: approve (optionally with a publish time), schedule, change the time, take it off the
- * calendar, or send it back with a note.
+ * calendar, or send it back with a note. With `onPublish`, choosing the time (and the accounts that publish
+ * themselves) happens in the publish dialog instead of the inline picker.
  */
-export function NextStep({ item, busy, onMove }: { item: PipelineDetail; busy: boolean; onMove: (to: ContentStatus, input: MoveInput) => Promise<boolean> }) {
+export function NextStep({ item, busy, onMove, onPublish }: { item: PipelineDetail; busy: boolean; onMove: (to: ContentStatus, input: MoveInput) => Promise<boolean>; onPublish?: () => void }) {
   const { t, date } = useI18n();
   const [mode, setMode] = useState<'' | 'changes' | 'cancel' | 'when'>('');
   const [note, setNote] = useState('');
@@ -126,9 +127,10 @@ export function NextStep({ item, busy, onMove }: { item: PipelineDetail; busy: b
 
         {/* Approved: schedule. */}
         {item.status === 'approved' && <>
-          {can('scheduled') && <WhenPicker value={when} onChange={setWhen} channels={item.channels} />}
+          {can('scheduled') && !onPublish && <WhenPicker value={when} onChange={setWhen} channels={item.channels} />}
           <div className="flow-actions">
-            {can('scheduled') && <Button variant="primary" icon={<CalendarClock size={15} />} busy={busy} disabled={!whenOk} onClick={() => void go('scheduled', { scheduledAt: iso(when) })}>{t('Schedule', 'جدوِل النشر')}</Button>}
+            {onPublish && <Button variant="primary" icon={<Send size={15} />} disabled={busy} onClick={onPublish}>{t('Publish or schedule', 'انشر أو جدول')}</Button>}
+            {can('scheduled') && !onPublish && <Button variant="primary" icon={<CalendarClock size={15} />} busy={busy} disabled={!whenOk} onClick={() => void go('scheduled', { scheduledAt: iso(when) })}>{t('Schedule', 'جدوِل النشر')}</Button>}
             {can('changes_requested') && <Button variant="ghost" disabled={busy} onClick={() => setMode('changes')}>{t('Return for changes', 'رجّعه للتعديل')}</Button>}
           </div>
         </>}
@@ -140,7 +142,7 @@ export function NextStep({ item, busy, onMove }: { item: PipelineDetail; busy: b
             {mode === 'when'
               ? <><Button variant="primary" icon={<CalendarClock size={15} />} busy={busy} disabled={!whenOk} onClick={() => void go('scheduled', { scheduledAt: iso(when) })}>{t('Save the new time', 'احفظ الموعد الجديد')}</Button>
                 <Button variant="ghost" disabled={busy} onClick={() => { setMode(''); setWhen(''); }}>{t('Back', 'رجوع')}</Button></>
-              : <>{can('scheduled') && <Button variant="secondary" icon={<CalendarClock size={15} />} disabled={busy} onClick={() => setMode('when')}>{t('Change the time', 'غيّر الموعد')}</Button>}
+              : <>{can('scheduled') && <Button variant="secondary" icon={<CalendarClock size={15} />} disabled={busy} onClick={() => (onPublish ? onPublish() : setMode('when'))}>{onPublish ? t('Change the time or accounts', 'غيّر الموعد أو الحسابات') : t('Change the time', 'غيّر الموعد')}</Button>}
                 {can('approved') && <Button variant="ghost" icon={<RotateCcw size={15} />} busy={busy} onClick={() => void go('approved')}>{t('Unschedule', 'ألغِ الجدولة')}</Button>}</>}
           </div>
         </>}

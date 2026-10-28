@@ -28,7 +28,7 @@ const { registerSocialRoutes }=await import('../server/social/routes');
 const { db,initDb,toPgDdl }=await import('../server/db');
 await initDb();
 const admin=await auth.createUser({name:'Admin',email:'admin@example.test',password:'test-password-123',role:'admin',departmentId:'marketing'});
-const employee=await auth.createUser({name:'Staff',email:'staff@example.test',password:'test-password-123',role:'employee',departmentId:'hr'});
+const employee=await auth.createUser({name:'Staff',email:'staff@example.test',password:'test-password-123',role:'creator',departmentId:'hr'});
 const originalFetch=globalThis.fetch;
 const google='https://www.googleapis.com/auth/';
 const credential={accessToken:'access-secret',refreshToken:'refresh-secret',expiresAt:Date.now()+3600_000,scopes:[google+'youtube.readonly',google+'yt-analytics.readonly',google+'youtube.upload']};
@@ -228,7 +228,7 @@ test('Snapchat Spotlight must be LIVE before recording evidence',async()=>{
 });
 
 test('publishing permission is independent from calendar scheduling',async()=>{
- const scheduler={...admin,role:'publisher' as const,permissionOverrides:{'content.publish':false,'content.schedule':true}};
+ const scheduler={...admin,role:'supervisor' as const,permissionOverrides:{'content.publish':false,'content.schedule':true}};
  await assert.rejects(()=>publishing.publish(scheduler,{contentId:'x'} as any),/permission/);
 });
 test('an unresolved publication blocks withdrawing approval',async()=>{
@@ -237,6 +237,9 @@ test('an unresolved publication blocks withdrawing approval',async()=>{
 });
 test('a cross-origin publishing request is rejected',async()=>{
  const r=await local('/api/social/publish',{method:'POST',headers:{'Content-Type':'application/json','Origin':'https://other.test'},body:'{}'});assert.equal(r.status,403);
+ const queued=await local('/api/publishing/x',{method:'POST',headers:{'Content-Type':'application/json','Origin':'https://other.test'},body:'{}'});assert.equal(queued.status,403);
+ // The app's own page on the host it was served from (e.g. the Vite proxy) is not cross-origin.
+ const own=await local('/api/publishing/x',{method:'POST',headers:{'Content-Type':'application/json','Origin':base},body:'{}'});assert.equal(own.status,400);
 });
 test('YouTube upload stores its resumable session before transferring bytes',async()=>{
  const file=join(directory,'upload.mp4');await (await import('node:fs/promises')).writeFile(file,Buffer.from('fixture-video'));

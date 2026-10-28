@@ -256,7 +256,7 @@ export function markNotificationsRead(state: WorkspaceState, userId: string, gro
 export function setAchievementStep(state: WorkspaceState, actor: User, id: string, step: keyof StudentAchievement['steps'], value: boolean): Result {
   const record = state.achievements.find((entry) => entry.id === id);
   if (!record) return { ok: false, error: 'not_found' };
-  if (record.responsibleId !== actor.id && !hasPermission(actor, 'content.approve') && actor.role !== 'department_manager') return { ok: false, error: 'permission' };
+  if (record.responsibleId !== actor.id && !hasPermission(actor, 'content.approve') && !hasPermission(actor, 'content.edit_department')) return { ok: false, error: 'permission' };
   return { ok: true, state: { ...state, achievements: state.achievements.map((entry) => (entry.id === id ? { ...entry, steps: { ...entry.steps, [step]: value } } : entry)) } };
 }
 

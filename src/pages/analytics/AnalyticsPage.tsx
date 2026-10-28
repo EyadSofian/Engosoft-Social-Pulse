@@ -35,27 +35,37 @@ const PERIODS: Period[] = [7, 30, 90, 365];
  * live connectors (with their source), and operational delivery from the
  * workspace. Reach never stands in for an employee's performance.
  */
-export function AnalyticsPage() {
+/** `embedded` renders inside the Analytics page, which owns the title. */
+export function AnalyticsPage({ embedded }: { embedded?: boolean }) {
   const { t } = useI18n();
   const [query, setQuery] = useQueryState();
-  usePageMeta(t('Team performance', 'أداء الفرق'), [{ label: t('Team performance', 'أداء الفرق') }]);
+  usePageMeta(t('Team performance', 'أداء الفرق'), [{ label: t('Team performance', 'أداء الفرق') }], !embedded);
   const tab = (TABS as string[]).includes(query.get('tab') ?? '') ? (query.get('tab') as Tab) : 'executive';
   const period = (PERIODS.map(String).includes(query.get('period') ?? '') ? Number(query.get('period')) : 30) as Period;
 
+  const periods = (
+    <Segmented
+      label={t('Period', 'الفترة')}
+      value={String(period) as `${Period}`}
+      onChange={(value) => setQuery({ period: value === '30' ? null : value })}
+      items={PERIODS.map((value) => ({ value: String(value) as `${Period}`, label: value === 365 ? t('1 year', 'سنة') : t(`${value} days`, `${value} يوم`) }))}
+    />
+  );
+
   return (
     <div className="u-stack">
-      <PageHeader
-        title={t('Team performance', 'أداء الفرق')}
-        description={t('Content performance from connected platforms, and delivery from the workflow. Every number names its source; missing values show —.', 'أداء المحتوى من المنصات المربوطة، والتسليم من سير العمل. كل رقم يذكر مصدره؛ القيم الناقصة تظهر —.')}
-        actions={
-          <Segmented
-            label={t('Period', 'الفترة')}
-            value={String(period) as `${Period}`}
-            onChange={(value) => setQuery({ period: value === '30' ? null : value })}
-            items={PERIODS.map((value) => ({ value: String(value) as `${Period}`, label: value === 365 ? t('1 year', 'سنة') : t(`${value} days`, `${value} يوم`) }))}
-          />
-        }
-      />
+      {embedded ? (
+        <div className="u-row u-row--between u-row--wrap">
+          <span className="u-sm u-muted">{t('Delivery from the workflow, results from connected platforms. Missing values show —.', 'التسليم من سير العمل، والنتائج من المنصات المربوطة. القيم الناقصة تظهر —.')}</span>
+          {periods}
+        </div>
+      ) : (
+        <PageHeader
+          title={t('Team performance', 'أداء الفرق')}
+          description={t('Content performance from connected platforms, and delivery from the workflow. Every number names its source; missing values show —.', 'أداء المحتوى من المنصات المربوطة، والتسليم من سير العمل. كل رقم يذكر مصدره؛ القيم الناقصة تظهر —.')}
+          actions={periods}
+        />
+      )}
       <Tabs
         label={t('Analytics sections', 'أقسام التحليلات')}
         value={tab}

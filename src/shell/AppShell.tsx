@@ -1,6 +1,6 @@
 import { useEffect } from 'react';
 import { AnimatePresence, motion } from 'motion/react';
-import { CalendarDays, House, Layers, Library, Lock, MapPinOff, Newspaper, WandSparkles } from 'lucide-react';
+import { CalendarDays, House, Layers, LayoutDashboard, Lock, MapPinOff, Send, WandSparkles } from 'lucide-react';
 import { Link, useRouter } from '../app/router/router';
 import { resolveRoute } from '../app/routes';
 import { EmptyState } from '../components/feedback/States';
@@ -100,11 +100,11 @@ function MobileNav({ onClose }: { onClose: () => void }) {
 }
 
 const BOTTOM: { id: NavId; icon: typeof House }[] = [
+  { id: 'overview', icon: LayoutDashboard },
   { id: 'home', icon: WandSparkles },
   { id: 'content', icon: Layers },
   { id: 'calendar', icon: CalendarDays },
-  { id: 'tracking', icon: Newspaper },
-  { id: 'library', icon: Library },
+  { id: 'publish', icon: Send },
 ];
 
 /** Phones: the five daily destinations stay one tap away; everything else is in the menu. */
@@ -150,7 +150,7 @@ function NoAccess({ nav }: { nav: NavId }) {
   return (
     <EmptyState
       icon={<Lock size={22} />}
-      title={t(`${item.label.en} is not part of your role.`, `${item.label.ar} ليست ضمن صلاحيات دورك.`)}
+      title={t(`${item.label.en} is not part of your role.`, `صفحة «${item.label.ar}» ليست ضمن صلاحيات دورك.`)}
       text={t('Ask an administrator if you need access. Your Home shows what is waiting for you.', 'اطلب الصلاحية من مسؤول النظام إن احتجتها. صفحتك الرئيسية تعرض ما ينتظرك.')}
       action={<ButtonLink to="/" variant="primary">{t('Go to Home', 'اذهب للرئيسية')}</ButtonLink>}
     />

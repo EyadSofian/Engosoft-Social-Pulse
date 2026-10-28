@@ -1,100 +1,49 @@
 import type { Department, Permission, Role, RoleId } from './users';
 import { ALL_PERMISSIONS } from './users';
 
-/** Roles and their permissions. Server-side enforcement arrives with authentication (see MIGRATION_PLAN.md). */
+const CREATOR: Permission[] = ['design.free', 'content.create', 'content.edit_own', 'credits.view'];
+const SUPERVISOR: Permission[] = [...CREATOR, 'content.edit_department', 'content.schedule', 'content.publish', 'task.assign', 'analytics.view', 'plans.view_all'];
+const MARKETING_MANAGER: Permission[] = [...SUPERVISOR, 'content.edit_any', 'content.approve', 'templates.manage', 'analytics.view_all', 'credits.view_all', 'connections.manage'];
+const MANAGER: Permission[] = [...MARKETING_MANAGER, 'users.manage'];
+
+/**
+ * Five roles, each one step above the last. A person's own overrides (Settings → Permissions) narrow or widen
+ * their role, e.g. an Operations creator limited to template posts. The server enforces the same table.
+ */
 export const ROLES: Record<RoleId, Role> = {
-  admin: {
-    id: 'admin',
-    name: { en: 'Admin', ar: 'مدير النظام' },
-    description: { en: 'Users, roles, connections and system settings.', ar: 'المستخدمون والأدوار والربط وإعدادات النظام.' },
-    permissions: ALL_PERMISSIONS,
+  creator: {
+    id: 'creator',
+    name: { en: 'Content Creator', ar: 'منشئ محتوى' },
+    description: { en: 'Creates posts and sends them for approval.', ar: 'ينشئ المنشورات ويرسلها للاعتماد.' },
+    permissions: CREATOR,
+  },
+  supervisor: {
+    id: 'supervisor',
+    name: { en: 'Content Supervisor', ar: 'مسؤول المحتوى' },
+    description: { en: 'Follows the team’s work, schedules and publishes approved posts.', ar: 'يتابع شغل الفريق، ويجدول المنشورات المعتمدة وينشرها.' },
+    permissions: SUPERVISOR,
   },
   marketing_manager: {
     id: 'marketing_manager',
     name: { en: 'Marketing Manager', ar: 'مدير التسويق' },
-    description: { en: 'Final review, approval and publishing for every department.', ar: 'المراجعة النهائية والاعتماد والنشر لكل الأقسام.' },
-    permissions: [
-      'design.free',
-      'content.create',
-      'content.edit_own',
-      'content.edit_department',
-      'content.edit_any',
-      'content.approve',
-      'content.schedule',
-      'content.publish',
-      'task.assign',
-      'templates.manage',
-      'analytics.view',
-      'analytics.view_all',
-      'credits.view',
-      'credits.view_all',
-      'connections.manage',
-      'plans.view_all',
-    ],
+    description: { en: 'Approves every post, manages templates and connected accounts.', ar: 'يعتمد كل المنشورات ويدير القوالب والحسابات المربوطة.' },
+    permissions: MARKETING_MANAGER,
   },
-  publisher: {
-    id: 'publisher',
-    name: { en: 'Publisher', ar: 'مسؤول النشر' },
-    description: { en: 'Schedules approved content and confirms publishing.', ar: 'يجدول المحتوى المعتمد ويؤكد النشر.' },
-    permissions: [
-      'design.free',
-      'content.create',
-      'content.edit_own',
-      'content.edit_any',
-      'content.schedule',
-      'content.publish',
-      'task.assign',
-      'analytics.view',
-      'analytics.view_all',
-      'credits.view',
-      'plans.view_all',
-    ],
+  manager: {
+    id: 'manager',
+    name: { en: 'Manager', ar: 'مدير' },
+    description: { en: 'Everything Marketing can do, plus the team’s accounts and permissions.', ar: 'كل صلاحيات التسويق، ومعها حسابات الفريق وصلاحياته.' },
+    permissions: MANAGER,
   },
-  department_manager: {
-    id: 'department_manager',
-    name: { en: 'Department Manager', ar: 'مدير قسم' },
-    description: { en: 'Plans and creates the department’s content, assigns its tasks.', ar: 'يخطط محتوى القسم وينشئه ويسند مهامه.' },
-    permissions: ['design.free', 'content.create', 'content.edit_own', 'content.edit_department', 'task.assign', 'analytics.view', 'credits.view'],
-  },
-  employee: {
-    id: 'employee',
-    name: { en: 'Employee', ar: 'موظف' },
-    description: { en: 'Creates content and completes assigned tasks.', ar: 'ينشئ المحتوى وينفذ المهام المسندة.' },
-    permissions: ['design.free', 'content.create', 'content.edit_own', 'analytics.view'],
-  },
-  designer: {
-    id: 'designer',
-    name: { en: 'Designer', ar: 'مصمم' },
-    description: { en: 'Delivers design tasks and revisions.', ar: 'ينفذ مهام التصميم والتعديلات.' },
-    permissions: ['design.free', 'content.edit_own'],
-  },
-  media_editor: {
-    id: 'media_editor',
-    name: { en: 'Media Editor', ar: 'محرر فيديو' },
-    description: { en: 'Edits video and captures for content items.', ar: 'يمنتج الفيديو واللقطات لعناصر المحتوى.' },
-    permissions: ['design.free', 'content.edit_own'],
-  },
-  lecturer: {
-    id: 'lecturer',
-    name: { en: 'Lecturer', ar: 'محاضر' },
-    description: { en: 'Contributes course and educational content.', ar: 'يساهم بمحتوى الدورات والمحتوى التعليمي.' },
-    permissions: ['design.free', 'content.create', 'content.edit_own'],
-  },
-  freelancer: {
-    id: 'freelancer',
-    name: { en: 'Freelancer', ar: 'مستقل' },
-    description: { en: 'Writes assigned content; sees only their own work.', ar: 'يكتب المحتوى المسند؛ يرى عمله فقط.' },
-    permissions: ['design.free', 'content.create', 'content.edit_own'],
-  },
-  operations: {
-    id: 'operations',
-    name: { en: 'Operations Team', ar: 'فريق العمليات' },
-    description: { en: 'Creates new posts from approved visual references and templates, then sends them for review.', ar: 'ينشئ منشورات جديدة من المراجع البصرية والقوالب المعتمدة، ثم يرسلها للمراجعة.' },
-    permissions: ['content.create', 'content.edit_own'],
+  admin: {
+    id: 'admin',
+    name: { en: 'Administrator', ar: 'مسؤول النظام' },
+    description: { en: 'Full access, including system settings.', ar: 'وصول كامل، ومعه إعدادات النظام.' },
+    permissions: ALL_PERMISSIONS,
   },
 };
 
-export const ROLE_ORDER: RoleId[] = ['admin', 'marketing_manager', 'publisher', 'department_manager', 'employee', 'designer', 'media_editor', 'lecturer', 'freelancer', 'operations'];
+export const ROLE_ORDER: RoleId[] = ['creator', 'supervisor', 'marketing_manager', 'manager', 'admin'];
 
 export const can = (role: RoleId, permission: Permission) => ROLES[role].permissions.includes(permission);
 

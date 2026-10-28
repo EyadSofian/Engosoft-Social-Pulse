@@ -20,7 +20,10 @@ const { courseValues } = await import('../src/features/svg-templates/render');
 const { db, initDb } = await import('../server/db');
 await initDb();
 await seedBuiltinTemplates();
-const ops = await auth.createUser({ email: 'ops@test.local', name: 'Operations', role: 'operations', departmentId: 'operations', password: 'local-test-password' });
+// Operations: a Content Creator limited to approved templates.
+const created = await auth.createUser({ email: 'ops@test.local', name: 'Operations', role: 'creator', departmentId: 'operations', password: 'local-test-password' });
+await db.run('UPDATE users SET permission_overrides=? WHERE id=?', [JSON.stringify({ 'design.free': false }), created.id]);
+const ops = (await auth.getUser(created.id))!;
 const manager = await auth.createUser({ email: 'manager@test.local', name: 'Marketing', role: 'marketing_manager', departmentId: 'marketing', password: 'local-test-password' });
 const app = express();
 app.use(express.json());

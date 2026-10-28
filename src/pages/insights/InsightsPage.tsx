@@ -4,13 +4,11 @@ import { EmptyState } from '../../components/feedback/States';
 import { Button } from '../../components/ui/Button';
 import { useI18n } from '../../i18n/I18nProvider';
 import { LegacyContent, LegacyInsights, LegacyOverview } from '../../legacy/LegacyCalendar';
-import { usePageMeta } from '../../shell/ShellContext';
 
-/** Platform tracking pages from the original dashboard, on the posts the sync observed on every page and account. */
-function TrackingPage({ title, children }: { title: string; children: ReactNode }) {
+/** Platform tracking views from the original dashboard, on the posts the sync observed on every page and account. Shown as sections of Analytics. */
+function TrackingPage({ children }: { children: ReactNode }) {
   const { t } = useI18n();
   const { store } = useLiveData();
-  usePageMeta(title, [{ label: title }]);
   if (store.phase !== 'ready')
     return (
       <EmptyState
@@ -22,15 +20,6 @@ function TrackingPage({ title, children }: { title: string; children: ReactNode 
   return <>{children}</>;
 }
 
-export function InsightsPage() {
-  const { t } = useI18n();
-  return <TrackingPage title={t('Analytics', 'التحليلات')}><LegacyInsights /></TrackingPage>;
-}
-export function ContentTrackingPage() {
-  const { t } = useI18n();
-  return <TrackingPage title={t('Content performance', 'أداء المحتوى')}><LegacyContent /></TrackingPage>;
-}
-export function OverviewPage() {
-  const { t } = useI18n();
-  return <TrackingPage title={t('Overview', 'نظرة عامة')}><LegacyOverview /></TrackingPage>;
-}
+export const InsightsPage = () => <TrackingPage><LegacyInsights /></TrackingPage>;
+export const ContentTrackingPage = () => <TrackingPage><LegacyContent /></TrackingPage>;
+export const PlatformsPage = () => <TrackingPage><LegacyOverview /></TrackingPage>;

@@ -24,7 +24,7 @@ export interface AppContextValue {
 }
 
 export type LegacyView = 'overview' | 'calendar' | 'content' | 'insights' | 'connections';
-export const LEGACY_PATHS: Record<LegacyView, string> = { overview: '/overview', calendar: '/calendar', content: '/tracking', insights: '/analytics', connections: '/settings' };
+export const LEGACY_PATHS: Record<LegacyView, string> = { overview: '/analytics', calendar: '/calendar?view=live', content: '/analytics?section=posts', insights: '/analytics?section=insights', connections: '/settings' };
 
 export const AppContext = createContext<AppContextValue | null>(null);
 

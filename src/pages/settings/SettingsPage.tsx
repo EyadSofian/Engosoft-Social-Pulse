@@ -46,7 +46,7 @@ function TeamSettings() {
   const [users, setUsers] = useState<SessionUser[]>([]);
   const [error, setError] = useState('');
   const [notice, setNotice] = useState('');
-  const [form, setForm] = useState({ name: '', email: '', role: 'operations' as RoleId, departmentId: 'operations' as DepartmentId | '', password: '' });
+  const [form, setForm] = useState({ name: '', email: '', role: 'creator' as RoleId, departmentId: 'operations' as DepartmentId | '', password: '' });
   const load = useCallback(() => api<SessionUser[]>('/api/users').then(setUsers).catch((e) => setError(errorMessage(e, ''))), []);
   useEffect(() => { void load(); }, [load]);
 

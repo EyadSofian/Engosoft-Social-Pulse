@@ -42,3 +42,5 @@
 @import './features/course-profiles.css';
 
 @import './features/permissions.css';
+@import './features/overview.css';
+@import './features/publish.css';

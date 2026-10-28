@@ -3,7 +3,8 @@ import react from '@vitejs/plugin-react';
 
 export default defineConfig({
   plugins: [react()],
-  server: { port: 5173, proxy: { '/api': process.env.API_PROXY_TARGET || 'http://127.0.0.1:4100' } },
+  // The API sees the page's own host, so its same-origin check accepts the dev pages.
+  server: { port: 5173, proxy: { '/api': { target: process.env.API_PROXY_TARGET || 'http://127.0.0.1:4100', changeOrigin: false } } },
   build: {
     outDir: 'dist',
     rollupOptions: {

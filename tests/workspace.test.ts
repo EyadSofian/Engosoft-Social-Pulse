@@ -11,8 +11,8 @@ const ws = await import('../server/workspace');
 const store = await import('../server/store');
 await (await import('../server/db')).initDb();
 
-const ops = await auth.createUser({ email: 'ops@engosoft.test', name: 'Ops Lead', role: 'department_manager', departmentId: 'operations', password: 'ops-password-1' });
-const other = await auth.createUser({ email: 'hr@engosoft.test', name: 'HR', role: 'employee', departmentId: 'hr', password: 'hr-password-12' });
+const ops = await auth.createUser({ email: 'ops@engosoft.test', name: 'Ops Lead', role: 'creator', departmentId: 'operations', password: 'ops-password-1' });
+const other = await auth.createUser({ email: 'hr@engosoft.test', name: 'HR', role: 'creator', departmentId: 'hr', password: 'hr-password-12' });
 const marketing = await auth.createUser({ email: 'mm@engosoft.test', name: 'Marketing', role: 'marketing_manager', departmentId: 'marketing', password: 'mm-password-12' });
 const creative = { requestId: '00000000-0000-0000-0000-000000000000', directionId: 'd1', imageUrl: '/api/creatives/00000000-0000-0000-0000-000000000000/d1.png' };
 
@@ -28,7 +28,7 @@ test('passwords are hashed, verified, and sessions resolve to the user', async (
   assert.equal((await auth.userForToken(session.token))?.id, ops.id);
   await auth.endSession(session.token);
   assert.equal(await auth.userForToken(session.token), undefined);
-  await assert.rejects(() => auth.createUser({ email: 'x@y.test', name: 'X', role: 'employee', departmentId: 'hr', password: 'short' }));
+  await assert.rejects(() => auth.createUser({ email: 'x@y.test', name: 'X', role: 'creator', departmentId: 'hr', password: 'short' }));
 });
 
 test('suspending a user ends their sessions', async () => {

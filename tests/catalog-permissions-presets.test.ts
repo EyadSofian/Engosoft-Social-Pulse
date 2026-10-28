@@ -41,9 +41,11 @@ const makeUser = (role: import('../server/auth').AuthUser['role']) =>
   });
 const users = {
   admin: await makeUser('admin'),
-  ops: await makeUser('operations'),
+  ops: await makeUser('creator'),
   manager: await makeUser('marketing_manager'),
 };
+// Operations: a Content Creator limited to approved templates.
+await db.run('UPDATE users SET permission_overrides=? WHERE id=?', [JSON.stringify({ 'design.free': false }), users.ops.id]);
 const tokens = Object.fromEntries(
   await Promise.all(
     Object.entries(users).map(async ([key, user]) => [
@@ -240,9 +242,9 @@ test('course search remains available without Odoo, searches all imported course
   }
 });
 
-test('permissions directory includes ten roles and eighteen capabilities without exposing credentials', async () => {
+test('permissions directory includes five roles and eighteen capabilities without exposing credentials', async () => {
   const result = await (await request('/api/permissions')).json();
-  assert.equal(result.roles.length, 10);
+  assert.equal(result.roles.length, 5);
   assert.deepEqual(result.permissions, ALL_PERMISSIONS);
   assert.equal(JSON.stringify(result).includes('password_hash'), false);
 });
@@ -470,23 +472,17 @@ test('explicit deny overrides an approver role and approval succeeds again after
 });
 
 test('usage visibility follows explicit own/team permissions instead of unrelated account management', async () => {
-  assert.equal(
-    (await request('/api/usage', 'GET', undefined, 'ops')).status,
-    403,
-  );
+  const scope = async () => {
+    const response = await request('/api/usage', 'GET', undefined, 'ops');
+    return response.status === 200 ? (await response.json()).scope : response.status;
+  };
+  // A Content Creator sees their own usage by default.
+  assert.equal(await scope(), 'mine');
   try {
-    await patchPermissions('ops', { 'credits.view': true });
-    assert.equal(
-      (await (await request('/api/usage', 'GET', undefined, 'ops')).json())
-        .scope,
-      'mine',
-    );
-    await patchPermissions('ops', { 'credits.view_all': true });
-    assert.equal(
-      (await (await request('/api/usage', 'GET', undefined, 'ops')).json())
-        .scope,
-      'all',
-    );
+    await patchPermissions('ops', { 'credits.view': false });
+    assert.equal(await scope(), 403);
+    await patchPermissions('ops', { 'credits.view': false, 'credits.view_all': true });
+    assert.equal(await scope(), 'all');
   } finally {
     await patchPermissions('ops', {});
   }
