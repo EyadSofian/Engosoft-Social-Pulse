@@ -178,6 +178,23 @@ test('YouTube reads upload playlist pages, normalizes missing metrics and persis
 test('YouTube Analytics uses the selected authorized channel and read-only endpoint',async()=>{
  mock(url=>{assert.match(url,/youtubeanalytics.googleapis.com\/v2\/reports/);assert.equal(new URL(url).searchParams.get('ids'),'channel==channel-1');return Response.json({rows:[['2026-10-01',10]]});});assert.deepEqual((await youtube.youtubeAnalytics(account,'2026-10-01','2026-10-02')).rows,[['2026-10-01',10]]);
 });
+test('YouTube insights add up the period, keep missing numbers missing, and name the top videos',async()=>{
+ const seen:string[]=[];
+ mock(url=>{
+  const q=new URL(url).searchParams;seen.push(`${q.get('dimensions')}:${q.get('metrics')}`);assert.equal(q.get('ids'),'channel==channel-1');
+  if(q.get('dimensions')==='day')return Response.json({columnHeaders:['day','views','estimatedMinutesWatched','likes','comments','shares','subscribersGained','subscribersLost'].map(name=>({name})),rows:[['2026-10-01',100,240,5,1,2,3,1],['2026-10-02',50,60,2,0,1,1,0]]});
+  return Response.json({columnHeaders:['video','views','estimatedMinutesWatched','averageViewDuration','likes','shares'].map(name=>({name})),rows:[['v1',120,250,95,6,3],['v9',30,50,40,1,0]]});
+ });
+ const r=await youtube.youtubeInsights(account,'2026-10-01','2026-10-02',new Map([['v1',{title:'PMP tips',publishedAt:'2026-09-30T10:00:00Z'}]]));
+ assert.deepEqual(seen.map(x=>x.split(':')[0]).sort(),['day','video']);
+ assert.deepEqual(r.totals,{views:150,minutes:300,likes:7,comments:1,shares:3,subscribersGained:4,subscribersLost:1});
+ assert.deepEqual(r.daily[1],{date:'2026-10-02',views:50,minutes:60});
+ assert.equal(r.videos[0].title,'PMP tips');assert.equal(r.videos[0].averageViewSeconds,95);
+ assert.equal(r.videos[1].title,'v9','a video not synced yet keeps its id');
+ mock(()=>Response.json({columnHeaders:[{name:'day'},{name:'views'}],rows:[]}));
+ const empty=await youtube.youtubeInsights(account,'2026-10-01','2026-10-02',new Map());
+ assert.equal(empty.totals.views,null,'no rows means no number, never zero');
+});
 test('media rejects unapproved arbitrary URLs and platform-specific invalid formats',async()=>{
  const item=await ws.createContent(admin,{title:'Draft',channels:['youtube'],captions:{},creative:null});await assert.rejects(()=>media.resolveMedia(item,['https://127.0.0.1/private']),/approved/);
  assert.throws(()=>media.inspectMP4(Buffer.from('not-video')));

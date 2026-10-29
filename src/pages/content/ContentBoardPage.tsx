@@ -105,7 +105,7 @@ export function ContentBoardPage({ openId }: { openId?: string }) {
 }
 
 function ContentDrawer({ id, team, onClose, onChanged }: { id: string; team: TeamMember[]; onClose: () => void; onChanged: () => void }) {
-  const { t, tx, dir, date } = useI18n();
+  const { t, tx, dir, date, num } = useI18n();
   const overlay = useOverlay(true, onClose);
   const { can } = useAuth();
   const { navigate } = useRouter();
@@ -176,7 +176,15 @@ function ContentDrawer({ id, team, onClose, onChanged }: { id: string; team: Tea
         {item.editable && item.creative && (item.creative.svgTemplate ? can('design.templates') : can('design.free')) && !['published', 'archived', 'cancelled'].includes(item.status) && <Button variant="secondary" onClick={() => navigate(item.creative!.svgTemplate ? `/library/templates/${item.creative!.svgTemplate.id}?content=${item.id}` : `/studio/${item.id}`)}><Paintbrush size={15} /> {item.creative.requestId === 'reference-design' ? t('Generate a new version from the reference', 'ولّد نسخة جديدة من المرجع') : item.creative.svgTemplate ? t('Edit the template', 'عدّل في القالب') : t('Open in Studio', 'افتح في الاستوديو')}</Button>}
 
         {item.published?.length ? <section className="content-drawer__section"><h3>{t('Live results', 'النتائج على المنصات')}</h3>
-          {item.published.map((p) => <a key={p.permalink} href={p.permalink} target="_blank" rel="noreferrer" className="content-live">{p.platform} · {t('views', 'مشاهدات')} {p.metrics.views ?? '—'} · {t('reach', 'وصول')} {p.metrics.reach ?? '—'} <ExternalLink size={13} /></a>)}
+          {item.published.map((p) => {
+            // Each platform reports different numbers (YouTube has views but no reach); only the reported ones are shown.
+            const shown = ([['views', 'Views', 'مشاهدات'], ['reach', 'Reach', 'وصول'], ['likes', 'Likes', 'إعجابات'], ['comments', 'Comments', 'تعليقات'], ['shares', 'Shares', 'مشاركات']] as const).filter(([key]) => p.metrics[key] != null);
+            return <a key={p.permalink} href={p.permalink} target="_blank" rel="noreferrer" className="content-live">
+              <ChannelIcon channel={p.platform as Channel} size={14} />
+              <span>{shown.length ? shown.map(([key, en, ar]) => `${t(en, ar)} ${num(p.metrics[key])}`).join(' · ') : t('No numbers yet', 'لسه مفيش أرقام')}</span>
+              <ExternalLink size={13} />
+            </a>;
+          })}
         </section> : null}
 
         <PostPlanCard key={`${item.goal}-${item.plannedFor}`} item={item} onSaved={() => { void load(); onChanged(); }} />

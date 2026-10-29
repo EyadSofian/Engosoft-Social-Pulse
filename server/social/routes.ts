@@ -16,7 +16,8 @@ import { runSync } from '../sync.js';
 import { cancelPublication, publishingBoard, publishNow, publishTargets, schedulePublication } from './queue.js';
 import { contentQueue } from './store.js';
 import { WorkspaceError } from '../workspace.js';
-import { youtubeAnalytics } from '../connectors/youtube.js';
+import { youtubeAnalytics, youtubeInsights } from '../connectors/youtube.js';
+import { getObserved } from '../store.js';
 import type { PublishInput, SocialProvider } from './types.js';
 const inputSchema=z.object({contentId:z.string().min(1),accountId:z.string().min(1),kind:z.enum(['text','image','video','carousel']),media:z.array(z.object({url:z.string().max(2048)})).max(35).default([]),mode:z.enum(['direct','draft']).default('direct'),privacy:z.string().optional(),categoryId:z.string().regex(/^\d+$/).optional(),tags:z.array(z.string().max(100)).max(50).optional(),madeForKids:z.boolean().optional(),disableComment:z.boolean().optional(),disableDuet:z.boolean().optional(),disableStitch:z.boolean().optional(),brandContent:z.boolean().optional(),brandOrganic:z.boolean().optional(),retry:z.boolean().optional(),snapTarget:z.enum(['story','spotlight']).optional(),locale:z.string().regex(/^[a-z]{2}_[A-Z]{2}$/).optional(),bufferDefaultsConsent:z.boolean().optional(),isAiGenerated:z.boolean().optional(),photoCoverIndex:z.number().int().min(0).max(34).optional(),autoAddMusic:z.boolean().optional(),consent:z.literal(true)});
 let syncRunning:Promise<unknown>|null=null;
@@ -98,6 +99,18 @@ export function registerSocialRoutes(app:express.Express) {
   if(!a||a.provider!=='youtube'||capabilities('youtube',a).read_analytics!=='available')return res.status(409).json({error:'YouTube Analytics consent required.'});
   if(!/^\d{4}-\d{2}-\d{2}$/.test(start)||!/^\d{4}-\d{2}-\d{2}$/.test(end)||start>end)return res.status(400).json({error:'Choose a valid date range.'});
   try{res.json(await youtubeAnalytics(a,start,end));}catch{res.status(502).json({error:'Analytics report unavailable. Check consent and API quota.'});}
+ });
+ /** The connected YouTube channel's results for the last 7, 28 or 90 days, for Analytics → YouTube. */
+ app.get('/api/social/youtube/insights',requirePermission('analytics.view'),async(req,res)=>{
+  const days=[7,28,90].includes(Number(req.query.days))?Number(req.query.days):28;
+  const accounts=(await listAccounts('youtube')).filter(a=>a.status==='connected');
+  const a=accounts.find(x=>capabilities('youtube',x).read_analytics==='available');
+  res.setHeader('Cache-Control','no-store');
+  if(!a)return res.status(409).json({error:accounts.length?'YouTube Analytics consent is missing. Reconnect the channel with analytics access.':'No YouTube channel is connected.',code:accounts.length?'consent':'not_connected'});
+  const end=new Date(Date.now()-86_400_000),start=new Date(end.getTime()-(days-1)*86_400_000);
+  const titles=new Map((await getObserved()).filter(p=>p.platform==='youtube').map(p=>[p.externalId,{title:p.title,publishedAt:p.publishedAt}]));
+  try{res.json(await youtubeInsights(a,start.toISOString().slice(0,10),end.toISOString().slice(0,10),titles));}
+  catch{res.status(502).json({error:'YouTube Analytics did not answer. Check the channel consent and the API quota.',code:'unavailable'});}
  });
  app.get('/api/social/content/:id',async(req,res)=>{
   const item=await getContent(String(req.params.id));if(!item||!canSee(req.user!,item))return res.status(404).end();

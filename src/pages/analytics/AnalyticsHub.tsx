@@ -5,9 +5,10 @@ import { PageHeader } from '../../shell/Header';
 import { usePageMeta } from '../../shell/ShellContext';
 import { ContentTrackingPage, InsightsPage, PlatformsPage } from '../insights/InsightsPage';
 import { AnalyticsPage } from './AnalyticsPage';
+import { YouTubeInsights } from './YouTubeInsights';
 
-type Section = 'platforms' | 'posts' | 'insights' | 'team';
-const SECTIONS: Section[] = ['platforms', 'posts', 'insights', 'team'];
+type Section = 'platforms' | 'youtube' | 'posts' | 'insights' | 'team';
+const SECTIONS: Section[] = ['platforms', 'youtube', 'posts', 'insights', 'team'];
 
 /** Every results view under one tab: platform totals, each published post, month-on-month analysis and team delivery. */
 export function AnalyticsHub({ initial = 'platforms' }: { initial?: Section }) {
@@ -25,12 +26,14 @@ export function AnalyticsHub({ initial = 'platforms' }: { initial?: Section }) {
         onChange={(value) => setQuery({ section: value === 'platforms' ? null : value, tab: null })}
         items={[
           { value: 'platforms', label: t('Platforms', 'المنصات') },
+          { value: 'youtube', label: t('YouTube', 'يوتيوب') },
           { value: 'posts', label: t('Published posts', 'المنشورات المنشورة') },
           { value: 'insights', label: t('Monthly analysis', 'التحليل الشهري') },
           { value: 'team', label: t('Team performance', 'أداء الفريق') },
         ]}
       />
       {section === 'platforms' && <PlatformsPage />}
+      {section === 'youtube' && <YouTubeInsights />}
       {section === 'posts' && <ContentTrackingPage />}
       {section === 'insights' && <InsightsPage />}
       {section === 'team' && <AnalyticsPage embedded />}
