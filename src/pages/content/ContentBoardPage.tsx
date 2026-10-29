@@ -181,24 +181,27 @@ function ContentDrawer({ id, team, onClose, onChanged }: { id: string; team: Tea
 
         <PostPlanCard key={`${item.goal}-${item.plannedFor}`} item={item} onSaved={() => { void load(); onChanged(); }} />
         <PublishContent item={item} />
-        {!isReel(item.creative) && <SizesPanel item={item} onChanged={() => { void load(); onChanged(); }} />}
         {error && <p role="alert" className="creative-home__error">{error}</p>}
 
-        {item.versions.length > 1 && <section className="content-drawer__section content-drawer__section--late"><h3>{t('Versions', 'النسخ')}</h3>
-          <div className="content-versions">{item.versions.map((v) => <button key={v.id} type="button" aria-pressed={image === v.imageUrl} onClick={() => setPreview(v.imageUrl)}><img src={v.imageUrl} alt="" /><small dir="auto">{v.note}</small></button>)}</div>
-        </section>}
-
-        <section className="content-drawer__section content-drawer__section--late"><h3><MessageSquare size={15} /> {t('Activity', 'السجل')}</h3>
-          <ol className="content-timeline">{item.events.map((e) => <li key={e.id} data-kind={e.kind}>
-            <b>{nameOf(e.actorId)}</b> <span>{e.kind === 'transition' && e.to ? `→ ${tx(STATUS_LABEL[e.to as ContentStatus] ?? { en: e.to, ar: e.to })}` : e.kind === 'comment' ? '' : e.kind === 'created' ? t('created', 'أنشأ') : e.kind === 'version' ? t('new version', 'نسخة جديدة') : t('edited captions', 'عدّل النص المرافق')}</span>
-            {e.body && <p dir="auto">{e.body}</p>}<time>{date(e.createdAt, 'dateTime')}</time>
-          </li>)}</ol>
-          <div className="content-comment"><input value={comment} onChange={(e) => setComment(e.target.value)} placeholder={t('Write a comment', 'اكتب تعليقًا')} dir="auto" /><Button variant="secondary" disabled={busy || !comment.trim()} onClick={() => void act(() => api(`/api/content/${id}/comments`, { body: { body: comment } }), 'comment')}><Send size={14} /></Button></div>
-        </section>
         </div>
 
-        <ContentCopilot contentId={id} channels={item.channels} captions={captions} onCaptions={setCaptions} editable={item.editable}
-          footer={captionsChanged ? <Button variant="primary" disabled={busy} onClick={() => void act(() => api(`/api/content/${id}`, { method: 'PATCH', body: { captions } }))}>{t('Save captions', 'احفظ النص المرافق')}</Button> : null} />
+        {/* The second column carries the words, the sizes and the history, so neither column ends in empty space. */}
+        <div className="content-drawer__side">
+          <ContentCopilot contentId={id} channels={item.channels} captions={captions} onCaptions={setCaptions} editable={item.editable}
+            footer={captionsChanged ? <Button variant="primary" disabled={busy} onClick={() => void act(() => api(`/api/content/${id}`, { method: 'PATCH', body: { captions } }))}>{t('Save captions', 'احفظ النص المرافق')}</Button> : null} />
+          {!isReel(item.creative) && <SizesPanel item={item} onChanged={() => { void load(); onChanged(); }} />}
+          {item.versions.length > 1 && <section className="content-drawer__section content-drawer__section--late"><h3>{t('Versions', 'النسخ')}</h3>
+            <div className="content-versions">{item.versions.map((v) => <button key={v.id} type="button" aria-pressed={image === v.imageUrl} onClick={() => setPreview(v.imageUrl)}><img src={v.imageUrl} alt="" /><small dir="auto">{v.note}</small></button>)}</div>
+          </section>}
+
+          <section className="content-drawer__section content-drawer__section--late"><h3><MessageSquare size={15} /> {t('Activity', 'السجل')}</h3>
+            <ol className="content-timeline">{item.events.map((e) => <li key={e.id} data-kind={e.kind}>
+              <b>{nameOf(e.actorId)}</b> <span>{e.kind === 'transition' && e.to ? `→ ${tx(STATUS_LABEL[e.to as ContentStatus] ?? { en: e.to, ar: e.to })}` : e.kind === 'comment' ? '' : e.kind === 'created' ? t('created', 'أنشأ') : e.kind === 'version' ? t('new version', 'نسخة جديدة') : t('edited captions', 'عدّل النص المرافق')}</span>
+              {e.body && <p dir="auto">{e.body}</p>}<time>{date(e.createdAt, 'dateTime')}</time>
+            </li>)}</ol>
+            <div className="content-comment"><input value={comment} onChange={(e) => setComment(e.target.value)} placeholder={t('Write a comment', 'اكتب تعليقًا')} dir="auto" /><Button variant="secondary" disabled={busy || !comment.trim()} onClick={() => void act(() => api(`/api/content/${id}/comments`, { body: { body: comment } }), 'comment')}><Send size={14} /></Button></div>
+          </section>
+        </div>
       </div>}
     </motion.aside>
   </div>;

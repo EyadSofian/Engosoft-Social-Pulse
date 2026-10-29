@@ -1,4 +1,5 @@
 import { useEffect } from 'react';
+import { ProductTour } from './ProductTour';
 import { AnimatePresence, motion } from 'motion/react';
 import { CalendarDays, House, Layers, LayoutDashboard, Lock, MapPinOff, Send, WandSparkles } from 'lucide-react';
 import { Link, useRouter } from '../app/router/router';
@@ -69,6 +70,7 @@ export function AppShell() {
       <CommandPalette />
       <NotificationCenter />
       <NotificationPopups />
+      <ProductTour />
     </div>
   );
 }
@@ -118,7 +120,7 @@ function BottomNav() {
       {BOTTOM.filter(({ id }) => navItem(id).visible(me)).map(({ id, icon: Icon }) => {
         const item = navItem(id);
         return (
-          <Link key={id} to={item.path} className="shell-bottom-nav__item" data-create={id === 'home' || undefined} aria-current={active === id ? 'page' : undefined}>
+          <Link key={id} to={item.path} className="shell-bottom-nav__item" data-tour={`nav-${id}`} data-create={id === 'home' || undefined} aria-current={active === id ? 'page' : undefined}>
             <span className="shell-bottom-nav__icon">
               <Icon size={19} aria-hidden />
             </span>

@@ -80,7 +80,7 @@ export function CreationHomePage() {
   const { can } = useAuth();
   // Each way of creating is its own permission; a person with one way goes straight to it.
   const free = can('design.free');
-  const ways = ([['ai', free], ['template', can('design.templates')], ['upload', can('design.upload')], ['reel', can('design.upload')]] as const).filter(([, allowed]) => allowed).map(([way]) => way);
+  const ways = ([['ai', free], ['template', can('design.templates')], ['upload', can('design.upload')], ['reel', can('design.video')]] as const).filter(([, allowed]) => allowed).map(([way]) => way);
   const upload = useRef<HTMLInputElement>(null);
   const [prompt, setPrompt] = useState(() => getActiveCreative()?.prompt ?? '');
   const [objective, setObjective] = useState<Objective | 'auto'>('auto');

@@ -65,3 +65,21 @@ test('the AI cover is designed from the chosen frame at 1080×1920 with the titl
   assert.deepEqual([meta.width, meta.height], [1080, 1920]);
   await assert.rejects(designReelCover('/api/uploads/00000000-0000-4000-a000-0000000000ff.png', 'x', provider as never), /اختر لقطة/);
 });
+
+test('uploading Reels is its own permission, on for every role, and stays off for people whose uploads were off', async () => {
+  const { can } = await import('../src/domain/catalog');
+  for (const role of ['creator', 'supervisor', 'marketing_manager', 'manager', 'admin'] as const) assert.ok(can(role, 'design.video'), role);
+  const auth = await import('../server/auth');
+  const { db, initDb } = await import('../server/db');
+  await initDb();
+  const limited = await auth.createUser({ email: 'ops-limited@engosoft.test', name: 'Ops', role: 'creator', departmentId: 'operations', password: 'ops-limited-pass-1' });
+  const open = await auth.createUser({ email: 'open@engosoft.test', name: 'Open', role: 'creator', departmentId: 'operations', password: 'open-creator-pass-1' });
+  await db.run('UPDATE users SET permission_overrides=? WHERE id=?', [JSON.stringify({ 'design.upload': false, 'design.free': false }), limited.id]);
+  // initDb already ran the migration once on an empty table; this is the run that finds the restricted person.
+  const { setSetting } = await import('../server/settings');
+  await setSetting('migration.designVideo', { done: false });
+  assert.equal(await auth.splitVideoPermission(), 1);
+  assert.equal(auth.userCan((await auth.getUser(limited.id))!, 'design.video'), false);
+  assert.equal(auth.userCan((await auth.getUser(open.id))!, 'design.video'), true);
+  assert.equal(await auth.splitVideoPermission(), 0, 'it runs once');
+});

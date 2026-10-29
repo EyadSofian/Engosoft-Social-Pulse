@@ -4,6 +4,7 @@ import type express from 'express';
 import { can, DEPARTMENTS, ROLES } from '../src/domain/catalog.js';
 import { ALL_PERMISSIONS, type DepartmentId, type Permission, type RoleId } from '../src/domain/users.js';
 import { db, defineColumn, defineMigration, defineSchema } from './db.js';
+import { getSetting, setSetting } from './settings.js';
 
 defineSchema(`
 CREATE TABLE IF NOT EXISTS users (
@@ -46,6 +47,22 @@ export async function migrateLegacyRoles(): Promise<number> {
   return moved;
 }
 defineMigration(migrateLegacyRoles);
+
+/** Reels got their own permission. People whose design uploads were switched off start with Reels off too. Runs once. */
+export async function splitVideoPermission(): Promise<number> {
+  // Settings are stored as objects (getSetting merges into the fallback), so the marker is { done }.
+  if ((await getSetting('migration.designVideo', { done: false })).done) return 0;
+  let changed = 0;
+  for (const row of await db.all<{ id: string; permission_overrides: string }>('SELECT id, permission_overrides FROM users')) {
+    const overrides = overridesFrom(row.permission_overrides) ?? {};
+    if (overrides['design.upload'] !== false || overrides['design.video'] !== undefined) continue;
+    await db.run('UPDATE users SET permission_overrides=? WHERE id=?', [JSON.stringify({ ...overrides, 'design.video': false }), row.id]);
+    changed++;
+  }
+  await setSetting('migration.designVideo', { done: true });
+  return changed;
+}
+defineMigration(splitVideoPermission);
 export const SESSION_COOKIE = 'sp_session';
 const SESSION_DAYS = 14;
 

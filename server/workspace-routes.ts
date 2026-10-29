@@ -28,10 +28,10 @@ const captions = z.partialRecord(z.enum(CHANNELS), z.string().max(5000));
 const postPlan = { goal: z.enum(GOALS as [Goal, ...Goal[]]).nullable().optional(), plannedFor: z.iso.datetime().nullable().optional(), slotId: z.string().max(80).nullable().optional() };
 
 /** Which of the three ways a post's design was made; each way is its own permission. */
-type DesignWay = 'template' | 'upload' | 'ai';
-const designWay = (creative: z.infer<typeof creativeRef> | null): DesignWay => creative?.svgTemplate ? 'template' : creative?.imageUrl.startsWith('/api/uploads/') ? 'upload' : 'ai';
-const WAY_PERMISSION: Record<DesignWay, Permission> = { template: 'design.templates', upload: 'design.upload', ai: 'design.free' };
-const WAY_REFUSAL: Record<DesignWay, string> = { template: 'استخدام القوالب ليس ضمن صلاحياتك.', upload: 'رفع التصميمات الجاهزة ليس ضمن صلاحياتك.', ai: 'التصميم بالذكاء الاصطناعي ليس ضمن صلاحياتك؛ استخدم قالبًا جاهزًا.' };
+type DesignWay = 'template' | 'upload' | 'ai' | 'reel';
+const designWay = (creative: z.infer<typeof creativeRef> | null): DesignWay => creative?.requestId === 'reel' ? 'reel' : creative?.svgTemplate ? 'template' : creative?.imageUrl.startsWith('/api/uploads/') ? 'upload' : 'ai';
+const WAY_PERMISSION: Record<DesignWay, Permission> = { template: 'design.templates', upload: 'design.upload', ai: 'design.free', reel: 'design.video' };
+const WAY_REFUSAL: Record<DesignWay, string> = { template: 'استخدام القوالب ليس ضمن صلاحياتك.', upload: 'رفع التصميمات الجاهزة ليس ضمن صلاحياتك.', ai: 'التصميم بالذكاء الاصطناعي ليس ضمن صلاحياتك؛ استخدم قالبًا جاهزًا.', reel: 'رفع الريلز والفيديو ليس ضمن صلاحياتك.' };
 
 const publicUser = (user: AuthUser) => ({ id: user.id, name: user.name, email: user.email, role: user.role, departmentId: user.departmentId, title: user.title, status: user.status, lastActiveAt: user.lastActiveAt, permissionOverrides: user.permissionOverrides });
 const withMoves = (user: AuthUser) => (item: StoredContent) => ({ ...item, moves: allowedMoves(user, item), editable: canEdit(user, item) && contentIsMutable(item), canSchedule: userCan(user, 'content.schedule'), canPublish: userCan(user, 'content.publish'),

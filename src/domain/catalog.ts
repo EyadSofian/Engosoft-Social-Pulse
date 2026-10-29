@@ -1,7 +1,7 @@
 import type { Department, Permission, Role, RoleId } from './users';
 import { ALL_PERMISSIONS } from './users';
 
-const CREATOR: Permission[] = ['content.create', 'design.free', 'design.templates', 'design.upload', 'content.edit_own', 'credits.view'];
+const CREATOR: Permission[] = ['content.create', 'design.free', 'design.templates', 'design.upload', 'design.video', 'content.edit_own', 'credits.view'];
 const SUPERVISOR: Permission[] = [...CREATOR, 'content.edit_department', 'content.schedule', 'content.publish', 'task.assign', 'analytics.view', 'plans.view_all'];
 const MARKETING_MANAGER: Permission[] = [...SUPERVISOR, 'content.edit_any', 'content.approve', 'templates.manage', 'analytics.view_all', 'credits.view_all', 'connections.manage'];
 const MANAGER: Permission[] = [...MARKETING_MANAGER, 'users.manage'];

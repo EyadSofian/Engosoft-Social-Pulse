@@ -24,7 +24,7 @@ export function Header() {
       <button type="button" className="ui-icon-btn ui-icon-btn--md ui-icon-btn--ghost shell-header__toggle" onClick={toggleSidebar} aria-label={t('Toggle sidebar', 'إظهار/إخفاء الشريط الجانبي')} title={t('Toggle sidebar', 'إظهار/إخفاء الشريط الجانبي')}>
         <PanelLeft size={17} className="u-flip" />
       </button>
-      <button type="button" className="ui-icon-btn ui-icon-btn--md ui-icon-btn--ghost shell-header__menu" onClick={() => setMobileNavOpen(true)} aria-label={t('Open navigation', 'افتح القائمة')}>
+      <button type="button" className="ui-icon-btn ui-icon-btn--md ui-icon-btn--ghost shell-header__menu" data-tour="menu" onClick={() => setMobileNavOpen(true)} aria-label={t('Open navigation', 'افتح القائمة')}>
         <MenuIcon size={18} />
       </button>
       <span className="shell-header__sep" aria-hidden />
@@ -55,14 +55,14 @@ export function Header() {
             {t('Live data is stale', 'البيانات الحية غير محدثة')}
           </span>
         )}
-        <button type="button" className="shell-search-trigger" onClick={() => setPaletteOpen(true)} aria-keyshortcuts={isMac ? 'Meta+K' : 'Control+K'}>
+        <button type="button" className="shell-search-trigger" data-tour="search" onClick={() => setPaletteOpen(true)} aria-keyshortcuts={isMac ? 'Meta+K' : 'Control+K'}>
           <Search size={15} aria-hidden />
           <span className="shell-search-trigger__text">{t('Search', 'بحث')}</span>
           <kbd className="ui-kbd">{isMac ? '⌘K' : 'Ctrl K'}</kbd>
         </button>
         <ActiveCreativePill />
         <ThemeToggle />
-        <button type="button" className="ui-icon-btn ui-icon-btn--md ui-icon-btn--ghost shell-bell" onClick={() => setNotificationsOpen(true)} aria-label={unread ? t(`Notifications, ${unread} unread`, `الإشعارات، ${unread} غير مقروءة`) : t('Notifications', 'الإشعارات')} title={t('Notifications', 'الإشعارات')}>
+        <button type="button" className="ui-icon-btn ui-icon-btn--md ui-icon-btn--ghost shell-bell" data-tour="bell" onClick={() => setNotificationsOpen(true)} aria-label={unread ? t(`Notifications, ${unread} unread`, `الإشعارات، ${unread} غير مقروءة`) : t('Notifications', 'الإشعارات')} title={t('Notifications', 'الإشعارات')}>
           <Bell size={17} />
           {unread > 0 && <span className="shell-bell__dot u-tnum">{unread > 9 ? '9+' : unread}</span>}
         </button>

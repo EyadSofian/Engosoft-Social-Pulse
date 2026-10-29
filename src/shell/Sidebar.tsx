@@ -1,6 +1,7 @@
 import { useEffect, useState } from 'react';
 import { motion } from 'motion/react';
-import { ChevronsUpDown, Languages, LogOut, Moon, Plus, Sparkles, SunMedium } from 'lucide-react';
+import { ChevronsUpDown, Compass, Languages, LogOut, Moon, Plus, Sparkles, SunMedium } from 'lucide-react';
+import { startTour } from './ProductTour';
 import { Link, useRouter } from '../app/router/router';
 import { ROLES, departmentById } from '../domain/catalog';
 import { useWorkspace } from '../features/workspace/WorkspaceProvider';
@@ -59,7 +60,7 @@ export function Sidebar({ drawer }: { drawer?: boolean }) {
       </Link>
 
       {can('content.create') && (
-        <Link to="/" className="shell-create" title={collapsed ? t('New post', 'منشور جديد') : undefined} aria-label={collapsed ? t('New post', 'منشور جديد') : undefined} onClick={() => setMobileNavOpen(false)}>
+        <Link to="/" className="shell-create" data-tour="new-post" title={collapsed ? t('New post', 'منشور جديد') : undefined} aria-label={collapsed ? t('New post', 'منشور جديد') : undefined} onClick={() => setMobileNavOpen(false)}>
           <span className="shell-create__icon">
             <Plus size={18} strokeWidth={2.4} aria-hidden />
           </span>
@@ -89,6 +90,7 @@ export function Sidebar({ drawer }: { drawer?: boolean }) {
                       <Link
                         to={item.path}
                         className="shell-nav__item"
+                        data-tour={`nav-${item.id}`}
                         aria-current={current ? 'page' : undefined}
                         data-tip={collapsed ? tx(item.label) : undefined}
                         aria-label={collapsed ? tx(item.label) : undefined}
@@ -128,6 +130,7 @@ function UserMenu({ collapsed }: { collapsed: boolean }) {
   const items: MenuItem[] = [
     { key: 'lang', icon: <Languages size={15} />, label: lang === 'ar' ? 'English' : 'العربية', onSelect: () => setLang(lang === 'ar' ? 'en' : 'ar') },
     { key: 'theme', icon: theme === 'dark' ? <SunMedium size={15} /> : <Moon size={15} />, label: theme === 'dark' ? t('Light mode', 'الوضع الفاتح') : t('Dark mode', 'الوضع الداكن'), onSelect: toggle },
+    { key: 'tour', icon: <Compass size={15} />, label: t('Take the tour', 'جولة تعريفية'), onSelect: startTour },
     { key: 'logout', icon: <LogOut size={15} />, label: t('Sign out', 'تسجيل الخروج'), onSelect: () => void logout() },
   ];
   return (
@@ -138,7 +141,7 @@ function UserMenu({ collapsed }: { collapsed: boolean }) {
         header={<span className="u-xs u-muted" dir="ltr">{user.email}</span>}
         items={items}
         trigger={(props) => (
-          <button type="button" className="shell-user__trigger" title={collapsed ? user.name : undefined} aria-label={collapsed ? user.name : undefined} {...props}>
+          <button type="button" className="shell-user__trigger" data-tour="user-menu" title={collapsed ? user.name : undefined} aria-label={collapsed ? user.name : undefined} {...props}>
             <Avatar name={user.name} size={30} />
             {!collapsed && (
               <>
