@@ -1,5 +1,6 @@
 import { useEffect, useState } from 'react';
 import { useI18n } from '../../i18n/I18nProvider';
+import { useAuth } from '../auth/AuthProvider';
 import { tiktokPhotoTitle } from '../../domain/tiktok-publishing';
 import { ChevronDown, Film, ImagePlus, Send } from 'lucide-react';
 import { Button } from '../../components/ui/Button';
@@ -9,7 +10,7 @@ import type { PublishJob, Media } from '../../../server/social/types';
 import type { ProviderConnection, PublicAccount } from './SocialConnections';
 const call=async(path:string,body?:unknown)=>{const r=await fetch(path,{...(body?{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify(body)}:{})});const d=await r.json();if(!r.ok)throw new Error(d.error||'Request failed.');return d;};
 export function PublishContent({item}:{item:PipelineDetail}) {
- const {t}=useI18n();const [providers,setProviders]=useState<ProviderConnection[]>([]),[assets,setAssets]=useState<(Media&{id:string})[]>([]),[jobs,setJobs]=useState<PublishJob[]>([]);
+ const {t}=useI18n();const canVideo=useAuth().can('design.video');const [providers,setProviders]=useState<ProviderConnection[]>([]),[assets,setAssets]=useState<(Media&{id:string})[]>([]),[jobs,setJobs]=useState<PublishJob[]>([]);
  const [accountId,setAccount]=useState(''),[kind,setKind]=useState('image'),[selected,setSelected]=useState<string[]>([]),[privacy,setPrivacy]=useState(''),[mode,setMode]=useState('direct'),[creator,setCreator]=useState<Record<string,any>|null>(null);
  const [category,setCategory]=useState('27'),[tags,setTags]=useState(''),[kids,setKids]=useState(''),[snapTarget,setSnapTarget]=useState('story');
  const [allowComment,setComment]=useState(false),[allowDuet,setDuet]=useState(false),[allowStitch,setStitch]=useState(false),[commercial,setCommercial]=useState('none'),[consent,setConsent]=useState(false),[busy,setBusy]=useState(false),[error,setError]=useState(''),[proof,setProof]=useState<Record<string,string>>({}),[bufferDefaults,setBufferDefaults]=useState(false),[aiGenerated,setAiGenerated]=useState(false);
@@ -45,7 +46,7 @@ export function PublishContent({item}:{item:PipelineDetail}) {
    <h3>{t('Post files','ملفات المنشور')}</h3>
    <p className="u-xs u-muted">{t('Add the video or extra photos that go out with this post. They are reviewed with it and locked once approved.','أضف الفيديو أو الصور الإضافية اللي هتنزل مع المنشور. بتتراجع معاه وبتتقفل بعد الاعتماد.')}</p>
    {item.editable&&<div className="post-files__add">
-    <label className="post-files__drop"><Film size={18} /><b>{t('Add a video','أضف فيديو')}</b><small>MP4 · {t('up to 200 MB','حتى 200 ميجابايت')}</small><input type="file" accept="video/mp4" hidden disabled={busy} onChange={e=>{const files=Array.from(e.target.files||[]);e.target.value='';if(files.length)attach(`/api/social/content/${item.id}/video`,files.map(f=>new File([f],f.name,{type:'video/mp4'})));}} /></label>
+    {canVideo&&<label className="post-files__drop"><Film size={18} /><b>{t('Add a video','أضف فيديو')}</b><small>MP4 · {t('up to 200 MB','حتى 200 ميجابايت')}</small><input type="file" accept="video/mp4" hidden disabled={busy} onChange={e=>{const files=Array.from(e.target.files||[]);e.target.value='';if(files.length)attach(`/api/social/content/${item.id}/video`,files.map(f=>new File([f],f.name,{type:'video/mp4'})));}} /></label>}
     <label className="post-files__drop"><ImagePlus size={18} /><b>{t('Add photos','أضف صورًا')}</b><small>JPEG · PNG · WebP · {t('up to 8 MB each','حتى 8 ميجابايت للصورة')}</small><input type="file" accept="image/jpeg,image/png,image/webp" multiple hidden disabled={busy} onChange={e=>{const files=Array.from(e.target.files||[]);e.target.value='';if(files.length)attach(`/api/social/content/${item.id}/image`,files);}} /></label>
    </div>}
    {assets.length>0&&<div className="post-files__grid">{assets.map(a=>a.type==='image'?<img key={a.id} src={a.url} alt={t('Attached photo','صورة مرفقة')} />:<video key={a.id} src={a.url} controls preload="metadata" />)}</div>}

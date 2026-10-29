@@ -105,6 +105,7 @@ export function registerSocialRoutes(app:express.Express) {
  });
  app.post('/api/social/content/:id/video',express.raw({type:'video/mp4',limit:'200mb'}),async(req,res)=>{
   const item=await getContent(String(req.params.id));if(!item||!canEdit(req.user!,item))return res.status(403).end();
+  if(!userCan(req.user!,'design.video'))return res.status(403).json({error:'رفع الريلز والفيديو ليس ضمن صلاحياتك.',code:'forbidden'});
   if(!contentIsMutable(item))return res.status(409).json({error:'Return content for review before changing approved media.'});
   if(!Buffer.isBuffer(req.body))return res.status(400).json({error:'Upload an MP4 file.'});
   try {res.json(await attachVideo(item.id,req.body));}catch{res.status(400).json({error:'Use a standard MP4 export with duration and resolution metadata, up to 200 MB.'});}

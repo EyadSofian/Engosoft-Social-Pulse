@@ -304,7 +304,7 @@ export function registerReferenceDesignRoutes(app: express.Express) {
     res.status(202).json({ jobId });
   });
   /** A Reel cover designed from one of its frames and its title; polled like a reference design. */
-  app.post('/api/reels/cover', requireUser, requirePermission('content.create'), requireAiBudget, async (req, res) => {
+  app.post('/api/reels/cover', requireUser, requirePermission('content.create'), requirePermission('design.video'), requireAiBudget, async (req, res) => {
     const parsed = z.object({ frameUrl: z.string().regex(/^\/api\/uploads\/[0-9a-f-]{36}\.png$/), title: z.string().trim().min(2).max(120) }).safeParse(req.body);
     if (!parsed.success) return res.status(400).json({ error: 'اختر لقطة من الفيديو واكتب العنوان.' });
     if (!process.env.OPENAI_API_KEY?.trim()) return res.status(503).json({ error: 'توليد الصور غير مهيأ على الخادم.' });

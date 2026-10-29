@@ -119,15 +119,16 @@ export function SizesPanel({ item, onChanged }: { item: PipelineDetail; onChange
   return (
     <section className="content-drawer__section content-drawer__section--late sizes">
       <h3><Maximize2 size={15} /> {t('Sizes for every platform', 'مقاسات كل منصة')} <small className="u-tnum">{presets.length - missing.length}/{presets.length}</small></h3>
-      <p className="u-xs u-muted">{t('Each size is designed again at its own dimensions: a new layout built for that shape, with the same idea, colours, style and exact words, and the official logo placed on top. Nothing is stretched, cropped or framed. One AI image per size.', 'كل مقاس بيتصمم من جديد بأبعاده: توزيع جديد معمول للشكل ده، بنفس الفكرة والألوان والستايل والكلام بالظبط، والشعار الرسمي بيتحط فوقه. مفيش تمطيط ولا قص ولا برواز. صورة ذكاء اصطناعي واحدة لكل مقاس.')}</p>
-      {!item.editable && <p className="u-xs u-muted">{t('The design is locked after approval. To add sizes, edit the post.', 'التصميم بيتقفل بعد الاعتماد. علشان تضيف مقاسات، عدّل المنشور.')}</p>}
+      {item.editable && <p className="u-xs u-muted">{t('Each size is designed again at its own dimensions: a new layout built for that shape, with the same idea, colours, style and exact words, and the official logo placed on top. Nothing is stretched, cropped or framed. One AI image per size.', 'كل مقاس بيتصمم من جديد بأبعاده: توزيع جديد معمول للشكل ده، بنفس الفكرة والألوان والستايل والكلام بالظبط، والشعار الرسمي بيتحط فوقه. مفيش تمطيط ولا قص ولا برواز. صورة ذكاء اصطناعي واحدة لكل مقاس.')}</p>}
+      {!item.editable && missing.length > 0 && <p className="u-xs u-muted">{t(`${missing.length} more sizes can be designed while the post is open for editing.`, `فيه ${missing.length} مقاس تاني يتصمموا لما المنشور يتفتح للتعديل.`)}</p>}
       {item.editable && aiAllowed && missing.length > 0 && <div className="sizes__bulk">
         <Button size="sm" variant="primary" icon={<Sparkles size={14} />} disabled={busy} onClick={() => setQueue(missing)}>{t(`Design the ${missing.length} missing sizes (${missing.length} images)`, `صمّم الـ${missing.length} مقاس الناقصين (${missing.length} صورة)`)}</Button>
         {queue.length > 0 && <Button size="sm" variant="ghost" onClick={() => setQueue([])}>{t('Stop after this one', 'وقّف بعد اللي شغال')}</Button>}
       </div>}
       {error && <p role="alert" className="creative-home__error">{error}</p>}
       {channels.map((channel) => {
-        const rows = presets.filter((preset) => preset.channel === channel);
+        // A locked post lists only the sizes it has; the rest cannot be made until it is opened for editing.
+        const rows = presets.filter((preset) => preset.channel === channel && (item.editable || ready(preset)));
         if (!rows.length) return null;
         return <div key={channel} className="sizes__group">
           <b className="sizes__platform"><ChannelIcon channel={channel} size={14} /> {channelName[channel]}</b>

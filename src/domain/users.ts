@@ -29,6 +29,8 @@ export type Permission =
   | 'design.templates'
   /** Uploading a design finished outside the app. */
   | 'design.upload'
+  /** Uploading Reels and videos, and designing their covers. */
+  | 'design.video'
   | 'task.assign'
   | 'users.manage'
   | 'templates.manage'
@@ -84,6 +86,7 @@ export const ALL_PERMISSIONS: Permission[] = [
   'design.free',
   'design.templates',
   'design.upload',
+  'design.video',
   'task.assign',
   'users.manage',
   'templates.manage',

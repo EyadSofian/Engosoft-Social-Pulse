@@ -152,14 +152,14 @@
 .content-drawer--wide .content-drawer__body { overflow-x: hidden; }
 .content-drawer__layout { display: grid; grid-template-columns: minmax(280px, 380px) minmax(0, 1fr); align-items: start; gap: 22px; }
 .content-drawer__layout > * { min-width: 0; }
-.content-drawer__post { display: grid; gap: 18px; }
+.content-drawer__post, .content-drawer__side { display: grid; gap: 18px; align-content: start; }
 .content-drawer__post .content-drawer__media img { max-width: 100%; }
 @media (max-width: 1100px) {
   .content-drawer--wide { width: min(640px, calc(100vw - 24px)); }
   .content-drawer__layout { grid-template-columns: minmax(0, 1fr); }
-  .content-drawer__post { display: contents; }
-  .content-drawer__layout > .cop { order: 1; }
-  .content-drawer__section--late { order: 2; }
+  .content-drawer__post, .content-drawer__side { display: contents; }
+  .content-drawer__side > .cop { order: 1; }
+  .content-drawer__side > .sizes, .content-drawer__section--late { order: 2; }
 }
 
 /* Content copilot: the caption, suggestions that act on it, and opt-in conversions */

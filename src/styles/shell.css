@@ -838,3 +838,26 @@
   color: var(--text-subtle);
   font-size: var(--fs-xs);
 }
+
+/* ── Guided tour ───────────────────────────────────────────────────── */
+
+.tour { position: fixed; inset: 0; z-index: 400; }
+.tour__dim { position: absolute; inset: 0; background: rgb(8 12 24 / 0.72); }
+.tour__hole { position: absolute; border-radius: 14px; box-shadow: 0 0 0 9999px rgb(8 12 24 / 0.72), 0 0 0 3px var(--brand); transition: left 280ms var(--ease-out), top 280ms var(--ease-out), width 280ms var(--ease-out), height 280ms var(--ease-out); pointer-events: none; }
+.tour__card { position: absolute; display: grid; gap: 10px; width: min(340px, calc(100vw - 24px)); padding: 18px; border: 1px solid var(--border); border-radius: 18px; background: var(--surface); color: var(--text); box-shadow: var(--shadow-lg); outline: none; transition: left 280ms var(--ease-out), top 280ms var(--ease-out); }
+.tour__top { display: flex; align-items: center; justify-content: space-between; }
+.tour__badge { display: inline-flex; align-items: center; gap: 6px; padding: 3px 10px; border-radius: 999px; background: var(--brand-soft); color: var(--brand-ink); font-size: 12px; font-weight: 800; }
+.tour__close { display: grid; place-items: center; width: 28px; height: 28px; border: 0; border-radius: 8px; background: transparent; color: var(--text-muted); cursor: pointer; }
+.tour__close:hover { background: var(--surface-hover); color: var(--text); }
+.tour__card h2 { margin: 0; font-size: 17px; }
+.tour__card p { margin: 0; color: var(--text-muted); font-size: 13.5px; line-height: 1.7; }
+.tour__card .tour__hint { padding: 6px 10px; border-radius: 9px; background: var(--surface-subtle); color: var(--text); font-size: 12.5px; }
+.tour__dots { display: flex; flex-wrap: wrap; gap: 4px; }
+.tour__dots i { width: 6px; height: 6px; border-radius: 50%; background: var(--border-strong); }
+.tour__dots i[data-on] { width: 18px; border-radius: 3px; background: var(--brand); }
+.tour__actions { display: flex; align-items: center; gap: 8px; }
+.tour__actions button { display: inline-flex; align-items: center; gap: 6px; border: 0; font: inherit; font-weight: 700; font-size: 13px; cursor: pointer; }
+.tour__skip { padding: 6px 4px; background: transparent; color: var(--text-muted); }
+.tour__back { padding: 8px 12px; border-radius: 10px; background: var(--surface-active); color: var(--text); }
+.tour__next { padding: 8px 14px; border-radius: 10px; background: var(--brand); color: var(--on-brand); }
+@media (prefers-reduced-motion: reduce) { .tour__hole, .tour__card { transition: none; } }

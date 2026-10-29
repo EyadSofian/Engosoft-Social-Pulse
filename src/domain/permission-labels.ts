@@ -53,6 +53,11 @@ export const PERMISSION_LABELS: Record<
     en: 'Upload finished designs',
     ar: 'رفع تصميم جاهز',
   },
+  'design.video': {
+    group: 'design',
+    en: 'Upload Reels and videos',
+    ar: 'رفع ريلز وفيديو',
+  },
   'templates.manage': {
     group: 'design',
     en: 'Manage templates and course profiles',
@@ -113,6 +118,7 @@ export const PERMISSION_HINTS: Record<Permission, { en: string; ar: string }> = 
   'design.free': { en: 'Generate designs with AI and edit freely in the Studio.', ar: 'يولّد تصميمات بالذكاء الاصطناعي ويعدّل بحرية في الاستوديو.' },
   'design.templates': { en: 'Make posts from the approved ready templates.', ar: 'يعمل منشورات من القوالب الجاهزة المعتمدة.' },
   'design.upload': { en: 'Upload a design finished in another program.', ar: 'يرفع تصميمًا جاهزًا معمولًا في برنامج آخر.' },
+  'design.video': { en: 'Upload Reels and videos to posts, and design their covers.', ar: 'يرفع ريلز وفيديوهات للمنشورات ويصمم أغلفتها.' },
   'templates.manage': { en: 'Add and change templates and course profiles.', ar: 'يضيف ويعدّل القوالب وملفات الدورات.' },
   'task.assign': { en: 'Give tasks to other people.', ar: 'يسند مهام لأشخاص آخرين.' },
   'analytics.view': { en: 'See results and analytics.', ar: 'يرى النتائج والتحليلات.' },
