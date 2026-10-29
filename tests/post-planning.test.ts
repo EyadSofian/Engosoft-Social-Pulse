@@ -53,6 +53,25 @@ test('an imported plan row is a planned slot with its goal, not a scheduled post
   assert.equal(plans[0].goal, 'engagement');
 });
 
+test('plan rows accept Arabic platform names, LinkedIn and X, and a bad row names the cell to fix', async () => {
+  const csv = 'التاريخ,الوقت,المنصة,العنوان\n2030-01-05,10:00,"فيسبوك، انستجرام",عرض\n2030-01-06,10:00,"linkedin, تويتر",مقال\n2030-01-07,10:00,pinterest,بنترست\n05-01-2030,10:00,facebook,تاريخ غلط\n';
+  const { plans, errors } = await parseCalendar(Buffer.from(csv), 'plan.csv');
+  assert.deepEqual(plans.map((plan) => plan.platform), ['facebook', 'instagram', 'linkedin', 'x']);
+  assert.equal(errors.length, 2);
+  assert.match(errors[0], /صف 4: المنصة «pinterest» غير معروفة/);
+  assert.match(errors[1], /صف 5: التاريخ «05-01-2030»/);
+});
+
+test('the downloadable plan templates import cleanly', async () => {
+  const { readFileSync } = await import('node:fs');
+  for (const name of ['mobde3-plan-template.xlsx', 'mobde3-plan-template.csv']) {
+    const { plans, errors } = await parseCalendar(readFileSync(new URL(`../public/templates/${name}`, import.meta.url)), name);
+    assert.deepEqual(errors, [], name);
+    assert.equal(plans.length, 14, name);
+    assert.ok(plans.every((plan) => plan.status === 'draft' && plan.goal), name);
+  }
+});
+
 test('a post made for a plan row inherits its day and goal, and the row is then taken', async () => {
   const slot = await store.savePlan((await import('../server/domain')).newPlan({ platform: 'instagram', title: 'جدول الأسبوع', scheduledAt: future(3), status: 'draft', goal: 'reach' }));
   const item = await ws.createContent(creator, { title: 'جدول الأسبوع', channels: ['instagram'], captions: {}, creative, slotId: slot.id });

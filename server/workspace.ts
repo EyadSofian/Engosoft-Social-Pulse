@@ -39,11 +39,11 @@ defineColumn('content_items', 'planned_for', 'TEXT');
 /** The calendar plan row this post was made for. */
 defineColumn('content_items', 'slot_id', 'TEXT');
 
-export type Channel = 'facebook' | 'instagram' | 'whatsapp' | 'linkedin' | 'tiktok' | 'snapchat' | 'youtube' | 'website';
+export type Channel = 'facebook' | 'instagram' | 'whatsapp' | 'linkedin' | 'x' | 'tiktok' | 'snapchat' | 'youtube' | 'website';
 /** Channels the sync can prove published; the others are tracked by status only. */
 const TRACKED: Partial<Record<Channel, Platform>> = { facebook: 'facebook', instagram: 'instagram', tiktok: 'tiktok', snapchat: 'snapchat', youtube: 'youtube' };
 
-export interface CreativeRef { requestId: string; directionId: string; imageUrl: string; storyUrl?: string; landscapeUrl?: string; youtubeUrl?: string; model?: string; directionName?: string; svgTemplate?: { id: string; values: Record<string, string>; format?: 'feed' | 'square' | 'story' | 'landscape'; context?: string; outputPreset?: string } }
+export interface CreativeRef { requestId: string; directionId: string; imageUrl: string; storyUrl?: string; landscapeUrl?: string; youtubeUrl?: string; sizes?: Record<string, string>; model?: string; directionName?: string; svgTemplate?: { id: string; values: Record<string, string>; format?: 'feed' | 'square' | 'story' | 'landscape'; context?: string; outputPreset?: string } }
 export interface StoredContent {
   id: string; title: string; status: ContentStatus; departmentId: string | null; ownerId: string;
   channels: Channel[]; captions: Partial<Record<Channel, string>>; creative: CreativeRef | null;
@@ -177,10 +177,30 @@ export async function addVersion(user: AuthUser, contentId: string, input: { ima
   const item = row ? toContent(row) : undefined;
   // A template post's version carries the field values it was exported with, so reopening it edits the latest copy.
   const svgTemplate = (input.studio as { svgTemplate?: CreativeRef['svgTemplate'] } | null)?.svgTemplate;
-  if (item) await db.run('UPDATE content_items SET creative_json=?, updated_at=? WHERE id=?', [JSON.stringify({ ...(item.creative ?? { requestId: '', directionId: '' }), ...(svgTemplate ? { svgTemplate, ...(svgTemplate.format ? { directionId: svgTemplate.format } : {}) } : {}), imageUrl: version.imageUrl, ...(version.storyUrl ? { storyUrl: version.storyUrl } : {}) }), version.createdAt, contentId]);
+  // Sizes were made from the previous design, so a new version starts without them.
+  const { sizes: _stale, ...creative } = item?.creative ?? { requestId: '', directionId: '' };
+  if (item) await db.run('UPDATE content_items SET creative_json=?, updated_at=? WHERE id=?', [JSON.stringify({ ...creative, ...(svgTemplate ? { svgTemplate, ...(svgTemplate.format ? { directionId: svgTemplate.format } : {}) } : {}), imageUrl: version.imageUrl, ...(version.storyUrl ? { storyUrl: version.storyUrl } : {}) }), version.createdAt, contentId]);
   await log(contentId, user.id, 'version', input.note);
   return version;
 }
+/** Where a size also feeds the publishing slots that already exist: the story, link banner and YouTube thumbnail. */
+const SLOT_OF: Record<string, 'storyUrl' | 'landscapeUrl' | 'youtubeUrl'> = { 'instagram-story': 'storyUrl', 'facebook-story': 'storyUrl', 'whatsapp-status': 'storyUrl', 'tiktok-cover': 'storyUrl', 'tiktok-photo': 'storyUrl', 'snapchat-story': 'storyUrl', 'website-banner': 'landscapeUrl', 'facebook-link': 'landscapeUrl', 'youtube-thumbnail-hd': 'youtubeUrl' };
+
+/** Saves (or with null removes) the post's design at one publishing size. */
+export async function setContentSize(user: AuthUser, contentId: string, presetId: string, imageUrl: string | null): Promise<StoredContent> {
+  const item = await getContent(contentId);
+  if (!item || !canEdit(user, item)) throw new WorkspaceError(403, 'لا تملك صلاحية تعديل هذا المحتوى.');
+  requireMutable(item);
+  if (!item.creative) throw new WorkspaceError(409, 'المنشور ليس له تصميم بعد.');
+  const sizes = { ...(item.creative.sizes ?? {}) };
+  if (imageUrl) sizes[presetId] = imageUrl; else delete sizes[presetId];
+  const slot = SLOT_OF[presetId];
+  const creative: CreativeRef = { ...item.creative, sizes, ...(slot && imageUrl && !item.creative[slot] ? { [slot]: imageUrl } : {}) };
+  await db.run('UPDATE content_items SET creative_json=?, updated_at=? WHERE id=?', [JSON.stringify(creative), new Date().toISOString(), contentId]);
+  await log(contentId, user.id, 'version', imageUrl ? `Size ${presetId}` : `Removed size ${presetId}`);
+  return (await getContent(contentId))!;
+}
+
 export const listVersions = async (contentId: string): Promise<ContentVersion[]> => (await db.all('SELECT * FROM content_versions WHERE content_id=? ORDER BY created_at DESC', [contentId]))
   .map((r) => ({ id: String(r.id), contentId: String(r.content_id), imageUrl: String(r.image_url), storyUrl: (r.story_url as string | null) ?? null, studio: parse(r.studio_json, null), note: String(r.note), createdBy: String(r.created_by), createdAt: String(r.created_at) }));
 export const listEvents = async (contentId: string): Promise<ContentEvent[]> => (await db.all('SELECT * FROM content_events WHERE content_id=? ORDER BY created_at', [contentId]))

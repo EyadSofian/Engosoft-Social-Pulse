@@ -40,8 +40,8 @@ import { dayCell, monthCells, weekCells } from '../../lib/calendar';
 import { downloadText, plansToCsv, plansToIcs } from '../../lib/calendarExport';
 import { dateFromKey, dayKeyOf, fmtDay, fmtMonth, fmtTime, fmtWeekdayDate, inZone, num, zoneNow } from '../../lib/format';
 import { occasionsFor, upcomingOccasions, type Occasion } from '../../lib/occasions';
-import { contentTypeLabel, contentTypes, PLATFORMS, platformColor, platformName, statusLabel } from '../../lib/platforms';
-import type { Plan, PlanState, PlanStatus, Platform, Post } from '../../types';
+import { contentTypeLabel, contentTypes, PLAN_PLATFORMS, platformColor, platformName, PLATFORMS, statusLabel } from '../../lib/platforms';
+import type { Plan, PlanPlatform, PlanState, PlanStatus, Post } from '../../types';
 import { AgendaList } from './AgendaList';
 import { BoardView } from './BoardView';
 import { CalendarSide } from './CalendarSide';
@@ -131,7 +131,7 @@ export function CalendarView() {
   const [direction, setDirection] = useState(0);
 
   const [query, setQuery] = useState('');
-  const [platforms, setPlatforms] = useState<Platform[]>(() => (filters.platform === 'all' ? [] : [filters.platform]));
+  const [platforms, setPlatforms] = useState<PlanPlatform[]>(() => (filters.platform === 'all' ? [] : [filters.platform]));
   const [stateFilter, setStateFilter] = useState<StateFilter>('all');
   const [typeFilter, setTypeFilter] = useState('all');
   const [campaign, setCampaign] = useState('all');
@@ -510,7 +510,7 @@ export function CalendarView() {
 
   /* ── Render ──────────────────────────────────────────────────────── */
 
-  const togglePlatform = (platform: Platform) =>
+  const togglePlatform = (platform: PlanPlatform) =>
     setPlatforms((current) => (current.includes(platform) ? current.filter((item) => item !== platform) : [...current, platform]));
 
   // The board needs every column; its cards already carry the day details.
@@ -686,7 +686,7 @@ export function CalendarView() {
               <button type="button" className="pchip" data-active={!platforms.length} aria-pressed={!platforms.length} onClick={() => setPlatforms([])}>
                 <span>كل المنصات</span>
               </button>
-              {PLATFORMS.map((platform) => (
+              {PLAN_PLATFORMS.map((platform) => (
                 <button
                   key={platform}
                   type="button"

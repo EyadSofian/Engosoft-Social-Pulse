@@ -49,6 +49,7 @@ function detectPlatforms(prompt: string): CreativePlatform[] {
   if (/[اإ]نست|instagram|ig\b/.test(text)) found.push('instagram');
   if (/واتس|whatsapp/.test(text)) found.push('whatsapp');
   if (/لينكد|linkedin/.test(text)) found.push('linkedin');
+  if (/تويتر|twitter|(^|\s)(x|إكس|اكس)(\s|$|[،,.])/.test(text)) found.push('x');
   if (/تيك|tiktok/.test(text)) found.push('tiktok');
   if (/سناب|snapchat/.test(text)) found.push('snapchat');
   if (/الموقع|ويب ?سايت|website|blog|مدونة/.test(text)) found.push('website');

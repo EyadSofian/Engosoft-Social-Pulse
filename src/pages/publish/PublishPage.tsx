@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { useState, type JSX } from 'react';
 import { CalendarClock, CheckCircle2, CircleAlert, Clock, ExternalLink, Hand, Image as ImageIcon, Plug, Send, Zap } from 'lucide-react';
 import { Link, useQueryState } from '../../app/router/router';
 import { ChannelIcon } from '../../components/data-display/ChannelIcon';
@@ -10,11 +10,12 @@ import { Tabs } from '../../components/ui/Tabs';
 import { useAuth } from '../../features/auth/AuthProvider';
 import type { PipelineItem } from '../../features/content-pipeline/types';
 import { usePipeline } from '../../features/content-pipeline/usePipeline';
-import { PLATFORMS, PublishDialog, usePublishingBoard, type JobRow, type PublishAccount, type QueueRow } from '../../features/publishing/PublishDialog';
+import { PLATFORMS, platformOf, PublishDialog, usePublishingBoard, type JobRow, type PublishAccount, type PublishWay, type QueueRow } from '../../features/publishing/PublishDialog';
 import { useClock } from '../../features/workspace/hooks';
 import { useI18n } from '../../i18n/I18nProvider';
 import { api } from '../../lib/api';
 import { parseTimestamp } from '../../lib/format';
+import { Journey } from '../../features/content-pipeline/Journey';
 import { PageHeader } from '../../shell/Header';
 import { usePageMeta } from '../../shell/ShellContext';
 
@@ -36,6 +37,7 @@ export function PublishPage() {
 
   const live = items ?? [];
   const ready = live.filter((item) => item.status === 'approved');
+  const inReview = live.filter((item) => item.status === 'ready_for_review').length;
   const scheduled = live.filter((item) => item.status === 'scheduled').sort((a, b) => parseTimestamp(a.scheduledAt ?? a.updatedAt) - parseTimestamp(b.scheduledAt ?? b.updatedAt));
   const queueOf = (id: string) => (board?.queue ?? []).filter((row) => row.contentId === id);
   const problems = (board?.queue ?? []).filter((row) => row.state === 'failed').length + (board?.jobs ?? []).filter((job) => job.state === 'failed' || job.state === 'unknown').length;
@@ -54,6 +56,9 @@ export function PublishPage() {
         description={t('Send approved posts out now or at a time. Facebook and Instagram publish themselves at the chosen time.', 'انشر المنشورات المعتمدة الآن أو في موعد. فيسبوك وإنستجرام يُنشران تلقائيًا في الموعد المحدد.')}
         actions={<ButtonLink to="/calendar" icon={<CalendarClock size={15} />}>{t('Calendar', 'التقويم')}</ButtonLink>}
       />
+
+      {items && <Journey items={live} here={['ready', 'scheduled']} />}
+      <PublishWays />
 
       {board && <button type="button" className="publish-summary" onClick={() => setQuery({ view: 'accounts' })}>
         <Zap size={14} /> {t(`${autoCount} accounts publish by themselves`, `${autoCount} حساب ينشر تلقائيًا`)}
@@ -80,10 +85,12 @@ export function PublishPage() {
         <Thumb item={item} />
         <div className="publish-card__body">
           <Link to={`/content/${item.id}`} className="publish-card__title" dir="auto">{item.title}</Link>
-          <span className="publish-card__meta"><span className="publish-channels">{item.channels.map((channel) => <ChannelIcon key={channel} channel={channel} size={14} />)}</span><Badge tone="success">{t('Approved', 'معتمد')}</Badge></span>
+          <span className="publish-card__meta"><Badge tone="success">{t('Approved', 'معتمد')}</Badge></span>
+          <ul className="publish-card__ways">{item.channels.map((channel) => <li key={channel}><ChannelIcon channel={channel} size={13} /> <WayLabel channel={channel} /></li>)}</ul>
           <Button variant="primary" size="sm" icon={<Send size={14} />} onClick={() => setOpen(item)}>{t('Publish or schedule', 'انشر أو جدول')}</Button>
         </div>
-      </article>)}</div> : <EmptyState icon={<CheckCircle2 size={22} />} title={t('Nothing is waiting to be published.', 'لا شيء ينتظر النشر.')} text={t('Posts appear here once Marketing approves them.', 'تظهر المنشورات هنا بعد اعتمادها من التسويق.')} />)}
+      </article>)}</div> : <EmptyState icon={<CheckCircle2 size={22} />} title={t('Nothing is waiting to be published.', 'لا شيء ينتظر النشر.')} text={t('Posts appear here once Marketing approves them.', 'تظهر المنشورات هنا بعد اعتمادها من التسويق.')}
+        action={inReview > 0 ? <ButtonLink to="/content?tab=review" variant="secondary">{t(`${inReview} waiting for approval`, `${inReview} مستني الاعتماد`)}</ButtonLink> : undefined} />)}
 
       {items && view === 'scheduled' && (scheduled.length ? <ul className="publish-schedule">{scheduled.map((item) => {
         const rows = queueOf(item.id).filter((row) => row.state !== 'cancelled');
@@ -112,6 +119,27 @@ export function PublishPage() {
       {open && <PublishDialog item={open} open onClose={() => setOpen(null)} onDone={done} />}
     </div>
   );
+}
+
+const WAYS: Record<PublishWay, { icon: JSX.Element; en: string; ar: string; detailEn: string; detailAr: string }> = {
+  auto: { icon: <Zap size={13} />, en: 'Publishes itself', ar: 'تلقائي', detailEn: 'Facebook and Instagram: pick the accounts and the time, the system posts it.', detailAr: 'فيسبوك وإنستجرام: اختار الحسابات والميعاد، والسيستم بينشر لوحده.' },
+  post_page: { icon: <Send size={13} />, en: 'From the post page', ar: 'من صفحة المنشور', detailEn: 'TikTok, YouTube, Snapchat: published from the post with each platform’s options.', detailAr: 'تيك توك ويوتيوب وسناب: بتنشره من صفحة المنشور باختيارات كل منصة.' },
+  manual: { icon: <Hand size={13} />, en: 'By hand', ar: 'يدوي', detailEn: 'X, LinkedIn, WhatsApp, the website: it goes on the calendar and someone posts it.', detailAr: 'X ولينكدإن وواتساب والموقع: بيتحط في التقويم وحد من الفريق بينشره بإيده.' },
+};
+
+/** The three ways a post leaves the platform, so nobody wonders why TikTok is not "automatic". */
+function PublishWays() {
+  const { t } = useI18n();
+  return <ul className="publish-ways">{(Object.keys(WAYS) as PublishWay[]).map((way) => <li key={way} data-way={way}>
+    <b>{WAYS[way].icon} {t(WAYS[way].en, WAYS[way].ar)}</b>
+    <small>{t(WAYS[way].detailEn, WAYS[way].detailAr)}</small>
+  </li>)}</ul>;
+}
+
+function WayLabel({ channel }: { channel: PipelineItem['channels'][number] }) {
+  const { t } = useI18n();
+  const way = WAYS[platformOf(channel).way];
+  return <span className="publish-way" data-way={platformOf(channel).way}>{way.icon} {t(way.en, way.ar)}</span>;
 }
 
 function WhenLabel({ iso }: { iso: string }) {

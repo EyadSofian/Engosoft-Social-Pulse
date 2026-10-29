@@ -59,6 +59,7 @@ export const channelName: Record<Channel, string> = {
   instagram: 'Instagram',
   whatsapp: 'WhatsApp',
   linkedin: 'LinkedIn',
+  x: 'X',
   tiktok: 'TikTok',
   snapchat: 'Snapchat',
   youtube: 'YouTube',

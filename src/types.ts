@@ -1,4 +1,6 @@
 export type Platform = 'facebook' | 'instagram' | 'tiktok' | 'snapchat' | 'youtube' | 'website';
+/** A plan row can also be for a platform with no connector yet: planned and published by hand, never measured. */
+export type PlanPlatform = Platform | 'linkedin' | 'x';
 export type PlanState = 'published' | 'upcoming' | 'due' | 'missed' | 'draft' | 'cancelled';
 export type PlanStatus = 'draft' | 'approved' | 'scheduled' | 'published' | 'cancelled';
 export type ConnectorStatus = 'connected' | 'needs_setup' | 'error';
@@ -33,7 +35,7 @@ export interface ApiPost {
 
 export interface ApiPlan {
   id: string;
-  platform: Platform;
+  platform: PlanPlatform;
   accountId: string;
   title: string;
   caption: string;

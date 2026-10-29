@@ -29,6 +29,7 @@ export const PLATFORMS: { channel: Channel; name: string; way: PublishWay }[] = 
   { channel: 'youtube', name: 'YouTube', way: 'post_page' },
   { channel: 'snapchat', name: 'Snapchat', way: 'post_page' },
   { channel: 'linkedin', name: 'LinkedIn', way: 'manual' },
+  { channel: 'x', name: 'X', way: 'manual' },
   { channel: 'whatsapp', name: 'WhatsApp', way: 'manual' },
   { channel: 'website', name: 'Website', way: 'manual' },
 ];

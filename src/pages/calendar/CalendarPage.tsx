@@ -67,17 +67,8 @@ export function CalendarPage() {
   );
 }
 
-/** A CSV the team fills in Excel: required columns first, then goal, caption, owner and notes. */
+/** The Excel template: a Calendar sheet with dropdowns for platform and goal, and an instructions sheet. */
 function downloadTemplate() {
-  const rows = [
-    ['التاريخ', 'الوقت', 'المنصة', 'العنوان', 'الهدف', 'النص', 'المسؤول', 'ملاحظات'],
-    ['2026-11-03', '19:00', 'facebook,instagram', 'دورة CFM تبدأ الأسبوع القادم', 'تسجيلات', '', '', ''],
-    ['2026-11-05', '20:00', 'tiktok', 'نصيحة هندسية سريعة', 'وصول', '', '', ''],
-    ['2026-11-07', '18:00', 'instagram', 'شهادات خريجي الدفعة', 'تفاعل', '', '', ''],
-  ];
-  const csv = '\uFEFF' + rows.map((row) => row.map((cell) => (/[",\n]/.test(cell) ? `"${cell.replace(/"/g, '""')}"` : cell)).join(',')).join('\n');
-  const url = URL.createObjectURL(new Blob([csv], { type: 'text/csv;charset=utf-8' }));
-  const link = Object.assign(document.createElement('a'), { href: url, download: 'mobde3-plan-template.csv' });
+  const link = Object.assign(document.createElement('a'), { href: '/templates/mobde3-plan-template.xlsx', download: 'mobde3-plan-template.xlsx' });
   link.click();
-  URL.revokeObjectURL(url);
 }

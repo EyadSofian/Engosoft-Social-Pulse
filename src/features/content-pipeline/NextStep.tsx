@@ -10,9 +10,9 @@ import type { PipelineDetail } from './types';
 
 type Stage = 'draft' | 'review' | 'approved' | 'scheduled' | 'published';
 const STAGES: { id: Stage; en: string; ar: string }[] = [
-  { id: 'draft', en: 'Draft', ar: 'مسودة' },
-  { id: 'review', en: 'Marketing review', ar: 'مراجعة التسويق' },
-  { id: 'approved', en: 'Approved', ar: 'معتمد' },
+  { id: 'draft', en: 'Being made', ar: 'بيتعمل' },
+  { id: 'review', en: 'Approval', ar: 'الاعتماد' },
+  { id: 'approved', en: 'Ready', ar: 'جاهز للنشر' },
   { id: 'scheduled', en: 'Scheduled', ar: 'مجدول' },
   { id: 'published', en: 'Published', ar: 'منشور' },
 ];
@@ -118,7 +118,9 @@ export function NextStep({ item, busy, onMove, onPublish }: { item: PipelineDeta
               onClick={() => void go('approved', mode === 'when' && whenOk ? { scheduledAt: iso(when) } : {})}>
               {mode === 'when' ? t('Approve and schedule', 'اعتمد وجدوِل') : t('Approve', 'اعتمد')}
             </Button>
-            {mode !== 'when' && item.canSchedule && <Button variant="secondary" icon={<CalendarClock size={15} />} disabled={busy} onClick={() => setMode('when')}>{t('Approve with a publish time', 'اعتمد مع ميعاد النشر')}</Button>}
+            {/* Approving and publishing is one decision for marketing: approve, then pick accounts and a time right away. */}
+            {mode !== 'when' && onPublish && (item.canPublish || item.canSchedule) && <Button variant="secondary" icon={<Send size={15} />} disabled={busy} onClick={() => void onMove('approved', {}).then((ok) => { if (ok) onPublish(); })}>{t('Approve, then publish', 'اعتمد وانشر')}</Button>}
+            {mode !== 'when' && !onPublish && item.canSchedule && <Button variant="secondary" icon={<CalendarClock size={15} />} disabled={busy} onClick={() => setMode('when')}>{t('Approve with a publish time', 'اعتمد مع ميعاد النشر')}</Button>}
             {mode === 'when' && <Button variant="ghost" disabled={busy} onClick={() => { setMode(''); setWhen(''); }}>{t('Without a time', 'بدون ميعاد')}</Button>}
             {can('changes_requested') && <Button variant="ghost" disabled={busy} onClick={() => setMode('changes')}>{t('Request changes', 'اطلب تعديلًا')}</Button>}
             {can('cancelled') && <Button variant="ghost" disabled={busy} onClick={() => setMode('cancel')}>{t('Cancel', 'ألغِ')}</Button>}

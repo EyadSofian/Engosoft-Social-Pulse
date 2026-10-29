@@ -6,8 +6,8 @@ import { slotDay, WEEKDAY_NAMES, WEEK_ORDER, type Slot } from '../../lib/analyti
 import { monthCells } from '../../lib/calendar';
 import { compact, dateFromKey, fmt, fmtDayShort, fmtMonth, fmtTime, hourLabel, num } from '../../lib/format';
 import { hijriLabel, occasionKindLabel, type Occasion } from '../../lib/occasions';
-import { PLATFORMS, platformColor, platformName } from '../../lib/platforms';
-import type { Plan, Platform, Post } from '../../types';
+import { PLAN_PLATFORMS, platformColor, platformName } from '../../lib/platforms';
+import type { Plan, PlanPlatform, Post } from '../../types';
 import { OccasionTag, SideSection, type CalendarActions } from './parts';
 
 /* ── Mini month ────────────────────────────────────────────────────── */
@@ -62,11 +62,11 @@ function MiniCalendar({ anchor, selected, todayKey, plansByDay, onPick }: { anch
 /* ── Platform mix ──────────────────────────────────────────────────── */
 
 function PlatformMix({ plans }: { plans: Plan[] }) {
-  const counts = new Map<Platform, number>();
+  const counts = new Map<PlanPlatform, number>();
   for (const plan of plans) if (plan.computedState !== 'cancelled') counts.set(plan.platform, (counts.get(plan.platform) ?? 0) + 1);
   const total = [...counts.values()].reduce((sum, value) => sum + value, 0);
   if (!total) return <p className="side__empty">لا توجد منشورات في هذه الفترة بعد.</p>;
-  const shown = PLATFORMS.filter((platform) => counts.has(platform));
+  const shown = PLAN_PLATFORMS.filter((platform) => counts.has(platform));
   return (
     <div className="mix">
       <div className="mix__bar" role="img" aria-label={shown.map((platform) => `${platformName[platform]} ${counts.get(platform)}`).join('، ')}>

@@ -1,8 +1,5 @@
 /** Brand checks for one logo placement on one creative. Any error blocks export. */
-import {
-  backgroundVerdict, clearSpaceFor, getLogoVariant, isLogoVariantId, logoEdgeMargin, logoHeightFor, logoMainFill,
-  minimumLogoWidth, type BackgroundVerdict, type LogoVariantId,
-} from '../brand/registry.js';
+import { backgroundVerdict, clearSpaceFor, getLogoVariant, isLogoVariantId, logoEdgeMargin, logoHeightFor, logoMainFill, minimumLogoWidth, type BackgroundVerdict, type LogoVariantId, logoSizeBasis } from '../brand/registry.js';
 import { loadApprovedLogo } from '../brand/integrity.js';
 import { MODULE_VERSIONS } from '../versions.js';
 import type { LogoPlacement } from './compositor.js';
@@ -81,7 +78,7 @@ export async function validateLogoPlacement(input: LogoValidationInput): Promise
   if (safe && (logoBox.y < safe.top || logoBox.x < safe.left || image.width - right < safe.right || image.height - bottom < safe.bottom)) {
     error('outside_safe_area', 'Logo enters the platform UI area');
   }
-  const minimumWidth = minimumLogoWidth(variant, image.width);
+  const minimumWidth = minimumLogoWidth(variant, logoSizeBasis(image.width, image.height));
   if (width < minimumWidth) error('below_minimum_size', `Logo is ${width}px wide; minimum for this canvas is ${minimumWidth}px (provisional rule)`);
 
   const clearSpacePx = clearSpaceFor(variant, width);

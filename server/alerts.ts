@@ -1,5 +1,5 @@
 import { addAlert, dismissPlanAlerts, getAlerts, getConnectorStatuses, getObserved, getPlans, markAlertDelivered } from './store.js';
-import { planState } from './domain.js';
+import { isPlatform, planState } from './domain.js';
 
 async function notifyTelegram(message:string):Promise<boolean>{
  const bot=process.env.TELEGRAM_BOT_TOKEN?.trim(),chat=process.env.TELEGRAM_CHAT_ID?.trim();if(!bot||!chat)return false;
@@ -21,7 +21,7 @@ export async function checkAlerts(now=new Date()):Promise<number>{
    if(minutes>0 && minutes<=60){kind='upcoming';message=`تذكير: منشور «${plan.title}» على ${plan.platform} موعده خلال ${Math.ceil(minutes)} دقيقة.`;}
    if(state==='missed'){
      kind='missed';const source=statuses.get(plan.platform);
-     message=`تنبيه: لم يتم تأكيد نشر «${plan.title}» على ${plan.platform} بعد موعده.${source!=='connected'?' الربط غير متاح حاليًا؛ راجع الصفحة يدويًا.':''}`;
+     message=`تنبيه: لم يتم تأكيد نشر «${plan.title}» على ${plan.platform} بعد موعده.${!isPlatform(plan.platform)?' المنصة دي بتتنشر يدوي: لما يتنشر حط رابطه في الخطة.':source!=='connected'?' الربط غير متاح حاليًا؛ راجع الصفحة يدويًا.':''}`;
    }
    if(!kind)continue;
    const alert=await addAlert(plan.id,kind,message);if(alert)created++;

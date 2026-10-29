@@ -1,8 +1,10 @@
 import { createHash, randomUUID } from 'node:crypto';
-import type { ObservedPost, Plan, Platform } from './types.js';
+import type { ObservedPost, Plan, Platform, PlanPlatform } from './types.js';
 
 export const platforms: Platform[]=['facebook','instagram','tiktok','snapchat','youtube','website'];
 export const isPlatform=(s:string):s is Platform=>platforms.includes(s as Platform);
+export const planPlatforms: PlanPlatform[]=[...platforms,'linkedin','x'];
+export const isPlanPlatform=(s:string):s is PlanPlatform=>planPlatforms.includes(s as PlanPlatform);
 export function canonicalUrl(value:string):string {
   try { const u=new URL(value); return `${u.hostname.replace(/^www\./,'').toLowerCase()}${u.pathname.replace(/\/$/,'')}`; } catch { return ''; }
 }
