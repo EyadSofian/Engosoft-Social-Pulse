@@ -1,6 +1,7 @@
 import { useEffect, useRef, useState } from 'react';
 import { AnimatePresence, motion } from 'motion/react';
-import { ArrowLeft, ArrowRight, CalendarDays, Coins, GraduationCap, ImagePlus, LayoutTemplate, Sparkles, Upload, Wand2 } from 'lucide-react';
+import { ArrowLeft, ArrowRight, CalendarDays, Coins, Film, GraduationCap, ImagePlus, LayoutTemplate, Sparkles, Upload, Wand2 } from 'lucide-react';
+import { ReelMode } from '../../features/reels/ReelMode';
 import { GoalPicker } from '../../features/content-pipeline/PostPlan';
 import { clearPostPlan, readPostPlan, takePostPlan, writePostPlan, type PostPlan } from '../../features/content/postPlan';
 import { fromInputValue, toInputValue } from '../../lib/format';
@@ -29,7 +30,7 @@ import { DEFAULT_ENGINE_SETTINGS, type EngineSettings } from '../../domain/desig
 
 type Stage = 'compose' | 'generating';
 /** The three ways to make a post; `choose` is the first screen for people who may use more than one. */
-type Mode = 'choose' | 'ai' | 'template' | 'upload';
+type Mode = 'choose' | 'ai' | 'template' | 'upload' | 'reel';
 const OBJECTIVES: { value: Objective | 'auto'; ar: string; en: string }[] = [
   { value: 'auto', ar: 'حدده من الطلب', en: 'Detect from prompt' },
   { value: 'course_launch', ar: 'إعلان دورة', en: 'Course announcement' },
@@ -79,7 +80,7 @@ export function CreationHomePage() {
   const { can } = useAuth();
   // Each way of creating is its own permission; a person with one way goes straight to it.
   const free = can('design.free');
-  const ways = ([['ai', free], ['template', can('design.templates')], ['upload', can('design.upload')]] as const).filter(([, allowed]) => allowed).map(([way]) => way);
+  const ways = ([['ai', free], ['template', can('design.templates')], ['upload', can('design.upload')], ['reel', can('design.upload')]] as const).filter(([, allowed]) => allowed).map(([way]) => way);
   const upload = useRef<HTMLInputElement>(null);
   const [prompt, setPrompt] = useState(() => getActiveCreative()?.prompt ?? '');
   const [objective, setObjective] = useState<Objective | 'auto'>('auto');
@@ -168,12 +169,14 @@ export function CreationHomePage() {
     ai: ['Describe the post', 'اكتب فكرة المنشور'],
     template: [free ? 'Fill a ready template' : 'What kind of post is it?', free ? 'املأ قالبًا جاهزًا' : 'ما نوع المنشور؟'],
     upload: ['Upload your finished design', 'ارفع تصميمك الجاهز'],
+    reel: ['Upload a Reel', 'ارفع ريل'],
   };
   const lead: Record<Mode, [string, string]> = {
     choose: ['Pick one way. You can come back and change it any time.', 'اختر طريقة واحدة، ويمكنك الرجوع وتغييرها في أي وقت.'],
     ai: ['Write the idea in your own words. We check Odoo, write the copy, design two options and place the official logo.', 'اكتب الفكرة بكلماتك. نراجع بيانات Odoo ونكتب النص ونصمّم خيارين ونضع الشعار الرسمي.'],
     template: ['Pick a template, change its text and photos, then send it for approval. No AI cost.', 'اختر قالبًا، غيّر نصوصه وصوره، ثم أرسله للاعتماد. بدون تكلفة ذكاء اصطناعي.'],
     upload: ['Already designed it? Upload the image, choose the platforms and send it for approval.', 'صمّمته بالفعل؟ ارفع الصورة واختر المنصات وأرسله للاعتماد.'],
+    reel: ['Upload the finished video, check it fits each platform, pick a cover, and write the caption yourself or with AI from the idea or the script.', 'ارفع الفيديو الجاهز، اتأكد إنه مناسب لكل منصة، اختار غلاف، واكتب الكلام بإيدك أو بالذكاء الاصطناعي من الفكرة أو السكريبت.'],
   };
   return <div className="u-stack u-stack--lg creative-home">
     <header className="create-hero">
@@ -208,10 +211,17 @@ export function CreationHomePage() {
         <small>{t('Designed it elsewhere? Upload the image and send it for approval.', 'صمّمته في برنامج آخر؟ ارفع الصورة وأرسلها للاعتماد.')}</small>
         <em>{t('PNG, JPEG or WebP, up to 12 MB', 'PNG أو JPEG أو WebP حتى 12 ميجابايت')}</em>
       </button>}
+      {ways.includes('reel') && <button type="button" className="create-method glass" onClick={() => setMode('reel')}>
+        <span className="create-method__icon" data-tone="violet"><Film size={22} /></span>
+        <b>{t('Upload a Reel', 'ارفع ريل / فيديو')}</b>
+        <small>{t('A finished vertical video for Instagram, Facebook, TikTok, Snapchat or YouTube Shorts.', 'فيديو عمودي جاهز لإنستجرام وفيسبوك وتيك توك وسناب ويوتيوب شورتس.')}</small>
+        <em>{t('MP4, 9:16, up to 200 MB', 'MP4، 9:16، لحد 200 ميجابايت')}</em>
+      </button>}
       {!ways.length && <p className="u-sm u-muted">{t('No way of creating posts is part of your permissions yet. Ask an administrator.', 'لا توجد طريقة إنشاء ضمن صلاحياتك بعد. اطلبها من مسؤول النظام.')}</p>}
     </div>}
     {mode !== 'choose' && stage === 'compose' && <PostDetails key={planKey} />}
     {mode === 'upload' && <UploadMode />}
+    {mode === 'reel' && <ReelMode />}
     {mode === 'template' && <TemplateMode initialId={query.get('svgTemplate')} />}
     {mode === 'ai' && <div className={stage === 'compose' ? 'create-layout' : 'create-layout create-layout--single'}>
     <div className="creative-home__hero">

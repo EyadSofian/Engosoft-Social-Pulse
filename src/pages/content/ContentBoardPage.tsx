@@ -1,5 +1,6 @@
 import { PublishContent } from '../../features/publishing/PublishContent';
 import { SizesPanel } from '../../features/creative-studio/SizesPanel';
+import { isReel, ReelPlayer } from '../../features/reels/ReelPlayer';
 import { PublishDialog } from '../../features/publishing/PublishDialog';
 import { ChannelIcon } from '../../components/data-display/ChannelIcon';
 import { GoalBadge, PostPlanCard } from '../../features/content-pipeline/PostPlan';
@@ -167,10 +168,10 @@ function ContentDrawer({ id, team, onClose, onChanged }: { id: string; team: Tea
         {/* What happens next comes first: it was below a tall preview and easy to miss. */}
         {publishing && <PublishDialog item={item} open onClose={() => setPublishing(false)} onDone={() => { void load(); onChanged(); }} />}
         <NextStep key={item.status} item={item} busy={busy} onMove={move} onPublish={can('content.publish') || can('content.schedule') ? () => setPublishing(true) : undefined} />
-        <div className="content-drawer__media">
+        {isReel(item.creative) ? <ReelPlayer contentId={item.id} cover={image ?? undefined} /> : <div className="content-drawer__media">
           {image ? <img src={image} alt={item.title} /> : <span className="board-card__placeholder"><ImageIcon size={26} /></span>}
           {item.creative?.storyUrl && <img className="content-drawer__story" src={item.creative.storyUrl} alt="9:16" />}
-        </div>
+        </div>}
         {item.creative?.youtubeUrl && <a className="ui-link" href={item.creative.youtubeUrl} download>{t('Download YouTube thumbnail 16:9', 'نزّل صورة يوتيوب 16:9')}</a>}
         {item.editable && item.creative && (item.creative.svgTemplate ? can('design.templates') : can('design.free')) && !['published', 'archived', 'cancelled'].includes(item.status) && <Button variant="secondary" onClick={() => navigate(item.creative!.svgTemplate ? `/library/templates/${item.creative!.svgTemplate.id}?content=${item.id}` : `/studio/${item.id}`)}><Paintbrush size={15} /> {item.creative.requestId === 'reference-design' ? t('Generate a new version from the reference', 'ولّد نسخة جديدة من المرجع') : item.creative.svgTemplate ? t('Edit the template', 'عدّل في القالب') : t('Open in Studio', 'افتح في الاستوديو')}</Button>}
 
@@ -180,7 +181,7 @@ function ContentDrawer({ id, team, onClose, onChanged }: { id: string; team: Tea
 
         <PostPlanCard key={`${item.goal}-${item.plannedFor}`} item={item} onSaved={() => { void load(); onChanged(); }} />
         <PublishContent item={item} />
-        <SizesPanel item={item} onChanged={() => { void load(); onChanged(); }} />
+        {!isReel(item.creative) && <SizesPanel item={item} onChanged={() => { void load(); onChanged(); }} />}
         {error && <p role="alert" className="creative-home__error">{error}</p>}
 
         {item.versions.length > 1 && <section className="content-drawer__section content-drawer__section--late"><h3>{t('Versions', 'النسخ')}</h3>

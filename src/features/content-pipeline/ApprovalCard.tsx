@@ -1,6 +1,6 @@
 import { ChannelIcon } from '../../components/data-display/ChannelIcon';
 import { GoalBadge } from './PostPlan';
-import { BarChart3, CalendarClock, Check, Clock3, Hourglass, Image as ImageIcon, PenLine, Send } from 'lucide-react';
+import { BarChart3, CalendarClock, Check, Clock3, Film, Hourglass, Image as ImageIcon, PenLine, Send } from 'lucide-react';
 import { Button } from '../../components/ui/Button';
 import { useI18n } from '../../i18n/I18nProvider';
 import { CHANNEL_LABEL, STATUS_LABEL, type PipelineItem } from './types';
@@ -55,6 +55,7 @@ export function ApprovalCard({
         >
           {tx(STATUS_LABEL[item.status])}
         </span>
+        {item.creative?.requestId === 'reel' && <span className="ca-card__reel"><Film size={12} /> {t('Reel', 'ريل')}</span>}
       </button>
       <div className="ca-card__body">
         <button
