@@ -433,3 +433,17 @@
 .accounts-card__dot { width: 8px; height: 8px; border-radius: 50%; background: var(--success); }
 .accounts-card li[data-state='warn'] .accounts-card__dot { background: var(--warning); }
 .accounts-card footer { padding-top: var(--sp-2); border-top: 1px solid var(--border); }
+
+/* The three publishing ways, explained once at the top of Publishing */
+.publish-ways { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 10px; margin: 0; padding: 0; list-style: none; }
+.publish-ways li { display: grid; gap: 3px; padding: 10px 12px; border: 1px solid var(--border); border-radius: 12px; background: var(--surface-subtle); }
+.publish-ways b { display: inline-flex; align-items: center; gap: 6px; font-size: 13px; }
+.publish-ways small { color: var(--text-muted); font-size: 12px; line-height: 1.5; }
+.publish-ways li[data-way='auto'] b { color: var(--success-ink); }
+.publish-ways li[data-way='post_page'] b { color: var(--brand-ink); }
+@media (max-width: 760px) { .publish-ways { grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 6px; } .publish-ways li { padding: 8px; } .publish-ways small { display: none; } }
+.publish-card__ways { display: grid; gap: 4px; margin: 0; padding: 0; list-style: none; font-size: 12px; }
+.publish-card__ways li { display: flex; align-items: center; gap: 6px; }
+.publish-way { display: inline-flex; align-items: center; gap: 4px; color: var(--text-muted); }
+.publish-way[data-way='auto'] { color: var(--success-ink); }
+.publish-way[data-way='post_page'] { color: var(--brand-ink); }

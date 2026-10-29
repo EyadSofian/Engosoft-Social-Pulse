@@ -201,14 +201,14 @@ function FutureCard() {
       <CardHeader
         title={
           <span className="u-row">
-            <ChannelIcon channel="linkedin" size={18} /> LinkedIn
+            <ChannelIcon channel="linkedin" size={18} /> LinkedIn · <ChannelIcon channel="x" size={16} /> X
           </span>
         }
         description={t('Future integration', 'ربط مستقبلي')}
         actions={<Badge>{t('Not available yet', 'غير متاح بعد')}</Badge>}
       />
       <CardBody>
-        <p className="u-sm u-muted">{t('LinkedIn content can be planned and approved today, but there is no connector, so its posts are not measured. X is also planned.', 'يمكن تخطيط محتوى LinkedIn واعتماده اليوم، لكن لا يوجد موصل، فلا تُقاس منشوراته. X مخطط له أيضًا.')}</p>
+        <p className="u-sm u-muted">{t('LinkedIn and X posts can be made, approved and put on the calendar today, and someone publishes them by hand. There is no connector yet, so they are not measured.', 'منشورات LinkedIn و X بتتعمل وتتعتمد وتتحط في التقويم من النهارده، وحد من الفريق بينشرها يدوي. لسه مفيش ربط، فأرقامها مش بتتقاس.')}</p>
       </CardBody>
     </Card>
   );

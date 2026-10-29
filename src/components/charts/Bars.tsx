@@ -45,17 +45,20 @@ export function ColumnChart({ data, label, format = String, height = 140 }: { da
         <span>{data[0]?.label}</span>
         <span>{data[data.length - 1]?.label}</span>
       </div>
-      <table className="sr-only">
-        <caption>{label}</caption>
-        <tbody>
-          {data.map((datum) => (
-            <tr key={datum.key}>
-              <th scope="row">{datum.label}</th>
-              <td>{format(datum.value)}</td>
-            </tr>
-          ))}
-        </tbody>
-      </table>
+      {/* A table ignores the 1px box, so the wrapper is what hides it; otherwise its rows stretch the page. */}
+      <div className="sr-only">
+        <table>
+          <caption>{label}</caption>
+          <tbody>
+            {data.map((datum) => (
+              <tr key={datum.key}>
+                <th scope="row">{datum.label}</th>
+                <td>{format(datum.value)}</td>
+              </tr>
+            ))}
+          </tbody>
+        </table>
+      </div>
     </figure>
   );
 }

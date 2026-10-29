@@ -2,9 +2,9 @@ import type { CSSProperties } from 'react';
 import { Globe } from 'lucide-react';
 import { BRAND_PATHS } from '../../lib/platformIcons';
 import { platformColor, platformName } from '../../lib/platforms';
-import type { Platform } from '../../types';
+import type { PlanPlatform } from '../../types';
 
-export function PlatformIcon({ platform, size = 16 }: { platform: Platform; size?: number }) {
+export function PlatformIcon({ platform, size = 16 }: { platform: PlanPlatform; size?: number }) {
   if (platform === 'website') return <Globe size={size} strokeWidth={1.9} aria-hidden />;
   return (
     <svg viewBox="0 0 24 24" width={size} height={size} fill="currentColor" aria-hidden>
@@ -16,7 +16,7 @@ export function PlatformIcon({ platform, size = 16 }: { platform: Platform; size
 const ICON_SIZE = { xs: 11, sm: 14, md: 17, lg: 22 } as const;
 
 /** The platform glyph on its tinted tile — identity never rests on colour alone. */
-export function PlatformBadge({ platform, size = 'md' }: { platform: Platform; size?: keyof typeof ICON_SIZE }) {
+export function PlatformBadge({ platform, size = 'md' }: { platform: PlanPlatform; size?: keyof typeof ICON_SIZE }) {
   return (
     <span
       className={`pbadge pbadge--${size}`}

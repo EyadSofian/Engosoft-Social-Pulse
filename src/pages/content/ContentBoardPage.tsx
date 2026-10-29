@@ -1,4 +1,5 @@
 import { PublishContent } from '../../features/publishing/PublishContent';
+import { SizesPanel } from '../../features/creative-studio/SizesPanel';
 import { PublishDialog } from '../../features/publishing/PublishDialog';
 import { ChannelIcon } from '../../components/data-display/ChannelIcon';
 import { GoalBadge, PostPlanCard } from '../../features/content-pipeline/PostPlan';
@@ -16,34 +17,28 @@ import { api, errorMessage } from '../../lib/api';
 import { ApprovalCard } from '../../features/content-pipeline/ApprovalCard';
 import { ContentCopilot } from '../../features/content/ContentCopilot';
 import { NextStep, type MoveInput } from '../../features/content-pipeline/NextStep';
+import { Journey, JOURNEY, NextForYou, stageOf, type JourneyStage } from '../../features/content-pipeline/Journey';
 import { PageHeader } from '../../shell/Header';
 import { usePageMeta } from '../../shell/ShellContext';
 import { useOverlay } from '../../hooks/ui';
 
 type Scope = 'all' | 'mine' | 'department';
-type Tab = 'all' | 'review' | 'approved' | 'rejected' | 'drafts';
-
-/** Content grouped by where it stands with marketing: waiting, approved (incl. scheduled and live), not approved, still being made. */
-const TABS: { id: Tab; statuses: ContentStatus[]; en: string; ar: string; tone: string }[] = [
-  { id: 'all', statuses: [], en: 'All', ar: 'الكل', tone: 'neutral' },
-  { id: 'review', statuses: ['ready_for_review'], en: 'Needs approval', ar: 'بانتظار الاعتماد', tone: 'brand' },
-  { id: 'approved', statuses: ['approved', 'scheduled', 'published'], en: 'Approved', ar: 'معتمد', tone: 'success' },
-  { id: 'rejected', statuses: ['changes_requested', 'cancelled'], en: 'Not approved', ar: 'غير معتمد', tone: 'warning' },
-  { id: 'drafts', statuses: ['idea', 'draft', 'in_production'], en: 'Drafts', ar: 'مسودات', tone: 'neutral' },
-];
-const tabOf = (status: ContentStatus): Tab => TABS.find((tab) => tab.statuses.includes(status))?.id ?? 'all';
+type Tab = 'all' | JourneyStage;
+/** Older links used approval-state tabs; they open the matching stop on the journey. */
+const LEGACY_TAB: Record<string, Tab> = { drafts: 'making', approved: 'ready', rejected: 'making' };
 
 export function ContentBoardPage({ openId }: { openId?: string }) {
   const { t, tx, date } = useI18n();
   const { user, departments, can } = useAuth();
   const { navigate } = useRouter();
-  usePageMeta(t('Content approval', 'اعتماد المحتوى'), [{ label: t('Content approval', 'اعتماد المحتوى') }]);
+  usePageMeta(t('Content & approval', 'المحتوى والاعتماد'), [{ label: t('Content & approval', 'المحتوى والاعتماد') }]);
   const [items, setItems] = useState<PipelineItem[] | null>(null);
   const [team, setTeam] = useState<TeamMember[]>([]);
   const [error, setError] = useState('');
   const [params, setParams] = useQueryState();
   const scope = (['all', 'mine', 'department'].includes(params.get('scope') || '') ? params.get('scope') : 'all') as Scope;
-  const tab = TABS.some(x => x.id === params.get('tab')) ? params.get('tab') as Tab : null;
+  const requestedTab = params.get('tab') || '';
+  const tab: Tab | null = requestedTab === 'all' || JOURNEY.some((stage) => stage.id === requestedTab) ? requestedTab as Tab : LEGACY_TAB[requestedTab] ?? null;
   const query = params.get('q') || '';
   const [limit, setLimit] = useState(40);
   const setScope = (value: Scope) => { setParams({ scope: value }); setLimit(40); };
@@ -58,30 +53,30 @@ export function ContentBoardPage({ openId }: { openId?: string }) {
   const scoped = useMemo(() => (items ?? []).filter((item) =>
     (scope === 'all' || (scope === 'mine' ? item.ownerId === user.id : item.departmentId === user.departmentId))
     && (!query.trim() || item.title.toLowerCase().includes(query.trim().toLowerCase()))), [items, scope, query, user]);
-  const counts = (id: Tab) => id === 'all' ? scoped.filter((item) => !['archived'].includes(item.status)).length : scoped.filter((item) => tabOf(item.status) === id).length;
   // Approvers land on what waits for them; everyone else on the full list.
   const active: Tab = tab ?? (can('content.approve') ? 'review' : 'all');
-  const current = TABS.find((entry) => entry.id === active)!;
-  const shown = scoped.filter((item) => active === 'all' ? item.status !== 'archived' : current.statuses.includes(item.status));
+  const current = JOURNEY.find((stage) => stage.id === active);
+  const shown = scoped.filter((item) => active === 'all' ? item.status !== 'archived' : stageOf(item.status) === active);
+  const allCount = scoped.filter((item) => item.status !== 'archived').length;
+  const [publishing, setPublishing] = useState<PipelineItem | null>(null);
+  const canPublish = can('content.publish') || can('content.schedule');
   const nameOf = (id: string) => team.find((m) => m.id === id)?.name ?? (id === 'system' ? t('Sync', 'المزامنة') : '—');
   const deptOf = (id: string | null) => departments.find((d) => d.id === id);
 
-  const approve = async (item: PipelineItem) => {
+  const move = async (item: PipelineItem, to: ContentStatus) => {
     setBusyId(item.id); setError('');
-    try { await api(`/api/content/${item.id}/transition`, { body: { to: 'approved' } }); await load(); }
+    try { await api(`/api/content/${item.id}/transition`, { body: { to } }); await load(); }
     catch (e) { setError(errorMessage(e, t('That did not work.', 'لم تنجح العملية.'))); }
     setBusyId('');
   };
 
   return <div className="u-stack u-stack--lg board-page">
-    <PageHeader title={t('Content approval', 'اعتماد المحتوى')} description={t('Preview the design, review the copy, and decide what is ready to publish.', 'عاين التصميم، وراجع النص، وحدّد المنشورات الجاهزة للنشر.')} />
+    <PageHeader title={t('Content & approval', 'المحتوى والاعتماد')} description={t('Every post moves through the same five steps. Press a step to see its posts; each card says who has it and what to do next.', 'كل منشور بيمشي في نفس الخمس خطوات. اضغط على أي خطوة تشوف منشوراتها، وكل كارت بيقولك هو عند مين والخطوة الجاية إيه.')} />
+    {items && <Journey items={scoped} active={active === 'all' ? null : active} onSelect={(stage) => setTab(active === stage ? 'all' : stage)} />}
+    {items && <NextForYou items={scoped} onGo={(stage) => stage === 'ready' ? navigate('/publish?view=ready') : setTab(stage)} />}
     <div className="ca-bar glass">
-      <div className="ca-tabs" role="tablist" aria-label={t('Approval', 'الاعتماد')}>
-        {TABS.map((entry) => <button key={entry.id} type="button" role="tab" aria-selected={active === entry.id} data-tone={entry.tone} onClick={() => setTab(entry.id)}>
-          {t(entry.en, entry.ar)}<i className="u-tnum">{counts(entry.id)}</i>
-        </button>)}
-      </div>
       <div className="ca-bar__tools">
+        <button type="button" className="ca-filter-all" aria-pressed={active === 'all'} onClick={() => setTab('all')}>{t('All posts', 'كل المنشورات')} <i className="u-tnum">{allCount}</i></button>
         <div className="board-scope" role="group" aria-label={t('Show', 'اعرض')}>
           {(['all', 'mine', 'department'] as Scope[]).map((value) => <button key={value} type="button" aria-pressed={scope === value} onClick={() => setScope(value)}>
             {value === 'all' ? t('Everyone', 'الكل') : value === 'mine' ? t('Mine', 'منشوراتي') : t('My department', 'قسمي')}
@@ -91,18 +86,19 @@ export function ContentBoardPage({ openId }: { openId?: string }) {
         {can('content.create') && <Button variant="primary" onClick={() => navigate('/')}>{t('New post', 'منشور جديد')}</Button>}
       </div>
     </div>
-    {items && <div className="ca-summary"><span>{t(current.en, current.ar)} <b className="u-tnum">{shown.length}</b></span><small>{can('content.approve') ? t('Open a preview to review captions and leave feedback.', 'افتح المعاينة لمراجعة النص وكتابة ملاحظاتك.') : t('Follow the approval status of your team’s posts.', 'تابع حالة اعتماد منشورات فريقك.')}</small></div>}
+    {items && <div className="ca-summary"><span>{current ? t(current.en, current.ar) : t('All posts', 'كل المنشورات')} <b className="u-tnum">{shown.length}</b></span><small>{current ? t(current.whoEn, current.whoAr) : t('Press a step above to narrow the list.', 'اضغط على خطوة فوق علشان تفلتر القائمة.')}</small></div>}
     {error && <div role="alert" className="creative-home__error">{error} <Button variant="secondary" size="sm" onClick={() => void load()}>{t('Retry', 'أعد المحاولة')}</Button></div>}
     {!items && !error && <div className="board-loading"><Loader2 className="creative-job__spin" size={22} /></div>}
     {items && <>
       {shown.length > 0
         ? <div className="ca-grid">
 
-          {shown.slice(0, limit).map(item => <ApprovalCard key={item.id} item={item} owner={nameOf(item.ownerId)} department={deptOf(item.departmentId) ? tx(deptOf(item.departmentId)!.name) : undefined} busy={busyId === item.id} disabled={Boolean(busyId)} onOpen={() => navigate(boardPath(item.id))} onApprove={() => void approve(item)} />)}
+          {shown.slice(0, limit).map(item => <ApprovalCard key={item.id} item={item} owner={nameOf(item.ownerId)} department={deptOf(item.departmentId) ? tx(deptOf(item.departmentId)!.name) : undefined} busy={busyId === item.id} disabled={Boolean(busyId)} onOpen={() => navigate(boardPath(item.id))} onApprove={() => void move(item, 'approved')} onSend={() => void move(item, 'ready_for_review')} onPublish={canPublish ? () => setPublishing(item) : undefined} />)}
         </div>
-        : <div className="ca-empty glass"><CheckCircle2 size={26} /><b>{active === 'review' ? t('Nothing is waiting for approval.', 'لا شيء بانتظار الاعتماد.') : t('No posts here.', 'لا توجد منشورات هنا.')}</b><p>{t('Posts move between these tabs as they are sent, approved or returned.', 'تنتقل المنشورات بين هذه التابات عند إرسالها أو اعتمادها أو إعادتها.')}</p></div>}
+        : <div className="ca-empty glass"><CheckCircle2 size={26} /><b>{active === 'review' ? t('Nothing is waiting for approval.', 'لا شيء بانتظار الاعتماد.') : t('No posts at this step.', 'مفيش منشورات في الخطوة دي.')}</b><p>{t('Posts move to the next step when they are sent, approved, scheduled or published.', 'المنشور بينتقل للخطوة اللي بعدها لما يتبعت أو يتعتمد أو يتجدول أو يتنشر.')}</p></div>}
     </>}
     {shown.length > limit && <Button variant="secondary" onClick={() => setLimit(value => value + 40)}>{t('Show more posts', 'اعرض منشورات أكثر')}</Button>}
+    {publishing && <PublishDialog item={publishing} open onClose={() => setPublishing(null)} onDone={() => void load()} />}
     <AnimatePresence>{openId && <ContentDrawer key={openId} id={openId} team={team} onClose={() => navigate(boardPath())} onChanged={load} />}</AnimatePresence>
   </div>;
 }
@@ -168,6 +164,9 @@ function ContentDrawer({ id, team, onClose, onChanged }: { id: string; team: Tea
       {error && !item && <p role="alert" className="creative-home__error">{error}</p>}
       {item && <div className="content-drawer__body content-drawer__layout">
         <div className="content-drawer__post">
+        {/* What happens next comes first: it was below a tall preview and easy to miss. */}
+        {publishing && <PublishDialog item={item} open onClose={() => setPublishing(false)} onDone={() => { void load(); onChanged(); }} />}
+        <NextStep key={item.status} item={item} busy={busy} onMove={move} onPublish={can('content.publish') || can('content.schedule') ? () => setPublishing(true) : undefined} />
         <div className="content-drawer__media">
           {image ? <img src={image} alt={item.title} /> : <span className="board-card__placeholder"><ImageIcon size={26} /></span>}
           {item.creative?.storyUrl && <img className="content-drawer__story" src={item.creative.storyUrl} alt="9:16" />}
@@ -179,10 +178,9 @@ function ContentDrawer({ id, team, onClose, onChanged }: { id: string; team: Tea
           {item.published.map((p) => <a key={p.permalink} href={p.permalink} target="_blank" rel="noreferrer" className="content-live">{p.platform} · {t('views', 'مشاهدات')} {p.metrics.views ?? '—'} · {t('reach', 'وصول')} {p.metrics.reach ?? '—'} <ExternalLink size={13} /></a>)}
         </section> : null}
 
-        {publishing && <PublishDialog item={item} open onClose={() => setPublishing(false)} onDone={() => { void load(); onChanged(); }} />}
-        <NextStep key={item.status} item={item} busy={busy} onMove={move} onPublish={can('content.publish') || can('content.schedule') ? () => setPublishing(true) : undefined} />
         <PostPlanCard key={`${item.goal}-${item.plannedFor}`} item={item} onSaved={() => { void load(); onChanged(); }} />
         <PublishContent item={item} />
+        <SizesPanel item={item} onChanged={() => { void load(); onChanged(); }} />
         {error && <p role="alert" className="creative-home__error">{error}</p>}
 
         {item.versions.length > 1 && <section className="content-drawer__section content-drawer__section--late"><h3>{t('Versions', 'النسخ')}</h3>

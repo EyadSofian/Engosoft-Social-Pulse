@@ -38,6 +38,11 @@ export const PLATFORM_SPECS: Record<Channel, PlatformSpec> = {
     structure: { en: 'Professional tone, an insight first, 3–6 short lines, up to 3 hashtags.', ar: 'نبرة مهنية، وفكرة مفيدة أولًا، ثم ٣–٦ أسطر قصيرة وحتى ٣ هاشتاجات.' },
     prompt: 'LinkedIn: professional and value-focused; open with an insight or a professional outcome (the first ~140 characters show before "see more"), 3–6 short lines separated by blank lines so it reads fast (dwell time ranks posts), topic keywords in the body, the link on its own line when given, at most 3 relevant hashtags at the end. No slang, at most one emoji.',
   },
+  x: {
+    channel: 'x', limit: 280, ideal: { min: 60, max: 240 }, fold: null, hashtags: { min: 0, max: 2 }, links: 'clickable',
+    structure: { en: 'One sharp idea in under 280 characters, the link, up to 2 hashtags.', ar: 'فكرة واحدة واضحة في أقل من ٢٨٠ حرف، والرابط، وحتى هاشتاجين.' },
+    prompt: 'X (Twitter): one sharp, self-contained post under 280 characters in total (a link counts as 23), the key fact or benefit first, the link at the end when given, at most 2 hashtags. No threads, no "link in bio".',
+  },
   whatsapp: {
     channel: 'whatsapp', limit: 700, ideal: { min: 40, max: 200 }, fold: null, hashtags: { min: 0, max: 0 }, links: 'clickable',
     structure: { en: 'Two or three direct lines and the link. No hashtags.', ar: 'سطران أو ثلاثة مباشرة مع الرابط. بدون هاشتاجات.' },
@@ -191,6 +196,9 @@ export function composeCaption(channel: Channel, source: CaptionSource): string 
       if (channel === 'tiktok' && linkLine) lines.splice(1, 0, linkLine);
       break;
     }
+    case 'x':
+      lines.push([title, source.when].filter(Boolean).join(' — '), ...(points[0] ? [clip(points[0], 100)] : []), callTo, tags);
+      break;
     case 'whatsapp':
       lines.push(title, ...(source.when ? [source.when] : []), ...(points[0] ? [clip(points[0], 110)] : []), callTo);
       break;

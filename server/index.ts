@@ -5,18 +5,19 @@ import { resolve } from 'node:path';
 import { z } from 'zod';
 import { checkAlerts } from './alerts.js';
 import { parseCalendar } from './calendar.js';
-import { applyPlanPatch, newPlan, isPlatform, missingPublishProof, planState, engagementRate } from './domain.js';
+import { applyPlanPatch, newPlan, isPlanPlatform, missingPublishProof, planState, engagementRate } from './domain.js';
 import { deletePlan, dismissAlert, getAlerts, getConnectorStatuses, getObserved, getPlan, getPlans, getWebsiteDaily, getWebsitePages, saveImportedPlan, savePlan } from './store.js';
 import { runSync } from './sync.js';
 import { registerSocialRoutes } from './social/routes.js';
 import { runDuePublications } from './social/queue.js';
 import { randomUUID } from 'node:crypto';
-import type { Platform } from './types.js';
+import type { PlanPlatform } from './types.js';
 import { readOdooSchedule } from './odoo.js';
 import { generatePostImage, imageRequest } from './post-image.js';
 import { briefRequest, generateCreativeBrief } from './creative-brief.js';
 import { applyCreativeCommand, creativeEditRequest } from './creative-edit.js';
-import { adaptFullCreative, generateFullCreative, loadFullCreativeRun } from './creative-intelligence/generation/full-creative.js';
+import { adaptFullCreative, generateFullCreative, isCanvasTarget, loadFullCreativeRun } from './creative-intelligence/generation/full-creative.js';
+import { canEdit, getContent } from './workspace.js';
 import { THEME_IDS } from '../src/domain/design-engine.js';
 import { getJob, startJob, toPublicRun } from './creative-intelligence/generation/jobs.js';
 import { bootstrapAdmin, requirePermission, requireUser, userCan } from './auth.js';
@@ -106,11 +107,15 @@ app.post('/api/ai/full-creative',requirePermission('design.free'),requireAiBudge
  const job=startJob('generate',req.user!.id,(setStage)=>generateFullCreative({...parsed.data,objective:parsed.data.objective&&OBJECTIVE_TEXT[parsed.data.objective],style:template?.style,requestId,ownerId:req.user!.id},process.env,setStage),requestId);
  res.status(202).json({jobId:job.id,requestId});
 });
-app.post('/api/ai/full-creative/:requestId/adapt',requirePermission('design.free'),requireAiBudget,(req,res)=>{
+app.post('/api/ai/full-creative/:requestId/adapt',requirePermission('design.free'),requireAiBudget,async(req,res)=>{
  if(localOnly(res))return;
- const parsed=z.object({directionId:z.string().regex(/^d\d$/),format:z.enum(['feed','story','landscape','video'])}).safeParse(req.body);if(!parsed.success)return res.status(400).json({error:'طلب التحويل غير صالح.'});
+ // `format` is a master format or any publishing size (`x-header`, `instagram-grid`…); the master is recomposed, never stretched.
+ const parsed=z.object({directionId:z.string().regex(/^d\d$/),format:z.string().max(40).refine(isCanvasTarget),contentId:z.string().uuid().optional()}).safeParse(req.body);if(!parsed.success)return res.status(400).json({error:'طلب التحويل غير صالح.'});
  let run;try{run=loadFullCreativeRun(String(req.params.requestId));}catch{return res.status(404).json({error:'التصميم غير موجود.'});}
- if(run.request.ownerId!==req.user!.id)return res.status(404).json({error:'التصميم غير موجود.'});
+ // The designer, or anyone who may edit the post that carries this design.
+ const post=parsed.data.contentId?await getContent(parsed.data.contentId):undefined;
+ const viaPost=Boolean(post&&post.creative?.requestId===run.requestId&&canEdit(req.user!,post));
+ if(run.request.ownerId!==req.user!.id&&!viaPost)return res.status(404).json({error:'التصميم غير موجود.'});
  if(limited(req,res))return;
  const job=startJob('adapt',req.user!.id,async(setStage)=>{await adaptFullCreative(run,parsed.data.directionId,parsed.data.format,process.env,setStage);return run;},run.requestId);
  res.status(202).json({jobId:job.id});
@@ -134,7 +139,8 @@ app.get('/api/ai/runs/:requestId',(req,res)=>{
 });
 app.get('/api/creatives/:requestId/:file',(req,res)=>{
  const id=String(req.params.requestId),file=String(req.params.file);
- if(!/^[0-9a-f-]{36}$/.test(id)||!/^d\d(-story|-feed|-landscape)?\.png$/.test(file))return res.status(404).end();
+ // Masters (d1), master formats (d1-story, d1-video) and publishing sizes (d1-x-header); never the logo-free *-raw originals.
+ if(!/^[0-9a-f-]{36}$/.test(id)||!/^d\d(-[a-z0-9-]+)?\.png$/.test(file)||file.endsWith('-raw.png'))return res.status(404).end();
  res.sendFile(mediaDir('creatives',id,file),{headers:{'Cache-Control':'private, max-age=3600'}},(error)=>{if(error&&!res.headersSent)res.status(404).end();});
 });
 app.get('/api/dashboard',async(req,res)=>{
@@ -146,7 +152,7 @@ app.get('/api/dashboard',async(req,res)=>{
 });
 const planStatus=z.enum(['draft','approved','scheduled','published','cancelled']);
 const planSchema=z.object({
- id:z.string().uuid().optional(),platform:z.string().refine(isPlatform),accountId:z.string().max(120).default(''),title:z.string().trim().min(1).max(300),caption:z.string().max(5000).default(''),scheduledAt:z.iso.datetime(),status:planStatus.default('scheduled'),permalink:z.string().max(1000).default(''),externalId:z.string().max(200).default(''),owner:z.string().max(120).default(''),contentType:z.string().max(60).default('post'),goal:z.enum(['','reach','engagement','leads','traffic']).default(''),campaign:z.string().max(120).default(''),notes:z.string().max(1000).default('')
+ id:z.string().uuid().optional(),platform:z.string().refine(isPlanPlatform),accountId:z.string().max(120).default(''),title:z.string().trim().min(1).max(300),caption:z.string().max(5000).default(''),scheduledAt:z.iso.datetime(),status:planStatus.default('scheduled'),permalink:z.string().max(1000).default(''),externalId:z.string().max(200).default(''),owner:z.string().max(120).default(''),contentType:z.string().max(60).default('post'),goal:z.enum(['','reach','engagement','leads','traffic']).default(''),campaign:z.string().max(120).default(''),notes:z.string().max(1000).default('')
 });
 const planPatchSchema=z.object({scheduledAt:z.iso.datetime().optional(),status:planStatus.optional(),permalink:z.string().max(1000).optional(),externalId:z.string().max(200).optional()}).strict();
 const PROOF_REQUIRED='أضف رابط المنشور أو معرّفه لتأكيد النشر.';
@@ -154,7 +160,7 @@ app.post('/api/plans',requirePermission('content.schedule'),async(req,res)=>{
  const parsed=planSchema.safeParse(req.body);if(!parsed.success)return res.status(400).json({error:'بيانات المنشور غير صالحة.',issues:parsed.error.issues});
  if(missingPublishProof(parsed.data))return res.status(400).json({error:PROOF_REQUIRED});
  const old=parsed.data.id?await getPlan(parsed.data.id):undefined;
- const plan=newPlan({...old,...parsed.data,platform:parsed.data.platform as Platform,createdAt:old?.createdAt,sourceKey:old?.sourceKey});
+ const plan=newPlan({...old,...parsed.data,platform:parsed.data.platform as PlanPlatform,createdAt:old?.createdAt,sourceKey:old?.sourceKey});
  const saved=await savePlan(plan);
  await checkAlerts();
  res.json(saved);

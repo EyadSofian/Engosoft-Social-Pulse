@@ -159,7 +159,9 @@ function ResultActions({ run, result, story, landscape, video, platforms, prompt
     setBusy(send ? 'send' : 'draft'); setError('');
     try {
       if (!created.current) {
-        const captions = Object.fromEntries(platforms.map((p) => [p, run.brief.captions?.[p] || run.brief.caption]));
+        // The generator writes no X caption yet, so X starts from the main caption and is trimmed in the editor.
+        const written: Partial<Record<string, string>> = run.brief.captions ?? {};
+        const captions = Object.fromEntries(platforms.map((p) => [p, written[p] || run.brief.caption]));
         const item = await api<{ id: string }>('/api/content', { body: { ...takePostPlan(), title: run.brief.canonicalCopy.headline, channels: platforms, captions, creative: { requestId: run.requestId, directionId: result.directionId, imageUrl: result.imageUrl, ...(story?.imageUrl ? { storyUrl: story.imageUrl } : {}), ...(landscape?.imageUrl ? { landscapeUrl: landscape.imageUrl } : {}), ...(video?.imageUrl ? { youtubeUrl: video.imageUrl } : {}), model: result.model, directionName: direction.name } } });
         created.current = item.id;
       }

@@ -98,6 +98,10 @@ export const logoMainFill = (variant: LogoVariant) => variant.id.endsWith('-reve
 export const logoHeightFor = (variant: LogoVariant, width: number) => Math.round(width / variant.aspectRatio);
 
 /** Provisional minimum width, scaled from the 1080px reference canvas. */
+/** The width logo sizes are measured against: the canvas width, or on a wide banner or cover (over 2:1) a width
+ * derived from its height, so the logo does not fill half the banner. */
+export const logoSizeBasis = (width: number, height: number) => (width / height > 2 ? Math.min(width, Math.round(height * 1.4)) : width);
+
 export function minimumLogoWidth(variant: LogoVariant, canvasWidth: number): number {
   const p = logos.provisional;
   return Math.ceil(p.minimumRenderedWidthPx[variant.kind] * canvasWidth / p.referenceCanvasWidthPx);

@@ -10,9 +10,9 @@ export interface Text {
   ar: string;
 }
 
-/** Channels content can be prepared for. LinkedIn has no connector yet: it can be planned, not measured. */
-export type Channel = Platform | 'linkedin' | 'whatsapp' | 'youtube';
-export const CHANNELS: Channel[] = ['facebook', 'instagram', 'whatsapp', 'linkedin', 'tiktok', 'snapchat', 'youtube', 'website'];
+/** Channels content can be prepared for. LinkedIn and X have no connector yet: they can be planned, not measured. */
+export type Channel = Platform | 'linkedin' | 'x' | 'whatsapp' | 'youtube';
+export const CHANNELS: Channel[] = ['facebook', 'instagram', 'whatsapp', 'linkedin', 'x', 'tiktok', 'snapchat', 'youtube', 'website'];
 
 export type Priority = 'low' | 'normal' | 'high' | 'urgent';
 

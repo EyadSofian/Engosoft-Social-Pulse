@@ -8,6 +8,7 @@ import { platformOf, PublishDialog, usePublishingBoard } from '../../features/pu
 import { GoalBadge } from '../../features/content-pipeline/PostPlan';
 import { GOAL_INFO } from '../../domain/goals';
 import { planSlots, type Slot } from '../../features/content-pipeline/slots';
+import { Journey } from '../../features/content-pipeline/Journey';
 import { Link, useQueryState } from '../../app/router/router';
 import { ChannelIcon } from '../../components/data-display/ChannelIcon';
 import { Button } from '../../components/ui/Button';
@@ -62,7 +63,7 @@ export function ContentCalendar() {
   const [slot, setSlot] = useState<Slot | null>(null);
   const auto = useMemo(() => new Set((board?.queue ?? []).filter((row) => row.state === 'queued' || row.state === 'sending').map((row) => row.contentId)), [board]);
   const [search, setSearch] = useState('');
-  const [showRail, setShowRail] = useState(false);
+  const [railChoice, setShowRail] = useState<boolean | null>(null);
   const [odoo, setOdoo] = useState<OdooScheduleEntry[]>([]);
   useEffect(() => {
     let alive = true;
@@ -135,6 +136,8 @@ export function ContentCalendar() {
   }, [store, query]);
   const ready = (items ?? []).filter((item) => item.status === 'approved');
   const canAdd = can('content.schedule');
+  // Approved posts without a time are the calendar's open work, so their list opens by itself until someone closes it.
+  const showRail = railChoice ?? (canAdd && ready.length > 0);
   const published = () => { void reload(); void reloadBoard(); };
 
   const rangeStart = cells[0].key;
@@ -148,6 +151,7 @@ export function ContentCalendar() {
     <AutoPublish.Provider value={auto}>
     <AddToDay.Provider value={canAdd ? setPicking : null}>
     <div className="mc">
+      {items && <Journey items={items} here={['ready', 'scheduled']} />}
       <div className="mc-toolbar glass">
         <div className="mc-toolbar__nav">
           <Button size="sm" variant="secondary" onClick={() => setQuery({ date: null })}>{mode === 'week' ? t('This week', 'هذا الأسبوع') : t('Today', 'اليوم')}</Button>
@@ -173,7 +177,7 @@ export function ContentCalendar() {
           {platforms.size > 0 && <button type="button" className="mc-clear" onClick={() => setQuery({ p: null })}>{t('Clear', 'مسح')}</button>}
         </div>
         <button type="button" className="mc-layer" aria-pressed={layers.has('info')} onClick={() => toggleLayer('info')}><Sparkles size={13} /> {t('Courses & occasions', 'الدورات والمناسبات')}</button>
-        <button type="button" className="mc-layer" aria-pressed={showRail} onClick={() => setShowRail(!showRail)}><CalendarClock size={13} /> {t('Unscheduled', 'غير مجدول')} <b>{unscheduled.length}</b></button>
+        <button type="button" className="mc-layer" data-attention={ready.length > 0 || undefined} aria-pressed={showRail} onClick={() => setShowRail(!showRail)}><CalendarClock size={13} /> {ready.length ? t('Approved, need a time', 'معتمد مستني ميعاد') : t('Unscheduled', 'غير مجدول')} <b>{ready.length || unscheduled.length}</b></button>
         <span className="mc-count u-tnum">{t(`${scheduledCount} scheduled in view`, `${scheduledCount} منشور في هذا العرض`)}</span>
       </div>
 

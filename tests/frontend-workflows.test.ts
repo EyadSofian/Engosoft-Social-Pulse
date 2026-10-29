@@ -31,7 +31,7 @@ function render(
   }
 }
 const noop = () => {};
-test('placement picker renders all 23 sizes and eight platforms in Arabic and English with the current selection', () => {
+test('placement picker renders all 34 sizes and nine platforms in Arabic and English with the current selection', () => {
   for (const lang of ['ar', 'en'] as const) {
     const html = render(
       createElement(PublishingPresetPicker, {
@@ -44,7 +44,7 @@ test('placement picker renders all 23 sizes and eight platforms in Arabic and En
     );
     for (const preset of PUBLISHING_PRESETS)
       assert.ok(html.includes(`value="${preset.id}"`));
-    assert.equal((html.match(/<optgroup/g) || []).length, 8);
+    assert.equal((html.match(/<optgroup/g) || []).length, 9);
     assert.match(html, /value="youtube-banner" selected=""/);
     assert.ok(html.includes('2560×1440'));
     assert.ok(!html.includes('undefined'));
@@ -142,6 +142,7 @@ test('approval card renders channel labels and review actions from server moves,
         disabled: false,
         onOpen: noop,
         onApprove: noop,
+        onSend: noop,
       }),
       lang,
     );
@@ -160,6 +161,7 @@ test('approval card renders channel labels and review actions from server moves,
       disabled: false,
       onOpen: noop,
       onApprove: noop,
+      onSend: noop,
     }),
   );
   assert.ok(!readOnly.includes('ca-card__actions'));
@@ -171,9 +173,25 @@ test('approval card renders channel labels and review actions from server moves,
       disabled: false,
       onOpen: noop,
       onApprove: noop,
+      onSend: noop,
     }),
   );
   assert.ok(!approved.includes('ca-card__actions'));
+  // Someone who can publish gets the next step on the approved card itself.
+  const publishable = render(
+    createElement(ApprovalCard, {
+      item: { ...item, status: 'approved' },
+      owner: 'Operations',
+      busy: false,
+      disabled: false,
+      onOpen: noop,
+      onApprove: noop,
+      onSend: noop,
+      onPublish: noop,
+    }),
+  );
+  assert.ok(publishable.includes('ca-card__actions'));
+  assert.ok(publishable.includes('انشر أو جدول'));
 });
 
 test('Studio displays the original glyphs while selecting text and switches to live editable text only after a change',async()=>{

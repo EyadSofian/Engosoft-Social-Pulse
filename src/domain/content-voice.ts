@@ -101,6 +101,7 @@ export const POSTING_WINDOWS: Record<Channel, { primary: [number, number]; secon
   tiktok: { primary: [21, 24], secondary: [16, 18] },
   snapchat: { primary: [20, 23], secondary: [13, 15] },
   linkedin: { primary: [8, 10], secondary: [12, 13], days: { en: 'Sun–Wed', ar: 'الأحد–الأربعاء' } },
+  x: { primary: [20, 23], secondary: [12, 14] },
   facebook: { primary: [20, 22], secondary: [13, 15] },
   youtube: { primary: [19, 22], secondary: [15, 17], days: { en: 'Thu–Fri strongest', ar: 'الخميس والجمعة أقوى' } },
   whatsapp: { primary: [19, 21], secondary: [10, 11] },

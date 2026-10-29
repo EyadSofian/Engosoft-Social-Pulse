@@ -222,23 +222,26 @@ export function SeriesChart({ data, kind, unit, ariaLabel, height = 280, categor
         )}
       </div>
 
-      <table className="sr-only">
-        <caption>{ariaLabel}</caption>
-        <thead>
-          <tr>
-            <th scope="col">الفترة</th>
-            <th scope="col">{unit}</th>
-          </tr>
-        </thead>
-        <tbody>
-          {data.map((item) => (
-            <tr key={item.key}>
-              <th scope="row">{item.title}</th>
-              <td>{num(item.value)}</td>
+      {/* A table ignores the 1px box, so the wrapper is what hides it; otherwise its rows stretch the page. */}
+      <div className="sr-only">
+        <table>
+          <caption>{ariaLabel}</caption>
+          <thead>
+            <tr>
+              <th scope="col">الفترة</th>
+              <th scope="col">{unit}</th>
             </tr>
-          ))}
-        </tbody>
-      </table>
+          </thead>
+          <tbody>
+            {data.map((item) => (
+              <tr key={item.key}>
+                <th scope="row">{item.title}</th>
+                <td>{num(item.value)}</td>
+              </tr>
+            ))}
+          </tbody>
+        </table>
+      </div>
     </figure>
   );
 }

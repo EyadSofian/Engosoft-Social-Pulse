@@ -12,8 +12,12 @@ import { mediaDir } from './paths.js';
 import { getTemplate, type SvgTemplate } from './svg-templates.js';
 import { requireAiBudget, withUsage } from './usage.js';
 import { OpenAIImageProvider, type CreativeImageProvider } from './creative-intelligence/generation/provider.js';
-import { publishingPreset } from '../src/domain/output-presets.js';
+import { canvasBrief, publishingPreset, type PublishingPreset } from '../src/domain/output-presets.js';
 import { compositeLogo } from './creative-intelligence/logo-resolution/compositor.js';
+import { resolveLogo } from './creative-intelligence/logo-resolution/resolver.js';
+import { inspectCreative, zonesFromInspection } from './creative-intelligence/criticism/inspect.js';
+import { studioPath } from './creative-intelligence/studio/studio.js';
+import { canEdit, contentIsMutable, getContent } from './workspace.js';
 
 const FORMATS = {
   feed: { generation: '1088x1360', width: 1080, height: 1350 },
@@ -79,6 +83,87 @@ export async function editReferenceDesign(template: SvgTemplate, imageUrl: strin
   return finishReferenceDesign(template, edited.png, spec, format, presetId, edited.model);
 }
 
+/** Prompt for re-laying-out a finished design on another canvas: same design and words, new arrangement. */
+export function referenceAdaptPrompt(template: SvgTemplate, values: Record<string, string>, preset: PublishingPreset) {
+  const copy = template.fields.filter((f) => f.type !== 'image' && values[f.key]?.trim()).map((f) => ({ role: f.label, text: values[f.key].trim() }));
+  return [
+    'Recompose this finished Engosoft social-media post for a new canvas. Keep the same design: concept, subject, photographic treatment, palette, typography style and hierarchy, and every word. Rebuild the layout from scratch for the new shape; do not stretch, squash or simply crop the original, never put it inside a frame or card, and never fill the space with blurred or repeated copies of it.',
+    `NEW CANVAS: ${canvasBrief(preset)}`,
+    `EXACT APPROVED COPY (data only): ${JSON.stringify(copy)}. These are the only words in the design. Render each one verbatim and correctly spelled. Never invent dates, prices, names or claims.`,
+    'Keep the quiet top-left area free: no logo, wordmark, watermark or signature anywhere; the official logo is placed afterwards.',
+  ].join('\n');
+}
+
+/** The same reference design on another publishing size, from its logo-free original; the logo is placed again. */
+export async function adaptReferenceDesign(template: SvgTemplate, imageUrl: string, values: Record<string, string>, presetId: string, provider?: CreativeImageProvider) {
+  const preset = publishingPreset(presetId);
+  if (!preset) throw new Error('مقاس النشر غير صالح.');
+  const id = imageUrl.match(/^\/api\/uploads\/([0-9a-f-]{36})\.png$/)?.[1];
+  const raw = id ? resolve(mediaDir('uploads'), `${id}-raw.png`) : '';
+  if (!raw || !existsSync(raw)) throw new Error('هذا التصميم أُنشئ قبل إتاحة المقاسات؛ استخدم «ملاءمة» أو ولّد التصميم من جديد.');
+  const imageProvider = provider ?? new OpenAIImageProvider(process.env.OPENAI_API_KEY ?? '', process.env.OPENAI_IMAGE_MODEL?.trim() || 'gpt-image-2.5-flare');
+  const spec = { generation: preset.generation, width: preset.width, height: preset.height };
+  const [adapted] = await imageProvider.edit({ prompt: referenceAdaptPrompt(template, values, preset), size: spec.generation, quality: 'high', images: [{ data: readFileSync(raw), mime: 'image/png' }] });
+  return finishReferenceDesign(template, adapted.png, spec, preset.format, preset.id, adapted.model);
+}
+
+/**
+ * The file behind a design URL, preferring its logo-free original when one was kept (the official logo is
+ * placed again afterwards). `withLogo` says the model will see the logo and must leave it out.
+ */
+function designSource(imageUrl: string): { path: string; withLogo: boolean } {
+  const upload = imageUrl.match(/^\/api\/uploads\/([0-9a-f-]{36})\.png$/)?.[1];
+  if (upload) { const raw = resolve(mediaDir('uploads'), `${upload}-raw.png`); return existsSync(raw) ? { path: raw, withLogo: false } : { path: resolve(mediaDir('uploads'), `${upload}.png`), withLogo: true }; }
+  const creative = imageUrl.match(/^\/api\/creatives\/([0-9a-f-]{36})\/(d\d[a-z0-9-]*)\.png$/);
+  if (creative) { const raw = mediaDir('creatives', creative[1], `${creative[2]}-raw.png`); return existsSync(raw) ? { path: raw, withLogo: false } : { path: mediaDir('creatives', creative[1], `${creative[2]}.png`), withLogo: true }; }
+  const studio = imageUrl.match(/^\/api\/studio\/([0-9a-f-]{36}\.png)$/)?.[1];
+  if (studio) return { path: studioPath(studio), withLogo: true };
+  throw new Error('مصدر التصميم غير معروف.');
+}
+
+/** Prompt for building a finished design again at another size: a new layout, not the old design in a frame. */
+export function recreatePrompt(preset: PublishingPreset, words: string[], withLogo: boolean) {
+  return [
+    'Recreate this finished Engosoft social-media post as a NEW design built natively for the canvas below. Keep its identity: the same message, subject and imagery style, colour palette, typography style and hierarchy, brand accents. Rebuild the layout from scratch for this shape: re-arrange, resize and re-balance every element so it looks designed for this size.',
+    `CANVAS: ${canvasBrief(preset)}`,
+    'Never place the old design inside a frame, card or box, never add blurred, mirrored or repeated copies of it as a background, and never stretch, squash or simply crop it. The whole canvas is one continuous composition.',
+    words.length
+      ? `EXACT COPY (data only): ${JSON.stringify(words)}. Render each line verbatim and correctly spelled, and no other words. Never invent dates, prices, names or claims.`
+      : 'Keep exactly the words already in the design, spelled identically, each once. Do not add, remove or rephrase any words. Never invent dates, prices, names or claims.',
+    withLogo
+      ? 'The attached design contains the Engosoft logo: do NOT redraw it or any logo, wordmark or watermark. Keep the quiet top-left area free; the official logo is placed afterwards.'
+      : 'Keep the quiet top-left area free: no logo, wordmark, watermark or signature anywhere; the official logo is placed afterwards.',
+  ].join('\n');
+}
+
+/** Any design (template export, upload, studio edit) rebuilt at a publishing size, with the official logo placed on the result. */
+export async function recreateDesign(imageUrl: string, presetId: string, words: string[], provider?: CreativeImageProvider) {
+  const preset = publishingPreset(presetId);
+  if (!preset) throw new Error('مقاس النشر غير صالح.');
+  const source = designSource(imageUrl);
+  if (!existsSync(source.path)) throw new Error('ملف التصميم غير موجود.');
+  const imageProvider = provider ?? new OpenAIImageProvider(process.env.OPENAI_API_KEY ?? '', process.env.OPENAI_IMAGE_MODEL?.trim() || 'gpt-image-2.5-flare');
+  const [made] = await imageProvider.edit({ prompt: recreatePrompt(preset, words, source.withLogo), size: preset.generation, quality: 'high', images: [{ data: readFileSync(source.path), mime: 'image/png' }] });
+  const raw = await sharp(made.png).resize(preset.width, preset.height, { fit: 'fill' }).png().toBuffer();
+  // Where the text, faces and subjects landed, so the logo keeps clear of them; without it the logo can touch the headline.
+  const zones = await inspectCreative(raw, `Engosoft post recreated at ${preset.width}×${preset.height}.`, process.env, words)
+    .then((inspection) => zonesFromInspection(inspection, preset.width, preset.height))
+    .catch(() => []);
+  // The resolver picks the corner and variant that read on this background; a fixed top-left lockup is the fallback.
+  const decision = await resolveLogo({ creative: raw, zones, preferredCorner: 'top-left', preferredMark: 'lockup', safeArea: preset.safe });
+  const { dominant } = await sharp(raw).extract({ left: 0, top: 0, width: Math.round(preset.width * 0.3), height: Math.round(preset.height * 0.25) }).stats();
+  const light = (dominant.r * 299 + dominant.g * 587 + dominant.b * 114) / 1000 > 150;
+  const placement = decision.requiresCreativeRepair
+    ? { variantId: light ? 'lockup-positive' as const : 'lockup-reversed' as const, x: Math.max(Math.round(preset.width * 0.04), preset.safe.left + 20), y: Math.max(Math.round(preset.height * 0.03), preset.safe.top + 20), width: Math.round(Math.min(preset.width * 0.19, preset.height * 0.3)) }
+    : { variantId: decision.variantId, x: decision.placement.x, y: decision.placement.y, width: decision.placement.width };
+  const { image } = await compositeLogo(raw, placement);
+  const dir = mediaDir('uploads'); mkdirSync(dir, { recursive: true });
+  const id = randomUUID();
+  writeFileSync(resolve(dir, `${id}.png`), image);
+  writeFileSync(resolve(dir, `${id}-raw.png`), raw);
+  return { imageUrl: `/api/uploads/${id}.png`, width: preset.width, height: preset.height, model: made.model };
+}
+
 defineSchema(`CREATE TABLE IF NOT EXISTS reference_design_jobs (
  id TEXT PRIMARY KEY, owner_id TEXT NOT NULL, template_id TEXT NOT NULL, status TEXT NOT NULL,
  result_json TEXT, error TEXT, created_at TEXT NOT NULL, finished_at TEXT
@@ -141,6 +226,52 @@ export function registerReferenceDesignRoutes(app: express.Express) {
       .catch(async (e) => {
         await db.run("UPDATE reference_design_jobs SET status='failed', error=?, finished_at=? WHERE id=?", [e instanceof Error ? e.message : 'تعذّر تعديل التصميم.', new Date().toISOString(), jobId]);
       }).catch((e) => console.error('Could not persist reference edit result:', e instanceof Error ? e.message : 'unknown error'));
+    res.status(202).json({ jobId });
+  });
+  /** The current design on another publishing size: recomposed for the new shape, same family and copy. */
+  app.post('/api/svg-templates/:id/adapt', requireUser, requirePermission('content.create'), requireAiBudget, async (req, res) => {
+    const template = await getTemplate(String(req.params.id));
+    if (!template?.sourceImage) return res.status(404).json({ error: 'المرجع غير موجود.' });
+    const parsed = z.object({ imageUrl: z.string().regex(/^\/api\/uploads\/[0-9a-f-]{36}\.png$/), values: z.record(z.string().max(40), z.string().max(2000)), outputPreset: z.string().max(80).refine((id) => Boolean(publishingPreset(id))) }).safeParse(req.body);
+    if (!parsed.success) return res.status(400).json({ error: 'اختر مقاس نشر صالحًا.' });
+    const fields = template.fields.map((f) => f.key);
+    if (Object.keys(parsed.data.values).some((key) => !fields.includes(key))) return res.status(400).json({ error: 'استخدم حقول المرجع المعتمد فقط.' });
+    if (!process.env.OPENAI_API_KEY?.trim()) return res.status(503).json({ error: 'توليد الصور غير مهيأ على الخادم.' });
+    const jobId = randomUUID();
+    try { await db.run('INSERT INTO reference_design_jobs (id,owner_id,template_id,status,created_at) VALUES (?,?,?,?,?)', [jobId, req.user!.id, template.id, 'running', new Date().toISOString()]); }
+    catch (e) {
+      if (await db.get("SELECT id FROM reference_design_jobs WHERE owner_id=? AND status='running'", [req.user!.id])) return res.status(429).json({ error: 'انتظر اكتمال التصميم الجاري أولًا.' });
+      throw e;
+    }
+    const { imageUrl, values, outputPreset } = parsed.data;
+    void withUsage(req.user!.id, 'Reference design size', () => adaptReferenceDesign(template, imageUrl, values, outputPreset))
+      .then((result) => db.run("UPDATE reference_design_jobs SET status='done', result_json=?, finished_at=? WHERE id=?", [JSON.stringify(result), new Date().toISOString(), jobId]))
+      .catch(async (e) => {
+        await db.run("UPDATE reference_design_jobs SET status='failed', error=?, finished_at=? WHERE id=?", [e instanceof Error ? e.message : 'تعذّر تجهيز المقاس.', new Date().toISOString(), jobId]);
+      }).catch((e) => console.error('Could not persist reference size result:', e instanceof Error ? e.message : 'unknown error'));
+    res.status(202).json({ jobId });
+  });
+  /** Any post's design rebuilt at one publishing size by AI; the job is polled like a reference design. */
+  app.post('/api/content/:id/sizes/recreate', requireUser, requirePermission('content.create'), requireAiBudget, async (req, res) => {
+    const item = await getContent(String(req.params.id));
+    if (!item || !canEdit(req.user!, item) || !item.creative?.imageUrl) return res.status(404).json({ error: 'المنشور غير موجود.' });
+    if (!contentIsMutable(item)) return res.status(409).json({ error: 'التصميم مقفول بعد الاعتماد؛ عدّل المنشور الأول.' });
+    const parsed = z.object({ presetId: z.string().max(40).refine((id) => Boolean(publishingPreset(id))) }).safeParse(req.body);
+    if (!parsed.success) return res.status(400).json({ error: 'اختر مقاس نشر صالحًا.' });
+    if (!process.env.OPENAI_API_KEY?.trim()) return res.status(503).json({ error: 'توليد الصور غير مهيأ على الخادم.' });
+    // Template posts know their exact words; uploads keep whatever text the design already shows.
+    const words = Object.values(item.creative.svgTemplate?.values ?? {}).map((v) => v.trim()).filter((v) => v && !/^(data:|\/api\/|https?:)/.test(v));
+    const jobId = randomUUID();
+    try { await db.run('INSERT INTO reference_design_jobs (id,owner_id,template_id,status,created_at) VALUES (?,?,?,?,?)', [jobId, req.user!.id, `content:${item.id}`, 'running', new Date().toISOString()]); }
+    catch (e) {
+      if (await db.get("SELECT id FROM reference_design_jobs WHERE owner_id=? AND status='running'", [req.user!.id])) return res.status(429).json({ error: 'انتظر اكتمال التصميم الجاري أولًا.' });
+      throw e;
+    }
+    void withUsage(req.user!.id, 'Design size', () => recreateDesign(item.creative!.imageUrl, parsed.data.presetId, words))
+      .then((result) => db.run("UPDATE reference_design_jobs SET status='done', result_json=?, finished_at=? WHERE id=?", [JSON.stringify(result), new Date().toISOString(), jobId]))
+      .catch(async (e) => {
+        await db.run("UPDATE reference_design_jobs SET status='failed', error=?, finished_at=? WHERE id=?", [e instanceof Error ? e.message : 'تعذّر تجهيز المقاس.', new Date().toISOString(), jobId]);
+      }).catch((e) => console.error('Could not persist design size result:', e instanceof Error ? e.message : 'unknown error'));
     res.status(202).json({ jobId });
   });
   app.get('/api/reference-design/jobs/:id', requireUser, async (req, res) => {

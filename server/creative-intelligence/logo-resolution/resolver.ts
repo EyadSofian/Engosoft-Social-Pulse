@@ -1,5 +1,5 @@
 /** Choose the approved logo variant, size and corner for a finished creative, from measured pixels and content zones. */
-import { allLogoVariants, logoEdgeMargin, logoHeightFor, minimumLogoWidth, type LogoVariantId } from '../brand/registry.js';
+import { allLogoVariants, logoEdgeMargin, logoHeightFor, logoSizeBasis, minimumLogoWidth, type LogoVariantId } from '../brand/registry.js';
 import { MODULE_VERSIONS } from '../versions.js';
 import { decodeImage, type Box, type RasterImage } from './regions.js';
 import { validateLogoPlacement, type ContentZone, type LogoValidationResult, type SafeArea } from './validator.js';
@@ -41,6 +41,7 @@ export async function resolveLogo(input: {
 }): Promise<LogoDecision | NoLogoDecision> {
   const image = Buffer.isBuffer(input.creative) ? await decodeImage(input.creative) : input.creative;
   const inset = Math.round(logoEdgeMargin(image.width) * 1.1);
+  const basis = logoSizeBasis(image.width, image.height);
   const corners: Corner[] = ['top-left', 'top-right', 'bottom-left', 'bottom-right'];
   if (input.preferredCorner) corners.sort((a, b) => Number(b === input.preferredCorner) - Number(a === input.preferredCorner));
   let best: { score: number; decision: LogoDecision } | null = null;
@@ -50,7 +51,7 @@ export async function resolveLogo(input: {
     for (const variant of allLogoVariants()) {
       const fractions = variant.kind === 'lockup' ? LOCKUP_WIDTHS : SYMBOL_WIDTHS;
       for (const fraction of fractions) {
-        const width = Math.max(minimumLogoWidth(variant, image.width), Math.round(fraction * image.width));
+        const width = Math.max(minimumLogoWidth(variant, basis), Math.round(fraction * basis));
         const height = logoHeightFor(variant, width);
         const { x, y } = cornerPosition(corner, width, height, image, inset, input.safeArea);
         const result = await validateLogoPlacement({ creative: image, placement: { variantId: variant.id, x, y, width }, zones: input.zones, safeArea: input.safeArea });

@@ -10,14 +10,14 @@ import { useApp, type PlanTarget } from '../context';
 import { accountsOf, bestSlots, slotDay, type Slot } from '../../lib/analytics';
 import { errorMessage } from '../../lib/api';
 import { compact, dateFromKey, fmtDateTime, fromInputValue, hourLabel, num, parseTimestamp, toInputValue, zoneNow } from '../../lib/format';
-import { contentTypes, PLATFORMS, platformColor, platformName, statusLabel } from '../../lib/platforms';
-import type { PlanStatus, Platform, Post } from '../../types';
+import { contentTypes, PLAN_PLATFORMS, platformColor, platformName, statusLabel } from '../../lib/platforms';
+import type { PlanPlatform, PlanStatus, Post } from '../../types';
 
 const FORM_ID = 'plan-form';
 const MATCH_WINDOW_MS = 48 * 3_600_000;
 const STATUSES: PlanStatus[] = ['draft', 'approved', 'scheduled', 'published', 'cancelled'];
 /** Published platform caps; the counter warns against the strictest selected platform. */
-const CAPTION_LIMITS: Partial<Record<Platform, number>> = { instagram: 2200 };
+const CAPTION_LIMITS: Partial<Record<PlanPlatform, number>> = { instagram: 2200, x: 280, linkedin: 3000 };
 const HASHTAG_LIMIT = 30;
 const INPUT_FORMAT = "yyyy-LL-dd'T'HH:mm";
 
@@ -32,7 +32,7 @@ function nextOccurrence(slot: Slot, now: number) {
 }
 
 interface FormState {
-  platforms: Platform[];
+  platforms: PlanPlatform[];
   accountId: string;
   title: string;
   caption: string;
@@ -114,9 +114,11 @@ function PlanSheet({ target, open, onClose }: { target: PlanTarget; open: boolea
   const scheduledMs = useMemo(() => parseTimestamp(fromInputValue(form.scheduledAt) ?? ''), [form.scheduledAt]);
 
   const accounts = useMemo(() => {
-    const known = accountsOf(data.posts, platform ?? 'all');
+    // LinkedIn and X have no connector, so there are no observed accounts to offer for them.
+    const measured = platform && platform !== 'linkedin' && platform !== 'x' ? platform : undefined;
+    const known = platform && !measured ? [] : accountsOf(data.posts, measured ?? 'all');
     if (form.accountId && !known.some((item) => item.id === form.accountId))
-      known.push({ id: form.accountId, name: form.accountId, platform: platform ?? 'facebook', count: 0 });
+      known.push({ id: form.accountId, name: form.accountId, platform: measured ?? 'facebook', count: 0 });
     return known;
   }, [data.posts, platform, form.accountId]);
 
@@ -173,10 +175,10 @@ function PlanSheet({ target, open, onClose }: { target: PlanTarget; open: boolea
   };
   const invalid = Object.values(errors).some(Boolean);
 
-  const togglePlatform = (item: Platform) => {
+  const togglePlatform = (item: PlanPlatform) => {
     if (editing) return set('platforms', [item]);
     const next = form.platforms.includes(item) ? form.platforms.filter((value) => value !== item) : [...form.platforms, item];
-    setForm((state) => ({ ...state, platforms: PLATFORMS.filter((value) => next.includes(value)), accountId: '' }));
+    setForm((state) => ({ ...state, platforms: PLAN_PLATFORMS.filter((value) => next.includes(value)), accountId: '' }));
   };
 
   const submit = async (event: FormEvent) => {
@@ -294,7 +296,7 @@ function PlanSheet({ target, open, onClose }: { target: PlanTarget; open: boolea
             {!editing && <small>اختر أكثر من منصة لإضافة منشور مستقل لكل واحدة</small>}
           </span>
           <div className="picker" role="group" aria-label="المنصات">
-            {PLATFORMS.map((item) => (
+            {PLAN_PLATFORMS.map((item) => (
               <button
                 key={item}
                 type="button"

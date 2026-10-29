@@ -15,7 +15,7 @@ import { canEdit, contentIsMutable, getContent, type StoredContent } from './wor
 import { PLATFORM_SPECS, analyzeCaption, linksOf, unverifiedNumbers } from '../src/domain/platform-content.js';
 import type { Channel } from '../src/domain/shared.js';
 
-export const CAPTION_CHANNELS = ['facebook', 'instagram', 'whatsapp', 'linkedin', 'tiktok', 'snapchat', 'youtube', 'website'] as const;
+export const CAPTION_CHANNELS = ['facebook', 'instagram', 'whatsapp', 'linkedin', 'x', 'tiktok', 'snapchat', 'youtube', 'website'] as const;
 export const REFINE_INTENTS = ['shorter', 'hook', 'hashtags', 'friendlier', 'formal', 'cta', 'fix', 'register'] as const;
 export type RefineIntent = (typeof REFINE_INTENTS)[number];
 

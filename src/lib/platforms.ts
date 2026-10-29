@@ -1,27 +1,34 @@
-import type { ConnectorStatus, PlanState, PlanStatus, Platform } from '../types';
+import type { ConnectorStatus, PlanPlatform, PlanState, PlanStatus, Platform } from '../types';
 
 /** Display order is fixed: the platform palette is validated for these neighbours. */
 export const PLATFORMS: Platform[] = ['facebook', 'instagram', 'tiktok', 'snapchat', 'youtube', 'website'];
 
-export const platformName: Record<Platform, string> = {
+/** Platforms a calendar plan can be for: the measured ones, then LinkedIn and X, which are planned and published by hand. */
+export const PLAN_PLATFORMS: PlanPlatform[] = [...PLATFORMS, 'linkedin', 'x'];
+
+export const platformName: Record<PlanPlatform, string> = {
   facebook: 'فيسبوك',
   instagram: 'إنستجرام',
   tiktok: 'تيك توك',
   snapchat: 'سناب شات',
   youtube: 'يوتيوب',
   website: 'الموقع',
+  linkedin: 'لينكدإن',
+  x: 'X',
 };
 
-export const platformLatin: Record<Platform, string> = {
+export const platformLatin: Record<PlanPlatform, string> = {
   facebook: 'Facebook',
   instagram: 'Instagram',
   tiktok: 'TikTok',
   snapchat: 'Snapchat',
   youtube: 'YouTube',
   website: 'Website',
+  linkedin: 'LinkedIn',
+  x: 'X',
 };
 
-export const platformColor = (platform: Platform) => `var(--p-${platform})`;
+export const platformColor = (platform: PlanPlatform) => `var(--p-${platform})`;
 
 export const stateLabel: Record<PlanState, string> = {
   published: 'تم النشر',

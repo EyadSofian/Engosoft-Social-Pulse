@@ -1,11 +1,11 @@
 import { isGoal, type Goal } from '../../domain/goals';
-import type { Plan, Platform } from '../../types';
+import type { Plan, PlanPlatform } from '../../types';
 
 /**
  * A planned post nobody has made yet. One spreadsheet line for several platforms arrives as one plan row per
  * platform; rows with the same title and time are one planned post, so they show and count once.
  */
-export interface Slot { id: string; ids: string[]; title: string; caption: string; platforms: Platform[]; goal: Goal | null; scheduledAt: string; ms: number }
+export interface Slot { id: string; ids: string[]; title: string; caption: string; platforms: PlanPlatform[]; goal: Goal | null; scheduledAt: string; ms: number }
 
 export function planSlots(plans: Plan[]): Slot[] {
   const slots = new Map<string, Slot>();

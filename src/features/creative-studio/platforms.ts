@@ -10,6 +10,7 @@ export const PLATFORM_FORMATS = {
   instagram: { label: 'Instagram', format: 'Feed 4:5', master: 'feed', width: 1080, height: 1350, sizeId: 'portrait', copyLimit: 220, headlineLimit: 70 },
   facebook: { label: 'Facebook', format: 'Feed 4:5', master: 'feed', width: 1080, height: 1350, sizeId: 'portrait', copyLimit: 360, headlineLimit: 85 },
   linkedin: { label: 'LinkedIn', format: 'Feed 4:5', master: 'feed', width: 1080, height: 1350, sizeId: 'portrait', copyLimit: 350, headlineLimit: 75 },
+  x: { label: 'X', format: 'Feed 4:5', master: 'feed', width: 1080, height: 1350, sizeId: 'portrait', copyLimit: 200, headlineLimit: 70 },
   whatsapp: { label: 'WhatsApp', format: 'Status 9:16', master: 'story', width: 1080, height: 1920, sizeId: 'story', copyLimit: 120, headlineLimit: 50 },
   tiktok: { label: 'TikTok', format: 'Vertical 9:16', master: 'story', width: 1080, height: 1920, sizeId: 'story', copyLimit: 100, headlineLimit: 48 },
   snapchat: { label: 'Snapchat', format: 'Vertical 9:16', master: 'story', width: 1080, height: 1920, sizeId: 'story', copyLimit: 80, headlineLimit: 44 },

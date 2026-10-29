@@ -22,6 +22,7 @@ import { compileDesignPrompt, DEFAULT_SETTINGS, ENGINE_SKILL_VERSIONS, ENGINE_VE
 import { THEMES, type ThemeId } from '../skills/themes.js';
 import { looksUnfilled, pasteInside } from './patch.js';
 import { openAIJson, OpenAIImageProvider, type CreativeImageProvider, type ImageQuality } from './provider.js';
+import { canvasBrief, publishingPreset } from '../../../src/domain/output-presets.js';
 
 export const FULL_CREATIVE_VERSIONS = { director: 'creative-director:v2', compiler: 'full-creative-compiler:v2', pipeline: 'full-creative-pipeline:v1', designLanguage: DESIGN_LANGUAGE_VERSION } as const;
 
@@ -33,6 +34,23 @@ export const CREATIVE_FORMATS: Record<CreativeFormat, { generation: string; outp
   landscape: { generation: '1520x800', output: { width: 1200, height: 630 }, label: 'Website article / news banner and link preview, 1.91:1 landscape. Keep the headline large and the composition wide.', safeArea: { top: 0, right: 0, bottom: 0, left: 0 }, reservedCorner: 'top-left' },
   story: { generation: '1088x1936', output: { width: 1080, height: 1920 }, label: 'WhatsApp status / Instagram story, 9:16 vertical', safeArea: { top: 230, right: 0, bottom: 330, left: 0 }, reservedCorner: 'top-left' },
 };
+
+/**
+ * The canvas a design is made for: one of the four master formats, or any publishing size from the catalogue
+ * (`instagram-grid`, `x-header`…). Sizes recompose an approved master; they are never stretched or cropped from it.
+ */
+export type CanvasTarget = CreativeFormat | (string & {});
+export interface Canvas { key: string; generation: string; output: { width: number; height: number }; label: string; safeArea: SafeArea; reservedCorner: Corner; vertical: boolean }
+export function canvasOf(target: CanvasTarget): Canvas {
+  if (target in CREATIVE_FORMATS) {
+    const format = CREATIVE_FORMATS[target as CreativeFormat];
+    return { key: target, ...format, vertical: target === 'story' };
+  }
+  const preset = publishingPreset(target);
+  if (!preset) throw new Error(`Unknown canvas: ${target}`);
+  return { key: preset.id, generation: preset.generation, output: { width: preset.width, height: preset.height }, label: canvasBrief(preset), safeArea: preset.safe, reservedCorner: 'top-left', vertical: preset.format === 'story' };
+}
+export const isCanvasTarget = (target: string) => target in CREATIVE_FORMATS || Boolean(publishingPreset(target));
 
 export interface CreativeDirectionPlan {
   id: string; name: string; concept: string; subject: string; composition: string; palette: string; typography: string; mood: string;
@@ -183,15 +201,15 @@ export async function planCreativeWithEngine(prompt: string, format: CreativeFor
 }
 
 /** The image prompt for a direction: compiled from its design plan, or the previous director's prompt for older runs. */
-export function promptFor(brief: CreativeBriefPlan, direction: CreativeDirectionPlan, format: CreativeFormat, adaptation = false): string {
+export function promptFor(brief: CreativeBriefPlan, direction: CreativeDirectionPlan, format: CanvasTarget, adaptation = false): string {
   if (!brief.engine || !direction.engine) return compileFullCreativePrompt(brief, direction, format);
   const plan = logoPlanOf(direction, format);
   const design = { ...direction.engine.design, logoDirector: { ...direction.engine.design.logoDirector, mark: plan.mark, corner: plan.corner } };
-  return compileDesignPrompt({ strategy: brief.engine.strategy, direction: direction.engine.strategy, design, copy: brief.canonicalCopy, format: { label: CREATIVE_FORMATS[format].label, story: format === 'story' }, adaptation });
+  return compileDesignPrompt({ strategy: brief.engine.strategy, direction: direction.engine.strategy, design, copy: brief.canonicalCopy, format: { label: canvasOf(format).label, story: canvasOf(format).vertical }, adaptation });
 }
 
-export function compileFullCreativePrompt(brief: CreativeBriefPlan, direction: CreativeDirectionPlan, format: CreativeFormat): string {
-  const f = CREATIVE_FORMATS[format];
+export function compileFullCreativePrompt(brief: CreativeBriefPlan, direction: CreativeDirectionPlan, format: CanvasTarget): string {
+  const f = canvasOf(format);
   const copy = brief.canonicalCopy;
   const text = [
     `Headline: «${copy.headline}»`,
@@ -200,7 +218,8 @@ export function compileFullCreativePrompt(brief: CreativeBriefPlan, direction: C
     copy.cta ? `Call-to-action button: «${copy.cta}»` : '',
   ].filter(Boolean).map((line, i) => `${i + 1}. ${line}`).join('\n');
   const { mark, corner } = logoPlanOf(direction, format);
-  const storyZones = format === 'story' ? ` Keep the top 12% and bottom 17% free of essential content (platform interface). The reserved logo area sits just ${corner.startsWith('top') ? 'below the top 12%' : 'above the bottom 17%'}.` : '';
+  const top = Math.round((f.safeArea.top / f.output.height) * 100), bottom = Math.round((f.safeArea.bottom / f.output.height) * 100);
+  const storyZones = f.vertical ? ` Keep the top ${top}% and bottom ${bottom}% free of essential content (platform interface). The reserved logo area sits just ${corner.startsWith('top') ? `below the top ${top}%` : `above the bottom ${bottom}%`}.` : '';
   return [
     `TASK\nDesign a complete, finished, publish-ready social media post for Engosoft, an engineering training company. The image IS the final post: a fully art-directed composition across the entire canvas with integrated typography — not a background, not a stock photo with empty space.`,
     `FORMAT\n${f.label}.${storyZones}`,
@@ -219,8 +238,8 @@ export function compileFullCreativePrompt(brief: CreativeBriefPlan, direction: C
 }
 
 /** The logo mark and corner planned for a direction, with the format's defaults for older plans. */
-export function logoPlanOf(direction: CreativeDirectionPlan, format: CreativeFormat): { mark: LogoMark; corner: Corner } {
-  return { mark: direction.logoMark && LOGO_MARKS.includes(direction.logoMark) ? direction.logoMark : 'lockup', corner: direction.logoCorner && LOGO_CORNERS.includes(direction.logoCorner) ? direction.logoCorner : CREATIVE_FORMATS[format].reservedCorner };
+export function logoPlanOf(direction: CreativeDirectionPlan, format: CanvasTarget): { mark: LogoMark; corner: Corner } {
+  return { mark: direction.logoMark && LOGO_MARKS.includes(direction.logoMark) ? direction.logoMark : 'lockup', corner: direction.logoCorner && LOGO_CORNERS.includes(direction.logoCorner) ? direction.logoCorner : canvasOf(format).reservedCorner };
 }
 
 /**
@@ -245,8 +264,8 @@ function maskFor(width: number, height: number, ...boxes: { x: number; y: number
   return sharp({ create: { width, height, channels: 4, background: { r: 0, g: 0, b: 0, alpha: 1 } } }).composite([{ input: hole, blend: 'dest-out' }]).png().toBuffer();
 }
 
-async function toOutput(png: Buffer, format: CreativeFormat): Promise<Buffer> {
-  const { width, height } = CREATIVE_FORMATS[format].output;
+async function toOutput(png: Buffer, format: CanvasTarget): Promise<Buffer> {
+  const { width, height } = canvasOf(format).output;
   return sharp(png).resize(width, height, { fit: 'cover', position: 'centre', kernel: 'lanczos3' }).png().toBuffer();
 }
 
@@ -254,18 +273,18 @@ export type ProgressStage = 'context' | 'planning' | 'designing' | 'generating' 
 export type ProgressFn = (event: { stage: ProgressStage; directionId?: string; message?: string; brief?: CreativeBriefPlan }) => void;
 
 export async function produceDirection(input: {
-  provider: CreativeImageProvider; brief: CreativeBriefPlan; direction: CreativeDirectionPlan; format: CreativeFormat; quality: ImageQuality; dir: string; env: NodeJS.ProcessEnv;
+  provider: CreativeImageProvider; brief: CreativeBriefPlan; direction: CreativeDirectionPlan; format: CanvasTarget; quality: ImageQuality; dir: string; env: NodeJS.ProcessEnv;
   /** Recompose an existing creative for this format instead of generating from nothing. */
   sourceImage?: Buffer;
   onProgress?: ProgressFn;
 }): Promise<FullCreativeResult> {
   const { provider, brief, direction, format, quality, dir, env, sourceImage } = input;
   const progress = (stage: ProgressStage) => input.onProgress?.({ stage, directionId: direction.id });
-  const spec = CREATIVE_FORMATS[format];
+  const spec = canvasOf(format);
   const plan = logoPlanOf(direction, format);
   const started = Date.now();
   const prompt = sourceImage
-    ? `${promptFor(brief, direction, format, true)}\n\nMASTER\nThe attached image is the approved master of this campaign. Recompose it for this format: same concept, subject, palette, typography style and exact text, re-laid-out for the new canvas. Do not simply stretch or crop it.`
+    ? `${promptFor(brief, direction, format, true)}\n\nMASTER\nThe attached image is the approved master of this campaign. Design it again for this canvas: same concept, subject, palette, typography style and exact text, with the layout rebuilt from scratch for this shape. Never stretch, squash or crop it, never put it inside a frame or card, and never fill the space with blurred or repeated copies of it.`
     : promptFor(brief, direction, format);
   const problems: string[] = [];
   progress('generating');
@@ -308,7 +327,7 @@ export async function produceDirection(input: {
     // Logo-first repair: repaint only the reserved corner so the official logo has clean space.
     progress('repairing');
     const zone = reservedZoneBox(plan.corner, gw, gh, LOGO_ZONE[plan.mark]);
-    if (format === 'story') zone.y = plan.corner.startsWith('top') ? Math.round(gh * 0.12) : Math.round(gh * 0.83) - zone.height;
+    if (spec.vertical) zone.y = plan.corner.startsWith('top') ? Math.round(gh * (spec.safeArea.top / spec.output.height)) : Math.round(gh * (1 - spec.safeArea.bottom / spec.output.height)) - zone.height;
     const clean = 'Keep the complete existing composition exactly. Change only the transparent masked area: make it a calm, clean, uncluttered continuation of the surrounding background, with no text, faces, objects, logos or graphics. Preserve every other pixel, all typography, subject, lighting and colors.';
     // Only the corner is taken from the model: an edit may also shift colours elsewhere, and it sometimes
     // leaves the hole unpainted (flat black). Then retry once, and give up rather than ship a black block.
@@ -379,8 +398,8 @@ export async function generateFullCreative(request: FullCreativeRequest, env = p
   return run;
 }
 
-/** Recompose one finished direction of a saved run for another format (e.g. feed → WhatsApp status). */
-export async function adaptFullCreative(run: FullCreativeRun, directionId: string, format: CreativeFormat, env = process.env, onProgress?: ProgressFn): Promise<FullCreativeResult> {
+/** Recompose one finished direction of a saved run for another format or publishing size (e.g. feed → WhatsApp status, feed → X header). */
+export async function adaptFullCreative(run: FullCreativeRun, directionId: string, format: CanvasTarget, env = process.env, onProgress?: ProgressFn): Promise<FullCreativeResult> {
   const direction = run.brief.directions.find((d) => d.id === directionId);
   const source = run.results.find((r) => r.directionId === directionId);
   if (!direction || !source?.rawImagePath) throw new Error('That direction has no generated image to adapt');
