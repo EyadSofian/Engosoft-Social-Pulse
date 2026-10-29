@@ -8,7 +8,9 @@ import { registerSocialOAuth, socialProviders } from './oauth.js';
 import { disconnect, getAccount, listAccounts } from './store.js';
 import { capabilities, requiredCapability } from './capabilities.js';
 import { configuredCallback } from './oauth.js';
-import { attachImage, attachVideo, contentMedia, validMediaSignature } from './media.js';
+import { attachImage, contentMedia, expiredContentMedia, validMediaSignature } from './media.js';
+import { attachVideoStream } from './video-upload.js';
+import { StorageError } from '../storage.js';
 import { contentJobs, getJob, publish, checkJob, reconcileJob } from './publishing.js';
 import { creatorInfo } from './publish-providers.js';
 import { IdentityConfirmationRequired, publishingServices, hybridConfigured, hybridSummary, connectPublishingService, checkPublishingService, hybridCreator } from './hybrid.js';
@@ -114,28 +116,30 @@ export function registerSocialRoutes(app:express.Express) {
  });
  app.get('/api/social/content/:id',async(req,res)=>{
   const item=await getContent(String(req.params.id));if(!item||!canSee(req.user!,item))return res.status(404).end();
-  res.json({media:await contentMedia(item.id),jobs:await contentJobs(item.id)});
+  res.json({media:await contentMedia(item.id),expiredMedia:await expiredContentMedia(item.id),jobs:await contentJobs(item.id)});
  });
- app.post('/api/social/content/:id/video',express.raw({type:'video/mp4',limit:'200mb'}),async(req,res)=>{
+ app.post('/api/social/content/:id/video',async(req,res)=>{
   const item=await getContent(String(req.params.id));if(!item||!canEdit(req.user!,item))return res.status(403).end();
   if(!userCan(req.user!,'design.video'))return res.status(403).json({error:'رفع الريلز والفيديو ليس ضمن صلاحياتك.',code:'forbidden'});
   if(!contentIsMutable(item))return res.status(409).json({error:'Return content for review before changing approved media.'});
-  if(!Buffer.isBuffer(req.body))return res.status(400).json({error:'Upload an MP4 file.'});
-  try {res.json(await attachVideo(item.id,req.body));}catch{res.status(400).json({error:'Use a standard MP4 export with duration and resolution metadata, up to 200 MB.'});}
+  if(!req.is('video/mp4'))return res.status(400).json({error:'Upload an MP4 file.'});
+  req.setTimeout(120_000,()=>req.destroy());
+  try {res.json(await attachVideoStream(item.id,req,req.header('content-length')?Number(req.header('content-length')):undefined));}
+  catch(e){if(!res.destroyed)res.status(e instanceof StorageError?e.status:400).json({error:e instanceof StorageError?e.message:'Use a standard MP4 export with duration and resolution metadata, up to 200 MB.',code:e instanceof StorageError?e.code:'invalid_video'});}
  });
  app.post('/api/social/content/:id/image',express.raw({type:['image/jpeg','image/png','image/webp'],limit:'8mb'}),async(req,res)=>{
   const item=await getContent(String(req.params.id));if(!item||!canEdit(req.user!,item))return res.status(403).end();
   if(!contentIsMutable(item))return res.status(409).json({error:'Return content for review before changing approved media.'});
   if(!Buffer.isBuffer(req.body))return res.status(400).json({error:'Upload a JPEG, PNG or WebP image.'});
-  try {res.json(await attachImage(item.id,req.body));}catch{res.status(400).json({error:'Use a still JPEG, PNG or WebP image up to 8 MB (40 megapixels maximum).'});}
+  try {res.json(await attachImage(item.id,req.body));}catch(e){res.status(e instanceof StorageError?e.status:400).json({error:e instanceof StorageError?e.message:'Use a still JPEG, PNG or WebP image up to 8 MB (40 megapixels maximum).'});}
  });
  app.get('/api/social/assets/:id',async(req,res)=>{
-  const r=await db.get<{path:string;content_id:string}>('SELECT path,content_id FROM social_media WHERE id=?',[String(req.params.id)]);const item=r?await getContent(r.content_id):undefined;
+  const r=await db.get<{path:string;content_id:string}>("SELECT path,content_id FROM social_media WHERE id=? AND storage_state='active'",[String(req.params.id)]);const item=r?await getContent(r.content_id):undefined;
   if(!r||!item||!canSee(req.user!,item))return res.status(404).end();res.sendFile(r.path,{headers:{'Cache-Control':'private, no-store'}});
  });
  app.get('/api/social/media/:id',async(req,res)=>{
   const id=String(req.params.id);if(!validMediaSignature(id,String(req.query.expires||''),String(req.query.signature||'')))return res.status(404).end();
-  const r=await db.get<{path:string}>('SELECT path FROM social_media WHERE id=?',[id]);if(!r)return res.status(404).end();res.sendFile(r.path,{headers:{'Cache-Control':'no-store','Referrer-Policy':'no-referrer'}});
+  const r=await db.get<{path:string}>("SELECT path FROM social_media WHERE id=? AND storage_state='active'",[id]);if(!r)return res.status(404).end();res.sendFile(r.path,{headers:{'Cache-Control':'no-store','Referrer-Policy':'no-referrer'}});
  });
  app.post('/api/social/publish',requirePermission('content.publish'),async(req,res)=>{
   const parsed=inputSchema.safeParse(req.body);if(!parsed.success)return res.status(400).json({error:'Choose approved content, an account, media options and explicit consent.'});

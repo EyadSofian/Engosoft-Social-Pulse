@@ -11,6 +11,7 @@ import { useI18n } from '../../i18n/I18nProvider';
 import { api, errorMessage } from '../../lib/api';
 import { PageHeader } from '../../shell/Header';
 import { usePageMeta } from '../../shell/ShellContext';
+import { StoragePanel } from '../../features/publishing/StoragePanel';
 
 interface ModelRate { textIn: number; imageIn: number; out: number }
 interface Pricing { usdToEgp: number; defaultMonthlyUsd: number | null; models: Record<string, ModelRate> }
@@ -66,6 +67,7 @@ export function UsagePage() {
         description={t('Every AI call is recorded with its real token cost from OpenAI pricing. Budgets stop new AI work for a person once their monthly limit is reached.', 'يُسجَّل كل طلب ذكاء اصطناعي بتكلفته الفعلية وفق أسعار OpenAI بالدولار. يوقف الرصيدُ الطلبات الجديدة للشخص عند بلوغ حده الشهري.')}
         actions={<select className="usage-month" value={month} onChange={(e) => setMonth(e.target.value)} aria-label={t('Month', 'الشهر')}>{months().map((m) => <option key={m} value={m}>{m}</option>)}</select>}
       />
+      {can('admin.access') && <StoragePanel />}
       <div className="stat-row">
         <Stat tone="brand" icon={<Wallet size={16} />} value={usd(report.totalUsd)} label={report.scope === 'all' ? t('Total spend', 'إجمالي الإنفاق') : t('Your spend', 'إنفاقك')} hint={t('this month', 'هذا الشهر')} />
         <Stat tone="success" icon={<ImageIcon size={16} />} value={num(report.images)} label={t('Images generated or edited', 'صور مُولَّدة أو معدَّلة')} hint={t(`${num(report.calls)} AI calls`, `${num(report.calls)} طلب`)} />

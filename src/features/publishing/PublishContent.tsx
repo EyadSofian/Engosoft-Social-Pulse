@@ -15,7 +15,8 @@ export function PublishContent({item}:{item:PipelineDetail}) {
  const [category,setCategory]=useState('27'),[tags,setTags]=useState(''),[kids,setKids]=useState(''),[snapTarget,setSnapTarget]=useState('story');
  const [allowComment,setComment]=useState(false),[allowDuet,setDuet]=useState(false),[allowStitch,setStitch]=useState(false),[commercial,setCommercial]=useState('none'),[consent,setConsent]=useState(false),[busy,setBusy]=useState(false),[error,setError]=useState(''),[proof,setProof]=useState<Record<string,string>>({}),[bufferDefaults,setBufferDefaults]=useState(false),[aiGenerated,setAiGenerated]=useState(false);
  const [coverUrl,setCoverUrl]=useState(''),[autoMusic,setAutoMusic]=useState(false);
- const reload=async()=>{const d=await call(`/api/social/content/${item.id}`);setAssets(d.media);setJobs(d.jobs);};
+ const [expiredFiles,setExpiredFiles]=useState(0);
+ const reload=async()=>{const d=await call(`/api/social/content/${item.id}`);setAssets(d.media);setJobs(d.jobs);setExpiredFiles(d.expiredMedia?.length||0);};
  useEffect(()=>{void reload().catch(()=>{});if(item.canPublish)void call('/api/social/connections').then(d=>setProviders(d.providers)).catch(()=>{});},[item.id,item.status]);
  const connected=providers.flatMap(p=>p.accounts).filter(a=>a.status==='connected');
  const accounts=connected.filter(a=>item.channels.includes(a.provider));
@@ -42,6 +43,7 @@ export function PublishContent({item}:{item:PipelineDetail}) {
  const publishable=item.canPublish&&['approved','scheduled'].includes(item.status);
  const PLATFORM:Record<string,string>={facebook:'Facebook',instagram:'Instagram',tiktok:'TikTok',snapchat:'Snapchat',youtube:'YouTube'};
  return <>
+  {expiredFiles>0&&<p className="u-sm u-muted">{t('Some publishing attachments expired under the retention policy. Platform posts and their statistics remain. An administrator can restore files still in the recovery bin.','انتهت مدة الاحتفاظ ببعض مرفقات النشر. المنشورات على المنصات وإحصاءاتها باقية. يمكن للمسؤول استرجاع الملفات التي ما زالت في سلة الاسترجاع.')}</p>}
   {(item.editable||assets.length>0)&&<section className="content-drawer__section post-files">
    <h3>{t('Post files','ملفات المنشور')}</h3>
    <p className="u-xs u-muted">{t('Add the video or extra photos that go out with this post. They are reviewed with it and locked once approved.','أضف الفيديو أو الصور الإضافية اللي هتنزل مع المنشور. بتتراجع معاه وبتتقفل بعد الاعتماد.')}</p>

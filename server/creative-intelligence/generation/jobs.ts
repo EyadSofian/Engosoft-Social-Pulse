@@ -2,6 +2,7 @@
 import { randomUUID } from 'node:crypto';
 import { basename } from 'node:path';
 import { notifyUser } from '../../notify.js';
+import { withStorage, MiB } from '../../storage.js';
 import type { FullCreativeResult, FullCreativeRun, ProgressStage } from './full-creative.js';
 
 export interface CreativeJob {
@@ -43,7 +44,7 @@ export function startJob(kind: CreativeJob['kind'], ownerId: string, work: (prog
   const job: CreativeJob = { id: randomUUID(), kind, ownerId, requestId, status: 'running', stage: 'queued', startedAt: new Date().toISOString(), directionStages: {} };
   jobs.set(job.id, job);
   if (jobs.size > MAX_JOBS) jobs.delete(jobs.keys().next().value!);
-  void work((event) => { job.stage = event.stage; if (event.brief) job.brief = event.brief; if (event.directionId) job.directionStages[event.directionId] = event.stage; })
+  void withStorage(128 * MiB, () => work((event) => { job.stage = event.stage; if (event.brief) job.brief = event.brief; if (event.directionId) job.directionStages[event.directionId] = event.stage; }))
     .then((run) => {
       job.status = 'done'; job.stage = 'done'; job.run = toPublicRun(run); job.requestId = run.requestId;
       // The person may have left the page: tell them wherever they are.
