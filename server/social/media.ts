@@ -1,12 +1,18 @@
-import { createHmac, randomUUID } from 'node:crypto';
-import { mkdir, readFile, writeFile, unlink } from 'node:fs/promises';
+import { createHash, createHmac, randomUUID } from 'node:crypto';
+import { access, mkdir, readFile, writeFile, unlink } from 'node:fs/promises';
 import sharp from 'sharp';
-import { db, defineSchema } from '../db.js';
+import { db, defineSchema, defineColumn, defineMigration } from '../db.js';
+import { withStorage, MiB } from '../storage.js';
 import { mediaDir } from '../paths.js';
 import type { StoredContent } from '../workspace.js';
 import type { Media, PublishInput, SocialProvider } from './types.js';
 
 defineSchema(`CREATE TABLE IF NOT EXISTS social_media (id TEXT PRIMARY KEY,content_id TEXT NOT NULL,path TEXT NOT NULL,metadata_json TEXT NOT NULL,created_at TEXT NOT NULL);`);
+defineColumn('social_media','storage_state',"TEXT NOT NULL DEFAULT 'active'");
+defineColumn('social_media','quarantined_at','TEXT');
+defineColumn('social_media','pinned','INTEGER NOT NULL DEFAULT 0');
+defineColumn('social_media','source_hash','TEXT');
+defineMigration(()=>db.exec('CREATE INDEX IF NOT EXISTS social_media_content_source ON social_media(content_id,source_hash)'));
 export interface PreparedMedia extends Media { file:string; id:string }
 /** Inspect MP4 box metadata on the server. Other video containers are refused. */
 export function inspectMP4(b:Buffer) {
@@ -28,13 +34,16 @@ export function inspectMP4(b:Buffer) {
  return {duration,width:Math.round(width),height:Math.round(height)};
 }
 export async function attachVideo(contentId:string,b:Buffer) {
+ return withStorage(b.length,async()=>{
  if(!b.length||b.length>200*1024*1024)throw new Error('Video must be between 1 byte and 200 MB.');
  const dimensions=inspectMP4(b);const id=randomUUID(),file=mediaDir('social',`${id}.mp4`);
  await mkdir(mediaDir('social'),{recursive:true});await writeFile(file,b,{flag:'wx'});
  const m:Media={url:`/api/social/assets/${id}`,type:'video',mimeType:'video/mp4',bytes:b.length,...dimensions};
- await db.run('INSERT INTO social_media(id,content_id,path,metadata_json,created_at) VALUES(?,?,?,?,?)',[id,contentId,file,JSON.stringify(m),new Date().toISOString()]);return {id,...m};
+ try {await db.run('INSERT INTO social_media(id,content_id,path,metadata_json,created_at) VALUES(?,?,?,?,?)',[id,contentId,file,JSON.stringify(m),new Date().toISOString()]);return {id,...m};}catch(e){await unlink(file).catch(()=>{});throw e;}
+ });
 }
 export async function attachImage(contentId:string,b:Buffer) {
+ return withStorage(8*MiB,async()=>{
  if(!b.length||b.length>8*1024*1024)throw new Error('Images must be at most 8 MB.');
  const image=sharp(b,{limitInputPixels:40_000_000}),metadata=await image.metadata();
  if(!['jpeg','png','webp'].includes(metadata.format||'')||(metadata.pages||1)>1)throw new Error('Use a still JPEG, PNG or WebP image.');
@@ -52,14 +61,16 @@ export async function attachImage(contentId:string,b:Buffer) {
   });
  } catch(e){await unlink(file).catch(()=>{});throw e;}
  return {id,...m};
+ });
 }
-export async function contentMedia(contentId:string) {return (await db.all<{id:string;metadata_json:string}>('SELECT id,metadata_json FROM social_media WHERE content_id=? ORDER BY created_at,id',[contentId])).map(r=>({id:r.id,...JSON.parse(r.metadata_json) as Media}));}
+export async function contentMedia(contentId:string) {return (await db.all<{id:string;metadata_json:string}>("SELECT id,metadata_json FROM social_media WHERE content_id=? AND storage_state='active' ORDER BY created_at,id",[contentId])).map(r=>({id:r.id,...JSON.parse(r.metadata_json) as Media}));}
+export async function expiredContentMedia(contentId:string) {return (await db.all<{id:string;metadata_json:string;storage_state:string}>("SELECT id,metadata_json,storage_state FROM social_media WHERE content_id=? AND storage_state!='active'",[contentId])).map(r=>({id:r.id,type:(JSON.parse(r.metadata_json) as Media).type,state:r.storage_state}));}
 export async function resolveMedia(item:StoredContent,urls:string[]):Promise<PreparedMedia[]> {
  const result:PreparedMedia[]=[];
  for(const url of urls) {
   const asset=/^\/api\/social\/assets\/([0-9a-f-]{36})$/.exec(url);
   if(asset) {
-   const row=await db.get<{path:string;metadata_json:string}>('SELECT path,metadata_json FROM social_media WHERE id=? AND content_id=?',[asset[1],item.id]);
+   const row=await db.get<{path:string;metadata_json:string}>("SELECT path,metadata_json FROM social_media WHERE id=? AND content_id=? AND storage_state='active'",[asset[1],item.id]);
    if(!row)throw new Error('Media must be attached to this content before approval.');
    result.push({...JSON.parse(row.metadata_json),file:row.path,id:asset[1]});continue;
   }
@@ -69,9 +80,21 @@ export async function resolveMedia(item:StoredContent,urls:string[]):Promise<Pre
   if(!approved.includes(url)||(!match&&!other)||match?.[2].includes('..'))throw new Error('Choose approved media attached to this content.');
   const original=await readFile(match?mediaDir('creatives',match[1],match[2]):mediaDir(other![1],other![2]));
   const {data,info}=await sharp(original).rotate().jpeg({quality:94}).toBuffer({resolveWithObject:true});
-  const id=randomUUID(),file=mediaDir('social',`${id}.jpg`);await mkdir(mediaDir('social'),{recursive:true});await writeFile(file,data,{flag:'wx'});
-  const m:Media={url:`/api/social/assets/${id}`,type:'image',mimeType:'image/jpeg',bytes:data.length,width:info.width,height:info.height};
-  await db.run('INSERT INTO social_media(id,content_id,path,metadata_json,created_at) VALUES(?,?,?,?,?)',[id,item.id,file,JSON.stringify(m),new Date().toISOString()]);result.push({...m,file,id});
+  const hash=createHash('sha256').update(data).digest('hex');
+  const lookup=()=>db.get<{id:string;path:string;metadata_json:string}>("SELECT id,path,metadata_json FROM social_media WHERE content_id=? AND source_hash=? AND storage_state='active' LIMIT 1",[item.id,hash]);
+  let existing=await lookup();
+  if(existing){try{await access(existing.path);result.push({...JSON.parse(existing.metadata_json),id:existing.id,file:existing.path});continue;}catch{/* Rebuild a missing cached copy from the approved original. */}}
+  const prepared=await withStorage(data.length,async()=>{
+   let written='';
+   try{return await db.tx(async tx=>{
+    await tx.run('UPDATE content_items SET updated_at=updated_at WHERE id=?',[item.id]);
+    existing=await tx.get("SELECT id,path,metadata_json FROM social_media WHERE content_id=? AND source_hash=? AND storage_state='active' LIMIT 1",[item.id,hash]);
+    if(existing){try{await access(existing.path);return {...JSON.parse(existing.metadata_json),id:existing.id,file:existing.path};}catch{/* Rebuild below. */}}
+    const id=randomUUID(),file=mediaDir('social',`${id}.jpg`);await mkdir(mediaDir('social'),{recursive:true});await writeFile(file,data,{flag:'wx'});written=file;
+    const m:Media={url:`/api/social/assets/${id}`,type:'image',mimeType:'image/jpeg',bytes:data.length,width:info.width,height:info.height};
+    await tx.run('INSERT INTO social_media(id,content_id,path,metadata_json,created_at,source_hash) VALUES(?,?,?,?,?,?)',[id,item.id,file,JSON.stringify(m),new Date().toISOString(),hash]);return {...m,file,id};
+   });}catch(e){if(written)await unlink(written).catch(()=>{});throw e;}
+  });result.push(prepared);
  }
  return result;
 }

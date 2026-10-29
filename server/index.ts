@@ -34,6 +34,9 @@ import { registerSvgTemplateRoutes } from './svg-templates.js';
 import { registerCourseProfileRoutes, seedCourseCatalog } from './course-profiles.js';
 import { seedBuiltinTemplates } from './builtin-templates.js';
 import { recoverReferenceJobs, registerReferenceDesignRoutes } from './reference-designs.js';
+import { registerStorageRoutes } from './storage-routes.js';
+import { storageWriteGuard } from './storage.js';
+import { runStorageMaintenance } from './storage-retention.js';
 
 const app=express();const port=Number(process.env.PORT)||4100;const host=process.env.HOST||'127.0.0.1';
 app.disable('x-powered-by');app.set('trust proxy',1);app.use('/api/ai',express.json({limit:'18mb'}));app.use('/api/studio',express.json({limit:'18mb'}));app.use('/api/svg-templates',express.json({limit:'16mb'}));app.use('/api/uploads',express.json({limit:'16mb'}));app.use(express.json({limit:'1mb'}));
@@ -42,7 +45,9 @@ registerAuthRoutes(app);
 // Provider callbacks validate state and the initiating user; signed media is narrowly scoped to one expiring asset.
 const PUBLIC_API=new Set(['/api/health','/api/auth/login','/api/auth/logout',...['facebook','instagram','tiktok','snapchat','youtube'].map(p=>`/api/oauth/${p}/callback`)]);
 app.use('/api',(req,res,next)=>(PUBLIC_API.has(req.originalUrl.split('?')[0])||/^\/api\/social\/media\/[0-9a-f-]{36}$/.test(req.originalUrl.split('?')[0]))?next():requireUser(req,res,next));
+app.use('/api',storageWriteGuard);
 registerWorkspaceRoutes(app);
+registerStorageRoutes(app);
 registerSocialRoutes(app);
 registerAiTemplateRoutes(app);
 registerStudioRoutes(app);
@@ -205,3 +210,5 @@ setInterval(()=>{void checkAlerts().catch(()=>{});},60_000).unref();
 // Scheduled Facebook and Instagram publications go out within a minute of their time.
 setInterval(()=>{void runDuePublications().catch(()=>{});},60_000).unref();
 setInterval(()=>{void runSync().catch(()=>{});},30*60_000).unref();
+setTimeout(()=>{void runStorageMaintenance().catch(()=>console.error('Storage maintenance stopped; review storage status.'));},10_000).unref();
+setInterval(()=>{void runStorageMaintenance().catch(()=>console.error('Storage maintenance stopped; review storage status.'));},60*60_000).unref();
