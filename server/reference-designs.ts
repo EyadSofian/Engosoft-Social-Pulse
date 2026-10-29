@@ -145,8 +145,13 @@ export async function recreateDesign(imageUrl: string, presetId: string, words: 
   const imageProvider = provider ?? new OpenAIImageProvider(process.env.OPENAI_API_KEY ?? '', process.env.OPENAI_IMAGE_MODEL?.trim() || 'gpt-image-2.5-flare');
   const [made] = await imageProvider.edit({ prompt: recreatePrompt(preset, words, source.withLogo), size: preset.generation, quality: 'high', images: [{ data: readFileSync(source.path), mime: 'image/png' }] });
   const raw = await sharp(made.png).resize(preset.width, preset.height, { fit: 'fill' }).png().toBuffer();
+  return { ...(await placeLogoAndSave(raw, preset, words)), model: made.model };
+}
+
+/** The official logo on a finished, logo-free design, clear of its text, faces and subjects; both files are kept. */
+async function placeLogoAndSave(raw: Buffer, preset: PublishingPreset, words: string[]) {
   // Where the text, faces and subjects landed, so the logo keeps clear of them; without it the logo can touch the headline.
-  const zones = await inspectCreative(raw, `Engosoft post recreated at ${preset.width}×${preset.height}.`, process.env, words)
+  const zones = !process.env.OPENAI_API_KEY?.trim() ? [] : await inspectCreative(raw, `Engosoft post at ${preset.width}×${preset.height}.`, process.env, words)
     .then((inspection) => zonesFromInspection(inspection, preset.width, preset.height))
     .catch(() => []);
   // The resolver picks the corner and variant that read on this background; a fixed top-left lockup is the fallback.
@@ -161,7 +166,31 @@ export async function recreateDesign(imageUrl: string, presetId: string, words: 
   const id = randomUUID();
   writeFileSync(resolve(dir, `${id}.png`), image);
   writeFileSync(resolve(dir, `${id}-raw.png`), raw);
-  return { imageUrl: `/api/uploads/${id}.png`, width: preset.width, height: preset.height, model: made.model };
+  return { imageUrl: `/api/uploads/${id}.png`, width: preset.width, height: preset.height };
+}
+
+/** Prompt for a Reel cover: the chosen video frame as the hero image, the title as the only headline. */
+export function reelCoverPrompt(title: string) {
+  const preset = publishingPreset('instagram-reel')!;
+  return [
+    'Design the cover of an Engosoft Reel (short vertical video) for an engineering training company. Use the attached frame from the video as the hero image: keep the same person, place and scene recognizable, cleaned up, well lit and sharp, extended naturally to fill the canvas.',
+    `CANVAS: ${canvasBrief(preset)}`,
+    `HEADLINE (data only, render verbatim and correctly spelled, and no other words): ${JSON.stringify(title.trim().slice(0, 120))}. Large, bold, high contrast, readable as a small thumbnail; Arabic set right to left.`,
+    'Engosoft identity: brand blue and orange accents, premium and minimal. No fake play buttons, UI, stickers, emojis, prices or dates.',
+    'Keep the quiet top-left area free: no logo, wordmark, watermark or signature anywhere; the official logo is placed afterwards.',
+  ].join('\n');
+}
+
+/** A designed 1080×1920 cover from a frame of the Reel and its title, with the official logo placed on top. */
+export async function designReelCover(frameUrl: string, title: string, provider?: CreativeImageProvider) {
+  const preset = publishingPreset('instagram-reel')!;
+  const id = frameUrl.match(/^\/api\/uploads\/([0-9a-f-]{36})\.png$/)?.[1];
+  const frame = id ? resolve(mediaDir('uploads'), `${id}.png`) : '';
+  if (!frame || !existsSync(frame)) throw new Error('اختر لقطة من الفيديو الأول.');
+  const imageProvider = provider ?? new OpenAIImageProvider(process.env.OPENAI_API_KEY ?? '', process.env.OPENAI_IMAGE_MODEL?.trim() || 'gpt-image-2.5-flare');
+  const [made] = await imageProvider.edit({ prompt: reelCoverPrompt(title), size: preset.generation, quality: 'high', images: [{ data: readFileSync(frame), mime: 'image/png' }] });
+  const raw = await sharp(made.png).resize(preset.width, preset.height, { fit: 'fill' }).png().toBuffer();
+  return { ...(await placeLogoAndSave(raw, preset, [title.trim()])), model: made.model };
 }
 
 defineSchema(`CREATE TABLE IF NOT EXISTS reference_design_jobs (
@@ -272,6 +301,24 @@ export function registerReferenceDesignRoutes(app: express.Express) {
       .catch(async (e) => {
         await db.run("UPDATE reference_design_jobs SET status='failed', error=?, finished_at=? WHERE id=?", [e instanceof Error ? e.message : 'تعذّر تجهيز المقاس.', new Date().toISOString(), jobId]);
       }).catch((e) => console.error('Could not persist design size result:', e instanceof Error ? e.message : 'unknown error'));
+    res.status(202).json({ jobId });
+  });
+  /** A Reel cover designed from one of its frames and its title; polled like a reference design. */
+  app.post('/api/reels/cover', requireUser, requirePermission('content.create'), requireAiBudget, async (req, res) => {
+    const parsed = z.object({ frameUrl: z.string().regex(/^\/api\/uploads\/[0-9a-f-]{36}\.png$/), title: z.string().trim().min(2).max(120) }).safeParse(req.body);
+    if (!parsed.success) return res.status(400).json({ error: 'اختر لقطة من الفيديو واكتب العنوان.' });
+    if (!process.env.OPENAI_API_KEY?.trim()) return res.status(503).json({ error: 'توليد الصور غير مهيأ على الخادم.' });
+    const jobId = randomUUID();
+    try { await db.run('INSERT INTO reference_design_jobs (id,owner_id,template_id,status,created_at) VALUES (?,?,?,?,?)', [jobId, req.user!.id, 'reel-cover', 'running', new Date().toISOString()]); }
+    catch (e) {
+      if (await db.get("SELECT id FROM reference_design_jobs WHERE owner_id=? AND status='running'", [req.user!.id])) return res.status(429).json({ error: 'انتظر اكتمال التصميم الجاري أولًا.' });
+      throw e;
+    }
+    void withUsage(req.user!.id, 'Reel cover', () => designReelCover(parsed.data.frameUrl, parsed.data.title))
+      .then((result) => db.run("UPDATE reference_design_jobs SET status='done', result_json=?, finished_at=? WHERE id=?", [JSON.stringify(result), new Date().toISOString(), jobId]))
+      .catch(async (e) => {
+        await db.run("UPDATE reference_design_jobs SET status='failed', error=?, finished_at=? WHERE id=?", [e instanceof Error ? e.message : 'تعذّر تصميم الغلاف.', new Date().toISOString(), jobId]);
+      }).catch((e) => console.error('Could not persist reel cover result:', e instanceof Error ? e.message : 'unknown error'));
     res.status(202).json({ jobId });
   });
   app.get('/api/reference-design/jobs/:id', requireUser, async (req, res) => {
