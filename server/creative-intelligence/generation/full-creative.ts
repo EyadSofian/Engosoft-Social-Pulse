@@ -15,6 +15,7 @@ import { BRAND } from '../brand/registry.js';
 import { resolveOdooContext, type VerifiedCourseContext } from '../context/odoo-context.js';
 import { inspectCreative, zonesFromInspection, type CreativeInspection } from '../criticism/inspect.js';
 import { compositeLogo, verifyComposite } from '../logo-resolution/compositor.js';
+import { applyCampaignStamp, campaignBrief, stampRoom, withHashtag, type CampaignIdentity } from '../logo-resolution/campaign-stamp.js';
 import { reservedZoneBox, resolveLogo, type Corner, type LogoDecision, type NoLogoDecision } from '../logo-resolution/resolver.js';
 import type { SafeArea } from '../logo-resolution/validator.js';
 import { checkCopy, copyPasses, type CanonicalCopy, type CopyCheck } from '../typography-validation/copy-check.js';
@@ -106,6 +107,8 @@ export interface FullCreativeRequest {
   objective?: string;
   /** Files attached on the Create page. The saved trace keeps their names only. */
   attachments?: UserReference[];
+  /** The campaign the post belongs to: its slogan shapes the copy, its stamp is placed on the design. */
+  campaign?: CampaignIdentity;
 }
 export interface FullCreativeResult {
   directionId: string;
@@ -281,6 +284,12 @@ export function compileFullCreativePrompt(brief: CreativeBriefPlan, direction: C
   ].join('\n\n');
 }
 
+/** The campaign's stamp file, or null when it has none or it was removed. */
+const campaignStamp = (campaign: CampaignIdentity): Buffer | null => {
+  if (!campaign.stampPath) return null;
+  try { return readFileSync(campaign.stampPath); } catch { return null; }
+};
+
 /** The logo mark and corner planned for a direction, with the format's defaults for older plans. */
 export function logoPlanOf(direction: CreativeDirectionPlan, format: CanvasTarget): { mark: LogoMark; corner: Corner } {
   return { mark: direction.logoMark && LOGO_MARKS.includes(direction.logoMark) ? direction.logoMark : 'lockup', corner: direction.logoCorner && LOGO_CORNERS.includes(direction.logoCorner) ? direction.logoCorner : canvasOf(format).reservedCorner };
@@ -323,6 +332,7 @@ export async function produceDirection(input: {
   onProgress?: ProgressFn;
   /** Defaults to the run's mode (`textModeFor`). Adaptations pass their master's mode. */
   mode?: TextMode;
+  campaign?: CampaignIdentity;
 }): Promise<FullCreativeResult> {
   if ((input.mode ?? textModeFor(input.brief, input.env)) === 'typeset') return produceTypeset(input);
   const { provider, brief, direction, format, quality, dir, env, sourceImage } = input;
@@ -330,9 +340,10 @@ export async function produceDirection(input: {
   const spec = canvasOf(format);
   const plan = logoPlanOf(direction, format);
   const started = Date.now();
-  const prompt = sourceImage
+  const basePrompt = sourceImage
     ? `${promptFor(brief, direction, format, true)}\n\nMASTER\nThe attached image is the approved master of this campaign. Design it again for this canvas: same concept, subject, palette, typography style and exact text, with the layout rebuilt from scratch for this shape. Never stretch, squash or crop it, never put it inside a frame or card, and never fill the space with blurred or repeated copies of it.`
     : promptFor(brief, direction, format);
+  const prompt = `${basePrompt}${stampRoom(input.campaign)}`;
   const problems: string[] = [];
   progress('generating');
   let [generated] = sourceImage
@@ -402,8 +413,10 @@ export async function produceDirection(input: {
     const { image, record } = await compositeLogo(output, { variantId: logo.variantId, x: logo.placement.x, y: logo.placement.y, width: logo.placement.width });
     const honesty = await verifyComposite(output, image, record);
     if (honesty.length) problems.unshift(...honesty.map((p) => `Logo composite: ${p}`));
+    const stamped = input.campaign ? await applyCampaignStamp(image, input.campaign, campaignStamp(input.campaign), [record], spec.safeArea) : { image };
+    if (stamped.problem) problems.push(stamped.problem);
     imagePath = resolve(dir, `${direction.id}.png`);
-    writeFileSync(imagePath, image);
+    writeFileSync(imagePath, stamped.image);
   }
   const status: FullCreativeResult['status'] = !imagePath ? 'failed' : problems.length ? 'needs_review' : 'ready';
   return { directionId: direction.id, directionName: direction.name, status, problems, imagePath, rawImagePath: resolve(dir, `${direction.id}-raw.png`), logo, repaired, refinements, copyChecks, inspection, prompt, model: generated.model, latencyMs: Date.now() - started, textMode: 'model' };
@@ -450,9 +463,10 @@ async function produceTypeset(input: Parameters<typeof produceDirection>[0]): Pr
   const plan = logoPlanOf(direction, format);
   const started = Date.now();
   const adaptation = Boolean(sourceImage);
-  const prompt = sourceImage
+  const basePrompt = sourceImage
     ? `${promptFor(brief, direction, format, true, 'typeset')}\n\nMASTER\nThe attached image is the approved master visual of this campaign (it has no text; the type is added afterwards). Design it again for this canvas: same concept, subject, palette, lighting and finish, with the layout rebuilt from scratch for this shape and the text areas above left calm. Never stretch, squash or crop it, never put it inside a frame or card, and never fill the space with blurred or repeated copies of it. Keep it free of any text.`
     : promptFor(brief, direction, format, false, 'typeset');
+  const prompt = `${basePrompt}${stampRoom(input.campaign)}`;
   const problems: string[] = [];
   progress('generating');
   const [generated] = sourceImage
@@ -495,7 +509,9 @@ async function produceTypeset(input: Parameters<typeof produceDirection>[0]): Pr
     if (logo.requiresCreativeRepair) return undefined;
     const { image, record } = await compositeLogo(ts.png, { variantId: logo.variantId, x: logo.placement.x, y: logo.placement.y, width: logo.placement.width });
     const honesty = await verifyComposite(ts.png, image, record);
-    return { image, honesty };
+    // The campaign stamp goes last, clear of every typeset line and the logo.
+    const stamped = input.campaign ? await applyCampaignStamp(image, input.campaign, campaignStamp(input.campaign), [...ts.layout.blocks.map((b) => b.box), record], spec.safeArea) : { image };
+    return { image: stamped.image, honesty: stamped.problem ? [...honesty, stamped.problem] : honesty };
   };
   let finished = await finish();
 
@@ -556,13 +572,22 @@ export async function generateFullCreative(request: FullCreativeRequest, env = p
   const odoo = request.skipOdoo ? { status: 'skipped' as const, message: 'Odoo lookup skipped' } : await resolveOdooContext(request.prompt).catch((error) => ({ status: 'unavailable' as const, message: error instanceof Error ? error.message : 'Odoo error' }));
   const context = odoo.status === 'matched' ? odoo.context : undefined;
   onProgress?.({ stage: 'planning' });
+  // The campaign's slogan shapes the copy; its key visual joins the attachments as a style reference.
+  const campaign = request.campaign;
+  const planningPrompt = `${request.prompt}${campaignBrief(campaign)}`;
+  const keyVisual = campaign?.keyVisualPath ? (() => { try { return { name: `Campaign key visual — ${campaign.name}`, mime: 'image/png', dataUrl: `data:image/png;base64,${readFileSync(campaign.keyVisualPath).toString('base64')}` }; } catch { return null; } })() : null;
+  const attachments = [...(request.attachments ?? []), ...(keyVisual ? [keyVisual] : [])].slice(0, 6);
   const brief = request.engine === 'legacy'
-    ? await planCreative(request.objective ? `${request.prompt}\nObjective: ${request.objective}` : request.prompt, format, count, context, env, request.style)
-    : await planCreativeWithEngine(request.prompt, format, count, context, env, request.style, request.settings, () => onProgress?.({ stage: 'designing' }), { objective: request.objective, attachments: request.attachments });
+    ? await planCreative(request.objective ? `${planningPrompt}\nObjective: ${request.objective}` : planningPrompt, format, count, context, env, request.style)
+    : await planCreativeWithEngine(planningPrompt, format, count, context, env, request.style, request.settings, () => onProgress?.({ stage: 'designing' }), { objective: request.objective, attachments: attachments.length ? attachments : undefined });
+  if (campaign?.hashtag) {
+    brief.caption = withHashtag(brief.caption, campaign.hashtag);
+    brief.captions = Object.fromEntries(Object.entries(brief.captions).map(([platform, text]) => [platform, typeof text === 'string' ? withHashtag(text, campaign.hashtag) : text])) as CreativeBriefPlan['captions'];
+  }
   brief.directions = brief.directions.map((d, i) => ({ ...d, id: `d${i + 1}` }));
   onProgress?.({ stage: 'generating', brief });
   const provider = new OpenAIImageProvider(env.OPENAI_API_KEY ?? '', request.model ?? (env.OPENAI_IMAGE_MODEL?.trim() || 'gpt-image-2.5-flare'));
-  const settled = await Promise.allSettled(brief.directions.map((direction) => produceDirection({ provider, brief, direction, format, quality: request.quality ?? 'high', dir: outputDir, env, onProgress })));
+  const settled = await Promise.allSettled(brief.directions.map((direction) => produceDirection({ provider, brief, direction, format, quality: request.quality ?? 'high', dir: outputDir, env, onProgress, campaign })));
   const results = settled.map((entry, index): FullCreativeResult => entry.status === 'fulfilled' ? entry.value : {
     directionId: brief.directions[index].id, directionName: brief.directions[index].name, status: 'failed',
     problems: [`Generation failed: ${entry.reason instanceof Error ? entry.reason.message : String(entry.reason)}`],
@@ -589,7 +614,7 @@ export async function adaptFullCreative(run: FullCreativeRun, directionId: strin
   if (!direction || !source?.rawImagePath) throw new Error('That direction has no generated image to adapt');
   const provider = new OpenAIImageProvider(env.OPENAI_API_KEY ?? '', source.model);
   const raw = readFileSync(source.rawImagePath);
-  const result = await produceDirection({ provider, brief: run.brief, direction: { ...direction, id: `${direction.id}-${format}` }, format, quality: run.request.quality ?? 'high', dir: run.outputDir, env, sourceImage: raw, onProgress, mode: source.textMode ?? 'model' });
+  const result = await produceDirection({ provider, brief: run.brief, direction: { ...direction, id: `${direction.id}-${format}` }, format, quality: run.request.quality ?? 'high', dir: run.outputDir, env, sourceImage: raw, onProgress, mode: source.textMode ?? 'model', campaign: run.request.campaign });
   run.results.push(result);
   writeFileSync(resolve(run.outputDir, 'trace.json'), JSON.stringify(run, null, 2));
   onProgress?.({ stage: 'done' });

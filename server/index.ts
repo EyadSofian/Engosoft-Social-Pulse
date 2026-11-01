@@ -31,6 +31,7 @@ import { mediaDir } from './paths.js';
 import { registerUsageRoutes, requireAiBudget } from './usage.js';
 import { registerNotifyRoutes } from './notify.js';
 import { registerSvgTemplateRoutes } from './svg-templates.js';
+import { campaignIdentity, registerCampaignRoutes } from './campaigns.js';
 import { registerCourseProfileRoutes, seedCourseCatalog } from './course-profiles.js';
 import { seedBuiltinTemplates } from './builtin-templates.js';
 import { recoverReferenceJobs, registerReferenceDesignRoutes } from './reference-designs.js';
@@ -50,6 +51,7 @@ registerWorkspaceRoutes(app);
 registerStorageRoutes(app);
 registerSocialRoutes(app);
 registerAiTemplateRoutes(app);
+registerCampaignRoutes(app);
 registerStudioRoutes(app);
 registerCaptionRoutes(app);
 registerContentKitRoutes(app);
@@ -99,7 +101,9 @@ const fullCreativeRequest=z.object({prompt:z.string().trim().min(5).max(2000),fo
  engine:z.enum(['skills','legacy']).optional(),
  objective:z.enum(['course_launch','course_schedule','certificate','education','event','general']).optional(),
  // Images, PDFs and text attached on the Create page (up to 6, 2 MB each before base64).
- attachments:z.array(z.object({name:z.string().max(200),mime:z.string().max(100),dataUrl:z.string().max(2_800_000).regex(/^data:[\w.+/-]+;base64,/)})).max(6).optional()});
+ attachments:z.array(z.object({name:z.string().max(200),mime:z.string().max(100),dataUrl:z.string().max(2_800_000).regex(/^data:[\w.+/-]+;base64,/)})).max(6).optional(),
+ // The campaign the post belongs to: its slogan shapes the copy and its stamp is placed on the design.
+ campaignId:z.string().uuid().optional()});
 const OBJECTIVE_TEXT={course_launch:'Course announcement',course_schedule:'Course schedule',certificate:'Certificate or achievement',education:'Educational content',event:'Event or occasion',general:'General post'} as const;
 const localOnly=(res:express.Response)=>{if(!process.env.OPENAI_API_KEY?.trim()){res.status(503).json({error:'أضف OPENAI_API_KEY على الخادم.'});return true;}return false;};
 const limited=(req:express.Request,res:express.Response)=>{const who=req.ip||'local';const now=Date.now();const recent=(fullCreativeCalls.get(who)||[]).filter(at=>now-at<10*60_000);if(recent.length>=6){res.status(429).json({error:'بلغت الحد المؤقت: 6 طلبات تصميم خلال 10 دقائق.'});return true;}fullCreativeCalls.set(who,[...recent,now]);return false;};
@@ -108,8 +112,10 @@ app.post('/api/ai/full-creative',requirePermission('design.free'),requireAiBudge
  const parsed=fullCreativeRequest.safeParse(req.body);if(!parsed.success)return res.status(400).json({error:'اكتب وصف المنشور (5 أحرف على الأقل).'});
  if(limited(req,res))return;
  const template=parsed.data.templateId?await getTemplate(parsed.data.templateId):undefined;if(template)await countTemplateUse(template.id);
+ const campaign=parsed.data.campaignId?await campaignIdentity(parsed.data.campaignId):undefined;
+ if(parsed.data.campaignId&&!campaign)return res.status(400).json({error:'الحملة غير موجودة أو مؤرشفة.'});
  const requestId=randomUUID();
- const job=startJob('generate',req.user!.id,(setStage)=>generateFullCreative({...parsed.data,objective:parsed.data.objective&&OBJECTIVE_TEXT[parsed.data.objective],style:template?.style,requestId,ownerId:req.user!.id},process.env,setStage),requestId);
+ const job=startJob('generate',req.user!.id,(setStage)=>generateFullCreative({...parsed.data,campaign,objective:parsed.data.objective&&OBJECTIVE_TEXT[parsed.data.objective],style:template?.style,requestId,ownerId:req.user!.id},process.env,setStage),requestId);
  res.status(202).json({jobId:job.id,requestId});
 });
 app.post('/api/ai/full-creative/:requestId/adapt',requirePermission('design.free'),requireAiBudget,async(req,res)=>{
