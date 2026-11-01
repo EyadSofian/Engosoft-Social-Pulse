@@ -21,7 +21,7 @@ import type { SafeArea } from '../logo-resolution/validator.js';
 import { checkCopy, copyPasses, type CanonicalCopy, type CopyCheck } from '../typography-validation/copy-check.js';
 import { compileDesignPrompt, DEFAULT_SETTINGS, ENGINE_SKILL_VERSIONS, ENGINE_VERSION, planCaptions, planDesign, planStrategy, type DesignDecision, type EngineSettings, type ReferenceInput, type StrategyDecision, type UserReference } from '../skills/engine.js';
 import { THEMES, type ThemeId } from '../skills/themes.js';
-import { looksUnfilled, pasteInside } from './patch.js';
+import { pasteInside, patchRejected } from './patch.js';
 import { houseReferences, referencePrompt } from './house-references.js';
 import { TYPESET_VERSION, typesetCreative, type TypesetPlan, type TypesetResult } from '../typography/typeset.js';
 import { openAIJson, OpenAIImageProvider, type CreativeImageProvider, type ImageQuality } from './provider.js';
@@ -384,7 +384,7 @@ export async function produceDirection(input: {
       size: spec.generation, quality, images: [{ data: raw, mime: 'image/png' }], mask: await maskFor(gw, gh, ...boxes),
     });
     const candidate = await pasteInside(raw, edited.png, boxes);
-    const blank = (await Promise.all(boxes.map((b) => looksUnfilled(candidate, b)))).some(Boolean);
+    const blank = (await Promise.all(boxes.map((b) => patchRejected(raw, candidate, b)))).some(Boolean);
     if (!blank) {
       raw = candidate;
       refinements.push(...local.map((r) => `${r.operation}: ${r.instruction}`));
@@ -399,12 +399,16 @@ export async function produceDirection(input: {
   if (misspelt.length) {
     progress('repairing');
     const boxes = misspelt.map(({ box }) => ({ x: Math.round(Math.max(0, box.x - 0.015) * gw), y: Math.round(Math.max(0, box.y - 0.012) * gh), width: Math.round(Math.min(1 - Math.max(0, box.x - 0.015), box.width + 0.03) * gw), height: Math.round(Math.min(1 - Math.max(0, box.y - 0.012), box.height + 0.024) * gh) }));
-    const [edited] = await provider.edit({
-      prompt: `Re-letter only the text inside the transparent masked areas. ${misspelt.map(({ check }, i) => `Area ${i + 1} must read exactly «${check.expected}».`).join(' ')} Keep the same typeface style, weight, size, colour, alignment, line breaks and any highlight bar or button behind the text. Every Arabic letter correctly joined and spelled exactly as given: no extra, missing or doubled letters, no extra words. Preserve every other pixel.`,
-      size: spec.generation, quality, images: [{ data: raw, mime: 'image/png' }], mask: await maskFor(gw, gh, ...boxes),
-    });
-    const candidate = await pasteInside(raw, edited.png, boxes);
-    if (!(await Promise.all(boxes.map((b) => looksUnfilled(candidate, b)))).some(Boolean)) {
+    // The model sometimes repaints the hole as a black panel with the text on it: such a patch is refused and
+    // tried once more; after that the original stays and the misspelling is shown for review.
+    let refused = 0;
+    for (let attempt = 0; attempt < 2; attempt++) {
+      const [edited] = await provider.edit({
+        prompt: `Re-letter only the text inside the transparent masked areas. ${misspelt.map(({ check }, i) => `Area ${i + 1} must read exactly «${check.expected}».`).join(' ')} Repaint the background inside each area as a seamless continuation of the pixels around it — the same colours, gradient, texture and any highlight bar or button — never a black, dark or flat panel or a new frame. Keep the same typeface style, weight, size, colour, alignment and line breaks. Every Arabic letter correctly joined and spelled exactly as given: no extra, missing or doubled letters, no extra words. Preserve every other pixel.`,
+        size: spec.generation, quality, images: [{ data: raw, mime: 'image/png' }], mask: await maskFor(gw, gh, ...boxes),
+      });
+      const candidate = await pasteInside(raw, edited.png, boxes);
+      if ((await Promise.all(boxes.map((b) => patchRejected(raw, candidate, b)))).some(Boolean)) { refused++; continue; }
       const candidateOutput = await toOutput(candidate, format);
       const candidateInspection = await inspectCreative(candidateOutput, context, env, approvedCopy);
       const candidateChecks = checkCopy(brief.canonicalCopy, candidateInspection.texts.map((t) => t.text), candidateInspection.copyAudit);
@@ -414,7 +418,9 @@ export async function produceDirection(input: {
         refinements.push(`TEXT_REPAIR: ${misspelt.map(({ check }) => check.field).join(', ')}`);
         writeFileSync(resolve(dir, `${direction.id}-lettered-raw.png`), raw);
       }
+      break;
     }
+    if (refused === 2) problems.push('Spelling repair: both re-letterings did not blend into the design (a dark or flat panel or a seam); kept the original lettering.');
   }
   progress('logo');
   let logo = await resolveLogo({ creative: output, zones: zonesFromInspection(inspection, spec.output.width, spec.output.height), preferredCorner: plan.corner, preferredMark: plan.mark, strictCorner: Boolean(houseLogo()), safeArea: spec.safeArea });
@@ -431,14 +437,16 @@ export async function produceDirection(input: {
     for (let attempt = 0; attempt < 2 && !patched; attempt++) {
       const [edited] = await provider.edit({ prompt: clean, size: spec.generation, quality, images: [{ data: raw, mime: 'image/png' }], mask: await maskFor(gw, gh, zone) });
       const candidate = await pasteInside(raw, edited.png, [zone]);
-      if (!(await looksUnfilled(candidate, zone))) patched = candidate;
+      if (!(await patchRejected(raw, candidate, zone))) patched = candidate;
     }
-    if (!patched) problems.push('Logo corner repair: the image model left the corner unpainted twice; kept the original.');
-    raw = patched ?? raw; repaired = Boolean(patched);
-    writeFileSync(resolve(dir, `${direction.id}-repaired-raw.png`), raw);
-    output = await toOutput(raw, format);
-    inspection = await inspectCreative(output, context, env, approvedCopy);
-    logo = await resolveLogo({ creative: output, zones: zonesFromInspection(inspection, spec.output.width, spec.output.height), preferredCorner: plan.corner, preferredMark: plan.mark, strictCorner: Boolean(houseLogo()), safeArea: spec.safeArea });
+    if (!patched) problems.push('Logo corner repair: the image model\'s corner did not blend in (blank, a dark or flat panel, or a seam) twice; kept the original.');
+    if (patched) {
+      raw = patched; repaired = true;
+      writeFileSync(resolve(dir, `${direction.id}-repaired-raw.png`), raw);
+      output = await toOutput(raw, format);
+      inspection = await inspectCreative(output, context, env, approvedCopy);
+    }
+    if (patched) logo = await resolveLogo({ creative: output, zones: zonesFromInspection(inspection, spec.output.width, spec.output.height), preferredCorner: plan.corner, preferredMark: plan.mark, strictCorner: Boolean(houseLogo()), safeArea: spec.safeArea });
   }
   copyChecks = checkCopy(brief.canonicalCopy, inspection.texts.map((t) => t.text), inspection.copyAudit);
   if (!copyPasses(copyChecks)) problems.push(`Text in the image does not match the approved copy: ${copyChecks.filter((c) => c.verdict !== 'exact').map((c) => `${c.field} ${c.verdict}`).join(', ')}`);
@@ -551,11 +559,11 @@ async function produceTypeset(input: Parameters<typeof produceDirection>[0]): Pr
     if (spec.vertical) zone.y = plan.corner.startsWith('top') ? Math.round(gh * (spec.safeArea.top / spec.output.height)) : Math.round(gh * (1 - spec.safeArea.bottom / spec.output.height)) - zone.height;
     const [edited] = await provider.edit({ prompt: 'Keep the complete existing image exactly. Change only the transparent masked area: make it a calm, clean, uncluttered continuation of the surrounding background, with no text, faces, objects, logos or graphics. Preserve every other pixel, lighting and colour.', size: spec.generation, quality, images: [{ data: raw, mime: 'image/png' }], mask: await maskFor(gw, gh, zone) });
     const candidate = await pasteInside(raw, edited.png, [zone]);
-    if (!(await looksUnfilled(candidate, zone))) {
+    if (!(await patchRejected(raw, candidate, zone))) {
       raw = candidate; repaired = true;
       writeFileSync(resolve(dir, `${direction.id}-repaired-raw.png`), raw);
       composed = await compose(raw);
-    } else problems.push('Logo corner repair: the image model left the corner unpainted; kept the original.');
+    } else problems.push('Logo corner repair: the image model\'s corner did not blend in (blank, a dark or flat panel, or a seam); kept the original.');
   }
   const finish = async () => {
     const { ts, logo } = composed;
@@ -584,7 +592,7 @@ async function produceTypeset(input: Parameters<typeof produceDirection>[0]): Pr
       size: spec.generation, quality, images: [{ data: raw, mime: 'image/png' }], mask: await maskFor(gw, gh, ...boxes),
     });
     const candidate = await pasteInside(raw, edited.png, boxes);
-    if (!(await Promise.all(boxes.map((b) => looksUnfilled(candidate, b)))).some(Boolean)) {
+    if (!(await Promise.all(boxes.map((b) => patchRejected(raw, candidate, b)))).some(Boolean)) {
       raw = candidate;
       refinements.push(...local.map((r) => `${r.operation}: ${r.instruction}`));
       writeFileSync(resolve(dir, `${direction.id}-refined-raw.png`), raw);
