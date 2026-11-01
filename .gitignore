@@ -23,3 +23,6 @@ data/uploads/
 
 # Approved publishing media stays on the private persistent volume.
 data/social/
+
+# Campaign stamps and key visuals (uploaded media, not source).
+data/campaigns/

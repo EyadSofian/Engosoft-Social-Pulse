@@ -1,3 +1,4 @@
+import { CampaignsPanel } from '../../features/campaigns/Campaigns';
 import { useEffect, useState } from 'react';
 import { motion } from 'motion/react';
 import { Download, LayoutTemplate, Sparkles } from 'lucide-react';
@@ -52,6 +53,7 @@ export function LibraryPage() {
   return <div className="u-stack u-stack--lg">
     <PageHeader title={t('Library', 'المكتبة')} description={t('Editable templates, approved designs, AI recipes and the official Engosoft logos.', 'قوالب قابلة للتعديل، وتصاميم معتمدة، ووصفات الذكاء الاصطناعي، وشعارات إنجوسوفت الرسمية.')} />
     <SvgTemplateSection />
+    {can('templates.manage') && <CampaignsPanel />}
     {can('design.free') && <AiTemplatesPanel />}
     <section className="library-section">
       <h2>{t('Approved designs', 'تصميمات معتمدة')}</h2>

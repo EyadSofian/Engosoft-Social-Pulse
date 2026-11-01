@@ -1,3 +1,4 @@
+import { CampaignPicker } from '../../features/campaigns/Campaigns';
 import { useEffect, useRef, useState } from 'react';
 import { AnimatePresence, motion } from 'motion/react';
 import { ArrowLeft, ArrowRight, CalendarDays, Coins, Film, GraduationCap, ImagePlus, LayoutTemplate, Sparkles, Upload, Wand2 } from 'lucide-react';
@@ -138,6 +139,8 @@ export function CreationHomePage() {
     } catch { /* bad transient prefill ignored */ }
   }, [query, state.courses, state.templates]);
   const [designSettings, setDesignSettings] = useState<EngineSettings>(DEFAULT_ENGINE_SETTINGS);
+  // null until the campaigns load and the one running today is picked; '' means no campaign.
+  const [campaignId, setCampaignId] = useState<string | null>(null);
   const togglePlatform = (platform: CreativePlatform) => { setPlatformTouched(true); setPlatforms((current) => current.includes(platform) ? current.filter((value) => value !== platform) : [...current, platform]); };
   const addFiles = async (list: FileList | null) => {
     if (!list) return;
@@ -158,7 +161,7 @@ export function CreationHomePage() {
       // The master is a 4:5 feed post when any feed platform is selected; 9:16 and website versions are adapted from it.
       const format = masterFormat(platforms);
       const attachments = references.filter((file) => file.dataUrl).map(({ name, mime, dataUrl }) => ({ name, mime, dataUrl: dataUrl! }));
-      const body = await api<{ jobId: string; requestId?: string }>('/api/ai/full-creative', { body: { prompt, format, directions: 2, settings: designSettings, ...(objective !== 'auto' ? { objective } : {}), ...(attachments.length ? { attachments } : {}), ...(template ? { templateId: template.id } : {}) } });
+      const body = await api<{ jobId: string; requestId?: string }>('/api/ai/full-creative', { body: { prompt, ...(campaignId ? { campaignId } : {}), format, directions: 2, settings: designSettings, ...(objective !== 'auto' ? { objective } : {}), ...(attachments.length ? { attachments } : {}), ...(template ? { templateId: template.id } : {}) } });
       setJobId(body.jobId); setRequestId(body.requestId ?? ''); setStage('generating');
       setActiveCreative({ jobId: body.jobId, requestId: body.requestId ?? '', prompt, platforms, startedAt: new Date().toISOString(), status: 'running' });
     } catch (error) { setMessage(error instanceof Error ? error.message : String(error)); }
@@ -242,6 +245,7 @@ export function CreationHomePage() {
           setSourcePanel(null);
         }} /></div>}
         {references.length > 0 && <ul className="creative-home__references">{references.map((file, index) => <li key={`${file.name}-${index}`}>{file.mime.startsWith('image/') && file.dataUrl && <img src={file.dataUrl} alt="" />}<span>{file.name}</span><button type="button" onClick={() => setReferences((current) => current.filter((_, i) => i !== index))} aria-label={t(`Remove ${file.name}`, `احذف ${file.name}`)}>×</button></li>)}</ul>}
+        <CampaignPicker value={campaignId} onChange={setCampaignId} />
         <div className="creative-home__platforms" role="group" aria-label={t('Platforms', 'المنصات')}>{CREATIVE_PLATFORMS.map((platform) => <button key={platform} type="button" aria-pressed={platforms.includes(platform)} onClick={() => togglePlatform(platform)}><span className="creative-home__platform-icon"><ChannelIcon channel={platform} size={15} /></span>{PLATFORM_FORMATS[platform].label}</button>)}</div>
         <details className="create-advanced">
           <summary>{t('More options (optional)', 'خيارات إضافية (اختياري)')}</summary>
