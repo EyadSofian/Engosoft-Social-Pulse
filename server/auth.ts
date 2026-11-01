@@ -77,7 +77,24 @@ export function verifyPassword(password: string, stored: string): boolean {
   const actual = scryptSync(password, Buffer.from(salt, 'base64'), expected.length);
   return timingSafeEqual(actual, expected);
 }
-export const passwordProblem = (password: string) => password.length < 10 ? 'يجب ألا تقل كلمة المرور عن 10 أحرف.' : null;
+/**
+ * Emails as people actually type them: phones add a trailing space or capitalise the first letter, and copied
+ * addresses can carry invisible marks. Stored and looked up in this one form.
+ */
+export const normalizeEmail = (email: string) => email.normalize('NFKC').replace(/[\u200B-\u200F\u202A-\u202E\u2066-\u2069\uFEFF]/g, '').trim().toLowerCase();
+const ARABIC_DIGITS = /[\u0660-\u0669\u06F0-\u06F9]/g;
+/**
+ * Passwords in one comparable form: Arabic-Indic digits (٠١٢ / ۰۱۲ from an Arabic keyboard) become 0-9 and
+ * surrounding spaces are dropped. The same password typed on an Arabic or English phone keyboard then matches.
+ */
+export const normalizePassword = (password: string) => password.normalize('NFKC').replace(ARABIC_DIGITS, (d) => String((d.charCodeAt(0) & 0xf) % 10)).trim();
+const ARABIC_LETTER = /[\u0621-\u064A\u0671-\u06D3]/;
+export const passwordProblem = (password: string) => {
+  const value = normalizePassword(password);
+  if (value.length < 10) return 'يجب ألا تقل كلمة المرور عن 10 أحرف.';
+  if (ARABIC_LETTER.test(value)) return 'استخدم حروفًا إنجليزية وأرقامًا فقط في كلمة المرور؛ الحروف العربية تتغير مع لوحة المفاتيح ويصعب الدخول بها.';
+  return null;
+};
 
 const toUser = (r: Record<string, unknown>): AuthUser => ({
   permissionOverrides: overridesFrom(r.permission_overrides),
@@ -96,7 +113,7 @@ export async function createUser(input: { email: string; name: string; role: Rol
   if (problem) throw new Error(problem);
   const id = randomUUID();
   await db.run('INSERT INTO users (id,email,name,role,department_id,title,status,password_hash,created_at) VALUES (?,?,?,?,?,?,?,?,?)',
-    [id, input.email.trim().toLowerCase(), input.name.trim(), input.role, input.departmentId, input.title ?? '', 'active', hashPassword(input.password), new Date().toISOString()]);
+    [id, normalizeEmail(input.email), input.name.trim(), input.role, input.departmentId, input.title ?? '', 'active', hashPassword(normalizePassword(input.password)), new Date().toISOString()]);
   return (await getUser(id))!;
 }
 export async function updateUser(id: string, patch: Partial<{ name: string; role: RoleId; departmentId: DepartmentId | null; title: string; status: 'active' | 'suspended'; password: string }>): Promise<AuthUser | undefined> {
@@ -105,9 +122,12 @@ export async function updateUser(id: string, patch: Partial<{ name: string; role
   if (patch.password !== undefined) {
     const problem = passwordProblem(patch.password);
     if (problem) throw new Error(problem);
-    await db.run('UPDATE users SET password_hash=? WHERE id=?', [hashPassword(patch.password), id]);
+    await db.run('UPDATE users SET password_hash=? WHERE id=?', [hashPassword(normalizePassword(patch.password)), id]);
     await db.run('DELETE FROM sessions WHERE user_id=?', [id]);
+    // A new password is a fresh start: earlier failed attempts must not keep the person locked out.
+    clearFailedLoginsFor(user.email);
   }
+  if (patch.status === 'active') clearFailedLoginsFor(user.email);
   await db.run('UPDATE users SET name=?, role=?, department_id=?, title=?, status=? WHERE id=?',
     [patch.name ?? user.name, patch.role ?? user.role, patch.departmentId === undefined ? user.departmentId : patch.departmentId, patch.title ?? user.title, patch.status ?? user.status, id]);
   if (patch.status === 'suspended') await db.run('DELETE FROM sessions WHERE user_id=?', [id]);
@@ -131,13 +151,23 @@ export async function userForToken(token: string): Promise<AuthUser | undefined>
   return user;
 }
 
-export async function authenticate(email: string, password: string): Promise<AuthUser | undefined> {
-  const row = await db.get('SELECT * FROM users WHERE lower(email)=?', [email.trim().toLowerCase()]);
+export type LoginFailure = 'unknown_email' | 'wrong_password' | 'suspended';
+/** Checks a sign-in. Says why it failed so the server log (never the response) can tell the cases apart. */
+export async function checkLogin(email: string, password: string): Promise<{ user: AuthUser } | { failure: LoginFailure }> {
+  const row = await db.get('SELECT * FROM users WHERE lower(email)=?', [normalizeEmail(email)]);
+  const stored = row ? String(row.password_hash) : 'scrypt$AAAAAAAAAAAAAAAAAAAAAA==$' + 'A'.repeat(88);
   // Hash even when the user does not exist so response time does not reveal registered emails.
-  const ok = verifyPassword(password, row ? String(row.password_hash) : 'scrypt$AAAAAAAAAAAAAAAAAAAAAA==$' + 'A'.repeat(88));
-  if (!row || !ok || row.status !== 'active') return undefined;
+  // Accounts made before passwords were normalized were hashed as typed, so the exact text is tried too.
+  const ok = verifyPassword(normalizePassword(password), stored) || (password !== normalizePassword(password) && verifyPassword(password, stored));
+  if (!row) return { failure: 'unknown_email' };
+  if (!ok) return { failure: 'wrong_password' };
+  if (row.status !== 'active') return { failure: 'suspended' };
   await db.run('UPDATE users SET last_active_at=? WHERE id=?', [new Date().toISOString(), row.id]);
-  return toUser(row);
+  return { user: toUser(row) };
+}
+export async function authenticate(email: string, password: string): Promise<AuthUser | undefined> {
+  const result = await checkLogin(email, password);
+  return 'user' in result ? result.user : undefined;
 }
 
 /** First start: create the admin from ADMIN_EMAIL / ADMIN_PASSWORD when no user exists yet. */
@@ -182,3 +212,10 @@ export function loginBlocked(key: string): boolean {
 }
 export const recordFailedLogin = (key: string) => attempts.set(key, [...(attempts.get(key) || []), Date.now()]);
 export const clearFailedLogins = (key: string) => attempts.delete(key);
+/** Lifts the lockout for an email on every device, e.g. after an admin resets the password. */
+export function clearFailedLoginsFor(email: string) {
+  const prefix = `${normalizeEmail(email)}|`;
+  for (const key of attempts.keys()) if (key.startsWith(prefix)) attempts.delete(key);
+}
+/** `ah***@engosoft.com`: enough to recognise the account in server logs without printing the address. */
+export const maskEmail = (email: string) => { const [name, domain] = normalizeEmail(email).split('@'); return `${(name ?? '').slice(0, 2)}***@${domain ?? ''}`; };

@@ -18,13 +18,24 @@ import { retrieveVisualReferences } from '../../../src/features/creative-studio/
 import { DEFAULT_ENGINE_SETTINGS, type EngineSettings } from '../../../src/domain/design-engine.js';
 import { DESIGN_SKILLS } from './design.js';
 import { platformDesigner } from './quality.js';
-import { STRATEGY_SKILLS } from './strategy.js';
+import { captionWriter, STRATEGY_SKILLS } from './strategy.js';
 import { THEME_IDS, THEMES, themeSummary, type ThemeDefinition, type ThemeId } from './themes.js';
 import { runStage, skillVersions, type StageContent, type Zone } from './types.js';
 
 export const ENGINE_VERSION = 'design-engine:v1';
 
 export const DEFAULT_SETTINGS: EngineSettings = DEFAULT_ENGINE_SETTINGS;
+
+type Effort = 'low' | 'medium' | 'high';
+/**
+ * Reasoning effort per planning stage. Medium made strategy and design take about a minute each, most of a
+ * run's wait; low keeps the structured decisions and roughly halves that. Override with
+ * OPENAI_STRATEGY_REASONING / OPENAI_DESIGN_REASONING (low | medium | high).
+ */
+export const planningEffort = (stage: 'strategy' | 'design', env: NodeJS.ProcessEnv = process.env): Effort => {
+  const value = (stage === 'strategy' ? env.OPENAI_STRATEGY_REASONING : env.OPENAI_DESIGN_REASONING)?.trim();
+  return value === 'medium' || value === 'high' || value === 'low' ? value : 'low';
+};
 export type { EngineSettings };
 
 /* Typed decisions of every stage (mirrors the skill schemas). */
@@ -108,8 +119,10 @@ export async function planStrategy(input: { prompt: string; format: string; coun
   const { refs, content } = await loadReferences(input.prompt, input.settings.referenceStrength);
   const attached = await userReferenceContent(input.attachments);
   const catalogue = THEME_IDS.filter((id) => input.settings.creativity === 'experimental' || THEMES[id].risk !== 'experimental').map((id) => themeSummary(THEMES[id])).join('\n');
+  // Captions for eight platforms are the largest part of this answer and nothing visual depends on them, so
+  // they are written by planCaptions while the design plans run, not here.
   const decision = await runStage<StrategyDecision>({
-    name: 'strategy', env: input.env, reasoning: 'medium', skills: STRATEGY_SKILLS,
+    name: 'strategy', env: input.env, reasoning: planningEffort('strategy', input.env), skills: STRATEGY_SKILLS.filter((s) => s.id !== captionWriter.id),
     intro: `You are the Engosoft creative team planning a social media creative. Return exactly ${input.count} directions in theme-director.directions.`,
     content: [
       { type: 'input_text', text: [
@@ -127,9 +140,27 @@ export async function planStrategy(input: { prompt: string; format: string; coun
       ...attached.content,
     ],
   });
+  decision.captionWriter ??= { caption: '', captions: { facebook: '', instagram: '', whatsapp: '', linkedin: '', tiktok: '', snapchat: '', youtube: '', website: '' } };
   decision.themeDirector.directions = decision.themeDirector.directions.slice(0, input.count);
   if (input.settings.theme !== 'auto' && decision.themeDirector.directions[0]) decision.themeDirector.directions[0].theme = input.settings.theme;
   return { decision, references: refs };
+}
+
+/** The caption writer on its own: runs alongside the design plans, from the decided message and copy. */
+export async function planCaptions(input: { prompt: string; strategy: StrategyDecision; factContext: string; env: NodeJS.ProcessEnv }): Promise<StrategyDecision['captionWriter']> {
+  const { strategy } = input;
+  const result = await runStage<{ captionWriter: StrategyDecision['captionWriter'] }>({
+    name: 'captions', env: input.env, reasoning: 'low', skills: [captionWriter],
+    intro: 'You are the Engosoft caption writer. The creative team has already decided the message and the on-image copy below; write the captions that go with this post.',
+    content: [{ type: 'input_text', text: [
+      `User request: ${input.prompt}`,
+      `Language: ${strategy.creativeDirector.language}. Objective: ${strategy.creativeDirector.objective}. Audience: ${strategy.creativeDirector.audience}. Message: ${strategy.creativeDirector.message}. Tone: ${strategy.creativeDirector.tone}.`,
+      `Angle: ${strategy.contentStrategist.angle}. Proof points: ${strategy.contentStrategist.proofPoints.join('; ') || 'none'}. Must avoid: ${strategy.contentStrategist.mustAvoid.join('; ') || 'nothing listed'}.`,
+      `Chosen hook: ${strategy.hookWriter.hooks[strategy.hookWriter.chosen]?.text ?? strategy.copywriter.headline}. On-image copy: headline «${strategy.copywriter.headline}», supporting line «${strategy.copywriter.subheadline}», CTA «${strategy.copywriter.cta}».`,
+      `Verified facts from Odoo (use only these): ${input.factContext}`,
+    ].join('\n\n') }],
+  });
+  return result.captionWriter;
 }
 
 export async function planDesign(input: { strategy: StrategyDecision; direction: StrategyDecision['themeDirector']['directions'][number]; format: { label: string; width: number; height: number }; facts: string[]; settings: EngineSettings; env: NodeJS.ProcessEnv }): Promise<DesignDecision> {
@@ -137,7 +168,7 @@ export async function planDesign(input: { strategy: StrategyDecision; direction:
   const theme = THEMES[direction.theme] ?? THEMES['corporate-premium'];
   const refs = strategy.referenceDirector.references.filter((r) => direction.references.includes(r.id) && r.quality !== 'reject' && r.quality !== 'weak');
   return runStage<DesignDecision>({
-    name: 'design_plan', env: input.env, reasoning: 'medium', skills: DESIGN_SKILLS,
+    name: 'design_plan', env: input.env, reasoning: planningEffort('design', input.env), skills: DESIGN_SKILLS,
     intro: 'You are the Engosoft design team turning one creative direction into a precise design plan before any image is generated. Decide every position in normalized coordinates of the final canvas.',
     content: [{ type: 'input_text', text: [
       `Canvas: ${input.format.label}, ${input.format.width}×${input.format.height}.`,
@@ -157,7 +188,14 @@ const where = (z: Zone) => `x ${pct(z.x)}–${pct(z.x + z.width)}, y ${pct(z.y)}
 const hasArea = (z?: Zone) => Boolean(z && z.width > 0.01 && z.height > 0.01);
 
 /** The GPT Image prompt, compiled from the design decisions — nothing here is a fixed creative. */
-export function compileDesignPrompt(input: { strategy: StrategyDecision; direction: StrategyDecision['themeDirector']['directions'][number]; design: DesignDecision; copy: { headline: string; subheadline?: string; cta?: string; facts?: string[] }; format: { label: string; story: boolean }; adaptation?: boolean }): string {
+export function compileDesignPrompt(input: {
+  strategy: StrategyDecision; direction: StrategyDecision['themeDirector']['directions'][number]; design: DesignDecision; copy: { headline: string; subheadline?: string; cta?: string; facts?: string[] }; format: { label: string; story: boolean }; adaptation?: boolean;
+  /**
+   * Typeset mode: the image carries no text; the design system sets the copy in brand fonts afterwards, in
+   * these zones (normalized). The image model only has to leave them calm.
+   */
+  typeset?: { headlineZone?: Zone; supportingCopyZone?: Zone; factsZone?: Zone; ctaZone?: Zone };
+}): string {
   const { strategy, direction, design, copy } = input;
   const theme: ThemeDefinition = THEMES[direction.theme] ?? THEMES['corporate-premium'];
   const L = design.layoutDesigner, W = design.visualWeightDesigner, S = design.spacingDesigner, T = design.typographyDirector, I = design.imageArtDirector, Li = design.lightingDirector, C = design.colorDirector, P = design.photoshopCompositor;
@@ -188,13 +226,24 @@ export function compileDesignPrompt(input: { strategy: StrategyDecision; directi
     `LIGHTING\n${Li.setup}; key ${Li.keyDirection}; ${Li.quality}; ${Li.temperature}; rim ${Li.rim}; atmosphere ${Li.atmosphere}. ${Li.consistency}`,
     `COLOR\nDominant ${C.roles.dominant}, secondary ${C.roles.secondary}, accent ${C.roles.accent}, background ${C.roles.background}, text ${C.roles.text}, highlight ${C.roles.highlight} — ${C.harmony}. ${C.brandExpression}. Engosoft brand blue ${BRAND.colors.core.brandBlue.hex} and orange ${BRAND.colors.core.brandOrange.hex} as intended accents, not a flat flood.`,
     `DEPTH AND INTEGRATION\n${L.depthPlan}. ${P.integration.join(' ')} One lighting world, matching perspective, scale, grain and colour across every element; real contact shadows; no halos or floating subjects.`,
-    `TYPOGRAPHY\nHierarchy with clear size steps (headline cap height about ${pct(T.scale.headline)} of the width, supporting line about ${pct(T.scale.subheadline)}, CTA about ${pct(T.scale.cta)}). ${T.alignment} aligned. ${T.emphasis} ${T.mixedScriptNotes} Arabic set right-to-left in a bold, modern geometric Arabic sans-serif (similar to Almarai); Latin in a clean geometric sans (similar to Plus Jakarta Sans). Leading: ${T.leading}.`,
-    `TEXT — render exactly these strings, verbatim, each once, and no other text:\n${text}\nSpell Arabic exactly with correctly joined letters. Copy digits exactly as written (Western digits).`,
+    ...(input.typeset ? typesetSections(input.typeset, C.roles.text) : [
+      `TYPOGRAPHY\nHierarchy with clear size steps (headline cap height about ${pct(T.scale.headline)} of the width, supporting line about ${pct(T.scale.subheadline)}, CTA about ${pct(T.scale.cta)}). ${T.alignment} aligned. ${T.emphasis} ${T.mixedScriptNotes} Arabic set right-to-left in a bold, modern geometric Arabic sans-serif (similar to Almarai); Latin in a clean geometric sans (similar to Plus Jakarta Sans). Leading: ${T.leading}.`,
+      `TEXT — render exactly these strings, verbatim, each once, and no other text:\n${text}\nSpell Arabic exactly with correctly joined letters. Copy digits exactly as written (Western digits).`,
+    ]),
     `BRAND-SAFE AREA\n${logoReservation(design.logoDirector.mark, design.logoDirector.corner)}`,
-    `RIGHT-TO-LEFT\nThe layout reads right to left: arrows and directional cues point left.`,
+    input.typeset ? `RIGHT-TO-LEFT\nThe composition reads right to left: the subject's gaze, gesture and leading lines guide the eye toward the text area.` : `RIGHT-TO-LEFT\nThe layout reads right to left: arrows and directional cues point left.`,
     input.adaptation ? `ADAPTATION\n${platformDesigner.rules.join(' ')}` : '',
-    `AVOID\n${[...theme.avoid, ...DESIGN_AVOID].join('; ')}. No extra words, fake UI, QR codes, prices, dates or names beyond the text above. No seals, badges or accreditation marks.`,
+    `AVOID\n${[...theme.avoid, ...DESIGN_AVOID].join('; ')}. ${input.typeset ? 'Absolutely no text, letters, numbers, fake writing, signage, labels, UI, buttons or text boxes.' : 'No extra words, fake UI, QR codes, prices, dates or names beyond the text above.'} No seals, badges or accreditation marks.`,
   ].filter(Boolean).join('\n\n');
+}
+
+/** Typeset mode: the image leaves the text zones calm and draws no text; the copy is set in brand fonts afterwards. */
+function typesetSections(z: NonNullable<Parameters<typeof compileDesignPrompt>[0]['typeset']>, textColor: string): string[] {
+  const areas = [hasArea(z.headlineZone) ? `headline ${where(z.headlineZone!)}` : '', hasArea(z.supportingCopyZone) ? `supporting line ${where(z.supportingCopyZone!)}` : '', hasArea(z.factsZone) ? `facts ${where(z.factsZone!)}` : '', hasArea(z.ctaZone) ? `call-to-action ${where(z.ctaZone!)}` : ''].filter(Boolean).join('; ');
+  return [
+    `TYPOGRAPHY SPACE — NO TEXT IN THE IMAGE\nThe Engosoft design system sets every word afterwards in the brand fonts. Do not render any letters, words, numbers, captions, signage, labels, screens with writing, fake text, buttons, pills, banners or text boxes anywhere in the image. This includes course and certification acronyms (CFM, PMP, BIM): never as letters, signs, sculptures or 3D objects — show the subject through people, places and equipment instead.`,
+    `TEXT AREAS\nLeave these areas (fractions of the canvas from the top-left) as calm, clean negative space — low detail, smooth even tone, no faces or important objects behind them — so overlaid type reads clearly: ${areas || 'the upper third of the canvas'}. Their tone should suit ${textColor || 'white'} text. Do not draw placeholder shapes there either: no highlight bars, underlines, pills, frames or blank cards. Design that space in — gradients, light falloff, sky, wall, deep shadow, soft-focus environment or colour fields — so the image already feels like a finished poster waiting for its type, never an empty stock photo.`,
+  ];
 }
 
 /** Versions of every skill the engine ran, stored on the creative. */

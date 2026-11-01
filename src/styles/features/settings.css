@@ -18,3 +18,17 @@
 .settings-users td small { color: var(--text-muted); font-size: 11px; }
 .settings-users tr[data-suspended] td { opacity: 0.55; }
 .settings-users__actions { display: flex; gap: 12px; white-space: nowrap; }
+
+.settings-add__password { position: relative; display: block; }
+.settings-add__password input { width: 100%; padding-inline-end: 34px; font-family: ui-monospace, SFMono-Regular, Menlo, monospace; letter-spacing: 0.02em; }
+.settings-add__password .ui-link { position: absolute; inset-block: 0; inset-inline-end: 8px; display: grid; place-items: center; }
+.settings-add__hint { grid-column: 1 / -1; margin: 0; color: var(--text-muted); font-size: 12px; }
+.settings-credentials { display: grid; gap: 10px; padding: 16px; border: 1px solid var(--success-ink); }
+.settings-credentials header { display: flex; align-items: center; justify-content: space-between; gap: 8px; }
+.settings-credentials p { margin: 0; color: var(--text-muted); font-size: 13px; }
+.settings-credentials dl { display: grid; grid-template-columns: max-content 1fr; gap: 6px 14px; margin: 0; font-size: 14px; }
+.settings-credentials dt { color: var(--text-muted); }
+.settings-credentials dd { margin: 0; overflow-wrap: anywhere; user-select: all; }
+.settings-credentials__password { font-family: ui-monospace, SFMono-Regular, Menlo, monospace; font-size: 16px; font-weight: 700; letter-spacing: 0.04em; }
+.settings-credentials > .ui-button, .settings-credentials > button { justify-self: start; }
+.settings-users__never { color: var(--warning-ink, #b45309); font-weight: 600; }

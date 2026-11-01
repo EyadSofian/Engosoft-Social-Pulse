@@ -27,3 +27,8 @@
 @media (prefers-reduced-motion: reduce) {
   .auth-orb, .auth-spin { animation: none !important; }
 }
+
+.auth-password { position: relative; display: block; }
+.auth-password input { width: 100%; padding-inline-end: 46px; }
+.auth-password__toggle { position: absolute; inset-block: 0; inset-inline-end: 4px; display: grid; place-items: center; width: 40px; border: 0; background: none; color: rgb(255 255 255 / 0.75); cursor: pointer; }
+.auth-password__toggle:hover { color: #fff; }

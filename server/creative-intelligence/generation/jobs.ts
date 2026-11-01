@@ -23,14 +23,14 @@ export interface CreativeJob {
 }
 
 /** What the browser receives: file names become URLs, server paths and prompts stay private. */
-export interface PublicResult extends Omit<FullCreativeResult, 'imagePath' | 'rawImagePath' | 'prompt'> { imageUrl?: string }
+export interface PublicResult extends Omit<FullCreativeResult, 'imagePath' | 'rawImagePath' | 'cleanImagePath' | 'prompt'> { imageUrl?: string }
 export interface PublicRun extends Omit<FullCreativeRun, 'results' | 'outputDir'> { results: PublicResult[] }
 
 export function toPublicRun(run: FullCreativeRun): PublicRun {
   const { outputDir: _dir, results, ...rest } = run;
   return {
     ...rest,
-    results: results.map(({ imagePath, rawImagePath: _raw, prompt: _prompt, ...result }) => ({
+    results: results.map(({ imagePath, rawImagePath: _raw, cleanImagePath: _clean, prompt: _prompt, ...result }) => ({
       ...result, ...(imagePath ? { imageUrl: `/api/creatives/${run.requestId}/${basename(imagePath)}` } : {}),
     })),
   };

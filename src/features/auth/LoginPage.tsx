@@ -1,6 +1,6 @@
 import { useState, type FormEvent } from 'react';
 import { motion } from 'motion/react';
-import { Loader2, LogIn } from 'lucide-react';
+import { Eye, EyeOff, Loader2, LogIn } from 'lucide-react';
 import { api } from '../../lib/api';
 import { useI18n } from '../../i18n/I18nProvider';
 
@@ -10,10 +10,11 @@ export function LoginPage({ onSignedIn }: { onSignedIn: () => void | Promise<voi
   const [password, setPassword] = useState('');
   const [error, setError] = useState('');
   const [busy, setBusy] = useState(false);
+  const [showPassword, setShowPassword] = useState(false);
   const submit = async (event: FormEvent) => {
     event.preventDefault();
     setBusy(true); setError('');
-    try { await api('/api/auth/login', { body: { email, password } }); await onSignedIn(); }
+    try { await api('/api/auth/login', { body: { email: email.trim(), password } }); await onSignedIn(); }
     catch (e) { setError(e instanceof Error ? e.message : String(e)); }
     setBusy(false);
   };
@@ -23,8 +24,13 @@ export function LoginPage({ onSignedIn }: { onSignedIn: () => void | Promise<voi
       <img src="/brand/logos/engosoft-lockup-reversed.svg" alt="Engosoft" className="auth-logo" />
       <h1>{t('Mobde3', 'مبدع')}</h1>
       <p>{t('Sign in to create, review and track Engosoft content.', 'سجّل الدخول لتصميم محتوى إنجوسوفت ومراجعته ومتابعته.')}</p>
-      <label>{t('Email', 'البريد الإلكتروني')}<input type="email" autoComplete="username" required value={email} onChange={(e) => setEmail(e.target.value)} dir="ltr" /></label>
-      <label>{t('Password', 'كلمة المرور')}<input type="password" autoComplete="current-password" required value={password} onChange={(e) => setPassword(e.target.value)} dir="ltr" /></label>
+      <label>{t('Email', 'البريد الإلكتروني')}<input type="email" inputMode="email" autoComplete="username" autoCapitalize="none" autoCorrect="off" spellCheck={false} required value={email} onChange={(e) => setEmail(e.target.value)} dir="ltr" /></label>
+      <label>{t('Password', 'كلمة المرور')}
+        <span className="auth-password">
+          <input type={showPassword ? 'text' : 'password'} autoComplete="current-password" autoCapitalize="none" autoCorrect="off" spellCheck={false} required value={password} onChange={(e) => setPassword(e.target.value)} dir="ltr" />
+          <button type="button" className="auth-password__toggle" onClick={() => setShowPassword((v) => !v)} aria-label={showPassword ? t('Hide password', 'إخفاء كلمة المرور') : t('Show password', 'إظهار كلمة المرور')} aria-pressed={showPassword}>{showPassword ? <EyeOff size={17} /> : <Eye size={17} />}</button>
+        </span>
+      </label>
       {error && <p role="alert" className="auth-error">{error}</p>}
       <button type="submit" className="auth-submit" disabled={busy}>{busy ? <Loader2 className="auth-spin" size={18} /> : <LogIn size={18} />}{t('Sign in', 'دخول')}</button>
       <small>{t('Accounts are created by your administrator.', 'يُنشئ مسؤول النظام الحسابات.')}</small>

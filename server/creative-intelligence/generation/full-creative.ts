@@ -18,13 +18,23 @@ import { compositeLogo, verifyComposite } from '../logo-resolution/compositor.js
 import { reservedZoneBox, resolveLogo, type Corner, type LogoDecision, type NoLogoDecision } from '../logo-resolution/resolver.js';
 import type { SafeArea } from '../logo-resolution/validator.js';
 import { checkCopy, copyPasses, type CanonicalCopy, type CopyCheck } from '../typography-validation/copy-check.js';
-import { compileDesignPrompt, DEFAULT_SETTINGS, ENGINE_SKILL_VERSIONS, ENGINE_VERSION, planDesign, planStrategy, type DesignDecision, type EngineSettings, type ReferenceInput, type StrategyDecision, type UserReference } from '../skills/engine.js';
+import { compileDesignPrompt, DEFAULT_SETTINGS, ENGINE_SKILL_VERSIONS, ENGINE_VERSION, planCaptions, planDesign, planStrategy, type DesignDecision, type EngineSettings, type ReferenceInput, type StrategyDecision, type UserReference } from '../skills/engine.js';
 import { THEMES, type ThemeId } from '../skills/themes.js';
 import { looksUnfilled, pasteInside } from './patch.js';
+import { TYPESET_VERSION, typesetCreative, type TypesetPlan, type TypesetResult } from '../typography/typeset.js';
 import { openAIJson, OpenAIImageProvider, type CreativeImageProvider, type ImageQuality } from './provider.js';
 import { canvasBrief, publishingPreset } from '../../../src/domain/output-presets.js';
 
-export const FULL_CREATIVE_VERSIONS = { director: 'creative-director:v2', compiler: 'full-creative-compiler:v2', pipeline: 'full-creative-pipeline:v1', designLanguage: DESIGN_LANGUAGE_VERSION } as const;
+export const FULL_CREATIVE_VERSIONS = { director: 'creative-director:v2', compiler: 'full-creative-compiler:v3', pipeline: 'full-creative-pipeline:v2', designLanguage: DESIGN_LANGUAGE_VERSION, typeset: TYPESET_VERSION } as const;
+
+/**
+ * Who draws the words. 'typeset' (default for design-engine runs): the image model paints a text-free visual
+ * with calm text areas and the copy is set in the brand fonts, exact every time. 'model': the image model
+ * renders the text itself and the inspector audits it (older runs, legacy engine, CREATIVE_TEXT_MODE=model).
+ */
+export type TextMode = 'typeset' | 'model';
+export const textModeFor = (brief: CreativeBriefPlan, env: NodeJS.ProcessEnv = process.env): TextMode =>
+  brief.engine && env.CREATIVE_TEXT_MODE?.trim() !== 'model' ? 'typeset' : 'model';
 
 export type CreativeFormat = 'feed' | 'story' | 'landscape' | 'video';
 /** Generation size (model) and output size (platform). Same aspect ratio, so nothing is cropped away. */
@@ -113,6 +123,12 @@ export interface FullCreativeResult {
   prompt: string;
   model: string;
   latencyMs: number;
+  /** How the text got into the image; absent on runs before typeset mode. */
+  textMode?: TextMode;
+  /** Typeset mode: where each string was set, its size, colour and the scrim, for review and editing. */
+  typeset?: TypesetResult['layout'];
+  /** Typeset mode: the visual without text or logo (server path, never sent to the browser). */
+  cleanImagePath?: string;
 }
 export interface FullCreativeRun {
   requestId: string;
@@ -180,7 +196,12 @@ export async function planCreativeWithEngine(prompt: string, format: CreativeFor
   const { decision: strategy, references } = await planStrategy({ prompt, format: spec.label, count, facts, factContext, settings, style, objective: extra.objective, attachments: extra.attachments, env });
   onDesigning?.();
   const planned = strategy.themeDirector.directions;
-  const designs = await Promise.all(planned.map((direction) => planDesign({ strategy, direction, format: { label: spec.label, ...spec.output }, facts, settings, env })));
+  const [captions, ...designs] = await Promise.all([
+    // A caption failure must not cost the images: the post can still be captioned in the editor.
+    planCaptions({ prompt, strategy, factContext, env }).catch(() => strategy.captionWriter),
+    ...planned.map((direction) => planDesign({ strategy, direction, format: { label: spec.label, ...spec.output }, facts, settings, env })),
+  ]);
+  strategy.captionWriter = captions;
   const copy = strategy.copywriter;
   return {
     language: strategy.creativeDirector.language, objective: strategy.creativeDirector.objective, audience: strategy.creativeDirector.audience,
@@ -201,11 +222,34 @@ export async function planCreativeWithEngine(prompt: string, format: CreativeFor
 }
 
 /** The image prompt for a direction: compiled from its design plan, or the previous director's prompt for older runs. */
-export function promptFor(brief: CreativeBriefPlan, direction: CreativeDirectionPlan, format: CanvasTarget, adaptation = false): string {
+export function promptFor(brief: CreativeBriefPlan, direction: CreativeDirectionPlan, format: CanvasTarget, adaptation = false, mode: TextMode = 'model'): string {
   if (!brief.engine || !direction.engine) return compileFullCreativePrompt(brief, direction, format);
   const plan = logoPlanOf(direction, format);
   const design = { ...direction.engine.design, logoDirector: { ...direction.engine.design.logoDirector, mark: plan.mark, corner: plan.corner } };
-  return compileDesignPrompt({ strategy: brief.engine.strategy, direction: direction.engine.strategy, design, copy: brief.canonicalCopy, format: { label: canvasOf(format).label, story: canvasOf(format).vertical }, adaptation });
+  return compileDesignPrompt({ strategy: brief.engine.strategy, direction: direction.engine.strategy, design, copy: brief.canonicalCopy, format: { label: canvasOf(format).label, story: canvasOf(format).vertical }, adaptation, typeset: mode === 'typeset' ? typesetPlanFor(direction, format, adaptation) : undefined });
+}
+
+/**
+ * Where the copy is set. The master uses the layout designer's zones. A recomposition for a very different
+ * shape cannot reuse them, so the type gets the area such shapes are read in: the upper part of a 9:16 story
+ * (below the platform bar), the right-hand side of a wide banner for Arabic (left for English).
+ */
+export function typesetPlanFor(direction: CreativeDirectionPlan, format: CanvasTarget, adaptation: boolean): TypesetPlan {
+  const design = direction.engine?.design;
+  const base: TypesetPlan = { alignment: design?.typographyDirector.alignment, headlineLines: design?.typographyDirector.headlineLines, headlineScale: design?.typographyDirector.scale.headline };
+  const canvas = canvasOf(format);
+  const ratio = canvas.output.width / canvas.output.height;
+  if (adaptation || !design) {
+    if (canvas.vertical || ratio < 0.7) return { ...base, headlineScale: undefined, headlineZone: { x: 0.08, y: 0.15, width: 0.84, height: 0.17 }, supportingCopyZone: { x: 0.08, y: 0.32, width: 0.84, height: 0.08 }, factsZone: { x: 0.08, y: 0.4, width: 0.84, height: 0.06 }, ctaZone: { x: 0.08, y: 0.46, width: 0.84, height: 0.05 } };
+    if (ratio > 1.4) {
+      const rtl = /[\u0600-\u06FF]/.test(design?.typographyDirector.headlineLines.join(' ') ?? 'ع');
+      const x = rtl ? 0.5 : 0.06;
+      return { ...base, headlineScale: undefined, headlineZone: { x, y: 0.14, width: 0.44, height: 0.34 }, supportingCopyZone: { x, y: 0.48, width: 0.44, height: 0.14 }, factsZone: { x, y: 0.62, width: 0.44, height: 0.1 }, ctaZone: { x, y: 0.74, width: 0.44, height: 0.1 } };
+    }
+  }
+  if (!design) return base;
+  const L = design.layoutDesigner;
+  return { ...base, headlineZone: L.headlineZone, supportingCopyZone: L.supportingCopyZone, factsZone: L.factsZone, ctaZone: L.ctaZone };
 }
 
 export function compileFullCreativePrompt(brief: CreativeBriefPlan, direction: CreativeDirectionPlan, format: CanvasTarget): string {
@@ -269,7 +313,7 @@ async function toOutput(png: Buffer, format: CanvasTarget): Promise<Buffer> {
   return sharp(png).resize(width, height, { fit: 'cover', position: 'centre', kernel: 'lanczos3' }).png().toBuffer();
 }
 
-export type ProgressStage = 'context' | 'planning' | 'designing' | 'generating' | 'inspecting' | 'refining' | 'repairing' | 'logo' | 'done';
+export type ProgressStage = 'context' | 'planning' | 'designing' | 'generating' | 'typesetting' | 'inspecting' | 'refining' | 'repairing' | 'logo' | 'done';
 export type ProgressFn = (event: { stage: ProgressStage; directionId?: string; message?: string; brief?: CreativeBriefPlan }) => void;
 
 export async function produceDirection(input: {
@@ -277,7 +321,10 @@ export async function produceDirection(input: {
   /** Recompose an existing creative for this format instead of generating from nothing. */
   sourceImage?: Buffer;
   onProgress?: ProgressFn;
+  /** Defaults to the run's mode (`textModeFor`). Adaptations pass their master's mode. */
+  mode?: TextMode;
 }): Promise<FullCreativeResult> {
+  if ((input.mode ?? textModeFor(input.brief, input.env)) === 'typeset') return produceTypeset(input);
   const { provider, brief, direction, format, quality, dir, env, sourceImage } = input;
   const progress = (stage: ProgressStage) => input.onProgress?.({ stage, directionId: direction.id });
   const spec = canvasOf(format);
@@ -359,7 +406,144 @@ export async function produceDirection(input: {
     writeFileSync(imagePath, image);
   }
   const status: FullCreativeResult['status'] = !imagePath ? 'failed' : problems.length ? 'needs_review' : 'ready';
-  return { directionId: direction.id, directionName: direction.name, status, problems, imagePath, rawImagePath: resolve(dir, `${direction.id}-raw.png`), logo, repaired, refinements, copyChecks, inspection, prompt, model: generated.model, latencyMs: Date.now() - started };
+  return { directionId: direction.id, directionName: direction.name, status, problems, imagePath, rawImagePath: resolve(dir, `${direction.id}-raw.png`), logo, repaired, refinements, copyChecks, inspection, prompt, model: generated.model, latencyMs: Date.now() - started, textMode: 'model' };
+}
+
+const foldText = (value: string) => value.normalize('NFKC')
+  .replace(/[\u064B-\u0670\u0640]/g, '').replace(/[\u200E\u200F\u202A-\u202E\u2066-\u2069]/g, '')
+  .replace(/[أإآٱ]/g, 'ا').replace(/ى/g, 'ي').replace(/ة/g, 'ه')
+  .replace(/[^\p{L}\p{N}]+/gu, ' ').trim().toLowerCase();
+/**
+ * Text the critic read that is none of ours: letters or fake writing the image model drew anyway. Text is ours
+ * when its words are approved copy AND it sits where the copy was set — a 3D «CFM» in the scene is still stray.
+ */
+export function strayTexts(read: (string | { text: string; box?: { x: number; y: number; width: number; height: number } })[], approved: string[], placed: { x: number; y: number; width: number; height: number }[] = [], canvas?: { width: number; height: number }): string[] {
+  const ours = new Set(approved.flatMap((a) => foldText(a).split(' ')).filter(Boolean));
+  const inPlaced = (box: { x: number; y: number; width: number; height: number }) => {
+    if (!canvas || !placed.length) return true;
+    const b = { x: box.x * canvas.width, y: box.y * canvas.height, width: box.width * canvas.width, height: box.height * canvas.height };
+    const area = Math.max(1, b.width * b.height);
+    // Vision boxes are estimates: allow 3% of the canvas around each set block.
+    const pad = 0.03 * Math.max(canvas.width, canvas.height);
+    const covered = placed.reduce((sum, p) => sum + Math.max(0, Math.min(b.x + b.width, p.x + p.width + pad) - Math.max(b.x, p.x - pad)) * Math.max(0, Math.min(b.y + b.height, p.y + p.height + pad) - Math.max(b.y, p.y - pad)), 0);
+    return covered / area >= 0.35;
+  };
+  return read.flatMap((entry) => {
+    const text = typeof entry === 'string' ? entry : entry.text;
+    const words = foldText(text).split(' ').filter(Boolean);
+    if (words.join('').length < 3) return [];
+    const approvedWords = words.filter((w) => ours.has(w)).length / words.length >= 0.5;
+    const where = typeof entry === 'string' || !entry.box ? true : inPlaced(entry.box);
+    return approvedWords && where ? [] : [text];
+  });
+}
+
+/**
+ * Typeset mode: text-free visual → typeset copy in brand fonts → official logo placed around the exact text
+ * boxes → one critic pass. Repairs are safe here because the picture has no text to damage; only critical
+ * local ones run automatically, to keep the wait short.
+ */
+async function produceTypeset(input: Parameters<typeof produceDirection>[0]): Promise<FullCreativeResult> {
+  const { provider, brief, direction, format, quality, dir, env, sourceImage } = input;
+  const progress = (stage: ProgressStage) => input.onProgress?.({ stage, directionId: direction.id });
+  const spec = canvasOf(format);
+  const plan = logoPlanOf(direction, format);
+  const started = Date.now();
+  const adaptation = Boolean(sourceImage);
+  const prompt = sourceImage
+    ? `${promptFor(brief, direction, format, true, 'typeset')}\n\nMASTER\nThe attached image is the approved master visual of this campaign (it has no text; the type is added afterwards). Design it again for this canvas: same concept, subject, palette, lighting and finish, with the layout rebuilt from scratch for this shape and the text areas above left calm. Never stretch, squash or crop it, never put it inside a frame or card, and never fill the space with blurred or repeated copies of it. Keep it free of any text.`
+    : promptFor(brief, direction, format, false, 'typeset');
+  const problems: string[] = [];
+  progress('generating');
+  const [generated] = sourceImage
+    ? await provider.edit({ prompt, size: spec.generation, quality, images: [{ data: sourceImage, mime: 'image/png' }] })
+    : await provider.generate({ prompt, size: spec.generation, quality });
+  let raw = generated.png;
+  const rawPath = resolve(dir, `${direction.id}-raw.png`);
+  writeFileSync(rawPath, raw);
+  const [gw, gh] = spec.generation.split('x').map(Number);
+  const tsPlan = typesetPlanFor(direction, format, adaptation);
+  const hero = !adaptation && direction.engine?.design.layoutDesigner.heroSubject;
+  const heroZone = hero && hero.width > 0.02 && hero.height > 0.02 && hero.width * hero.height < 0.45
+    ? [{ kind: 'subject' as const, label: 'planned hero', box: { x: hero.x * spec.output.width, y: hero.y * spec.output.height, width: hero.width * spec.output.width, height: hero.height * spec.output.height } }] : [];
+
+  const compose = async (visual: Buffer) => {
+    const clean = await toOutput(visual, format);
+    progress('typesetting');
+    const ts = await typesetCreative({ image: clean, copy: brief.canonicalCopy, plan: tsPlan, safeArea: spec.safeArea, logo: plan });
+    progress('logo');
+    const logo = await resolveLogo({ creative: ts.png, zones: [...ts.zones, ...heroZone], preferredCorner: plan.corner, preferredMark: plan.mark, safeArea: spec.safeArea });
+    return { clean, ts, logo };
+  };
+  let composed = await compose(raw);
+  let repaired = false;
+  if (composed.logo.requiresCreativeRepair) {
+    // No corner fits: calm the reserved corner of the visual (it has no text, so nothing else can break) and set again.
+    progress('repairing');
+    const zone = reservedZoneBox(plan.corner, gw, gh, LOGO_ZONE[plan.mark]);
+    if (spec.vertical) zone.y = plan.corner.startsWith('top') ? Math.round(gh * (spec.safeArea.top / spec.output.height)) : Math.round(gh * (1 - spec.safeArea.bottom / spec.output.height)) - zone.height;
+    const [edited] = await provider.edit({ prompt: 'Keep the complete existing image exactly. Change only the transparent masked area: make it a calm, clean, uncluttered continuation of the surrounding background, with no text, faces, objects, logos or graphics. Preserve every other pixel, lighting and colour.', size: spec.generation, quality, images: [{ data: raw, mime: 'image/png' }], mask: await maskFor(gw, gh, zone) });
+    const candidate = await pasteInside(raw, edited.png, [zone]);
+    if (!(await looksUnfilled(candidate, zone))) {
+      raw = candidate; repaired = true;
+      writeFileSync(resolve(dir, `${direction.id}-repaired-raw.png`), raw);
+      composed = await compose(raw);
+    } else problems.push('Logo corner repair: the image model left the corner unpainted; kept the original.');
+  }
+  const finish = async () => {
+    const { ts, logo } = composed;
+    if (logo.requiresCreativeRepair) return undefined;
+    const { image, record } = await compositeLogo(ts.png, { variantId: logo.variantId, x: logo.placement.x, y: logo.placement.y, width: logo.placement.width });
+    const honesty = await verifyComposite(ts.png, image, record);
+    return { image, honesty };
+  };
+  let finished = await finish();
+
+  progress('inspecting');
+  const approvedCopy = [brief.canonicalCopy.headline, brief.canonicalCopy.subheadline, ...(brief.canonicalCopy.facts ?? []), brief.canonicalCopy.cta].filter((s): s is string => Boolean(s));
+  const context = `${direction.name}: ${direction.concept} The copy ${JSON.stringify(approvedCopy)} was typeset by the design system${direction.engine ? `; planned first focal point ${direction.engine.design.layoutDesigner.primaryFocalPoint}, reading path ${direction.engine.design.layoutDesigner.visualFlow}` : ''}.`;
+  // Judged before the official logo is added: the critic treats any logo it sees as one the image model drew.
+  let inspection = await inspectCreative(composed.ts.png, context, env, approvedCopy, { typeset: true });
+  const refinements: string[] = [];
+  // Only critical, local, non-text repairs run unattended; anything else is shown for review.
+  const local = inspection.verdict !== 'accept' ? localRepairs(inspection).filter((r) => r.severity === 'critical') : [];
+  if (local.length) {
+    progress('refining');
+    const boxes = local.map((r) => ({ x: Math.round(Math.max(0, r.region.x - 0.02) * gw), y: Math.round(Math.max(0, r.region.y - 0.02) * gh), width: Math.round(Math.min(1, r.region.width + 0.04) * gw), height: Math.round(Math.min(1, r.region.height + 0.04) * gh) }));
+    const [edited] = await provider.edit({
+      prompt: `Keep the complete existing image exactly as it is. Only inside the transparent masked areas: ${local.map((r, i) => `(${i + 1}) ${r.instruction}`).join(' ')} Keep the lighting, perspective, grain and colour grade consistent with the rest. Add no text. Preserve every other pixel.`,
+      size: spec.generation, quality, images: [{ data: raw, mime: 'image/png' }], mask: await maskFor(gw, gh, ...boxes),
+    });
+    const candidate = await pasteInside(raw, edited.png, boxes);
+    if (!(await Promise.all(boxes.map((b) => looksUnfilled(candidate, b)))).some(Boolean)) {
+      raw = candidate;
+      refinements.push(...local.map((r) => `${r.operation}: ${r.instruction}`));
+      writeFileSync(resolve(dir, `${direction.id}-refined-raw.png`), raw);
+      composed = await compose(raw);
+      finished = await finish();
+      inspection = await inspectCreative(composed.ts.png, context, env, approvedCopy, { typeset: true });
+    }
+  }
+
+  problems.push(...composed.ts.problems);
+  const stray = strayTexts(inspection.texts, approvedCopy, composed.ts.layout.blocks.map((b) => b.box), spec.output);
+  if (stray.length) problems.push(`The picture contains text the design did not ask for: ${stray.slice(0, 3).map((t) => `«${t.slice(0, 40)}»`).join(', ')}`);
+  if (inspection.logosOrWatermarks.length) problems.push(`Generated image contains a logo or watermark: ${inspection.logosOrWatermarks.map((l) => l.description).join('; ')}`);
+  if (inspection.verdict === 'regenerate') problems.push(`Critic verdict regenerate: ${inspection.defects.join('; ') || inspection.summary}`);
+  else if (inspection.verdict === 'repair' && inspection.defects.length) problems.push(`Critic notes: ${inspection.defects.slice(0, 3).join('; ')}`);
+  const cleanImagePath = resolve(dir, `${direction.id}-clean.png`);
+  writeFileSync(cleanImagePath, composed.clean);
+  let imagePath: string | undefined;
+  if (!finished) problems.unshift(`Logo: ${(composed.logo as NoLogoDecision).reason}`);
+  else {
+    if (finished.honesty.length) problems.unshift(...finished.honesty.map((p) => `Logo composite: ${p}`));
+    imagePath = resolve(dir, `${direction.id}.png`);
+    writeFileSync(imagePath, finished.image);
+  }
+  // The copy is exact by construction: every string was set from the canonical copy.
+  const copyChecks = checkCopy(brief.canonicalCopy, approvedCopy);
+  const status: FullCreativeResult['status'] = !imagePath ? 'failed' : problems.length ? 'needs_review' : 'ready';
+  return { directionId: direction.id, directionName: direction.name, status, problems, imagePath, rawImagePath: rawPath, cleanImagePath, logo: composed.logo, repaired, refinements, copyChecks, inspection, prompt, model: generated.model, latencyMs: Date.now() - started, textMode: 'typeset', typeset: composed.ts.layout };
 }
 
 export async function generateFullCreative(request: FullCreativeRequest, env = process.env, onProgress?: ProgressFn): Promise<FullCreativeRun> {
@@ -384,7 +568,7 @@ export async function generateFullCreative(request: FullCreativeRequest, env = p
     problems: [`Generation failed: ${entry.reason instanceof Error ? entry.reason.message : String(entry.reason)}`],
     rawImagePath: '', logo: { requiresCreativeRepair: true, reason: 'No image' }, repaired: false, copyChecks: [],
     inspection: { texts: [], faces: [], subjects: [], logosOrWatermarks: [], copyAudit: [], defects: [], scores: { design: 0, marketing: 0, imageQuality: 0, brandFit: 0 }, verdict: 'regenerate', summary: '' },
-    prompt: promptFor(brief, brief.directions[index], format), model: provider.model, latencyMs: 0,
+    prompt: promptFor(brief, brief.directions[index], format, false, textModeFor(brief, env)), model: provider.model, latencyMs: 0, textMode: textModeFor(brief, env),
   });
   const run: FullCreativeRun = {
     // Attachments can be megabytes of base64: the trace keeps what was attached, not the files.
@@ -405,7 +589,7 @@ export async function adaptFullCreative(run: FullCreativeRun, directionId: strin
   if (!direction || !source?.rawImagePath) throw new Error('That direction has no generated image to adapt');
   const provider = new OpenAIImageProvider(env.OPENAI_API_KEY ?? '', source.model);
   const raw = readFileSync(source.rawImagePath);
-  const result = await produceDirection({ provider, brief: run.brief, direction: { ...direction, id: `${direction.id}-${format}` }, format, quality: run.request.quality ?? 'high', dir: run.outputDir, env, sourceImage: raw, onProgress });
+  const result = await produceDirection({ provider, brief: run.brief, direction: { ...direction, id: `${direction.id}-${format}` }, format, quality: run.request.quality ?? 'high', dir: run.outputDir, env, sourceImage: raw, onProgress, mode: source.textMode ?? 'model' });
   run.results.push(result);
   writeFileSync(resolve(run.outputDir, 'trace.json'), JSON.stringify(run, null, 2));
   onProgress?.({ stage: 'done' });

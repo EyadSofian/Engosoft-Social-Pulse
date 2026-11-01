@@ -9,7 +9,7 @@ import { CONTENT_STATUSES, type ContentStatus } from '../src/domain/content.js';
 import { ALL_PERMISSIONS, type Permission } from '../src/domain/users.js';
 import { GOALS, type Goal } from '../src/domain/goals.js';
 import {
-  authenticate, clearFailedLogins, createSession, createUser, endSession, isDepartment, isRole, listUsers, loginBlocked,
+  checkLogin, clearFailedLogins, createSession, createUser, endSession, isDepartment, isRole, listUsers, loginBlocked, maskEmail, normalizeEmail,
   readCookie, recordFailedLogin, requirePermission, requireUser, SESSION_COOKIE, updateUser, userCan, getUser, type AuthUser,
 } from './auth.js';
 import {
@@ -57,16 +57,24 @@ function fail(res: express.Response, error: unknown) {
 
 export function registerAuthRoutes(app: express.Express) {
   app.post('/api/auth/login', async (req, res) => {
-    const parsed = z.object({ email: z.string().email().max(200), password: z.string().min(1).max(200) }).safeParse(req.body);
-    if (!parsed.success) return res.status(400).json({ error: 'اكتب البريد الإلكتروني وكلمة المرور.' });
-    const key = `${parsed.data.email.toLowerCase()}|${req.ip}`;
-    if (loginBlocked(key)) return res.status(429).json({ error: 'محاولات كثيرة. انتظر ربع ساعة ثم حاول مرة أخرى.' });
-    const user = await authenticate(parsed.data.email, parsed.data.password);
-    if (!user) { recordFailedLogin(key); return res.status(401).json({ error: 'البريد الإلكتروني أو كلمة المرور غير صحيحة.' }); }
+    // Phones add a trailing space or capital letter to emails; normalise before validating.
+    const parsed = z.object({ email: z.string().max(200).transform(normalizeEmail).pipe(z.string().email()), password: z.string().min(1).max(200) }).safeParse(req.body);
+    if (!parsed.success) return res.status(400).json({ error: 'اكتب بريدًا إلكترونيًا صحيحًا وكلمة المرور.' });
+    const key = `${parsed.data.email}|${req.ip}`;
+    if (loginBlocked(key)) return res.status(429).json({ error: 'محاولات كثيرة خاطئة. انتظر ربع ساعة، أو اطلب من المسؤول إعادة تعيين كلمة المرور (يُلغي الانتظار فورًا).' });
+    const result = await checkLogin(parsed.data.email, parsed.data.password);
+    if ('failure' in result) {
+      console.warn(`[auth] login failed for ${maskEmail(parsed.data.email)}: ${result.failure}`);
+      // A suspended account is named only to someone who knows its password.
+      if (result.failure === 'suspended') return res.status(403).json({ error: 'هذا الحساب موقوف. تواصل مع مسؤول النظام لتفعيله.', code: 'suspended' });
+      recordFailedLogin(key);
+      const arabicKeyboard = /[\u0621-\u064A]/.test(parsed.data.password);
+      return res.status(401).json({ error: arabicKeyboard ? 'كلمة المرور غير صحيحة، ويبدو أن لوحة المفاتيح على العربية. حوّلها إلى الإنجليزية وحاول مجددًا.' : 'البريد الإلكتروني أو كلمة المرور غير صحيحة.' });
+    }
     clearFailedLogins(key);
-    const session = await createSession(user.id);
+    const session = await createSession(result.user.id);
     res.cookie(SESSION_COOKIE, session.token, { httpOnly: true, sameSite: 'lax', secure: req.secure, path: '/', expires: new Date(session.expiresAt) });
-    res.json({ user: publicUser(user) });
+    res.json({ user: publicUser(result.user) });
   });
   app.post('/api/auth/logout', async (req, res) => {
     const token = readCookie(req, SESSION_COOKIE);
@@ -104,16 +112,21 @@ export function registerWorkspaceRoutes(app: express.Express) {
   });
 
   app.get('/api/users', requireUser, async (req, res) => {
+    res.setHeader('Cache-Control', 'no-store');
     const all = await listUsers();
     res.json(userCan(req.user!, 'users.manage') ? all.map(publicUser) : all.filter((u) => u.status === 'active').map((u) => ({ id: u.id, name: u.name, departmentId: u.departmentId, role: u.role })));
   });
-  const userInput = z.object({ email: z.string().email().max(200), name: z.string().trim().min(2).max(120), role: z.string().refine(isRole), departmentId: z.string().refine(isDepartment).nullable(), title: z.string().max(120).optional(), password: z.string().min(10).max(200) });
+  const userInput = z.object({ email: z.string().max(200).transform(normalizeEmail).pipe(z.string().email()), name: z.string().trim().min(2).max(120), role: z.string().refine(isRole), departmentId: z.string().refine(isDepartment).nullable(), title: z.string().max(120).optional(), password: z.string().min(10).max(200) });
   app.post('/api/users', requireUser, requirePermission('users.manage'), async (req, res) => {
     try {
       const input = userInput.parse(req.body);
       res.status(201).json(publicUser(await createUser({ ...input, role: input.role as never, departmentId: input.departmentId as never })));
     } catch (error) {
-      if (error instanceof Error && /UNIQUE/.test(error.message)) return res.status(409).json({ error: 'هذا البريد الإلكتروني مستخدم بالفعل.' });
+      if (error instanceof Error && /UNIQUE|duplicate key/i.test(error.message)) return res.status(409).json({ error: 'هذا البريد الإلكتروني مستخدم بالفعل.' });
+      if (error instanceof z.ZodError) {
+        const field = String(error.issues[0]?.path[0] ?? '');
+        return res.status(400).json({ error: field === 'email' ? 'البريد الإلكتروني غير صحيح.' : field === 'password' ? 'كلمة المرور 10 أحرف على الأقل.' : field === 'name' ? 'اكتب الاسم (حرفان على الأقل).' : 'البيانات غير صالحة.' });
+      }
       fail(res, error);
     }
   });

@@ -46,7 +46,7 @@ const schema = {
   },
 };
 
-export async function inspectCreative(png: Buffer, context: string, env = process.env, approvedCopy: string[] = []): Promise<CreativeInspection> {
+export async function inspectCreative(png: Buffer, context: string, env = process.env, approvedCopy: string[] = [], options: { typeset?: boolean } = {}): Promise<CreativeInspection> {
   const jpeg = await sharp(png).resize({ width: 1024 }).jpeg({ quality: 88 }).toBuffer();
   return openAIJson<CreativeInspection>({
     apiKey: env.OPENAI_API_KEY ?? '', model: env.OPENAI_VISION_MODEL?.trim() || 'gpt-5.5', reasoning: 'low',
@@ -56,7 +56,9 @@ export async function inspectCreative(png: Buffer, context: string, env = proces
       'texts: every separate piece of visible text, transcribed exactly as rendered — including misspellings, broken Arabic letter joins and wrong digits. Never correct it.',
       'faces: every human face. subjects: important people, objects, devices or graphics a logo must not cover — never the background, environment or whole scene.',
       'logosOrWatermarks: any logo, brand mark, emblem, wordmark or watermark drawn in the image (the real logo is added later, so any here is a defect).',
-      'copyAudit: for each approved string given, find where it is rendered and compare letter by letter (ignore line breaks, diacritics, and where numbers sit within right-to-left text). rendered = exactly what the pixels show, including doubled, missing or swapped letters; exact = false on any letter difference. Image models often misspell Arabic (e.g. باحترارف for باحتراف): look closely.',
+      options.typeset
+        ? 'The approved strings were typeset by the design system in the exact brand fonts, so their spelling is correct by construction: return copyAudit as an empty array. Still list every visible text in texts. Any OTHER text, letters, numbers or fake writing drawn into the picture itself is a defect: name it in defects. Judge the typography as design: readability against the background, hierarchy, alignment and how well the type sits in the composition.'
+        : 'copyAudit: for each approved string given, find where it is rendered and compare letter by letter (ignore line breaks, diacritics, and where numbers sit within right-to-left text). rendered = exactly what the pixels show, including doubled, missing or swapped letters; exact = false on any letter difference. Image models often misspell Arabic (e.g. باحترارف for باحتراف): look closely.',
       `defects: concrete visible problems (deformed hands/faces, garbled text, fake UI, cut-off subject, clutter), and any of these cheap-looking patterns: ${DESIGN_AVOID.join('; ')}.`,
       `Scores 0-10, strict, against this standard: ${DESIGN_STANDARD.join(' ')} 8+ only for work a senior designer would publish.`,
       'scores (design, marketing, imageQuality, brandFit) summarise the rubric for the overview.',

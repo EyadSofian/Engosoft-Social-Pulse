@@ -45,3 +45,26 @@ All routes are loopback-only until user authentication exists, rate-limited to 6
 - Inspection boxes are model estimates (inflated by 1.5%); the logo validator's pixel checks are exact, its zone checks are only as good as those boxes.
 - Reference images are not yet sent to GPT Image; every reference card carries the legacy logo and needs masking first.
 - Each format beyond the master is a separate edit call (cost and 1–2 minutes).
+
+## Typeset mode (default since 2026-11-01)
+
+Every saved run before this change ended `needs_review`, almost always because the image model misspelled Arabic, and a run took 3.5–4 minutes (two medium-reasoning planning calls of ~1 minute each, then inspection, a repair edit and a second inspection). Design-engine runs now split the work:
+
+```
+strategy (low reasoning, no captions) → design plans ∥ captions (parallel)
+ → image model draws a text-free visual, leaving the layout designer's text zones calm
+ → typography/typeset.ts sets headline, supporting line, fact chips and CTA in Almarai / Plus Jakarta Sans
+   (HarfBuzz shaping; light or dark text and scrim chosen from the real pixels)
+ → logo resolver uses the exact text boxes (no vision call needed) → one critic pass on the image before the logo
+ → only critical, local, non-text repairs run unattended (safe: the picture has no text to damage)
+```
+
+The copy is exact by construction, so the letter-by-letter audit is skipped. Text the critic reads outside the typeset boxes (fake writing, a 3D «CFM» sign) is reported as a problem. Each result stores `textMode`, the `typeset` layout and a `dN-clean.png` without text or logo, ready for the Studio to open as editable layers.
+
+| Setting | Default | Note |
+| --- | --- | --- |
+| `CREATIVE_TEXT_MODE` | `typeset` | `model` restores image-model text for design-engine runs. The legacy engine always uses `model`. |
+| `OPENAI_STRATEGY_REASONING` | `low` | `medium` / `high` for richer strategy at about a minute more. |
+| `OPENAI_DESIGN_REASONING` | `low` | Same for the per-direction design plan. |
+
+Measured on one real CFM request (2 directions, `gpt-image-2.5-flare`, high quality): 136 s end to end with low reasoning, versus 210–240 s for earlier runs.

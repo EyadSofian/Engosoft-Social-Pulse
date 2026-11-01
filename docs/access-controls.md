@@ -9,3 +9,14 @@ The API validates capability names, protects administrator overrides and self ch
 The persisted content pipeline, course catalog, reference generation, Studio, account administration, usage and connector mutations enforce their route/workflow checks on the server. Task assignment and some department reporting screens are still the existing in-memory demo workspace, as marked in the app; these checks do not turn those screens into a persisted backend.
 
 Regression coverage uses real HTTP sessions and checks grants, denials, reset, self/admin protection, rejected input, audit records and approval transitions. Frontend tests render the role matrix, course editor, placement picker and approval cards in Arabic and English. They do not replace visual browser or device testing.
+
+## Sign-in reliability (2026-11-01)
+
+Production logs showed new accounts failing to sign in (five 401s in a row, a password reset, more failures). The server logic was correct; the typed values did not match what was saved. Now:
+
+- Emails are trimmed, lower-cased and stripped of invisible marks on create and sign-in. Passwords are compared with Arabic-Indic digits converted to 0-9 and surrounding spaces removed; accounts hashed before this still match their exact old password.
+- New passwords with Arabic letters are refused with a reason. A wrong password typed on an Arabic keyboard gets a hint to switch.
+- Settings → Team generates a readable temporary password in a visible field (browsers no longer autofill the admin's own password there) and shows a copyable sign-in message after creating or resetting. A "Last sign-in" column shows who never got in.
+- A password reset or reactivation lifts the 15-minute lockout at once. A suspended account is told it is suspended (only when the password is right).
+- Failed sign-ins are logged as `[auth] login failed for ab***@domain: unknown_email | wrong_password | suspended`, so Railway logs show why.
+
