@@ -1,7 +1,8 @@
 import { CampaignsPanel } from '../../features/campaigns/Campaigns';
+import { Link } from '../../app/router/router';
 import { useEffect, useState } from 'react';
 import { motion } from 'motion/react';
-import { Download, LayoutTemplate, Sparkles } from 'lucide-react';
+import { CalendarDays, Download, LayoutTemplate, Sparkles } from 'lucide-react';
 import { useRouter } from '../../app/router/router';
 import { Button } from '../../components/ui/Button';
 import { useAuth } from '../../features/auth/AuthProvider';
@@ -52,6 +53,11 @@ export function LibraryPage() {
 
   return <div className="u-stack u-stack--lg">
     <PageHeader title={t('Library', 'المكتبة')} description={t('Editable templates, approved designs, AI recipes and the official Engosoft logos.', 'قوالب قابلة للتعديل، وتصاميم معتمدة، ووصفات الذكاء الاصطناعي، وشعارات إنجوسوفت الرسمية.')} />
+    {can('design.templates') && <Link to="/?schedule=1" className="schedule-card glass">
+      <span className="schedule-card__icon"><CalendarDays size={22} /></span>
+      <span><b>{t('Course schedule of the month', 'جدول مواعيد الدورات للشهر')}</b><small>{t('Built-in template: upload the CSV/Excel sheet or read Odoo, and get every Facebook and Instagram post (4:5 and 1:1).', 'قالب جاهز: ارفع شيت CSV/Excel أو اقرأ من Odoo، وخد كل بوستات فيسبوك وإنستجرام (4:5 و1:1).')}</small></span>
+      <img src="/post-assets/schedule-preview.jpg" alt="" />
+    </Link>}
     <SvgTemplateSection />
     {can('templates.manage') && <CampaignsPanel />}
     {can('design.free') && <AiTemplatesPanel />}
