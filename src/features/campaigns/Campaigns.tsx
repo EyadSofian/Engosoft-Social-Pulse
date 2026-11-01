@@ -1,5 +1,5 @@
 import { useEffect, useRef, useState } from 'react';
-import { Archive, ImagePlus, Megaphone, Plus, RotateCcw } from 'lucide-react';
+import { Archive, ImagePlus, Megaphone, Plus, RotateCcw, Sparkles } from 'lucide-react';
 import { Button } from '../../components/ui/Button';
 import { useI18n } from '../../i18n/I18nProvider';
 import { useAuth } from '../auth/AuthProvider';
@@ -10,7 +10,7 @@ import { DateTime } from 'luxon';
 
 export type StampCorner = 'bottom-right' | 'bottom-left' | 'top-right' | 'top-left';
 export interface Campaign {
-  id: string; name: string; slogan: string; hashtag: string; corner: StampCorner; width: number;
+  id: string; name: string; slogan: string; hashtag: string; style: string; corner: StampCorner; width: number;
   startsOn: string | null; endsOn: string | null; status: 'active' | 'archived';
   stampUrl: string | null; keyVisualUrl: string | null;
 }
@@ -40,6 +40,12 @@ const asDataUrl = (file: Blob) => new Promise<string>((resolve, reject) => {
   const reader = new FileReader(); reader.onload = () => resolve(String(reader.result)); reader.onerror = () => reject(reader.error); reader.readAsDataURL(file);
 });
 
+/** What the server read from a campaign image: texts, look, and the slogan lockup cut out of it. */
+interface CampaignAnalysis {
+  name: string; slogan: string; hashtag: string; corner: StampCorner; palette: string[]; style: string;
+  stamp: string | null; background: 'transparent' | 'removed' | 'kept' | 'none'; wholeDesign: boolean;
+}
+
 /** Where a stamp would sit on a 4:5 post, drawn to scale, so the size and corner are clear before saving. */
 function StampPreview({ stamp, corner, width }: { stamp: string | null; corner: StampCorner; width: number }) {
   const { t } = useI18n();
@@ -55,6 +61,11 @@ function CampaignForm({ initial, onSaved, onCancel }: { initial?: Campaign; onSa
   const [name, setName] = useState(initial?.name ?? '');
   const [slogan, setSlogan] = useState(initial?.slogan ?? '');
   const [hashtag, setHashtag] = useState(initial?.hashtag ?? '');
+  const [style, setStyle] = useState(initial?.style ?? '');
+  const [reading, setReading] = useState(false);
+  const [found, setFound] = useState<CampaignAnalysis | null>(null);
+  // An upload with no sticker in it must not become the stamp (it would paste a tiny copy of a whole post).
+  const [dropStamp, setDropStamp] = useState(false);
   const [corner, setCorner] = useState<StampCorner>(initial?.corner ?? 'bottom-right');
   const [width, setWidth] = useState(initial?.width ?? 0.3);
   const [startsOn, setStartsOn] = useState(initial?.startsOn ?? '');
@@ -65,36 +76,75 @@ function CampaignForm({ initial, onSaved, onCancel }: { initial?: Campaign; onSa
   const [error, setError] = useState('');
   const stampInput = useRef<HTMLInputElement>(null);
   const keyInput = useRef<HTMLInputElement>(null);
-  const pick = async (file: File | undefined, set: (value: string) => void) => {
+  // Any image marketing has — a finished post, the key visual or the sticker — is read by the AI: it finds the
+  // slogan lockup and cuts it out as the stamp, reads the slogan and hashtag, and describes the campaign look.
+  // Fields already typed are kept; the person can change anything before saving.
+  const analyze = async (image: string, from: 'stamp' | 'key') => {
+    setReading(true); setFound(null);
+    try {
+      const result = await api<CampaignAnalysis>('/api/campaigns/analyze', { body: { image } });
+      setFound(result);
+      if (result.name && !name.trim()) setName(result.name);
+      if (result.slogan && !slogan.trim()) setSlogan(result.slogan);
+      if (result.hashtag && !hashtag.trim()) setHashtag(result.hashtag);
+      if (result.style && !style.trim()) setStyle(result.palette.length ? `${result.style} Palette: ${result.palette.join(', ')}.` : result.style);
+      if (result.stamp) { setStamp(result.stamp); setCorner(result.corner); setDropStamp(false); }
+      else if (from === 'stamp') { setStamp(null); setDropStamp(true); }
+      // A whole post uploaded as the stamp is the campaign look: keep it as the key visual too.
+      if (from === 'stamp' && result.wholeDesign && !keyVisual && !initial?.keyVisualUrl) setKeyVisual(image);
+    } catch (reason) { setError(errorMessage(reason, t('The AI could not read the image. Fill the fields by hand.', 'الذكاء الاصطناعي ماقدرش يقرأ الصورة. املأ الحقول يدويًا.'))); }
+    setReading(false);
+  };
+  const pick = async (file: File | undefined, set: (value: string) => void, from: 'stamp' | 'key') => {
     if (!file) return;
     if (!/^image\/(png|jpeg|webp)$/.test(file.type) || file.size > 8_000_000) { setError(t('Use a PNG, JPEG or WebP image up to 8 MB.', 'استخدم صورة PNG أو JPEG أو WebP حتى 8 ميجابايت.')); return; }
-    setError(''); set(await asDataUrl(file));
+    setError('');
+    const image = await asDataUrl(file);
+    set(image);
+    void analyze(image, from);
+  };
+  /** Reads a campaign saved before the AI reading existed (or whose stamp is a whole post) again. */
+  const readSaved = async () => {
+    const url = stamp ?? initial?.stampUrl ?? keyVisual ?? initial?.keyVisualUrl;
+    if (!url) return;
+    const image = url.startsWith('data:') ? url : await fetch(url, { credentials: 'include' }).then((r) => r.blob()).then(asDataUrl);
+    void analyze(image, url === (stamp ?? initial?.stampUrl) ? 'stamp' : 'key');
   };
   const save = async () => {
     if (name.trim().length < 2) { setError(t('Give the campaign a name.', 'اكتب اسم الحملة.')); return; }
     setBusy(true); setError('');
-    const body = { name, slogan, hashtag, corner, width, startsOn: startsOn || null, endsOn: endsOn || null, ...(stamp ? { stamp } : {}), ...(keyVisual ? { keyVisual } : {}) };
+    const body = { name, slogan, hashtag, style, corner, width, startsOn: startsOn || null, endsOn: endsOn || null, ...(stamp ? { stamp } : dropStamp ? { stamp: null } : {}), ...(keyVisual ? { keyVisual } : {}) };
     try { await api(initial ? `/api/campaigns/${initial.id}` : '/api/campaigns', { method: initial ? 'PATCH' : 'POST', body }); onSaved(); }
     catch (reason) { setError(errorMessage(reason, t('Could not save.', 'تعذّر الحفظ.'))); }
     setBusy(false);
   };
-  const shownStamp = stamp ?? initial?.stampUrl ?? null;
+  const shownStamp = stamp ?? (dropStamp ? null : initial?.stampUrl) ?? null;
   return <div className="campaign-form glass">
     <div className="campaign-form__fields">
       <label className="ui-field"><span className="ui-field__label">{t('Campaign name', 'اسم الحملة')}</span><input className="ui-input" dir="auto" value={name} onChange={(e) => setName(e.target.value)} placeholder={t('e.g. White Friday', 'مثال: الجمعة البيضاء')} /></label>
       <label className="ui-field"><span className="ui-field__label">{t('Slogan', 'الشعار النصي (السلوجان)')}</span><input className="ui-input" dir="auto" value={slogan} onChange={(e) => setSlogan(e.target.value)} placeholder={t('e.g. A Friday that changes your path', 'مثال: جمعة تغير مسارك')} /><span className="ui-field__hint">{t('The AI writes the post around it, word for word.', 'الذكاء الاصطناعي يكتب المنشور حوله، بنفس كلماته.')}</span></label>
       <label className="ui-field"><span className="ui-field__label">{t('Hashtag', 'الهاشتاج')}</span><input className="ui-input" dir="auto" value={hashtag} onChange={(e) => setHashtag(e.target.value)} placeholder="#جمعة_تغير_مسارك" /><span className="ui-field__hint">{t('Added to every caption of the campaign.', 'يُضاف لكل نصوص منشورات الحملة.')}</span></label>
+      <label className="ui-field"><span className="ui-field__label">{t('Campaign look', 'أسلوب الحملة')}</span><textarea className="ui-input" rows={3} dir="auto" value={style} onChange={(e) => setStyle(e.target.value)} placeholder={t('Filled by the AI from the images, or describe it: colours, background, type, mood.', 'الذكاء الاصطناعي بيملاه من الصور، أو اكتبه: الألوان، الخلفية، الخط، الإحساس.')} /><span className="ui-field__hint">{t('Every AI design for the campaign follows it.', 'كل تصميم بالذكاء الاصطناعي للحملة بيمشي عليه.')}</span></label>
+      {(reading || found) && <div className="campaign-reading" role="status">
+        <Sparkles size={15} />
+        {reading ? <span>{t('Reading the image: finding the sticker, the slogan and the look…', 'بنقرأ الصورة: بندوّر على الستيكر والسلوجان والأسلوب…')}</span>
+          : found && <span>{found.stamp
+            ? found.background === 'kept' ? t('Sticker found and cropped as it is: there was no single-colour background to remove. Check the preview.', 'لقينا الستيكر وقصّيناه زي ما هو: مكانش حواليه خلفية بلون واحد تتشال. راجع المعاينة.') : t('Sticker found and cut out with a transparent background. Fields you had left empty were filled; check them.', 'لقينا الستيكر وقصّيناه بخلفية شفافة، وملينا الحقول الفاضية. راجعها.')
+            : t('No sticker found in this image; the slogan or hashtag will be set as text on the designs.', 'مالقيناش ستيكر في الصورة؛ السلوجان أو الهاشتاج هيتكتب كنص على التصاميم.')}</span>}
+        {found && found.palette.length > 0 && <span className="campaign-reading__palette">{found.palette.map((c) => <i key={c} style={{ background: c }} title={c} />)}</span>}
+      </div>}
+      {!reading && (initial?.stampUrl || initial?.keyVisualUrl) && !found && <div><Button size="sm" variant="ghost" icon={<Sparkles size={14} />} onClick={() => void readSaved()}>{t('Read the saved images with AI', 'اقرأ الصور المحفوظة بالذكاء الاصطناعي')}</Button></div>}
       <div className="campaign-form__row">
         <label className="ui-field"><span className="ui-field__label">{t('Starts', 'تبدأ')}</span><input className="ui-input" type="date" value={startsOn} onChange={(e) => setStartsOn(e.target.value)} /></label>
         <label className="ui-field"><span className="ui-field__label">{t('Ends', 'تنتهي')}</span><input className="ui-input" type="date" value={endsOn} onChange={(e) => setEndsOn(e.target.value)} /></label>
       </div>
       <div className="campaign-form__uploads">
-        <input ref={stampInput} hidden type="file" accept="image/png,image/webp,image/jpeg" onChange={(e) => void pick(e.target.files?.[0], setStamp)} />
-        <input ref={keyInput} hidden type="file" accept="image/png,image/webp,image/jpeg" onChange={(e) => void pick(e.target.files?.[0], setKeyVisual)} />
+        <input ref={stampInput} hidden type="file" accept="image/png,image/webp,image/jpeg" onChange={(e) => void pick(e.target.files?.[0], setStamp, 'stamp')} />
+        <input ref={keyInput} hidden type="file" accept="image/png,image/webp,image/jpeg" onChange={(e) => void pick(e.target.files?.[0], setKeyVisual, 'key')} />
         <button type="button" className="campaign-drop" onClick={() => stampInput.current?.click()}>
           {shownStamp ? <img src={shownStamp} alt="" /> : <ImagePlus size={20} />}
           <b>{t('Slogan stamp', 'ملف الشعار (الستامب)')}</b>
-          <small>{t('Transparent PNG of the lockup, e.g. the hashtag sticker. Placed exactly as uploaded on every AI design.', 'PNG شفاف للشعار، زي ستيكر الهاشتاج. يُوضع كما هو على كل تصميم بالذكاء الاصطناعي.')}</small>
+          <small>{t('Any image with the sticker: a finished post works. The AI cuts the sticker out and places it on every AI design.', 'أي صورة فيها الستيكر، حتى لو بوست كامل. الذكاء الاصطناعي بيقص الستيكر لوحده ويحطه على كل تصميم.')}</small>
         </button>
         <button type="button" className="campaign-drop" onClick={() => keyInput.current?.click()}>
           {keyVisual ?? initial?.keyVisualUrl ? <img src={(keyVisual ?? initial?.keyVisualUrl)!} alt="" /> : <ImagePlus size={20} />}
@@ -109,7 +159,7 @@ function CampaignForm({ initial, onSaved, onCancel }: { initial?: Campaign; onSa
       <label className="ui-field"><span className="ui-field__label">{t('Size', 'الحجم')} <b className="u-tnum">{Math.round(width * 100)}%</b></span><input type="range" min={0.12} max={0.5} step={0.01} value={width} onChange={(e) => setWidth(Number(e.target.value))} /></label>
     </div>
     {error && <p role="alert" className="creative-home__error">{error}</p>}
-    <div className="u-row"><Button variant="primary" busy={busy} onClick={() => void save()}>{t('Save campaign', 'احفظ الحملة')}</Button><Button variant="ghost" onClick={onCancel}>{t('Cancel', 'إلغاء')}</Button></div>
+    <div className="u-row"><Button variant="primary" busy={busy} disabled={reading} onClick={() => void save()}>{t('Save campaign', 'احفظ الحملة')}</Button><Button variant="ghost" onClick={onCancel}>{t('Cancel', 'إلغاء')}</Button></div>
   </div>;
 }
 

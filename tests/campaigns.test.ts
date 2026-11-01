@@ -11,6 +11,7 @@ process.env.MEDIA_DIR = directory;
 const auth = await import('../server/auth');
 const { registerCampaignRoutes, campaignIdentity } = await import('../server/campaigns');
 const stamp = await import('../server/creative-intelligence/logo-resolution/campaign-stamp');
+const analysis = await import('../server/campaign-analysis');
 const { db, initDb } = await import('../server/db');
 await initDb();
 
@@ -98,6 +99,9 @@ test('marketing creates a campaign with its stamp; creators can read it but not 
   acting = manager;
   assert.equal((await call(`/api/campaigns/${campaign.id}`, 'PATCH', { status: 'archived' })).status, 200);
   assert.equal(await campaignIdentity(campaign.id), undefined, 'an archived campaign is not used for new designs');
+  const archived = await (await call('/api/campaigns')).json() as { id: string; slogan: string; hashtag: string; startsOn: string }[];
+  const kept = archived.find((c) => c.id === campaign.id)!;
+  assert.deepEqual([kept.slogan, kept.hashtag, kept.startsOn], ['جمعة تغير مسارك', '#جمعة_تغير_مسارك', '2026-11-20'], 'archiving keeps the slogan, hashtag and dates');
 });
 
 test('a campaign with only a hashtag still gets a readable stamp set in the brand font', async () => {
@@ -109,4 +113,30 @@ test('a campaign with only a hashtag still gets a readable stamp set in the bran
   assert.ok(made!.width >= 0.16 && made!.width <= 0.62);
   assert.equal(await stamp.textStamp({ ...identity, slogan: '', hashtag: '' }), null);
   assert.match(stamp.stampRoom(identity), /CAMPAIGN STAMP RESERVATION/);
+});
+
+/** A finished post like the ones marketing uploads: a blue gradient, a small wordmark and a green sticker. */
+const finishedPost = () => sharp(Buffer.from(`<svg xmlns="http://www.w3.org/2000/svg" width="1080" height="1350"><defs><linearGradient id="g" x1="0" y1="0" x2="0" y2="1"><stop offset="0" stop-color="#0a3cff"/><stop offset="1" stop-color="#0631c8"/></linearGradient></defs><rect width="1080" height="1350" fill="url(#g)"/><rect x="60" y="60" width="180" height="30" fill="#fff"/><rect x="340" y="560" width="400" height="200" rx="30" fill="#2bd96b"/><rect x="380" y="610" width="320" height="40" fill="#0a3cff"/></svg>`)).png().toBuffer();
+
+test('the sticker is cut out of a finished post: cropped to the box the model gave and its flat background removed', async () => {
+  const post = await finishedPost();
+  const detect = async () => ({ name: 'الجمعة البيضاء', slogan: 'جمعة تغير مسارك', hashtag: 'جمعة تغير مسارك', lockup: { x: 0.3, y: 0.4, width: 0.4, height: 0.17 }, corner: 'bottom-right' as const, palette: ['#0A3CFF', '#2BD96B', 'blue'], style: 'Electric blue background, green sticker.' });
+  const result = await analysis.analyzeCampaignImage(`data:image/png;base64,${post.toString('base64')}`, {}, detect);
+  assert.equal(result.background, 'removed');
+  assert.equal(result.hashtag, '#جمعة_تغير_مسارك');
+  assert.deepEqual(result.palette, ['#0A3CFF', '#2BD96B']);
+  assert.equal(result.wholeDesign, true, 'the upload was a whole post, so it doubles as the key visual');
+  const cut = Buffer.from(result.stamp!.split(',')[1], 'base64');
+  const meta = await sharp(cut).metadata();
+  assert.ok(Math.abs(meta.width! - 400) <= 6 && Math.abs(meta.height! - 200) <= 6, `trimmed to the sticker, got ${meta.width}×${meta.height}`);
+  const { data, info } = await sharp(cut).ensureAlpha().raw().toBuffer({ resolveWithObject: true });
+  const at = (x: number, y: number) => data[(y * info.width + x) * 4 + 3];
+  assert.equal(at(1, 1), 0, 'the corner outside the rounded sticker is transparent');
+  assert.equal(at(Math.round(info.width / 2), Math.round(info.height / 2)), 255, 'the blue text bar inside the sticker survives');
+});
+
+test('an image with no sticker gives no stamp, and a transparent PNG is only trimmed', async () => {
+  const none = await analysis.analyzeCampaignImage(`data:image/png;base64,${(await finishedPost()).toString('base64')}`, {}, async () => ({ name: '', slogan: 'x', hashtag: '', lockup: null, corner: 'bottom-right', palette: [], style: '' }));
+  assert.equal(none.stamp, null);
+  assert.equal((await analysis.cutOut(await lockup())).background, 'transparent');
 });

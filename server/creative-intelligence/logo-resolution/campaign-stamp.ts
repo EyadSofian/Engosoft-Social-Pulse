@@ -16,6 +16,8 @@ export interface CampaignIdentity {
   name: string;
   slogan: string;
   hashtag: string;
+  /** The campaign's look in words (layout, colour, type, mood); empty when none was given. */
+  style?: string;
   /** Absolute path of the stamp PNG, or empty when the campaign has none. */
   stampPath: string;
   /** Absolute path of the campaign's key visual, given to the strategist as a style reference; empty when none. */
@@ -99,7 +101,7 @@ export function stampRoom(campaign: CampaignIdentity | undefined): string {
 /** What the strategist hears about the campaign, so the copy and captions are written around its slogan. */
 export function campaignBrief(campaign: CampaignIdentity | undefined): string {
   if (!campaign) return '';
-  return [`\n\nCAMPAIGN: ${campaign.name}.`, campaign.slogan ? `Campaign slogan: «${campaign.slogan}». Build the post's message around it; do not change its wording.` : '', campaign.hashtag ? `Campaign hashtag: ${campaign.hashtag}.` : ''].filter(Boolean).join(' ');
+  return [`\n\nCAMPAIGN: ${campaign.name}.`, campaign.slogan ? `Campaign slogan: «${campaign.slogan}». Build the post's message around it; do not change its wording.` : '', campaign.hashtag ? `Campaign hashtag: ${campaign.hashtag}.` : '', campaign.style ? `Campaign look — every design must clearly belong to it: ${campaign.style}` : ''].filter(Boolean).join(' ');
 }
 
 /** Adds the campaign hashtag to a caption once. */
