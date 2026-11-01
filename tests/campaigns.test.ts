@@ -72,7 +72,9 @@ test('the brief and captions carry the slogan and hashtag', () => {
   const identity = { id: 'c', name: 'الجمعة البيضاء', slogan: 'جمعة تغير مسارك', hashtag: '#جمعة_تغير_مسارك', corner: 'bottom-right' as const, width: 0.3, stampPath: '/x.png', keyVisualPath: '' };
   assert.match(stamp.campaignBrief(identity), /جمعة تغير مسارك/);
   assert.match(stamp.stampRoom(identity), /bottom right/);
-  assert.equal(stamp.stampRoom({ ...identity, stampPath: '' }), '');
+  // Without a stamp file the hashtag is set as a stamp, so its corner is still kept calm; with no text either, nothing.
+  assert.match(stamp.stampRoom({ ...identity, stampPath: '' }), /bottom right/);
+  assert.equal(stamp.stampRoom({ ...identity, stampPath: '', slogan: '', hashtag: '' }), '');
   const once = stamp.withHashtag('سجّل الآن', identity.hashtag);
   assert.equal(stamp.withHashtag(once, identity.hashtag), once);
 });
@@ -96,4 +98,15 @@ test('marketing creates a campaign with its stamp; creators can read it but not 
   acting = manager;
   assert.equal((await call(`/api/campaigns/${campaign.id}`, 'PATCH', { status: 'archived' })).status, 200);
   assert.equal(await campaignIdentity(campaign.id), undefined, 'an archived campaign is not used for new designs');
+});
+
+test('a campaign with only a hashtag still gets a readable stamp set in the brand font', async () => {
+  const identity = { id: 'x', name: 'Test', slogan: 'جمعة تغير مسارك', hashtag: '#جمعة_تغير_مسارك', stampPath: '', keyVisualPath: '', corner: 'bottom-right' as const, width: 0.3 };
+  const made = await stamp.textStamp(identity);
+  assert.ok(made, 'a text stamp is made');
+  const meta = await sharp(made!.png).metadata();
+  assert.ok(meta.width! > meta.height!, 'a wide pill');
+  assert.ok(made!.width >= 0.16 && made!.width <= 0.62);
+  assert.equal(await stamp.textStamp({ ...identity, slogan: '', hashtag: '' }), null);
+  assert.match(stamp.stampRoom(identity), /CAMPAIGN STAMP RESERVATION/);
 });

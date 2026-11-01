@@ -2,6 +2,8 @@ import { useEffect, useRef, useState } from 'react';
 import { Archive, ImagePlus, Megaphone, Plus, RotateCcw } from 'lucide-react';
 import { Button } from '../../components/ui/Button';
 import { useI18n } from '../../i18n/I18nProvider';
+import { useAuth } from '../auth/AuthProvider';
+import { Link } from '../../app/router/router';
 import { api, errorMessage } from '../../lib/api';
 import { businessZone } from '../../lib/format';
 import { DateTime } from 'luxon';
@@ -146,14 +148,23 @@ export function CampaignsPanel() {
 /** Picks the campaign for an AI design; defaults to the one running today. `value` '' means no campaign. */
 export function CampaignPicker({ value, onChange }: { value: string | null; onChange: (id: string) => void }) {
   const { t } = useI18n();
+  const { can } = useAuth();
   const { campaigns } = useCampaigns();
   const active = (campaigns ?? []).filter((c) => c.status === 'active');
   useEffect(() => {
     if (value !== null || !campaigns) return;
     onChange(runningCampaign(campaigns)?.id ?? '');
   }, [campaigns, value, onChange]);
-  if (!active.length) return null;
+  if (!campaigns) return null;
+  // With no campaign the picker used to disappear, so nobody could find the slogan feature: say where to add one.
+  if (!active.length) return <div className="campaign-picker campaign-picker--empty">
+    <Megaphone size={14} />
+    <small>{t('No active campaign. Add one with its slogan and hashtag, and every AI design for it carries them.', 'لا توجد حملة نشطة. أضف حملة بالسلوجان والهاشتاج، وكل تصميم بالذكاء الاصطناعي لها هيحملهم.')}</small>
+    {can('templates.manage') && <Link to="/library">{t('Add a campaign', 'أضف حملة')}</Link>}
+  </div>;
   const chosen = active.find((c) => c.id === value);
+  const shown = chosen && (chosen.hashtag || chosen.slogan);
+  const onDesign = chosen && (chosen.stampUrl ? t('the stamp is placed on the design', 'الستامب يتحط على التصميم') : shown ? t(`«${shown}» is placed on the design`, `«${shown}» يتحط على التصميم`) : '');
   return <div className="campaign-picker">
     <label className="ui-field"><span className="ui-field__label"><Megaphone size={14} /> {t('Campaign', 'الحملة')}</span>
       <select className="ui-input" value={value ?? ''} onChange={(e) => onChange(e.target.value)}>
@@ -161,6 +172,6 @@ export function CampaignPicker({ value, onChange }: { value: string | null; onCh
         {active.map((c) => <option key={c.id} value={c.id}>{c.name}</option>)}
       </select>
     </label>
-    {chosen && <div className="campaign-picker__chosen">{chosen.stampUrl && <img src={chosen.stampUrl} alt="" />}<small>{[chosen.slogan && `«${chosen.slogan}»`, chosen.hashtag].filter(Boolean).join(' · ')}{chosen.stampUrl ? ` · ${t('the stamp is placed on the design', 'الشعار يتحط على التصميم')}` : ''}</small></div>}
+    {chosen && <div className="campaign-picker__chosen">{chosen.stampUrl && <img src={chosen.stampUrl} alt="" />}<small dir="auto">{[chosen.slogan && `«${chosen.slogan}»`, chosen.hashtag, onDesign].filter(Boolean).join(' · ')}</small></div>}
   </div>;
 }

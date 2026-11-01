@@ -21,7 +21,15 @@ test('the resolver uses the mark and corner the director planned, and falls back
   assert.match(symbol.variantId, /reversed/);
 });
 
-test('the prompt reserves the planned corner at the size of the planned mark and carries the design standard', () => {
+test('by default every design gets the house logo: the lockup in the top-left corner, whatever the direction planned', () => {
+  assert.deepEqual(logoPlanOf(direction({ logoMark: 'symbol', logoCorner: 'bottom-right' }), 'feed'), { mark: 'lockup', corner: 'top-left' });
+  const prompt = compileFullCreativePrompt(brief, direction({ logoMark: 'symbol', logoCorner: 'bottom-right' }), 'feed');
+  assert.match(prompt, /Keep the top-left area — about 32% of the width/);
+});
+
+test('with CREATIVE_LOGO=auto the prompt reserves the planned corner at the size of the planned mark and carries the design standard', (t) => {
+  process.env.CREATIVE_LOGO = 'auto';
+  t.after(() => { delete process.env.CREATIVE_LOGO; });
   const prompt = compileFullCreativePrompt(brief, direction({ logoMark: 'symbol', logoCorner: 'top-right' }), 'feed');
   assert.match(prompt, /Keep the top-right area — about 17% of the width/);
   assert.match(prompt, /official logo \(symbol\)/);

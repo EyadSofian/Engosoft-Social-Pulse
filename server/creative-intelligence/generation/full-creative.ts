@@ -10,12 +10,12 @@ import { mediaDir } from '../../paths.js';
 import { randomUUID } from 'node:crypto';
 import { resolve } from 'node:path';
 import sharp from 'sharp';
-import { DESIGN_AVOID, DESIGN_LANGUAGE_VERSION, DESIGN_STANDARD, DIRECTION_ARCHETYPES, LOGO_CORNERS, LOGO_GUIDANCE, LOGO_MARKS, LOGO_ZONE, logoReservation, type LogoMark } from '../brand/design-language.js';
+import { DESIGN_AVOID, DESIGN_LANGUAGE_VERSION, DESIGN_STANDARD, DIRECTION_ARCHETYPES, houseLogo, LOGO_CORNERS, LOGO_GUIDANCE, LOGO_MARKS, LOGO_ZONE, logoReservation, type LogoMark } from '../brand/design-language.js';
 import { BRAND } from '../brand/registry.js';
 import { resolveOdooContext, type VerifiedCourseContext } from '../context/odoo-context.js';
 import { inspectCreative, zonesFromInspection, type CreativeInspection } from '../criticism/inspect.js';
 import { compositeLogo, verifyComposite } from '../logo-resolution/compositor.js';
-import { applyCampaignStamp, campaignBrief, stampRoom, withHashtag, type CampaignIdentity } from '../logo-resolution/campaign-stamp.js';
+import { applyCampaignStamp, campaignBrief, stampRoom, textStamp, withHashtag, type CampaignIdentity } from '../logo-resolution/campaign-stamp.js';
 import { reservedZoneBox, resolveLogo, type Corner, type LogoDecision, type NoLogoDecision } from '../logo-resolution/resolver.js';
 import type { SafeArea } from '../logo-resolution/validator.js';
 import { checkCopy, copyPasses, type CanonicalCopy, type CopyCheck } from '../typography-validation/copy-check.js';
@@ -284,14 +284,22 @@ export function compileFullCreativePrompt(brief: CreativeBriefPlan, direction: C
   ].join('\n\n');
 }
 
-/** The campaign's stamp file, or null when it has none or it was removed. */
-const campaignStamp = (campaign: CampaignIdentity): Buffer | null => {
-  if (!campaign.stampPath) return null;
-  try { return readFileSync(campaign.stampPath); } catch { return null; }
-};
+/**
+ * Puts the campaign on the design: the uploaded stamp file, or — when the campaign has only a slogan or hashtag —
+ * that text set as a brand stamp, so a campaign always shows on its designs.
+ */
+async function stampCampaign(image: Buffer, campaign: CampaignIdentity, avoid: Parameters<typeof applyCampaignStamp>[3], safeArea: SafeArea) {
+  let file: Buffer | null = null;
+  if (campaign.stampPath) { try { file = readFileSync(campaign.stampPath); } catch { file = null; } }
+  if (file) return applyCampaignStamp(image, campaign, file, avoid, safeArea);
+  const text = await textStamp(campaign);
+  return text ? applyCampaignStamp(image, { ...campaign, width: text.width }, text.png, avoid, safeArea) : { image };
+}
 
-/** The logo mark and corner planned for a direction, with the format's defaults for older plans. */
+/** The logo mark and corner for a direction: the house logo, or (CREATIVE_LOGO=auto) the direction's plan with the format's defaults. */
 export function logoPlanOf(direction: CreativeDirectionPlan, format: CanvasTarget): { mark: LogoMark; corner: Corner } {
+  const house = houseLogo();
+  if (house) return { ...house };
   return { mark: direction.logoMark && LOGO_MARKS.includes(direction.logoMark) ? direction.logoMark : 'lockup', corner: direction.logoCorner && LOGO_CORNERS.includes(direction.logoCorner) ? direction.logoCorner : canvasOf(format).reservedCorner };
 }
 
@@ -379,7 +387,7 @@ export async function produceDirection(input: {
     }
   }
   progress('logo');
-  let logo = await resolveLogo({ creative: output, zones: zonesFromInspection(inspection, spec.output.width, spec.output.height), preferredCorner: plan.corner, preferredMark: plan.mark, safeArea: spec.safeArea });
+  let logo = await resolveLogo({ creative: output, zones: zonesFromInspection(inspection, spec.output.width, spec.output.height), preferredCorner: plan.corner, preferredMark: plan.mark, strictCorner: Boolean(houseLogo()), safeArea: spec.safeArea });
   let repaired = false;
   if (logo.requiresCreativeRepair) {
     // Logo-first repair: repaint only the reserved corner so the official logo has clean space.
@@ -400,7 +408,7 @@ export async function produceDirection(input: {
     writeFileSync(resolve(dir, `${direction.id}-repaired-raw.png`), raw);
     output = await toOutput(raw, format);
     inspection = await inspectCreative(output, context, env, approvedCopy);
-    logo = await resolveLogo({ creative: output, zones: zonesFromInspection(inspection, spec.output.width, spec.output.height), preferredCorner: plan.corner, preferredMark: plan.mark, safeArea: spec.safeArea });
+    logo = await resolveLogo({ creative: output, zones: zonesFromInspection(inspection, spec.output.width, spec.output.height), preferredCorner: plan.corner, preferredMark: plan.mark, strictCorner: Boolean(houseLogo()), safeArea: spec.safeArea });
   }
   const copyChecks = checkCopy(brief.canonicalCopy, inspection.texts.map((t) => t.text), inspection.copyAudit);
   if (!copyPasses(copyChecks)) problems.push(`Text in the image does not match the approved copy: ${copyChecks.filter((c) => c.verdict !== 'exact').map((c) => `${c.field} ${c.verdict}`).join(', ')}`);
@@ -413,7 +421,7 @@ export async function produceDirection(input: {
     const { image, record } = await compositeLogo(output, { variantId: logo.variantId, x: logo.placement.x, y: logo.placement.y, width: logo.placement.width });
     const honesty = await verifyComposite(output, image, record);
     if (honesty.length) problems.unshift(...honesty.map((p) => `Logo composite: ${p}`));
-    const stamped = input.campaign ? await applyCampaignStamp(image, input.campaign, campaignStamp(input.campaign), [record], spec.safeArea) : { image };
+    const stamped = input.campaign ? await stampCampaign(image, input.campaign, [record], spec.safeArea) : { image };
     if (stamped.problem) problems.push(stamped.problem);
     imagePath = resolve(dir, `${direction.id}.png`);
     writeFileSync(imagePath, stamped.image);
@@ -484,9 +492,9 @@ async function produceTypeset(input: Parameters<typeof produceDirection>[0]): Pr
   const compose = async (visual: Buffer) => {
     const clean = await toOutput(visual, format);
     progress('typesetting');
-    const ts = await typesetCreative({ image: clean, copy: brief.canonicalCopy, plan: tsPlan, safeArea: spec.safeArea, logo: plan });
+    const ts = await typesetCreative({ image: clean, copy: brief.canonicalCopy, plan: tsPlan, safeArea: spec.safeArea, logo: plan, logoShade: Boolean(houseLogo()) });
     progress('logo');
-    const logo = await resolveLogo({ creative: ts.png, zones: [...ts.zones, ...heroZone], preferredCorner: plan.corner, preferredMark: plan.mark, safeArea: spec.safeArea });
+    const logo = await resolveLogo({ creative: ts.png, zones: [...ts.zones, ...heroZone], preferredCorner: plan.corner, preferredMark: plan.mark, strictCorner: Boolean(houseLogo()), safeArea: spec.safeArea });
     return { clean, ts, logo };
   };
   let composed = await compose(raw);
@@ -510,7 +518,7 @@ async function produceTypeset(input: Parameters<typeof produceDirection>[0]): Pr
     const { image, record } = await compositeLogo(ts.png, { variantId: logo.variantId, x: logo.placement.x, y: logo.placement.y, width: logo.placement.width });
     const honesty = await verifyComposite(ts.png, image, record);
     // The campaign stamp goes last, clear of every typeset line and the logo.
-    const stamped = input.campaign ? await applyCampaignStamp(image, input.campaign, campaignStamp(input.campaign), [...ts.layout.blocks.map((b) => b.box), record], spec.safeArea) : { image };
+    const stamped = input.campaign ? await stampCampaign(image, input.campaign, [...ts.layout.blocks.map((b) => b.box), record], spec.safeArea) : { image };
     return { image: stamped.image, honesty: stamped.problem ? [...honesty, stamped.problem] : honesty };
   };
   let finished = await finish();
