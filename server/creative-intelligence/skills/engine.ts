@@ -11,7 +11,7 @@
 import { existsSync, readFileSync } from 'node:fs';
 import { resolve } from 'node:path';
 import sharp from 'sharp';
-import { DESIGN_AVOID, DESIGN_STANDARD, logoReservation, type LogoMark } from '../brand/design-language.js';
+import { DESIGN_AVOID, DESIGN_STANDARD, HOUSE_STYLE, logoReservation, type LogoMark } from '../brand/design-language.js';
 import { BRAND } from '../brand/registry.js';
 import type { Corner } from '../logo-resolution/resolver.js';
 import { retrieveVisualReferences } from '../../../src/features/creative-studio/visual-references.js';
@@ -219,7 +219,8 @@ export function compileDesignPrompt(input: {
     `FORMAT\n${input.format.label}.${input.format.story ? ' Keep the top 12% and bottom 17% free of essential content (platform interface).' : ''}`,
     `OBJECTIVE\n${strategy.creativeDirector.objective} — ${strategy.creativeDirector.message}. Audience: ${strategy.creativeDirector.audience}. The viewer should feel: ${strategy.creativeDirector.desiredReaction}.`,
     `VISUAL IDEA\n${direction.idea}`,
-    `THEME — ${theme.label.en}\n${theme.mood}. Graphics: ${theme.graphics}. Texture: ${theme.texture}. Image treatment: ${theme.imageTreatment}. Density: ${theme.density}.`,
+    `THEME — ${theme.label.en}\n${theme.mood}. Graphics: ${theme.graphics}. Texture: ${theme.texture}. Image treatment: ${theme.imageTreatment}. Density: ${theme.density}.${input.typeset ? '' : ' Where the theme and the Engosoft house style differ, the house style wins.'}`,
+    input.typeset ? '' : `ENGOSOFT HOUSE STYLE — the post must clearly belong to the Engosoft feed\n${HOUSE_STYLE.join('\n')}`,
     input.adaptation
       ? `COMPOSITION\nThe master was planned as: ${L.gridType}, ${L.balance} balance, reading path ${L.visualFlow}. Recompose those relationships for this canvas — do not reuse the master's positions.`
       : `COMPOSITION\n${L.gridType}, ${L.balance} balance. ${L.rationale} Reading path: ${L.visualFlow}. Positions (fractions of the canvas from the top-left): ${zones}`,
@@ -231,7 +232,7 @@ export function compileDesignPrompt(input: {
     `COLOR\nDominant ${C.roles.dominant}, secondary ${C.roles.secondary}, accent ${C.roles.accent}, background ${C.roles.background}, text ${C.roles.text}, highlight ${C.roles.highlight} — ${C.harmony}. ${C.brandExpression}. Engosoft brand blue ${BRAND.colors.core.brandBlue.hex} and orange ${BRAND.colors.core.brandOrange.hex} as intended accents, not a flat flood.`,
     `DEPTH AND INTEGRATION\n${L.depthPlan}. ${P.integration.join(' ')} One lighting world, matching perspective, scale, grain and colour across every element; real contact shadows; no halos or floating subjects.`,
     ...(input.typeset ? typesetSections(input.typeset, C.roles.text) : [
-      `TYPOGRAPHY\nHierarchy with clear size steps (headline cap height about ${pct(T.scale.headline)} of the width, supporting line about ${pct(T.scale.subheadline)}, CTA about ${pct(T.scale.cta)}). ${T.alignment} aligned. ${T.emphasis} ${T.mixedScriptNotes} Arabic set right-to-left in a bold, modern geometric Arabic sans-serif (similar to Almarai); Latin in a clean geometric sans (similar to Plus Jakarta Sans). Leading: ${T.leading}.`,
+      `TYPOGRAPHY\nThe typography is designed into the composition, not laid on top: the headline sits in its own planned space, never over a face, the subject or busy detail, and the picture is built around it. Hierarchy with clear size steps (headline cap height about ${pct(T.scale.headline)} of the width, supporting line about ${pct(T.scale.subheadline)}, CTA about ${pct(T.scale.cta)}). ${T.alignment} aligned. ${T.emphasis} ${T.mixedScriptNotes} Arabic set right-to-left in a bold, modern geometric Arabic sans-serif (similar to Almarai); Latin in a clean geometric sans (similar to Plus Jakarta Sans). Leading: ${T.leading}.`,
       `TEXT — render exactly these strings, verbatim, each once, and no other text:\n${text}\nSpell Arabic exactly with correctly joined letters. Copy digits exactly as written (Western digits).`,
     ]),
     `BRAND-SAFE AREA\n${logoReservation(design.logoDirector.mark, design.logoDirector.corner)}`,

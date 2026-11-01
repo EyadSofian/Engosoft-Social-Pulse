@@ -13,9 +13,22 @@ export const DESIGN_STANDARD = [
   'Editorial layout with one clear focal point and a deliberate hierarchy: headline, then subject, then facts, then CTA.',
   'Strong typography carries the idea: few words, large and confident, with generous negative space. Short strong statements, never paragraphs.',
   'Controlled, layered construction: a considered background, one hero subject, intentional lighting, a clear graphic composition, a reserved headline space and restrained details. Nothing scattered.',
-  'Light is soft and directional, with depth and gentle perspective; a subtle blue glow and at most one small orange accent of energy.',
-  'Engosoft blue and orange are confident accents inside a contextual palette, never a flat flood.',
+  'Light is soft and directional, with depth and gentle perspective, in the Engosoft colour world below.',
+  'Engosoft house colours: a vivid royal-blue world (or a clean light-grey engineering-paper world), a bright green highlight bar behind a key phrase, and an orange call-to-action pill. Not a dark, moody, cinematic navy scene.',
   'Keep the essential content (headline, subject, CTA) inside the central area so the design can be recomposed for 9:16 and 1.91:1 without losing meaning.',
+];
+
+/**
+ * The house style, read from the approved Engosoft posts (public/design-references). The image model gets these
+ * posts as reference images and this description, so new posts belong to the same feed.
+ */
+export const HOUSE_STYLE = [
+  'Background: either a vivid, saturated royal blue world (#0046FF to deep #001BB7, photographic or graphic, bright and clean, never murky) or a clean light-grey engineering-paper world with faint technical drawings.',
+  'Headline: very bold, geometric Arabic display type, white on blue (brand blue on light grey), set right-aligned, large and confident; one word may be stretched with a long horizontal kashida in the Engosoft manner.',
+  'Kicker: a flat bright green (#4CFF7A) rectangular highlight bar behind one short phrase above or below the headline, with dark or white Arabic text on it.',
+  'Subject: one real photographic subject (an engineer, trainee or the course equipment) cut out cleanly, blue-toned, large, with depth and real contact shadows; course-specific technical detail (drawings, models, machines) supporting it.',
+  'Call to action: an orange (#FF6600) rounded pill with white Arabic text and a small left-pointing arrow.',
+  'Details: thin white or green line accents, small rounded icons, generous margins, a clean grid and calm negative space; everything aligned, nothing floating.',
 ];
 
 /** Patterns that make a creative look cheap; the critic treats them as defects. */

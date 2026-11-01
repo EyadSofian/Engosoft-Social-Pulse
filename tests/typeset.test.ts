@@ -42,6 +42,7 @@ const canvas = (width: number, height: number, from: string, to: string) => shar
 
 test('typeset prompt asks for a text-free visual with calm text areas', () => {
   const prompt = compileDesignPrompt({ strategy: strategy as never, direction: direction0 as never, design: design as never, copy, format: { label: 'feed 4:5', story: false }, typeset: { headlineZone: design.layoutDesigner.headlineZone, ctaZone: design.layoutDesigner.ctaZone } });
+  assert.doesNotMatch(prompt, /ENGOSOFT HOUSE STYLE|integrated typography/, 'a text-free visual is not asked for type');
   assert.match(prompt, /NO TEXT IN THE IMAGE/);
   assert.match(prompt, /headline x 10%–90%, y 12%–28%/);
   assert.match(prompt, /Absolutely no text/);
@@ -99,10 +100,10 @@ test('stray text is anything the critic read that is not the approved copy', () 
   assert.deepEqual(strayTexts([{ text: 'CFM', box: z(0.3, 0.6, 0.3, 0.2) }, { text: 'دورة CFM', box: z(0.2, 0.11, 0.5, 0.1) }], [copy.subheadline], placed, canvas), ['CFM']);
 });
 
-test('a design-engine run typesets the copy, places the logo and needs no spelling audit', async () => {
+test('typeset mode (CREATIVE_TEXT_MODE=typeset) sets the copy, places the logo and needs no spelling audit', async () => {
   const brief = { language: 'ar', objective: 'o', audience: 'a', caption: '', captions: strategy.captionWriter.captions, canonicalCopy: copy, directions: [], engine: { version: 'design-engine:v1', skills: {}, settings: DEFAULT_SETTINGS, strategy, references: [] } } as never;
-  assert.equal(textModeFor(brief, {}), 'typeset');
-  assert.equal(textModeFor(brief, { CREATIVE_TEXT_MODE: 'model' }), 'model');
+  assert.equal(textModeFor(brief, {}), 'model', 'by default the image model designs the type into the post');
+  assert.equal(textModeFor(brief, { CREATIVE_TEXT_MODE: 'typeset' }), 'typeset');
   const prompts: string[] = [];
   const visual = await canvas(1088, 1360, '#0b1530', '#14203d');
   const provider = { name: 'fake', model: 'fake-image', generate: async (r: { prompt: string }) => { prompts.push(r.prompt); return [{ png: visual, model: 'fake-image', size: '1088x1360', quality: 'high' as const, latencyMs: 1 }]; }, edit: async () => [{ png: visual, model: 'fake-image', size: '1088x1360', quality: 'high' as const, latencyMs: 1 }] };
@@ -117,7 +118,7 @@ test('a design-engine run typesets the copy, places the logo and needs no spelli
   try {
     const dir = mkdtempSync(join(tmpdir(), 'engosoft-run-'));
     const stages: string[] = [];
-    const result = await produceDirection({ provider, brief, direction: { id: 'd1', name: 'القائد', concept: 'c', subject: 's', composition: 'x', palette: 'p', typography: 't', mood: 'm', engine: { strategy: direction0, design } } as never, format: 'feed', quality: 'high', dir, env: { OPENAI_API_KEY: 'test' }, onProgress: (e) => stages.push(e.stage) });
+    const result = await produceDirection({ provider, brief, direction: { id: 'd1', name: 'القائد', concept: 'c', subject: 's', composition: 'x', palette: 'p', typography: 't', mood: 'm', engine: { strategy: direction0, design } } as never, format: 'feed', quality: 'high', dir, env: { OPENAI_API_KEY: 'test', CREATIVE_TEXT_MODE: 'typeset' }, onProgress: (e) => stages.push(e.stage) });
     assert.equal(result.textMode, 'typeset');
     assert.equal(result.status, 'ready', result.problems.join(' | '));
     assert.ok(result.copyChecks.every((c) => c.verdict === 'exact'));
