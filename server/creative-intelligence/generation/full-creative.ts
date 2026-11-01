@@ -22,6 +22,7 @@ import { checkCopy, copyPasses, type CanonicalCopy, type CopyCheck } from '../ty
 import { compileDesignPrompt, DEFAULT_SETTINGS, ENGINE_SKILL_VERSIONS, ENGINE_VERSION, planCaptions, planDesign, planStrategy, type DesignDecision, type EngineSettings, type ReferenceInput, type StrategyDecision, type UserReference } from '../skills/engine.js';
 import { THEMES, type ThemeId } from '../skills/themes.js';
 import { looksUnfilled, pasteInside } from './patch.js';
+import { houseReferences, referencePrompt } from './house-references.js';
 import { TYPESET_VERSION, typesetCreative, type TypesetPlan, type TypesetResult } from '../typography/typeset.js';
 import { openAIJson, OpenAIImageProvider, type CreativeImageProvider, type ImageQuality } from './provider.js';
 import { canvasBrief, publishingPreset } from '../../../src/domain/output-presets.js';
@@ -29,13 +30,15 @@ import { canvasBrief, publishingPreset } from '../../../src/domain/output-preset
 export const FULL_CREATIVE_VERSIONS = { director: 'creative-director:v2', compiler: 'full-creative-compiler:v3', pipeline: 'full-creative-pipeline:v2', designLanguage: DESIGN_LANGUAGE_VERSION, typeset: TYPESET_VERSION } as const;
 
 /**
- * Who draws the words. 'typeset' (default for design-engine runs): the image model paints a text-free visual
- * with calm text areas and the copy is set in the brand fonts, exact every time. 'model': the image model
- * renders the text itself and the inspector audits it (older runs, legacy engine, CREATIVE_TEXT_MODE=model).
+ * Who draws the words. 'model' (default): the image model designs the post with its typography, guided by real
+ * Engosoft posts as reference images; the inspector audits every string and a masked re-lettering fixes a
+ * misspelt one. Type designed into the picture reads as one poster — text set on top afterwards looked pasted
+ * onto whatever was there. 'typeset' (CREATIVE_TEXT_MODE=typeset): a text-free visual with the copy set in the
+ * brand fonts, exact by construction.
  */
 export type TextMode = 'typeset' | 'model';
 export const textModeFor = (brief: CreativeBriefPlan, env: NodeJS.ProcessEnv = process.env): TextMode =>
-  brief.engine && env.CREATIVE_TEXT_MODE?.trim() !== 'model' ? 'typeset' : 'model';
+  brief.engine && env.CREATIVE_TEXT_MODE?.trim() === 'typeset' ? 'typeset' : 'model';
 
 export type CreativeFormat = 'feed' | 'story' | 'landscape' | 'video';
 /** Generation size (model) and output size (platform). Same aspect ratio, so nothing is cropped away. */
@@ -351,12 +354,16 @@ export async function produceDirection(input: {
   const basePrompt = sourceImage
     ? `${promptFor(brief, direction, format, true)}\n\nMASTER\nThe attached image is the approved master of this campaign. Design it again for this canvas: same concept, subject, palette, typography style and exact text, with the layout rebuilt from scratch for this shape. Never stretch, squash or crop it, never put it inside a frame or card, and never fill the space with blurred or repeated copies of it.`
     : promptFor(brief, direction, format);
-  const prompt = `${basePrompt}${stampRoom(input.campaign)}`;
+  // A new post is drawn with approved Engosoft posts attached as references; a recomposition follows its master.
+  const references = sourceImage ? [] : await houseReferences(`${brief.objective} ${brief.audience} ${brief.canonicalCopy.headline} ${direction.concept}`, input.campaign?.keyVisualPath);
+  const prompt = `${basePrompt}${stampRoom(input.campaign)}${referencePrompt(references)}`;
   const problems: string[] = [];
   progress('generating');
   let [generated] = sourceImage
     ? await provider.edit({ prompt, size: spec.generation, quality, images: [{ data: sourceImage, mime: 'image/png' }] })
-    : await provider.generate({ prompt, size: spec.generation, quality });
+    : references.length
+      ? await provider.edit({ prompt, size: spec.generation, quality, images: references.map(({ data, mime }) => ({ data, mime })) })
+      : await provider.generate({ prompt, size: spec.generation, quality });
   let raw = generated.png;
   writeFileSync(resolve(dir, `${direction.id}-raw.png`), raw);
   let output = await toOutput(raw, format);
@@ -386,6 +393,29 @@ export async function produceDirection(input: {
       inspection = await inspectCreative(output, context, env, approvedCopy);
     }
   }
+  // Spelling repair: re-letter only the strings the audit found misspelt, in place, then keep it if it is better.
+  let copyChecks = checkCopy(brief.canonicalCopy, inspection.texts.map((t) => t.text), inspection.copyAudit);
+  const misspelt = copyChecks.filter((c) => c.verdict === 'incorrect').flatMap((check) => { const box = textBoxFor(inspection, check.expected); return box ? [{ check, box }] : []; });
+  if (misspelt.length) {
+    progress('repairing');
+    const boxes = misspelt.map(({ box }) => ({ x: Math.round(Math.max(0, box.x - 0.015) * gw), y: Math.round(Math.max(0, box.y - 0.012) * gh), width: Math.round(Math.min(1 - Math.max(0, box.x - 0.015), box.width + 0.03) * gw), height: Math.round(Math.min(1 - Math.max(0, box.y - 0.012), box.height + 0.024) * gh) }));
+    const [edited] = await provider.edit({
+      prompt: `Re-letter only the text inside the transparent masked areas. ${misspelt.map(({ check }, i) => `Area ${i + 1} must read exactly «${check.expected}».`).join(' ')} Keep the same typeface style, weight, size, colour, alignment, line breaks and any highlight bar or button behind the text. Every Arabic letter correctly joined and spelled exactly as given: no extra, missing or doubled letters, no extra words. Preserve every other pixel.`,
+      size: spec.generation, quality, images: [{ data: raw, mime: 'image/png' }], mask: await maskFor(gw, gh, ...boxes),
+    });
+    const candidate = await pasteInside(raw, edited.png, boxes);
+    if (!(await Promise.all(boxes.map((b) => looksUnfilled(candidate, b)))).some(Boolean)) {
+      const candidateOutput = await toOutput(candidate, format);
+      const candidateInspection = await inspectCreative(candidateOutput, context, env, approvedCopy);
+      const candidateChecks = checkCopy(brief.canonicalCopy, candidateInspection.texts.map((t) => t.text), candidateInspection.copyAudit);
+      const wrong = (checks: CopyCheck[]) => checks.filter((c) => c.verdict === 'incorrect' || c.verdict === 'missing').length;
+      if (wrong(candidateChecks) < wrong(copyChecks)) {
+        raw = candidate; output = candidateOutput; inspection = candidateInspection; copyChecks = candidateChecks;
+        refinements.push(`TEXT_REPAIR: ${misspelt.map(({ check }) => check.field).join(', ')}`);
+        writeFileSync(resolve(dir, `${direction.id}-lettered-raw.png`), raw);
+      }
+    }
+  }
   progress('logo');
   let logo = await resolveLogo({ creative: output, zones: zonesFromInspection(inspection, spec.output.width, spec.output.height), preferredCorner: plan.corner, preferredMark: plan.mark, strictCorner: Boolean(houseLogo()), safeArea: spec.safeArea });
   let repaired = false;
@@ -410,7 +440,7 @@ export async function produceDirection(input: {
     inspection = await inspectCreative(output, context, env, approvedCopy);
     logo = await resolveLogo({ creative: output, zones: zonesFromInspection(inspection, spec.output.width, spec.output.height), preferredCorner: plan.corner, preferredMark: plan.mark, strictCorner: Boolean(houseLogo()), safeArea: spec.safeArea });
   }
-  const copyChecks = checkCopy(brief.canonicalCopy, inspection.texts.map((t) => t.text), inspection.copyAudit);
+  copyChecks = checkCopy(brief.canonicalCopy, inspection.texts.map((t) => t.text), inspection.copyAudit);
   if (!copyPasses(copyChecks)) problems.push(`Text in the image does not match the approved copy: ${copyChecks.filter((c) => c.verdict !== 'exact').map((c) => `${c.field} ${c.verdict}`).join(', ')}`);
   if (inspection.logosOrWatermarks.length) problems.push(`Generated image contains a logo or watermark: ${inspection.logosOrWatermarks.map((l) => l.description).join('; ')}`);
   if (inspection.verdict !== 'accept') problems.push(`Critic verdict ${inspection.verdict}: ${inspection.defects.join('; ') || inspection.summary}`);
@@ -428,6 +458,21 @@ export async function produceDirection(input: {
   }
   const status: FullCreativeResult['status'] = !imagePath ? 'failed' : problems.length ? 'needs_review' : 'ready';
   return { directionId: direction.id, directionName: direction.name, status, problems, imagePath, rawImagePath: resolve(dir, `${direction.id}-raw.png`), logo, repaired, refinements, copyChecks, inspection, prompt, model: generated.model, latencyMs: Date.now() - started, textMode: 'model' };
+}
+
+/**
+ * Where a string sits in the image: the union of the read text pieces that carry most of its words (a headline
+ * is often read line by line), matched on what the audit says was rendered when it says so.
+ */
+export function textBoxFor(inspection: Pick<CreativeInspection, 'texts' | 'copyAudit'>, expected: string): NormBox | null {
+  const rendered = inspection.copyAudit.find((a) => foldText(a.expected) === foldText(expected))?.rendered;
+  const target = new Set([...foldText(expected).split(' '), ...(rendered ? foldText(rendered).split(' ') : [])].filter((w) => w.length > 1));
+  if (!target.size) return null;
+  const hits = inspection.texts.filter((t) => { const words = foldText(t.text).split(' ').filter((w) => w.length > 1); return words.length > 0 && words.filter((w) => target.has(w)).length / words.length >= 0.5; });
+  if (!hits.length) return null;
+  const x0 = Math.min(...hits.map((t) => t.box.x)), y0 = Math.min(...hits.map((t) => t.box.y));
+  const x1 = Math.max(...hits.map((t) => t.box.x + t.box.width)), y1 = Math.max(...hits.map((t) => t.box.y + t.box.height));
+  return { x: x0, y: y0, width: x1 - x0, height: y1 - y0 };
 }
 
 const foldText = (value: string) => value.normalize('NFKC')

@@ -66,6 +66,9 @@ const strategy = {
 
 test('the image prompt is compiled from the design decisions', () => {
   const prompt = compileDesignPrompt({ strategy, direction: strategy.themeDirector.directions[0], design, copy: { headline: 'قُد المرافق باحتراف', subheadline: 'دورة CFM لإدارة المرافق', cta: 'سجّل الآن' }, format: { label: 'feed 4:5', story: false } });
+  // The model designs the type in the Engosoft house style; the typography is planned into the picture.
+  assert.match(prompt, /ENGOSOFT HOUSE STYLE[\s\S]*green \(#4CFF7A\) rectangular highlight bar/);
+  assert.match(prompt, /typography is designed into the composition, not laid on top/);
   assert.match(prompt, /VISUAL IDEA\nThe manager as the calm centre/);
   assert.match(prompt, /THEME — Industrial Cinematic/);
   assert.match(prompt, /Headline: x 52%–94%, y 10%–30%/);

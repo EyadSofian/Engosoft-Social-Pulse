@@ -63,7 +63,8 @@ The copy is exact by construction, so the letter-by-letter audit is skipped. Tex
 
 | Setting | Default | Note |
 | --- | --- | --- |
-| `CREATIVE_TEXT_MODE` | `typeset` | `model` restores image-model text for design-engine runs. The legacy engine always uses `model`. |
+| `CREATIVE_TEXT_MODE` | `model` | The image model designs the typography into the post, with approved Engosoft posts attached as references and a masked re-lettering for misspelt strings. `typeset` sets the copy in the brand fonts on a text-free visual instead. |
+| `CREATIVE_REFERENCE_IMAGES` | on | `off` stops attaching the approved posts in public/design-references to new generations. |
 | `OPENAI_STRATEGY_REASONING` | `low` | `medium` / `high` for richer strategy at about a minute more. |
 | `OPENAI_DESIGN_REASONING` | `low` | Same for the per-direction design plan. |
 
