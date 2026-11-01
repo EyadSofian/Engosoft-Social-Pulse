@@ -211,7 +211,11 @@ export function compileDesignPrompt(input: {
   ].filter(Boolean).join(' ');
   const weights = [...W.regions].sort((a, b) => b.weight - a.weight).slice(0, 3).map((r, i) => `${i === 0 ? 'primary' : 'secondary'}: ${r.source} (${r.region})`).join('; ');
   return [
-    `DELIVERABLE\nA complete, finished, publish-ready social media creative for Engosoft (engineering and professional training). The image IS the final post — fully art-directed across the whole canvas with integrated typography; not a background and not a stock photo with empty space.`,
+    input.typeset
+      // Typeset mode must not open by asking for "integrated typography": the model then draws fake text, signs
+      // or 3D letters, or a cramped poster with no room for the real type.
+      ? `DELIVERABLE\nThe finished key visual of a premium social media post for Engosoft (engineering and professional training): one strong, art-directed photograph or render across the whole canvas, composed like a poster, with calm areas designed in where the type will be set afterwards. It contains no text of any kind.`
+      : `DELIVERABLE\nA complete, finished, publish-ready social media creative for Engosoft (engineering and professional training). The image IS the final post — fully art-directed across the whole canvas with integrated typography; not a background and not a stock photo with empty space.`,
     `FORMAT\n${input.format.label}.${input.format.story ? ' Keep the top 12% and bottom 17% free of essential content (platform interface).' : ''}`,
     `OBJECTIVE\n${strategy.creativeDirector.objective} — ${strategy.creativeDirector.message}. Audience: ${strategy.creativeDirector.audience}. The viewer should feel: ${strategy.creativeDirector.desiredReaction}.`,
     `VISUAL IDEA\n${direction.idea}`,

@@ -37,6 +37,8 @@ export async function resolveLogo(input: {
   preferredCorner?: Corner;
   /** Mark the art director chose for this design; the other mark is only a fallback. Without one, both compete on fit. */
   preferredMark?: 'lockup' | 'symbol';
+  /** The house corner: another corner is used only when nothing fits in this one. */
+  strictCorner?: boolean;
   safeArea?: SafeArea;
 }): Promise<LogoDecision | NoLogoDecision> {
   const image = Buffer.isBuffer(input.creative) ? await decodeImage(input.creative) : input.creative;
@@ -65,7 +67,7 @@ export async function resolveLogo(input: {
         // pairings, contrast, quiet background, and the reserved corner.
         const markWeight = input.preferredMark ? (variant.kind === input.preferredMark ? 3 : 1.5) : (variant.kind === 'lockup' ? 2.2 : 2);
         const score = markWeight * (result.policy === 'official' ? 1.4 : 1) * Math.min(m.meanContrast, 8) / 8
-          * (1 - m.region.complexity) * (corner === input.preferredCorner ? 1.25 : 1) * (fraction === fractions[0] ? 1.05 : 1);
+          * (1 - m.region.complexity) * (corner === input.preferredCorner ? (input.strictCorner ? 20 : 1.25) : 1) * (fraction === fractions[0] ? 1.05 : 1);
         if (!best || score > best.score) {
           best = { score, decision: {
             variantId: variant.id,

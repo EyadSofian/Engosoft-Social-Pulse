@@ -46,10 +46,19 @@ export type LogoMark = 'lockup' | 'symbol';
 export const LOGO_MARKS: LogoMark[] = ['lockup', 'symbol'];
 export const LOGO_CORNERS: Corner[] = ['top-left', 'top-right', 'bottom-left', 'bottom-right'];
 
-export const LOGO_GUIDANCE = [
+/**
+ * The house logo: every design carries the full lockup in the same corner, so a feed of Engosoft posts reads as
+ * one brand instead of a different mark in a different corner each time. The corner is the calm one in an Arabic
+ * layout, where the headline starts top-right. CREATIVE_LOGO=auto lets each design choose again (the old behaviour).
+ */
+export const HOUSE_LOGO: { mark: LogoMark; corner: Corner } = { mark: 'lockup', corner: 'top-left' };
+export const houseLogo = (env: NodeJS.ProcessEnv = process.env) => (env.CREATIVE_LOGO?.trim() === 'auto' ? null : HOUSE_LOGO);
+
+export const LOGO_GUIDANCE = houseLogo() ? [
+  `logoMark and logoCorner are fixed by the brand: always '${HOUSE_LOGO.mark}' in the '${HOUSE_LOGO.corner}' corner, on every design and every direction. Plan the layout so that corner (about 32% of the width, 20% of the height) is calm negative space: never the headline, a face, the subject or the CTA there.`,
+] : [
   "logoMark: pick the official logo treatment that suits THIS composition. 'lockup' (the symbol above the Engosoft wordmark; needs a calm area about 30% of the width) suits spacious, editorial, text-light layouts where the brand name should read clearly. 'symbol' (the mark alone, about 9% of the width) suits dense, full-bleed, cinematic or subject-heavy layouts where a full lockup would crowd the design.",
   "logoCorner: the corner that is naturally calm in this composition, away from the headline, faces, the subject and the CTA. In right-to-left layouts the headline usually sits on the right, so a left corner is often calm; a bottom corner works only when the CTA is not there.",
-  'Vary the logo treatment across directions so the set does not all use the same mark in the same corner.',
 ];
 
 /** Area kept clean for the logo, as a fraction of the canvas, per mark. */

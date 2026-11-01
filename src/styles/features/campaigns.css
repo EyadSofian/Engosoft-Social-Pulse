@@ -32,5 +32,7 @@
 
 .campaign-picker { display: grid; gap: 6px; }
 .campaign-picker .ui-field__label { display: inline-flex; align-items: center; gap: 6px; }
+.campaign-picker--empty { display: flex; flex-wrap: wrap; align-items: center; gap: var(--sp-2); padding: 8px 12px; border: 1px dashed var(--border, rgba(0,0,0,.15)); border-radius: var(--radius-md); color: var(--text-muted, inherit); }
+.campaign-picker--empty a { font-weight: 700; color: var(--brand); }
 .campaign-picker__chosen { display: flex; align-items: center; gap: var(--sp-2); padding: 6px 10px; border-radius: var(--radius-md); background: var(--brand-soft); color: var(--brand-ink); font-size: var(--fs-xs); }
 .campaign-picker__chosen img { height: 32px; max-width: 120px; padding: 3px 6px; border-radius: 6px; background: var(--brand); object-fit: contain; }
