@@ -197,6 +197,11 @@ function ContentDrawer({ id, team, onClose, onChanged }: { id: string; team: Tea
         <div className="content-drawer__side">
           <ContentCopilot contentId={id} channels={item.channels} captions={captions} onCaptions={setCaptions} editable={item.editable}
             footer={captionsChanged ? <Button variant="primary" disabled={busy} onClick={() => void act(() => api(`/api/content/${id}`, { method: 'PATCH', body: { captions } }))}>{t('Save captions', 'احفظ النص المرافق')}</Button> : null} />
+          {/* A course schedule is several posts per size: show every page, by size, to check them before publishing. */}
+          {Object.values(item.creative?.pages ?? {}).flat().length > 1 && <div className="content-pages">{(Object.entries(item.creative!.pages!) as [string, string[]][]).filter(([, urls]) => urls?.length).map(([format, urls]) => <div key={format}>
+            <small>{({ feed: t('Feed 4:5 · 1080×1350', 'فيد 4:5 · 1080×1350'), square: t('Square 1:1 · 1080×1080', 'مربع 1:1 · 1080×1080'), story: t('Story 9:16 · 1080×1920', 'ستوري 9:16 · 1080×1920') } as Record<string, string>)[format]}</small>
+            <div className="content-versions">{urls.map((url, i) => <button key={url} type="button" aria-pressed={image === url} onClick={() => setPreview(url)}><img src={url} alt="" /><small>{t(`Page ${i + 1}`, `صفحة ${i + 1}`)}</small></button>)}</div>
+          </div>)}</div>}
           {!isReel(item.creative) && <SizesPanel item={item} onChanged={() => { void load(); onChanged(); }} />}
           {item.versions.length > 1 && <section className="content-drawer__section content-drawer__section--late"><h3>{t('Versions', 'النسخ')}</h3>
             <div className="content-versions">{item.versions.map((v) => <button key={v.id} type="button" aria-pressed={image === v.imageUrl} onClick={() => setPreview(v.imageUrl)}><img src={v.imageUrl} alt="" /><small dir="auto">{v.note}</small></button>)}</div>

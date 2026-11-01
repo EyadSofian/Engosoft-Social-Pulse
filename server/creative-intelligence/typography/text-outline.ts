@@ -16,6 +16,8 @@ export interface TextStyle {
   size: number;
   color: string;
   lineHeight?: number;
+  /** Latin runs in the italic Plus Jakarta Sans (Almarai has no italic, so Arabic stays upright). */
+  italic?: boolean;
 }
 export interface TextBlock {
   text: string;
@@ -47,8 +49,8 @@ export interface OutlinedText {
 
 interface LoadedFont { font: Font; upem: number; ascender: number; descender: number }
 const fonts = new Map<string, LoadedFont>();
-function loadFont(family: BrandFontFamily, weight: number): LoadedFont {
-  const { file, weight: resolved } = brandFontFor(family, weight);
+function loadFont(family: BrandFontFamily, weight: number, italic = false): LoadedFont {
+  const { file, weight: resolved } = brandFontFor(family, weight, italic && family === 'Plus Jakarta Sans' ? 'italic' : 'normal');
   const key = `${file.file}@${resolved}`;
   const hit = fonts.get(key);
   if (hit) return hit;
@@ -113,7 +115,7 @@ function shapeLine(text: string, base: 'rtl' | 'ltr', style: TextStyle): ShapedL
   const missing: string[] = [];
   let pen = 0;
   for (const run of visual) {
-    const font = loadFont(run.family, style.weight);
+    const font = loadFont(run.family, style.weight, style.italic);
     const scale = style.size / font.upem;
     const buffer = new HbBuffer();
     buffer.addText(text.slice(run.start, run.end));
@@ -187,7 +189,7 @@ export function outlineText(block: TextBlock): OutlinedText {
   }
   if (block.maxLines && lines.length > block.maxLines) overflow = true;
 
-  const primary = loadFont(direction === 'rtl' || style.family === 'Almarai' ? 'Almarai' : 'Plus Jakarta Sans', style.weight);
+  const primary = loadFont(direction === 'rtl' || style.family === 'Almarai' ? 'Almarai' : 'Plus Jakarta Sans', style.weight, style.italic);
   const ascent = primary.ascender * style.size / primary.upem;
   const align = block.align ?? 'start';
   const outlined: OutlinedLine[] = [];

@@ -377,3 +377,6 @@
 .reel-player video { width: 100%; max-height: 560px; aspect-ratio: 9 / 16; border-radius: 14px; background: #000; object-fit: contain; }
 .reel-player--empty { display: grid; place-items: center; gap: 6px; aspect-ratio: 9 / 16; max-height: 420px; border-radius: 14px; background: var(--surface-subtle); color: var(--text-muted); text-align: center; padding: 16px; }
 .ca-card__reel { position: absolute; top: 10px; inset-inline-end: 10px; display: inline-flex; align-items: center; gap: 4px; padding: 3px 8px; border-radius: 999px; background: rgb(0 0 0 / 0.65); color: #fff; font-size: 11px; font-weight: 800; }
+.content-pages { display: grid; gap: 10px; }
+.content-pages > div { display: grid; gap: 6px; }
+.content-pages > div > small { color: var(--text-muted); font-weight: 600; }

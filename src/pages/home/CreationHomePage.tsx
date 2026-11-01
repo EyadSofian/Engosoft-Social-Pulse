@@ -1,4 +1,5 @@
 import { CampaignPicker } from '../../features/campaigns/Campaigns';
+import { ScheduleComposer } from '../../features/schedule/ScheduleComposer';
 import { useEffect, useRef, useState } from 'react';
 import { AnimatePresence, motion } from 'motion/react';
 import { ArrowLeft, ArrowRight, CalendarDays, Coins, Film, GraduationCap, ImagePlus, LayoutTemplate, Sparkles, Upload, Wand2 } from 'lucide-react';
@@ -93,7 +94,7 @@ export function CreationHomePage() {
   // Coming back while a design is still running reopens it; links that name a template open that template.
   const [mode, setMode] = useState<Mode>(() => {
     if (free && (query.has('creative') || query.has('template') || getActiveCreative()?.status === 'running')) return 'ai';
-    if (query.has('svgTemplate') && ways.includes('template')) return 'template';
+    if ((query.has('svgTemplate') || query.has('schedule')) && ways.includes('template')) return 'template';
     return ways.length === 1 ? ways[0] : 'choose';
   });
   // A plan left from an abandoned visit must not attach a new post to someone else's plan row.
@@ -225,7 +226,7 @@ export function CreationHomePage() {
     {mode !== 'choose' && stage === 'compose' && <PostDetails key={planKey} />}
     {mode === 'upload' && <UploadMode />}
     {mode === 'reel' && <ReelMode />}
-    {mode === 'template' && <TemplateMode initialId={query.get('svgTemplate')} />}
+    {mode === 'template' && <TemplateMode initialId={query.get('svgTemplate')} initialSchedule={query.has('schedule')} />}
     {mode === 'ai' && <div className={stage === 'compose' ? 'create-layout' : 'create-layout create-layout--single'}>
     <div className="creative-home__hero">
       {stage === 'compose' && <>
@@ -294,7 +295,7 @@ function PlatformPreview({ platforms }: { platforms: CreativePlatform[] }) {
 }
 
 /** Ready templates: pick the kind of post, then a template, fill it and export without any image-model cost. */
-function TemplateMode({ initialId }: { initialId: string | null }) {
+function TemplateMode({ initialId, initialSchedule }: { initialId: string | null; initialSchedule: boolean }) {
   const { t } = useI18n();
   const { navigate } = useRouter();
   const { can } = useAuth();
@@ -302,13 +303,21 @@ function TemplateMode({ initialId }: { initialId: string | null }) {
   const { items, error, reload } = useSvgTemplates();
   const [selected, setSelected] = useState<string | null>(initialId);
   const [kind, setKind] = useState<TemplateKind | 'all'>('all');
+  const [schedule, setSchedule] = useState(initialSchedule);
   const template = items?.find((item) => item.id === selected);
+  if (schedule) return <ScheduleComposer onClose={() => setSchedule(false)} />;
   if (error) return <div className="library-empty glass" role="alert"><p>{error}</p><Button variant="secondary" onClick={() => void reload()}>{t('Retry', 'أعد المحاولة')}</Button></div>;
   if (!items) return <div className="board-loading"><span className="ui-btn__spinner" /></div>;
   if (template) return <TemplateComposer key={template.id} template={template} onClose={() => setSelected(null)} />;
   const shown = kind === 'all' ? items : items.filter((item) => item.kind === kind);
   const kinds = (Object.keys(KIND_LABEL) as TemplateKind[]).filter((value) => items.some((item) => item.kind === value));
   return <section className="u-stack">
+    {/* The monthly course schedule is a template of its own: rows from a sheet or Odoo, as many posts as the month needs. */}
+    <button type="button" className="schedule-card glass" onClick={() => setSchedule(true)}>
+      <span className="schedule-card__icon"><CalendarDays size={22} /></span>
+      <span><b>{t('Course schedule of the month', 'جدول مواعيد الدورات للشهر')}</b><small>{t('Upload the CSV/Excel sheet or read Odoo; get every Facebook and Instagram post in the approved design (4:5 and 1:1).', 'ارفع شيت CSV/Excel أو اقرأ من Odoo، وخد كل بوستات فيسبوك وإنستجرام بالتصميم المعتمد (4:5 و1:1).')}</small></span>
+      <img src="/post-assets/schedule-preview.jpg" alt="" />
+    </button>
     {items.length > 0 && !free && kind === 'all' && kinds.length > 1
       ? <div className="kind-cards">{kinds.map((value) => <button key={value} type="button" className="kind-card glass" data-kind={value} onClick={() => setKind(value)}>
         <b>{t(KIND_LABEL[value].en, KIND_LABEL[value].ar)}</b><small>{t(KIND_LABEL[value].hint.en, KIND_LABEL[value].hint.ar)}</small><i className="u-tnum">{items.filter((item) => item.kind === value).length}</i>

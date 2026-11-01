@@ -22,14 +22,18 @@ import { getTemplate } from './svg-templates.js';
 const CHANNELS = ['facebook', 'instagram', 'whatsapp', 'linkedin', 'x', 'tiktok', 'snapchat', 'youtube', 'website'] as const;
 const creativeUrl = z.string().regex(/^\/api\/creatives\/[0-9a-f-]{36}\/[a-z0-9.-]+\.png$|^\/api\/studio\/[0-9a-f-]{36}\.png$|^\/api\/uploads\/[0-9a-f-]{36}\.png$/);
 const svgTemplateRef = z.object({ id: z.string().uuid(), values: z.record(z.string().max(40), z.string().max(2000)), format: z.enum(['feed', 'square', 'story', 'landscape']).optional(), context: z.string().max(800).optional(), outputPreset: z.string().max(80).optional() });
-const creativeRef = z.object({ requestId: z.string().max(60), directionId: z.string().max(40), imageUrl: creativeUrl, storyUrl: creativeUrl.optional(), landscapeUrl: creativeUrl.optional(), youtubeUrl: creativeUrl.optional(), sizes: z.record(z.string().max(40).refine((id) => Boolean(publishingPreset(id))), creativeUrl).optional(), model: z.string().max(60).optional(), directionName: z.string().max(200).optional(), svgTemplate: svgTemplateRef.optional() });
+const scheduleRef = z.object({ title: z.string().max(60), highlight: z.string().max(40), defaultCity: z.string().max(40), rows: z.array(z.object({ course: z.string().max(120), date: z.string().max(10), time: z.string().max(5), mode: z.enum(['online', 'offline']), city: z.string().max(40) })).max(80) });
+const creativeRef = z.object({ requestId: z.string().max(60), directionId: z.string().max(40), imageUrl: creativeUrl, storyUrl: creativeUrl.optional(), landscapeUrl: creativeUrl.optional(), youtubeUrl: creativeUrl.optional(), sizes: z.record(z.string().max(40).refine((id) => Boolean(publishingPreset(id))), creativeUrl).optional(), model: z.string().max(60).optional(), directionName: z.string().max(200).optional(), svgTemplate: svgTemplateRef.optional(),
+  // A course schedule: every page per format (a carousel), and the rows so it can be drawn again.
+  pages: z.object({ feed: z.array(creativeUrl).max(12), square: z.array(creativeUrl).max(12), story: z.array(creativeUrl).max(12) }).partial().optional(),
+  schedule: scheduleRef.optional() });
 const captions = z.partialRecord(z.enum(CHANNELS), z.string().max(5000));
 
 const postPlan = { goal: z.enum(GOALS as [Goal, ...Goal[]]).nullable().optional(), plannedFor: z.iso.datetime().nullable().optional(), slotId: z.string().max(80).nullable().optional() };
 
 /** Which of the three ways a post's design was made; each way is its own permission. */
 type DesignWay = 'template' | 'upload' | 'ai' | 'reel';
-const designWay = (creative: z.infer<typeof creativeRef> | null): DesignWay => creative?.requestId === 'reel' ? 'reel' : creative?.svgTemplate ? 'template' : creative?.imageUrl.startsWith('/api/uploads/') ? 'upload' : 'ai';
+const designWay = (creative: z.infer<typeof creativeRef> | null): DesignWay => creative?.requestId === 'reel' ? 'reel' : creative?.svgTemplate || creative?.schedule ? 'template' : creative?.imageUrl.startsWith('/api/uploads/') ? 'upload' : 'ai';
 const WAY_PERMISSION: Record<DesignWay, Permission> = { template: 'design.templates', upload: 'design.upload', ai: 'design.free', reel: 'design.video' };
 const WAY_REFUSAL: Record<DesignWay, string> = { template: 'استخدام القوالب ليس ضمن صلاحياتك.', upload: 'رفع التصميمات الجاهزة ليس ضمن صلاحياتك.', ai: 'التصميم بالذكاء الاصطناعي ليس ضمن صلاحياتك؛ استخدم قالبًا جاهزًا.', reel: 'رفع الريلز والفيديو ليس ضمن صلاحياتك.' };
 

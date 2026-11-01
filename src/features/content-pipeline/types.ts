@@ -3,7 +3,7 @@ import type { Goal } from '../../domain/goals';
 import type { Text } from '../../domain/shared';
 
 export type Channel = 'facebook' | 'instagram' | 'whatsapp' | 'linkedin' | 'x' | 'tiktok' | 'snapchat' | 'youtube' | 'website';
-export interface CreativeRef { requestId: string; directionId: string; imageUrl: string; storyUrl?: string; landscapeUrl?: string; youtubeUrl?: string; sizes?: Record<string, string>; model?: string; directionName?: string; svgTemplate?: { id: string; values: Record<string, string>; format?: 'feed' | 'square' | 'story' | 'landscape'; context?: string; outputPreset?: string } }
+export interface CreativeRef { requestId: string; directionId: string; imageUrl: string; storyUrl?: string; landscapeUrl?: string; youtubeUrl?: string; sizes?: Record<string, string>; model?: string; directionName?: string; svgTemplate?: { id: string; values: Record<string, string>; format?: 'feed' | 'square' | 'story' | 'landscape'; context?: string; outputPreset?: string }; pages?: Partial<Record<'feed' | 'square' | 'story', string[]>>; schedule?: { title: string; highlight: string; defaultCity: string; rows: { course: string; date: string; time: string; mode: 'online' | 'offline'; city: string }[] } }
 export interface PipelineItem {
   id: string; title: string; status: ContentStatus; departmentId: string | null; ownerId: string;
   channels: Channel[]; captions: Partial<Record<Channel, string>>; creative: CreativeRef | null;
