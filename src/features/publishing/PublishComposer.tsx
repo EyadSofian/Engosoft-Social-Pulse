@@ -248,7 +248,7 @@ export function PublishComposer({ item, open, onClose, onDone, day }: { item: Pi
                     <label className="composer-account">
                       <input type="checkbox" checked={on} disabled={Boolean(d.blocked)} onChange={() => toggle(d)} />
                       <ChannelIcon channel={d.provider} size={18} />
-                      <span className="composer-account__name"><b dir="auto">{d.name}</b><small>{d.blocked || (d.options ? t('Asks for its choices below', 'محتاج اختياراته تحت') : t('Publishes by itself', 'بيتنشر لوحده'))}{d.reconnect && can('connections.manage') && <> <Link to="/connections">{t('Open Connections', 'افتح ربط المنصات')}</Link></>}</small></span>
+                      <span className="composer-account__name"><b><bdi>{d.name}</bdi></b><small>{d.blocked || (d.options ? t('Asks for its choices below', 'محتاج اختياراته تحت') : t('Publishes by itself', 'بيتنشر لوحده'))}{d.reconnect && can('connections.manage') && <> <Link to="/connections">{t('Open Connections', 'افتح ربط المنصات')}</Link></>}</small></span>
                       {!d.blocked && (d.options ? <span className="composer-way" data-way="options">{platformOf(d.provider).name}</span> : <span className="composer-way" data-way="auto"><Zap size={12} /> {t('Automatic', 'تلقائي')}</span>)}
                     </label>
                     {on && d.options && !held && <AccountChoices destination={d} choices={choiceOf(d.accountId)} creator={creators[d.accountId]} onChange={(patch) => setChoice(d.accountId, patch)} />}
@@ -339,7 +339,7 @@ function Results({ destinations, outcomes, sending, onRetry }: { destinations: D
       const [en, ar, tone] = state ? LABEL[state] : ['Sending…', 'بيتبعت…', 'brand'];
       return <li key={d.accountId} data-state={state ?? 'sending'}>
         <ChannelIcon channel={d.provider} size={18} />
-        <span className="composer-results__name"><b dir="auto">{d.name}</b>{!o.sending && (o.error || o.job?.error) && (() => {
+        <span className="composer-results__name"><b><bdi>{d.name}</bdi></b>{!o.sending && (o.error || o.job?.error) && (() => {
           const raw = (o.error || o.job?.error)!;
           const plain = plainError(raw, t);
           return <>{plain && <small className="composer-results__why">{plain}</small>}<small dir="auto" className="composer-results__raw">{raw}</small></>;

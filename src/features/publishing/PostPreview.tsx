@@ -40,7 +40,7 @@ export function PostPreview({ item, accountNames, video }: { item: PipelineItem;
       <article className="post-preview__frame" data-channel={channel}>
         <header className="post-preview__head">
           <img src="/engosoft-mark.png" alt="" />
-          <span><b dir="auto">{accountNames[channel] ?? 'Engosoft'}</b><small>{t('Now', 'الآن')} · <ChannelIcon channel={channel} size={11} /></small></span>
+          <span><b><bdi>{accountNames[channel] ?? 'Engosoft'}</bdi></b><small>{t('Now', 'الآن')} · <ChannelIcon channel={channel} size={11} /></small></span>
         </header>
         {MEDIA_FIRST.includes(channel) ? <>{media}{words}</> : <>{words}{media}</>}
         <footer className="post-preview__actions" aria-hidden>
