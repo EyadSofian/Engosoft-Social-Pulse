@@ -263,7 +263,10 @@ test('YouTube upload stores its resumable session before transferring bytes',asy
  const transitions:any[]=[];let transferred=false;
  mock(async(url,init)=>{
   if(url.includes('uploadType=resumable')) {const body=JSON.parse(String(init?.body));assert.equal(body.status.privacyStatus,'private');assert.equal(body.status.selfDeclaredMadeForKids,false);return new Response('',{status:200,headers:{location:'https://www.googleapis.com/upload/youtube/v3/videos?upload_id=fixture'}});}
-  const session=await store.loadSecret<{url:string}>('upload:upload-test');assert.ok(session?.url.includes('upload_id=fixture'));transferred=true;return Response.json({id:'uploaded-video'});
+  const session=await store.loadSecret<{url:string}>('upload:upload-test');assert.ok(session?.url.includes('upload_id=fixture'));
+  // The video is streamed from disk (never read into memory whole), and every byte arrives.
+  assert.ok(init?.body instanceof ReadableStream);assert.equal(Buffer.from(await new Response(init!.body).arrayBuffer()).toString(),'fixture-video');
+  transferred=true;return Response.json({id:'uploaded-video'});
  });
  const result=await providers.submit(account,{kind:'video',mode:'direct',privacy:'private',categoryId:'27',madeForKids:false,consent:true} as any,'Approved description','Approved title',[{id:'asset',file,url:'x',type:'video',bytes:13,width:1080,height:1920,mimeType:'video/mp4',duration:10}],fixtureJob({id:'upload-test'}),async r=>{transitions.push(r);});
  assert.equal(transferred,true);assert.equal(result.state,'processing');assert.equal(result.externalId,'uploaded-video');assert.equal(transitions[0].phase,'youtube_transfer');
@@ -272,7 +275,7 @@ test('TikTok video transfer uses returned upload URL and preserves publishing ha
  const file=join(directory,'tt.mp4');await (await import('node:fs/promises')).writeFile(file,Buffer.alloc(12));const a={...account,provider:'tiktok' as const},transitions:any[]=[];
  mock((url,init)=>{
   if(url.includes('inbox/video/init')) {const b=JSON.parse(String(init?.body));assert.equal(b.source_info.source,'FILE_UPLOAD');return Response.json({data:{publish_id:'tt-publish',upload_url:'https://open-upload.tiktokapis.com/upload/?token=opaque'},error:{code:'ok'}});}
-  assert.equal(url,'https://open-upload.tiktokapis.com/upload/?token=opaque');assert.equal((init!.headers as Record<string,string>)['Content-Range'],'bytes 0-11/12');assert.equal((init!.headers as any).Authorization,undefined);return new Response('',{status:201});
+  assert.equal(url,'https://open-upload.tiktokapis.com/upload/?token=opaque');assert.equal((init!.headers as Record<string,string>)['Content-Range'],'bytes 0-11/12');assert.equal(Buffer.from(init!.body as Uint8Array).length,12);assert.equal((init!.headers as any).Authorization,undefined);return new Response('',{status:201});
  });
  const r=await providers.submit(a,{kind:'video',mode:'draft',consent:true} as any,'Caption','Title',[{id:'a',file,url:'x',type:'video',bytes:12,width:1080,height:1920,mimeType:'video/mp4',duration:10}],fixtureJob(),async x=>{transitions.push(x);});assert.equal(r.state,'awaiting_user');assert.equal(transitions[0].remoteId,'tt-publish');
 });

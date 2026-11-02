@@ -9,7 +9,9 @@ Production audit on 2026-10-29: approximately 130 MB of real files in `/data` (d
 - MP4 ingestion streams directly to `social/.incoming/<uuid>.part`, capped at 200 MiB. Header inspection seeks over video payloads rather than buffering the entire MP4. One video ingestion runs per process; another returns HTTP 429 and can be retried. Aborted, invalid and failed uploads remove their temporary files.
 - The content approval state is checked again under a database transaction before the final move/insert. Files from a failed insert are removed.
 - Prepared JPEGs from the same approved design are hashed and reused within that content, across accounts/retries. Original design files and editable sources remain intact.
-- Video ingestion no longer needs a 200 MiB request buffer. Some downstream provider transfer paths still buffer a video; this change does not claim that all publishing/AI work has constant memory usage.
+- Video ingestion no longer needs a 200 MiB request buffer. Provider transfers no longer buffer a video either (2026-11-02): TikTok `FILE_UPLOAD` reads one 16 MiB chunk at a time and YouTube's resumable upload streams the file from disk. Snapchat's encrypted upload still reads its file whole; it is blocked until Snap enables the account.
+- In-app viewing (`/api/social/assets/:id`) answers `Cache-Control: private, no-cache`: the browser keeps the Reel and revalidates it, so access is still checked on every view but an unchanged file returns 304 instead of being downloaded again. Signed platform fetches (`/api/social/media/:id`) stay `no-store`; each platform downloads the file once per publication.
+- Cost reference (Railway, 2026-11-02): builds are free; egress $0.05/GB, RAM $10/GB-month, volume $0.15/GB-month. A 150 MB Reel published to three platforms is about 0.45 GB of egress (≈ $0.02).
 - Reservations are local to the running process. The current service uses one instance and a mounted volume; before using multiple writers/replicas, use shared reservations and object storage.
 
 ## Retention

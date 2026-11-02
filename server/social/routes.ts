@@ -141,7 +141,9 @@ export function registerSocialRoutes(app:express.Express) {
  });
  app.get('/api/social/assets/:id',async(req,res)=>{
   const r=await db.get<{path:string;content_id:string}>("SELECT path,content_id FROM social_media WHERE id=? AND storage_state='active'",[String(req.params.id)]);const item=r?await getContent(r.content_id):undefined;
-  if(!r||!item||!canSee(req.user!,item))return res.status(404).end();res.sendFile(r.path,{headers:{'Cache-Control':'private, no-store'}});
+  // no-cache, not no-store: the browser keeps the file and asks again each time, so access is still checked on every
+  // view but an unchanged Reel answers 304 instead of sending up to 200 MB again (Railway bills egress).
+  if(!r||!item||!canSee(req.user!,item))return res.status(404).end();res.sendFile(r.path,{headers:{'Cache-Control':'private, no-cache'}});
  });
  app.get('/api/social/media/:id',async(req,res)=>{
   const id=String(req.params.id);if(!validMediaSignature(id,String(req.query.expires||''),String(req.query.signature||'')))return res.status(404).end();
