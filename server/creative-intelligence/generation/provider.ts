@@ -1,7 +1,8 @@
 import { recordUsage, type OpenAIUsage } from '../../usage.js';
 /** Image model adapter. Business logic talks to CreativeImageProvider; only this file knows OpenAI request syntax. */
 
-export type ImageQuality = 'low' | 'medium' | 'high' | 'auto';
+/** `xhigh` and `max` exist on the GPT Image 2.5 models only. */
+export type ImageQuality = 'low' | 'medium' | 'high' | 'xhigh' | 'max' | 'auto';
 export interface ImageGenerateRequest { prompt: string; size: string; quality: ImageQuality; n?: number }
 export interface ImageEditRequest extends ImageGenerateRequest {
   /** First image is edited; further images are references. PNG/JPEG/WebP buffers. */

@@ -24,7 +24,7 @@ Code entry point: `server/creative-intelligence/brand/registry.ts` (typed, schem
 2. Never stretch, rotate, recolor, fade, outline, shadow or box the logo. No plate or rectangle behind it, ever — pick another variant, another zone, or repair the creative.
 3. The orange dot is always `#FF6600`. The positive lockup tagline is always `#1A1A1A`.
 4. The tagline is "Where Passion Becomes Success". The old raster sheet saying "Empowering Educational Success" and the legacy "e │ ENGO SOFT" mark in reference posts are deprecated.
-5. Brand is not "blue background + orange CTA". Brand can live in the logo, type, accents and layout discipline while campaigns use contextual palettes.
+5. The Engosoft feed lives in two colour worlds (see `HOUSE_STYLE` in `server/creative-intelligence/brand/design-language.ts`): a vivid royal-blue world (`#0046FF` → `#001BB7`, the default) or a clean light-grey engineering-paper world, with a green highlight bar and an orange CTA pill. Brand also lives in the logo, type and layout discipline; a dark, murky navy scene is off-brand.
 6. A `provisional` rule is not an official one. When a decision rests on one, say so and log it.
 
 Details: [LOGOS.md](LOGOS.md) · [COLOR_AND_TYPE.md](COLOR_AND_TYPE.md) · [CHANGING_ASSETS.md](CHANGING_ASSETS.md)

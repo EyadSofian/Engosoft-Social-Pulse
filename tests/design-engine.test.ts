@@ -2,10 +2,10 @@ import assert from 'node:assert/strict';
 import { test } from 'node:test';
 import sharp from 'sharp';
 import type { CreativeInspection } from '../server/creative-intelligence/criticism/inspect';
-import { localRepairs, promptFor, type CreativeBriefPlan } from '../server/creative-intelligence/generation/full-creative';
+import { candidateScore, candidatesFor, localRepairs, promptFor, type CreativeBriefPlan } from '../server/creative-intelligence/generation/full-creative';
 import { looksUnfilled } from '../server/creative-intelligence/generation/patch';
 import { DESIGN_SKILLS } from '../server/creative-intelligence/skills/design';
-import { compileDesignPrompt, DEFAULT_SETTINGS, type DesignDecision, type StrategyDecision } from '../server/creative-intelligence/skills/engine';
+import { compileBriefPrompt, compileDesignPrompt, DEFAULT_SETTINGS, houseWorld, regionWords, type DesignDecision, type StrategyDecision } from '../server/creative-intelligence/skills/engine';
 import { QUALITY_SKILLS } from '../server/creative-intelligence/skills/quality';
 import { STRATEGY_SKILLS } from '../server/creative-intelligence/skills/strategy';
 import { THEME_IDS, THEMES } from '../server/creative-intelligence/skills/themes';
@@ -89,7 +89,52 @@ test('older runs keep the previous prompt; engine runs use the compiled one', ()
   const legacy = { id: 'd1', name: 'n', concept: 'c', subject: 's', composition: 'x', palette: 'p', typography: 't', mood: 'm' };
   assert.match(promptFor(brief, legacy, 'feed'), /^TASK\n/);
   const engineBrief = { ...brief, engine: { version: 'design-engine:v1', skills: {}, settings: DEFAULT_SETTINGS, strategy, references: [] } };
-  assert.match(promptFor(engineBrief, { ...legacy, theme: 'industrial-cinematic', engine: { strategy: strategy.themeDirector.directions[0], design } }, 'feed'), /^DELIVERABLE\n/);
+  const planned = { ...legacy, theme: 'industrial-cinematic' as const, engine: { strategy: strategy.themeDirector.directions[0], design } };
+  // The short creative brief is the default; CREATIVE_PROMPT=detailed and typeset mode keep the full spec.
+  assert.match(promptFor(engineBrief, planned, 'feed'), /^A finished, publish-ready /);
+  assert.match(promptFor(engineBrief, planned, 'feed', false, 'model', 'detailed'), /^DELIVERABLE\n/);
+  assert.match(promptFor(engineBrief, planned, 'feed', false, 'typeset', 'brief'), /^DELIVERABLE\n/);
+});
+
+test('the brief prompt is short, picks one colour world and adds a person only when the plan has one', () => {
+  const copy = { headline: 'قُد المرافق باحتراف', subheadline: 'دورة CFM لإدارة المرافق', cta: 'سجّل الآن', facts: ['يبدأ الأحد 15-11-2026'] };
+  const brief = compileBriefPrompt({ strategy, direction: strategy.themeDirector.directions[0], design, copy, format: { label: 'feed 4:5', story: false } });
+  const detailed = compileDesignPrompt({ strategy, direction: strategy.themeDirector.directions[0], design, copy, format: { label: 'feed 4:5', story: false } });
+  assert.ok(brief.length < detailed.length * 0.6, `${brief.length} vs ${detailed.length}`);
+  // The micro-specs the image model cannot act on stay in the plan, out of the prompt.
+  for (const spec of ['NEGATIVE SPACE', 'VISUAL HIERARCHY', 'CAMERA', 'LIGHTING', 'COLOR', 'DEPTH AND INTEGRATION']) assert.ok(!brief.includes(`\n${spec}\n`), spec);
+  for (const section of ['IDEA', 'SCENE AND SUBJECT', 'LOOK', 'LAYOUT', 'LOGO SPACE', 'TEXT', 'AVOID']) assert.match(brief, new RegExp(`\n${section}`));
+  assert.match(brief, /Headline: «قُد المرافق باحتراف» — on 2 lines: «قُد المرافق» \/ «باحتراف»/);
+  assert.match(brief, /Fact: «يبدأ الأحد 15-11-2026»/);
+  assert.match(brief, /Button: «سجّل الآن»/);
+  // Positions in words, and no contradictory colour orders.
+  assert.match(brief, /Headline in the upper right; main subject in the middle left; button in the lower right/);
+  assert.ok(!/flood|as accents|x \d+%/.test(brief));
+  // A dark planned background lands in the royal-blue world, a light one on engineering paper.
+  assert.equal(houseWorld(design), 'blue');
+  assert.match(brief, /royal-blue world[\s\S]*Headline in white/);
+  const light = { ...design, colorDirector: { ...design.colorDirector, roles: { ...design.colorDirector.roles, background: 'pale grey #F2F5F8' } } };
+  assert.equal(houseWorld(light), 'light');
+  // The colour director's explicit choice wins over the background heuristic.
+  assert.equal(houseWorld({ colorDirector: { ...light.colorDirector, world: 'royal-blue' } }), 'blue');
+  assert.equal(houseWorld({ colorDirector: { ...design.colorDirector, world: 'engineering-paper' } }), 'light');
+  // The facility manager is a person; a graphic direction is not given one.
+  assert.match(brief, /Real, believable people/);
+  const graphic = { ...design, imageArtDirector: { ...design.imageArtDirector, subject: 'a giant numeral 3 on a route map', scene: 'engineering paper' } };
+  const graphicBrief = compileBriefPrompt({ strategy, direction: strategy.themeDirector.directions[0], design: graphic, copy, format: { label: 'feed 4:5', story: false } });
+  const scene = graphicBrief.slice(graphicBrief.indexOf('SCENE AND SUBJECT'), graphicBrief.indexOf('\n\nLOOK'));
+  assert.ok(!/believable people|faces and hands/i.test(scene), scene);
+  assert.equal(regionWords({ x: 0, y: 0.4, width: 0.9, height: 0.2 }), 'middle part, across the width');
+  assert.equal(regionWords({ x: 0.35, y: 0.4, width: 0.3, height: 0.2 }), 'centre');
+  assert.match(brief, /or the word "Engosoft" anywhere\./);
+  // Copy that names Engosoft is not contradicted by the logo rule.
+  const named = compileBriefPrompt({ strategy, direction: strategy.themeDirector.directions[0], design, copy: { ...copy, subheadline: 'دورة CFM من Engosoft' }, format: { label: 'feed 4:5', story: false } });
+  assert.ok(!named.includes('or the word "Engosoft" anywhere'));
+  assert.match(named, /appears only where the text below has it/);
+  assert.ok(!/\.\./.test(brief), 'no doubled full stops');
+  const adapted = compileBriefPrompt({ strategy, direction: strategy.themeDirector.directions[0], design, copy, format: { label: 'story', story: true }, adaptation: true });
+  assert.match(adapted, /Rebuild the layout for this canvas shape/);
+  assert.match(adapted, /top 12% and bottom 17%/);
 });
 
 test('the repair router applies only local, non-text repairs automatically', () => {
@@ -111,4 +156,31 @@ test('an edit that left its box unpainted is detected', async () => {
   const holed = await sharp(scene).composite([{ input: await sharp({ create: { width: 120, height: 100, channels: 3, background: '#000000' } }).png().toBuffer(), left: 0, top: 300 }]).png().toBuffer();
   assert.equal(await looksUnfilled(holed, { x: 0, y: 300, width: 120, height: 100 }), true);
   assert.equal(await looksUnfilled(scene, { x: 0, y: 300, width: 120, height: 100 }), false);
+});
+
+test('of several drawn candidates, correct copy wins before the critic\'s verdict and scores', () => {
+  const scores = (n: number) => ({ design: n, marketing: n, imageQuality: n, brandFit: n });
+  const exact = [{ field: 'headline', expected: 'قُد المرافق باحتراف', verdict: 'exact' }] as never;
+  const misspelt = [{ field: 'headline', expected: 'قُد المرافق باحتراف', verdict: 'incorrect' }] as never;
+  const polishedButMisspelt = candidateScore({ verdict: 'accept', scores: scores(9), logosOrWatermarks: [] }, misspelt);
+  const plainButCorrect = candidateScore({ verdict: 'repair', scores: scores(7), logosOrWatermarks: [] }, exact);
+  assert.ok(plainButCorrect > polishedButMisspelt);
+  assert.ok(candidateScore({ verdict: 'accept', scores: scores(7), logosOrWatermarks: [] }, exact) > candidateScore({ verdict: 'repair', scores: scores(8), logosOrWatermarks: [] }, exact));
+  assert.ok(candidateScore({ verdict: 'accept', scores: scores(8), logosOrWatermarks: [] }, exact) > candidateScore({ verdict: 'accept', scores: scores(8), logosOrWatermarks: [{ description: 'fake mark' }] as never }, exact));
+  // A candidate whose logo corner is blocked loses to a plainer one with room for the logo, but not to a misspelt one.
+  const blocked = candidateScore({ verdict: 'accept', scores: scores(9), logosOrWatermarks: [] }, exact, false);
+  assert.ok(candidateScore({ verdict: 'repair', scores: scores(7), logosOrWatermarks: [] }, exact, true) > blocked);
+  assert.ok(blocked > polishedButMisspelt);
+  assert.equal(candidatesFor({}), 2);
+  assert.equal(candidatesFor({ CREATIVE_CANDIDATES: '1' }), 1);
+  assert.equal(candidatesFor({ CREATIVE_CANDIDATES: '9' }), 3);
+  assert.equal(candidatesFor({ CREATIVE_CANDIDATES: 'many' }), 2);
+});
+
+test('no rule tells the planner or the critic to avoid the Engosoft royal blue', () => {
+  const color = DESIGN_SKILLS.find((s) => s.id === 'color-director')!;
+  assert.ok(!color.rules.some((r) => /do not make everything blue|blue .*are accents/i.test(r)));
+  assert.match(color.rules.join(' '), /"royal-blue" is the Engosoft feed and the default/);
+  assert.ok(!QUALITY_SKILLS.some((s) => s.rules.some((r) => /blue gradients|reduce the blue/i.test(r))));
+  assert.ok(!THEME_IDS.some((id) => THEMES[id].avoid.some((a) => /blue gradient/i.test(a))));
 });

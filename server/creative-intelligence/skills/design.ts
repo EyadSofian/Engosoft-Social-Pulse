@@ -90,15 +90,16 @@ export const lightingDirector: DesignSkill<'lighting-director'> = {
 };
 
 export const colorDirector: DesignSkill<'color-director'> = {
-  id: 'color-director', version: 'color-director:v1',
-  purpose: 'Gives colour a hierarchy of roles and a harmony that suits the theme.',
+  id: 'color-director', version: 'color-director:v2',
+  purpose: 'Puts the post in one of the two Engosoft colour worlds and gives colour a hierarchy of roles inside it.',
   rules: [
-    'Roles: dominant, secondary, accent, background, text, highlight — as hex colours.',
-    'Do NOT make everything blue. The picture may be photographic, neutral, dark, warm, Saudi green or architectural; Engosoft identity shows through the logo, the type, a small accent or the graphic language. Brand blue #0046FF and orange #FF6600 are accents unless the theme calls for more.',
-    'Pick a harmony: monochromatic, analogous, complementary, split-complementary, neutral + accent, warm/cool contrast — and say why.',
-    'Text colour must reach strong contrast on its background area.',
+    // v1 said "do NOT make everything blue; blue is an accent" — the opposite of the real feed, so every plan came out light grey.
+    'First choose the world. "royal-blue" is the Engosoft feed and the default: a vivid, saturated royal blue (#0046FF to deep #001BB7) carries the whole canvas, photographic or graphic, bright and clean — never murky or a dark navy night scene. "engineering-paper" is a clean light-grey paper world (around #EEF2F6) with faint technical drawings, for educational, technical or occasion posts and for variety when the other direction is royal blue.',
+    'Then the roles, as hex colours: dominant and background from the world; headline text white on royal blue or brand blue #0046FF on paper; accent orange #FF6600 for the CTA pill; highlight bright green #4CFF7A for the bar behind one phrase. The photo is graded into the world (blue-toned on royal blue).',
+    'Pick a harmony and say why. Text colour must reach strong contrast on its background area.',
   ],
   schema: obj({
+    world: oneOf(['royal-blue', 'engineering-paper']),
     roles: obj({ dominant: str(), secondary: str(), accent: str(), background: str(), text: str(), highlight: str() }),
     harmony: oneOf(['monochromatic', 'analogous', 'complementary', 'split-complementary', 'neutral-accent', 'warm-cool']), brandExpression: str(), why: str(),
   }),

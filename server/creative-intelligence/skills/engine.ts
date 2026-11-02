@@ -55,7 +55,8 @@ export interface DesignDecision {
   typographyDirector: { headlineLines: string[]; scale: { headline: number; subheadline: number; facts: number; cta: number }; alignment: string; emphasis: string; mixedScriptNotes: string; leading: string };
   imageArtDirector: { scene: string; subject: string; subjectPlacement: string; environment: string; camera: { shot: string; angle: string; lens: string; depthOfField: string }; perspective: string; realism: string };
   lightingDirector: { setup: string; keyDirection: string; quality: string; temperature: string; rim: string; atmosphere: string; consistency: string };
-  colorDirector: { roles: { dominant: string; secondary: string; accent: string; background: string; text: string; highlight: string }; harmony: string; brandExpression: string; why: string };
+  /** `world` is absent on plans made before color-director:v2. */
+  colorDirector: { world?: 'royal-blue' | 'engineering-paper'; roles: { dominant: string; secondary: string; accent: string; background: string; text: string; highlight: string }; harmony: string; brandExpression: string; why: string };
   brandDirector: { personality: string; brandColorUse: string; checks: string[] };
   logoDirector: { mark: LogoMark; corner: Corner; reason: string };
   photoshopCompositor: { layerStack: string[]; integration: string[]; risks: string[] };
@@ -229,7 +230,8 @@ export function compileDesignPrompt(input: {
     `VISUAL HIERARCHY\nFirst: ${L.primaryFocalPoint}. Then: ${L.secondaryFocalPoint}. Weight — ${weights}. ${W.toneDown.length ? `Keep subdued: ${W.toneDown.join('; ')}.` : ''}`,
     `CAMERA\n${I.camera.shot}, ${I.camera.angle}, ${I.camera.lens}, ${I.camera.depthOfField}. Perspective: ${I.perspective}. Rendering: ${I.realism}.`,
     `LIGHTING\n${Li.setup}; key ${Li.keyDirection}; ${Li.quality}; ${Li.temperature}; rim ${Li.rim}; atmosphere ${Li.atmosphere}. ${Li.consistency}`,
-    `COLOR\nDominant ${C.roles.dominant}, secondary ${C.roles.secondary}, accent ${C.roles.accent}, background ${C.roles.background}, text ${C.roles.text}, highlight ${C.roles.highlight} — ${C.harmony}. ${C.brandExpression}. Engosoft brand blue ${BRAND.colors.core.brandBlue.hex} and orange ${BRAND.colors.core.brandOrange.hex} as intended accents, not a flat flood.`,
+    // The house style above sets the colour world (royal blue or light engineering paper); this only places the roles in it.
+    `COLOR\nDominant ${C.roles.dominant}, secondary ${C.roles.secondary}, accent ${C.roles.accent}, background ${C.roles.background}, text ${C.roles.text}, highlight ${C.roles.highlight} — ${C.harmony}. ${C.brandExpression}. Engosoft brand blue ${BRAND.colors.core.brandBlue.hex} and orange ${BRAND.colors.core.brandOrange.hex} carry the identity, in the house colour world.`,
     `DEPTH AND INTEGRATION\n${L.depthPlan}. ${P.integration.join(' ')} One lighting world, matching perspective, scale, grain and colour across every element; real contact shadows; no halos or floating subjects.`,
     ...(input.typeset ? typesetSections(input.typeset, C.roles.text) : [
       `TYPOGRAPHY\nThe typography is designed into the composition, not laid on top: the headline sits in its own planned space, never over a face, the subject or busy detail, and the picture is built around it. Hierarchy with clear size steps (headline cap height about ${pct(T.scale.headline)} of the width, supporting line about ${pct(T.scale.subheadline)}, CTA about ${pct(T.scale.cta)}). ${T.alignment} aligned. ${T.emphasis} ${T.mixedScriptNotes} Arabic set right-to-left in a bold, modern geometric Arabic sans-serif (similar to Almarai); Latin in a clean geometric sans (similar to Plus Jakarta Sans). Leading: ${T.leading}.`,
@@ -240,6 +242,84 @@ export function compileDesignPrompt(input: {
     input.adaptation ? `ADAPTATION\n${platformDesigner.rules.join(' ')}` : '',
     `AVOID\n${[...theme.avoid, ...DESIGN_AVOID].join('; ')}. ${input.typeset ? 'Absolutely no text, letters, numbers, fake writing, signage, labels, UI, buttons or text boxes.' : 'No extra words, fake UI, QR codes, prices, dates or names beyond the text above.'} No seals, badges or accreditation marks.`,
   ].filter(Boolean).join('\n\n');
+}
+
+/**
+ * Which of the two Engosoft colour worlds a design lives in: the colour director's choice, or — on older plans —
+ * light engineering paper when the planned background is light, otherwise the royal-blue world.
+ */
+export function houseWorld(design: Pick<DesignDecision, 'colorDirector'>): 'blue' | 'light' {
+  if (design.colorDirector.world) return design.colorDirector.world === 'engineering-paper' ? 'light' : 'blue';
+  const lum = (value: string) => {
+    const hex = /#([0-9a-f]{6})\b/i.exec(value)?.[1];
+    if (!hex) return null;
+    const n = parseInt(hex, 16);
+    return (0.2126 * (n >> 16 & 255) + 0.7152 * (n >> 8 & 255) + 0.0722 * (n & 255)) / 255;
+  };
+  const l = lum(design.colorDirector.roles.background) ?? lum(design.colorDirector.roles.dominant);
+  return l !== null && l > 0.6 ? 'light' : 'blue';
+}
+
+/** Where a planned zone sits, in the words an image model follows (it treats percentages as loose hints anyway). */
+export function regionWords(z: Zone): string {
+  const cy = z.y + z.height / 2, cx = z.x + z.width / 2;
+  const v = cy < 0.36 ? 'upper' : cy > 0.64 ? 'lower' : 'middle';
+  if (z.width > 0.7) return `${v} part, across the width`;
+  const h = cx > 0.6 ? 'right' : cx < 0.4 ? 'left' : 'centre';
+  return v === 'middle' && h === 'centre' ? 'centre' : `${v} ${h}`;
+}
+
+const WORLD = {
+  blue: 'A vivid, saturated royal-blue world (#0046FF to deep #001BB7), bright and clean — never murky, never a dark navy night scene. Headline in white.',
+  light: 'A clean light-grey engineering-paper world with faint technical drawings. Headline in royal blue (#0046FF), other text near-black.',
+};
+const HOUSE_LOOK = [
+  'Headline: very bold geometric Arabic display type, large and confident, right-aligned; one word may stretch with a long horizontal kashida.',
+  'One flat bright-green (#4CFF7A) highlight bar behind one short phrase.',
+  'Button: an orange (#FF6600) rounded pill with white Arabic text and a small left-pointing arrow.',
+  'Finish: crisp and premium; the subject has depth and real contact shadows; one lighting world; thin line accents at most; generous margins, nothing floating.',
+];
+/** Subjects that are people, so the prompt asks for believable faces and hands (nothing is said otherwise). */
+/** A planned phrase as a sentence: trimmed, with its own final full stop dropped so the template adds one. */
+const clause = (text: string) => text.trim().replace(/[.。]+$/, '');
+
+const PEOPLE = /\b(person|people|engineers?|trainees?|instructors?|students?|professionals?|m[ae]n|wom[ae]n|workers?|technicians?|team|hands?|portrait|graduates?|managers?|leaders?|consultants?|specialists?|operators?|architects?|designers?|employees?|supervisors?|inspectors?|presenters?|he|she)\b/i;
+
+/**
+ * The GPT Image prompt as a short creative brief, the structure OpenAI recommends: use and format, idea, scene and
+ * subject, look, layout, exact text, constraints — about a quarter of the detailed compiler's length. The detailed
+ * plan stays on the run for the critic and the editor; the image model gets only what it can act on, with one
+ * colour world, and a person only when the direction's subject is one (the house style used to force one in). CREATIVE_PROMPT=detailed uses compileDesignPrompt.
+ */
+export function compileBriefPrompt(input: Omit<Parameters<typeof compileDesignPrompt>[0], 'typeset'>): string {
+  const { strategy, direction, design, copy } = input;
+  const theme: ThemeDefinition = THEMES[direction.theme] ?? THEMES['corporate-premium'];
+  const L = design.layoutDesigner, I = design.imageArtDirector, Li = design.lightingDirector, T = design.typographyDirector;
+  const D = strategy.creativeDirector;
+  const lines = T.headlineLines.length > 1 && T.headlineLines.join(' ').replace(/\s+/g, ' ').trim() === copy.headline.replace(/\s+/g, ' ').trim() ? ` — on ${T.headlineLines.length} lines: ${T.headlineLines.map((l) => `«${l}»`).join(' / ')}` : '';
+  const text = [
+    `Headline: «${copy.headline}»${lines}`,
+    copy.subheadline ? `Supporting line: «${copy.subheadline}»` : '',
+    ...(copy.facts ?? []).map((fact) => `Fact: «${fact}»`),
+    copy.cta ? `Button: «${copy.cta}»` : '',
+  ].filter(Boolean).join('\n');
+  const people = PEOPLE.test(`${I.subject} ${direction.subjectStrategy}`);
+  // When the approved copy names Engosoft, the logo rule must not forbid the word the text asks for.
+  const named = [copy.headline, copy.subheadline, copy.cta, ...(copy.facts ?? [])].some((t) => t && /engosoft|إنجوسوفت|انجوسوفت/i.test(t));
+  const logoSpace = logoReservation(design.logoDirector.mark, design.logoDirector.corner).replace(', or the word "Engosoft" anywhere.', named ? '. The word "Engosoft" appears only where the text below has it.' : ', or the word "Engosoft" anywhere.');
+  const layout = input.adaptation
+    ? `Rebuild the layout for this canvas shape; keep the master's hierarchy (${clause(L.primaryFocalPoint)}, then ${clause(L.secondaryFocalPoint)}). ${platformDesigner.rules.join(' ')}`
+    : `Headline in the ${regionWords(L.headlineZone)}; main subject in the ${regionWords(L.heroSubject)}${hasArea(L.ctaZone) ? `; button in the ${regionWords(L.ctaZone)}` : ''}. The eye goes first to ${clause(L.primaryFocalPoint)}, then to ${clause(L.secondaryFocalPoint)}. Related text grouped tightly, calm space around the type, essential content inside the central area.`;
+  return [
+    `A finished, publish-ready ${input.format.label} for Engosoft, an engineering and professional training company for engineers in Saudi Arabia and Egypt. The image is the final post — one art-directed composition with the Arabic typography designed into it, at the level of a top creative studio's launch campaign.${input.format.story ? ' Keep the top 12% and bottom 17% free of essential content (platform interface).' : ''}`,
+    `IDEA\n${clause(direction.idea)}.\nMessage: ${clause(D.message)}. Audience: ${clause(D.audience)}. The viewer should feel: ${clause(D.desiredReaction)}.`,
+    `SCENE AND SUBJECT\n${clause(I.subject)}. ${clause(I.scene)}. ${clause(I.camera.shot)}, ${clause(I.camera.angle)}. Light: ${clause(Li.setup)}, key ${clause(Li.keyDirection)}.${people ? ' Real, believable people with natural faces and hands; no identifiable public figures.' : ''}`,
+    `LOOK — it must clearly belong to the Engosoft feed\n${WORLD[houseWorld(design)]}\n${HOUSE_LOOK.join('\n')}\nMood: ${theme.mood}.`,
+    `LAYOUT — reads right to left\n${layout}`,
+    `LOGO SPACE\n${logoSpace}`,
+    `TEXT — exact, verbatim, each string once, and no other text\n${text}\nArabic right-to-left with correctly joined letters, spelled exactly as given; digits exactly as written.`,
+    `AVOID\nAny other words or letters; logos, wordmarks, watermarks; fake UI, QR codes, prices, seals or badges; ${[...theme.avoid, ...DESIGN_AVOID].join('; ')}.`,
+  ].join('\n\n');
 }
 
 /** Typeset mode: the image leaves the text zones calm and draws no text; the copy is set in brand fonts afterwards. */

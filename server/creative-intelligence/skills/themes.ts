@@ -33,7 +33,7 @@ export const THEMES: Record<ThemeId, ThemeDefinition> = {
     photography: 'polished commercial portraiture or premium interiors, natural skin, tailored wardrobe', lighting: 'soft key with gentle falloff, subtle rim, clean highlights',
     typography: { scale: 'strong', density: 'medium', treatment: 'confident bold headline, refined supporting line, generous leading' }, spacing: 'wide margins, clear groups, nothing touching the edges',
     graphics: 'one thin rule or a restrained shape; brand colour as accent', texture: 'clean, very fine grain', imageTreatment: 'full-bleed or large framed photograph, gently graded', density: 'balanced', mood: 'assured, credible, aspirational',
-    avoid: ['generic blue gradients', 'glass cards', 'stock-photo handshake clichés', 'busy icon rows'], risk: 'safe' }),
+    avoid: ['muddy generic gradients', 'glass cards', 'stock-photo handshake clichés', 'busy icon rows'], risk: 'safe' }),
   'editorial-modern': t({ id: 'editorial-modern', label: { en: 'Editorial Modern', ar: 'تحريري حديث' }, fitsWhen: 'thought leadership, webinars, content that should feel like a magazine cover',
     composition: { preferred: 'magazine grid with strong typographic block and a cropped image panel; deliberate edge tension', depth: 'moderate', imageDominance: 'medium' },
     photography: 'editorial portraits or details with intentional crops', lighting: 'directional soft light, slightly moody', typography: { scale: 'monumental', density: 'low', treatment: 'oversized headline as the main graphic, tight but readable leading, a small kicker line' },
