@@ -52,7 +52,7 @@ export interface StoredContent {
   /** Filled when sync has matched a scheduled plan with a real published post. */
   published?: { platform: string; permalink: string; publishedAt: string; metrics: Record<string, number | null> }[];
 }
-export interface ContentEvent { id: string; contentId: string; actorId: string; kind: 'created' | 'transition' | 'comment' | 'version' | 'caption'; from: string | null; to: string | null; body: string; createdAt: string }
+export interface ContentEvent { id: string; contentId: string; actorId: string; kind: 'created' | 'transition' | 'comment' | 'version' | 'caption' | 'manual_publish'; from: string | null; to: string | null; body: string; createdAt: string }
 export interface ContentVersion { id: string; contentId: string; imageUrl: string; storyUrl: string | null; studio: unknown; note: string; createdBy: string; createdAt: string }
 
 const parse = <T>(value: unknown, fallback: T): T => { try { return value ? JSON.parse(String(value)) as T : fallback; } catch { return fallback; } };
@@ -252,6 +252,47 @@ async function schedulePlans(user: AuthUser, item: StoredContent, scheduledAt: s
   }
   await db.run('UPDATE content_items SET scheduled_at=?, plan_ids_json=? WHERE id=?', [when.toISOString(), JSON.stringify(planIds), item.id]);
   return when;
+}
+
+/** Platforms with no publishing API: someone posts by hand and records it here, with the post's link when there is one. */
+export const MANUAL_CHANNELS = ['linkedin', 'x', 'whatsapp', 'website'] as const;
+export type ManualChannel = (typeof MANUAL_CHANNELS)[number];
+/** Where each platform's posts live; null accepts any https page (the website), an empty list accepts no link (WhatsApp). */
+const MANUAL_HOSTS: Record<ManualChannel, string[] | null> = { linkedin: ['linkedin.com', 'lnkd.in'], x: ['x.com', 'twitter.com'], website: null, whatsapp: [] };
+export interface ManualPublication { channel: ManualChannel; url: string | null; by: string; at: string }
+
+/** The latest record per platform of a post published by hand. */
+export async function manualPublications(contentId: string): Promise<ManualPublication[]> {
+  const rows = await db.all("SELECT actor_id, body, created_at FROM content_events WHERE content_id=? AND kind='manual_publish' ORDER BY created_at", [contentId]);
+  const latest = new Map<string, ManualPublication>();
+  for (const row of rows) {
+    const body = parse<{ channel?: ManualChannel; url?: string | null }>(row.body, {});
+    if (body.channel && MANUAL_CHANNELS.includes(body.channel)) latest.set(body.channel, { channel: body.channel, url: body.url ?? null, by: String(row.actor_id), at: String(row.created_at) });
+  }
+  return [...latest.values()];
+}
+
+/**
+ * Records that an approved post was published by hand on a platform without a publishing API. A link is checked
+ * against the platform's own domain. It is a record for the team, not proof for the calendar's sync.
+ */
+export async function recordManualPublication(user: AuthUser, contentId: string, channel: ManualChannel, url?: string): Promise<ManualPublication[]> {
+  if (!userCan(user, 'content.publish')) throw new WorkspaceError(403, 'لا تملك صلاحية النشر.');
+  const item = await getContent(contentId);
+  if (!item || !canSee(user, item)) throw new WorkspaceError(404, 'المحتوى غير موجود.');
+  if (!['approved', 'scheduled', 'published'].includes(item.status)) throw new WorkspaceError(409, 'يُنشر المحتوى المعتمد فقط.');
+  if (!MANUAL_CHANNELS.includes(channel) || !item.channels.includes(channel)) throw new WorkspaceError(400, 'هذه المنصة ليست من منصات النشر اليدوي لهذا المنشور.');
+  let link: string | null = null;
+  if (url?.trim()) {
+    let parsed: URL;
+    try { parsed = new URL(url.trim()); } catch { throw new WorkspaceError(400, 'الرابط غير صالح.'); }
+    const hosts = MANUAL_HOSTS[channel];
+    const onPlatform = hosts === null || hosts.some((h) => parsed.hostname === h || parsed.hostname.endsWith(`.${h}`));
+    if (parsed.protocol !== 'https:' || !onPlatform) throw new WorkspaceError(400, channel === 'whatsapp' ? 'واتساب ليس له رابط منشور؛ سجّل النشر من غير رابط.' : 'الرابط لازم يكون رابط المنشور على المنصة نفسها ويبدأ بـ https.');
+    link = parsed.toString();
+  }
+  await log(contentId, user.id, 'manual_publish', JSON.stringify({ channel, url: link }));
+  return manualPublications(contentId);
 }
 
 /**

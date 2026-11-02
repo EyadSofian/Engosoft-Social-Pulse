@@ -44,6 +44,7 @@
 @import './features/permissions.css';
 @import './features/overview.css';
 @import './features/publish.css';
+@import './features/publish-composer.css';
 @import './features/planning.css';
 @import './features/campaigns.css';
 @import './features/schedule.css';

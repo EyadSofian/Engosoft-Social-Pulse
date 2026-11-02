@@ -1,0 +1,514 @@
+/*
+ * The publishing window: every platform of a post in one place, with its preview.
+ * Type is set a step larger than the rest of the app: this is a decision screen, read in Arabic.
+ */
+.composer {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) minmax(300px, 380px);
+  gap: var(--sp-6);
+  align-items: start;
+  font-size: var(--fs-md);
+}
+
+.composer__main {
+  display: flex;
+  flex-direction: column;
+  gap: var(--sp-5);
+  min-width: 0;
+}
+
+.composer__section {
+  display: flex;
+  flex-direction: column;
+  gap: var(--sp-3);
+}
+
+.composer__section > h3 {
+  display: flex;
+  align-items: center;
+  gap: var(--sp-2);
+  margin: 0;
+  font-size: var(--fs-lg);
+  font-weight: 700;
+}
+
+.composer__preview {
+  position: sticky;
+  top: 0;
+}
+
+.composer-loading {
+  display: flex;
+  align-items: center;
+  gap: var(--sp-2);
+}
+
+/* Accounts */
+.composer-accounts,
+.composer-results,
+.composer-manual {
+  display: flex;
+  flex-direction: column;
+  gap: var(--sp-2);
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+.composer-accounts > li {
+  border: 1px solid var(--border);
+  border-radius: var(--radius-lg);
+  background: var(--surface);
+  transition: border-color var(--t-hover) var(--ease), background var(--t-hover) var(--ease);
+}
+
+.composer-accounts > li[data-on] {
+  border-color: var(--brand);
+  background: var(--brand-soft);
+}
+
+.composer-accounts > li[data-blocked] {
+  background: var(--surface-subtle);
+}
+
+.composer-account {
+  display: flex;
+  align-items: center;
+  gap: var(--sp-3);
+  padding: var(--sp-3) var(--sp-4);
+  cursor: pointer;
+}
+
+li[data-blocked] .composer-account {
+  cursor: default;
+}
+
+.composer-account input {
+  width: 18px;
+  height: 18px;
+  accent-color: var(--brand);
+}
+
+.composer-account__name {
+  display: flex;
+  flex: 1;
+  flex-direction: column;
+  gap: 2px;
+  min-width: 0;
+}
+
+.composer-account__name b {
+  overflow: hidden;
+  font-weight: 650;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.composer-account__name small {
+  color: var(--text-muted);
+  font-size: var(--fs-sm);
+}
+
+.composer-way {
+  display: inline-flex;
+  flex-shrink: 0;
+  align-items: center;
+  gap: 4px;
+  padding: 3px 10px;
+  border-radius: var(--radius-pill);
+  font-size: var(--fs-xs);
+  font-weight: 650;
+}
+
+.composer-way[data-way='auto'] {
+  background: var(--success-soft);
+  color: var(--success-ink);
+}
+
+.composer-way[data-way='options'] {
+  background: var(--surface-active);
+  color: var(--text-muted);
+}
+
+.composer-account__note {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  margin: 0;
+  padding: 0 var(--sp-4) var(--sp-3);
+  color: var(--text-muted);
+  font-size: var(--fs-sm);
+}
+
+.composer-account__note[data-warn] {
+  color: var(--warning-ink);
+}
+
+/* TikTok / YouTube / Snapchat choices, inside the chosen account */
+.composer-choices {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(190px, 1fr));
+  gap: var(--sp-3);
+  margin: 0 var(--sp-4) var(--sp-4);
+  padding: var(--sp-3) var(--sp-4);
+  border-radius: var(--radius-md);
+  background: var(--surface);
+}
+
+.composer-choices .ui-field__label {
+  font-size: var(--fs-sm);
+}
+
+.composer-choices__who {
+  grid-column: 1 / -1;
+  margin: 0;
+  color: var(--text-muted);
+  font-size: var(--fs-sm);
+}
+
+.composer-choices__who b {
+  color: var(--text);
+}
+
+.composer-choices__checks {
+  display: flex;
+  grid-column: 1 / -1;
+  flex-wrap: wrap;
+  gap: var(--sp-2) var(--sp-5);
+  font-size: var(--fs-sm);
+}
+
+.composer-choices__checks label {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  cursor: pointer;
+}
+
+.composer-choices > .composer-account__note {
+  grid-column: 1 / -1;
+  padding: 0;
+}
+
+/* Now / at a time */
+.composer-when {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: var(--sp-2);
+}
+
+.composer-when button {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: var(--sp-2);
+  padding: var(--sp-3);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-lg);
+  background: var(--surface);
+  color: var(--text);
+  font: inherit;
+  cursor: pointer;
+}
+
+.composer-when button[aria-checked='true'] {
+  border-color: var(--brand);
+  background: var(--brand-soft);
+  color: var(--brand-ink);
+}
+
+.composer-when button:disabled {
+  cursor: not-allowed;
+  opacity: 0.55;
+}
+
+.composer-time {
+  display: flex;
+  flex-direction: column;
+  gap: var(--sp-3);
+}
+
+.composer-time label {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  font-size: var(--fs-sm);
+}
+
+.composer-time .content-slots button {
+  font-size: var(--fs-sm);
+}
+
+/* Results, live per account */
+.composer-results > li {
+  display: flex;
+  align-items: center;
+  gap: var(--sp-3);
+  padding: var(--sp-3) var(--sp-4);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-lg);
+  background: var(--surface);
+}
+
+.composer-results > li[data-state='failed'] {
+  border-color: var(--danger);
+  background: var(--danger-soft);
+}
+
+.composer-results > li[data-state='published'] {
+  border-color: var(--success);
+}
+
+.composer-results__name {
+  display: flex;
+  flex: 1;
+  flex-direction: column;
+  gap: 2px;
+  min-width: 0;
+}
+
+.composer-results__name small {
+  color: var(--text-muted);
+  font-size: var(--fs-sm);
+}
+
+.composer-results__name .composer-results__why {
+  color: var(--text);
+  font-weight: 600;
+}
+
+.composer-results__name .composer-results__raw {
+  font-size: var(--fs-xs);
+  opacity: 0.75;
+}
+
+.composer-results .ui-badge {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+}
+
+.composer-results__open {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  color: var(--brand-ink);
+  font-size: var(--fs-sm);
+  font-weight: 650;
+}
+
+/* By hand: copy, download, open, record */
+.composer-manual > li {
+  display: flex;
+  flex-direction: column;
+  gap: var(--sp-2);
+  padding: var(--sp-3) var(--sp-4);
+  border: 1px dashed var(--border-strong);
+  border-radius: var(--radius-lg);
+}
+
+.composer-manual > li[data-done] {
+  border-style: solid;
+  border-color: var(--success);
+}
+
+.composer-manual__head,
+.composer-manual__tools,
+.composer-manual__record {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: var(--sp-2);
+}
+
+.composer-manual__head b {
+  margin-inline-end: auto;
+}
+
+.composer-manual__record .ui-input {
+  flex: 1;
+  min-width: 200px;
+}
+
+/* Footer: what will happen, then the one action */
+.composer-foot {
+  display: flex;
+  align-items: center;
+  gap: var(--sp-2);
+  width: 100%;
+}
+
+.composer-foot__summary {
+  display: flex;
+  flex: 1;
+  align-items: center;
+  gap: 6px;
+  margin: 0;
+  color: var(--text-muted);
+  font-size: var(--fs-sm);
+}
+
+.composer-foot__summary a {
+  color: var(--brand-ink);
+}
+
+.composer-history {
+  margin: var(--sp-4) 0 0;
+}
+
+/* Preview: the post in each platform's frame */
+.post-preview {
+  display: flex;
+  flex-direction: column;
+  gap: var(--sp-3);
+}
+
+.post-preview__tabs {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+}
+
+.post-preview__tabs button {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  padding: 5px 10px;
+  border: 1px solid var(--border);
+  border-radius: var(--radius-pill);
+  background: var(--surface);
+  color: var(--text-muted);
+  font: inherit;
+  font-size: var(--fs-xs);
+  font-weight: 650;
+  cursor: pointer;
+}
+
+.post-preview__tabs button[aria-selected='true'] {
+  border-color: var(--brand);
+  background: var(--brand-soft);
+  color: var(--brand-ink);
+}
+
+.post-preview__frame {
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
+  border: 1px solid var(--border);
+  border-radius: var(--radius-xl);
+  background: var(--surface);
+  box-shadow: 0 10px 30px rgb(15 23 42 / 0.08);
+}
+
+.post-preview__head {
+  display: flex;
+  align-items: center;
+  gap: var(--sp-2);
+  padding: var(--sp-3);
+}
+
+.post-preview__head img {
+  width: 34px;
+  height: 34px;
+  padding: 6px;
+  border-radius: 50%;
+  background: #0046ff;
+  object-fit: contain;
+}
+
+.post-preview__head span {
+  display: flex;
+  flex-direction: column;
+  min-width: 0;
+}
+
+.post-preview__head b {
+  font-size: var(--fs-sm);
+}
+
+.post-preview__head small {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  color: var(--text-subtle);
+  font-size: var(--fs-xs);
+}
+
+.post-preview__media {
+  display: block;
+  width: 100%;
+  aspect-ratio: 4 / 5;
+  object-fit: cover;
+  background: var(--surface-active);
+}
+
+.post-preview__media[data-vertical] {
+  aspect-ratio: 9 / 16;
+  max-height: 520px;
+}
+
+.post-preview__caption {
+  display: -webkit-box;
+  overflow: hidden;
+  margin: 0;
+  padding: var(--sp-3);
+  font-size: var(--fs-sm);
+  line-height: 1.6;
+  white-space: pre-line;
+  -webkit-box-orient: vertical;
+  -webkit-line-clamp: 6;
+}
+
+.post-preview__caption--empty {
+  color: var(--warning-ink);
+}
+
+.post-preview__actions {
+  display: flex;
+  gap: var(--sp-4);
+  padding: var(--sp-2) var(--sp-3) var(--sp-3);
+  color: var(--text-muted);
+}
+
+.post-preview__end {
+  margin-inline-start: auto;
+}
+
+.post-preview__meta {
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: space-between;
+  gap: var(--sp-2);
+  margin: 0;
+  color: var(--text-subtle);
+  font-size: var(--fs-xs);
+}
+
+.post-preview__meta [data-over] {
+  color: var(--danger-ink);
+  font-weight: 700;
+}
+
+@media (max-width: 900px) {
+  .composer {
+    grid-template-columns: 1fr;
+  }
+
+  .composer__preview {
+    position: static;
+    order: -1;
+  }
+
+  .post-preview__media,
+  .post-preview__media[data-vertical] {
+    max-height: 360px;
+  }
+
+  .composer-foot {
+    flex-wrap: wrap;
+  }
+
+  .composer-foot__summary {
+    flex-basis: 100%;
+  }
+}

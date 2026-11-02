@@ -3,7 +3,7 @@ import express from 'express';
 import { z } from 'zod';
 import { db } from '../db.js';
 import { requirePermission, userCan } from '../auth.js';
-import { canEdit, canSee, contentIsMutable, getContent } from '../workspace.js';
+import { canEdit, canSee, contentIsMutable, getContent, MANUAL_CHANNELS, manualPublications, recordManualPublication } from '../workspace.js';
 import { registerSocialOAuth, socialProviders } from './oauth.js';
 import { disconnect, getAccount, listAccounts } from './store.js';
 import { capabilities, requiredCapability } from './capabilities.js';
@@ -40,7 +40,13 @@ export function registerSocialRoutes(app:express.Express) {
  });
  app.get('/api/publishing/:contentId',async(req,res)=>{
   const item=await getContent(String(req.params.contentId));if(!item||!canSee(req.user!,item))return res.status(404).json({error:'المحتوى غير موجود.'});
-  res.setHeader('Cache-Control','no-store');res.json({targets:await publishTargets(item),queue:await contentQueue(item.id),jobs:await contentJobs(item.id)});
+  res.setHeader('Cache-Control','no-store');res.json({targets:await publishTargets(item),queue:await contentQueue(item.id),jobs:await contentJobs(item.id),manual:await manualPublications(item.id)});
+ });
+ // X, LinkedIn, WhatsApp and the website have no publishing API: the person posts by hand and records it here.
+ app.post('/api/publishing/:contentId/manual',async(req,res)=>{
+  const body=z.object({channel:z.enum(MANUAL_CHANNELS),url:z.string().max(500).optional()}).safeParse(req.body);
+  if(!body.success)return res.status(400).json({error:'اختر المنصة.'});
+  try{res.json({manual:await recordManualPublication(req.user!,String(req.params.contentId),body.data.channel,body.data.url)});}catch(e){failed(res,e);}
  });
  // `at` queues the publication for that time; without it the post goes out now.
  app.post('/api/publishing/:contentId',async(req,res)=>{

@@ -19,7 +19,7 @@ export interface PipelineItem {
   /** An approved or scheduled post this person may send back for changes. */
   canReopen?: boolean;
 }
-export interface PipelineEvent { id: string; actorId: string; kind: 'created' | 'transition' | 'comment' | 'version' | 'caption'; from: string | null; to: string | null; body: string; createdAt: string }
+export interface PipelineEvent { id: string; actorId: string; kind: 'created' | 'transition' | 'comment' | 'version' | 'caption' | 'manual_publish'; from: string | null; to: string | null; body: string; createdAt: string }
 export interface PipelineVersion { id: string; imageUrl: string; storyUrl: string | null; studio: unknown; note: string; createdBy: string; createdAt: string }
 export interface PipelineDetail extends PipelineItem { versions: PipelineVersion[]; events: PipelineEvent[] }
 export interface TeamMember { id: string; name: string; departmentId: string | null; role: string }
