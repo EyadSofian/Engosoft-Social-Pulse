@@ -55,7 +55,7 @@ export function PublishContent({item}:{item:PipelineDetail}) {
   </section>}
 
   {publishable&&connected.length>0&&<details className="content-drawer__section post-advanced">
-   <summary><span><b>{t('Publish to TikTok, YouTube or Snapchat','النشر على تيك توك ويوتيوب وسناب شات')}</b><small>{t('Also videos, carousels and text posts on Facebook and Instagram. Each platform asks for its own choices.','وكمان الفيديو والكاروسيل والنص على فيسبوك وإنستجرام. كل منصة بتطلب اختياراتها.')}</small></span><ChevronDown size={16} /></summary>
+   <summary><span><b>{t('Advanced publishing: carousels, a chosen video or text only','نشر متقدم: كاروسيل أو فيديو معيّن أو نص فقط')}</b><small>{t('Everyday publishing to every platform is the Publish button above. Open this only to pick the photos of a carousel, a specific video or a text-only post.','النشر العادي على كل المنصات من زرار «نشر» فوق. افتح ده بس لو عايز تختار صور كاروسيل أو فيديو معيّن أو منشور نص فقط.')}</small></span><ChevronDown size={16} /></summary>
    <div className="u-stack">
     <div className="post-advanced__accounts" role="radiogroup" aria-label={t('Account','الحساب')}>
      {accounts.map(a=><button key={a.id} type="button" role="radio" aria-checked={accountId===a.id} onClick={()=>{setAccount(a.id);setSelected([]);}}><ChannelIcon channel={a.provider} size={15} /><span dir="auto">{a.name}</span><small>{PLATFORM[a.provider]}</small></button>)}

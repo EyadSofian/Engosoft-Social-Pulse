@@ -1,5 +1,7 @@
 import { createCipheriv, randomBytes } from 'node:crypto';
-import { readFile } from 'node:fs/promises';
+import { createReadStream } from 'node:fs';
+import { open, readFile, stat } from 'node:fs/promises';
+import { Readable } from 'node:stream';
 import { accessToken } from './credentials.js';
 import { graphRead, graphBase } from './accounts.js';
 import { headers, postJSON, request, ProviderError } from './http.js';
@@ -12,10 +14,17 @@ const tik='https://open.tiktokapis.com/v2/post/publish/';
 const graphPost=(path:string,token:string,value:unknown)=>postJSON(`${graphBase()}/${path}`,token,value);
 const remoteId=(id:unknown)=>{if(typeof id!=='string'||!id)throw new ProviderError(502,'missing_remote_id');return id;};
 export async function creatorInfo(account:SocialAccount) {return (await postJSON(tik+'creator_info/query/',await accessToken(account),{})).data;}
-async function transfer(url:string,token:string,data:Buffer,extra:Record<string,string>={},method='PUT') {
+/** Bytes [start, end) of a file, read on their own: a 200 MB video is never held in memory whole (Railway bills RAM). */
+async function readRange(file:string,start:number,end:number):Promise<Buffer> {
+ const handle=await open(file,'r');
+ try{const buffer=Buffer.alloc(end-start);const {bytesRead}=await handle.read(buffer,0,end-start,start);return buffer.subarray(0,bytesRead);}finally{await handle.close();}
+}
+/** Sends bytes to a platform upload URL: a buffer, or a byte range of a file streamed from disk. */
+async function transfer(url:string,token:string,data:Buffer|{file:string;start:number;end:number},extra:Record<string,string>={},method='PUT') {
  const u=new URL(url);
  if(u.protocol!=='https:'||u.username||u.password||!(u.hostname==='www.googleapis.com'||/^(?:open-upload|upload(?:\.[a-z0-9-]+)?)\.tiktokapis\.com$/.test(u.hostname)))throw new Error('Unexpected upload destination.');
- let r:Response;try{r=await fetch(url,{method,headers:{...extra,...(token?headers(token):{})},body:data as unknown as BodyInit,redirect:'error',signal:AbortSignal.timeout(120_000)});}catch{throw new ProviderError(0,'transfer_unknown');}
+ const body=Buffer.isBuffer(data)?data as unknown as BodyInit:Readable.toWeb(createReadStream(data.file,{start:data.start,end:data.end-1})) as unknown as BodyInit;
+ let r:Response;try{r=await fetch(url,{method,headers:{...extra,...(token?headers(token):{})},body,redirect:'error',signal:AbortSignal.timeout(Buffer.isBuffer(data)?120_000:600_000),...(Buffer.isBuffer(data)?{}:{duplex:'half'})} as RequestInit);}catch{throw new ProviderError(0,'transfer_unknown');}
  if(!r.ok)throw new ProviderError(r.status,'transfer_failed',r.status>=500);
  return r;
 }
@@ -60,10 +69,11 @@ export async function submit(account:SocialAccount,input:PublishInput,caption:st
    if(!verified.includes(origin.origin))throw new PublicationValidationError('Verify APP_URL as a TikTok media domain, then configure TIKTOK_VERIFIED_MEDIA_ORIGINS.');
    r=await postJSON(tik+'content/init/',token,{post_info:{...post_info,title:title.slice(0,90),description:caption},source_info:{source:'PULL_FROM_URL',photo_cover_index:0,photo_images:media.map(m=>publicMediaUrl(m.id))},post_mode:input.mode==='draft'?'MEDIA_UPLOAD':'DIRECT_POST',media_type:'PHOTO'});
   } else {
-   const data=await readFile(media[0].file),chunkSize=Math.min(data.length,16*1024*1024),chunks=Math.max(1,Math.floor(data.length/chunkSize));
-   r=await postJSON(tik+(input.mode==='draft'?'inbox/video/init/':'video/init/'),token,{...(input.mode==='direct'?{post_info}:{}),source_info:{source:'FILE_UPLOAD',video_size:data.length,chunk_size:chunkSize,total_chunk_count:chunks}});
+   const size=(await stat(media[0].file)).size,chunkSize=Math.min(size,16*1024*1024),chunks=Math.max(1,Math.floor(size/chunkSize));
+   r=await postJSON(tik+(input.mode==='draft'?'inbox/video/init/':'video/init/'),token,{...(input.mode==='direct'?{post_info}:{}),source_info:{source:'FILE_UPLOAD',video_size:size,chunk_size:chunkSize,total_chunk_count:chunks}});
    const publishId=remoteId(r.data?.publish_id);await persist({state:'processing',remoteId:publishId,phase:'tiktok_transfer'});
-   for(let i=0;i<chunks;i++) {const start=i*chunkSize,end=i===chunks-1?data.length:Math.min(data.length,start+chunkSize);await transfer(r.data.upload_url,'',data.subarray(start,end),{'Content-Type':'video/mp4','Content-Length':String(end-start),'Content-Range':`bytes ${start}-${end-1}/${data.length}`});}
+   // One 16 MB chunk in memory at a time.
+   for(let i=0;i<chunks;i++) {const start=i*chunkSize,end=i===chunks-1?size:Math.min(size,start+chunkSize);await transfer(r.data.upload_url,'',await readRange(media[0].file,start,end),{'Content-Type':'video/mp4','Content-Length':String(end-start),'Content-Range':`bytes ${start}-${end-1}/${size}`});}
   }
   return {state:input.mode==='draft'?'awaiting_user':'processing',remoteId:remoteId(r.data?.publish_id),phase:'tiktok_status'};
  }
@@ -93,7 +103,7 @@ export async function submit(account:SocialAccount,input:PublishInput,caption:st
   if(!r.ok)throw new ProviderError(r.status,'youtube_upload_init_failed');const location=r.headers.get('location');
   if(!location||new URL(location).origin!=='https://www.googleapis.com')throw new Error('Invalid YouTube upload session.');
   await saveSecret(`upload:${job.id}`,{url:location,bytes:m.bytes,file:m.file,mime:m.mimeType});await persist({state:'processing',phase:'youtube_transfer'});
-  const response=await transfer(location,token,await readFile(m.file),{'Content-Type':m.mimeType,'Content-Length':String(m.bytes)}),body=await response.json();
+  const response=await transfer(location,token,{file:m.file,start:0,end:m.bytes},{'Content-Type':m.mimeType,'Content-Length':String(m.bytes)}),body=await response.json();
   return {state:'processing',remoteId:remoteId(body.id),externalId:body.id,phase:'youtube_processing'};
  }
  throw new Error('This publishing operation is unavailable.');
@@ -137,7 +147,7 @@ export async function poll(account:SocialAccount,job:PublishJob):Promise<Publish
    if(r.status===308) {
     const offset=Number(/bytes=0-(\d+)/.exec(r.headers.get('range')||'')?.[1]||'-1')+1;
     if(offset<0||offset>=session.bytes)return {state:'unknown',error:'Invalid resumable upload offset.'};
-    const bytes=await readFile(session.file);const transferred=await transfer(session.url,token,bytes.subarray(offset),{'Content-Type':session.mime,'Content-Length':String(bytes.length-offset),'Content-Range':`bytes ${offset}-${bytes.length-1}/${bytes.length}`});const b=await transferred.json();
+    const size=(await stat(session.file)).size;const transferred=await transfer(session.url,token,{file:session.file,start:offset,end:size},{'Content-Type':session.mime,'Content-Length':String(size-offset),'Content-Range':`bytes ${offset}-${size-1}/${size}`});const b=await transferred.json();
     return {state:'processing',externalId:remoteId(b.id),remoteId:b.id,phase:'youtube_processing'};
    }
    if(!r.ok)return {state:'unknown',error:'Upload session expired or unavailable. Verify channel uploads before retrying.'};

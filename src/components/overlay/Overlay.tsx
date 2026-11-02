@@ -70,7 +70,7 @@ interface DialogProps {
   title: string;
   description?: ReactNode;
   footer?: ReactNode;
-  size?: 'sm' | 'md' | 'lg';
+  size?: 'sm' | 'md' | 'lg' | 'xl';
   children?: ReactNode;
 }
 
