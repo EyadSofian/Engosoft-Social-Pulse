@@ -30,7 +30,8 @@ export const DEFAULT_PRICING: Pricing = {
   defaultMonthlyUsd: null,
   models: {
     'gpt-image-2.5-flare': { textIn: 5, imageIn: 8, out: 30 },
-    'gpt-image-2': { textIn: 5, imageIn: 8, out: 30 },
+    'gpt-image-2.5-sunburst': { textIn: 5, imageIn: 8, out: 30 },
+    'gpt-image-2':{ textIn: 5, imageIn: 8, out: 30 },
     'gpt-image-1.5': { textIn: 5, imageIn: 8, out: 32 },
     'gpt-image-1': { textIn: 5, imageIn: 10, out: 40 },
     'gpt-image-1-mini': { textIn: 2, imageIn: 2.5, out: 8 },

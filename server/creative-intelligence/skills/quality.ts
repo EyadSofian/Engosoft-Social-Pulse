@@ -6,7 +6,8 @@ export const RUBRIC_KEYS = ['idea', 'composition', 'visualHierarchy', 'visualWei
 export type RubricKey = (typeof RUBRIC_KEYS)[number];
 
 export const AI_TELLS = [
-  'generic blue gradients', 'random glow', 'unnecessary glass cards', 'repeated pill buttons', 'random geometric blobs', 'meaningless technology lines',
+  // Not "blue gradients": a vivid royal-blue world is the Engosoft feed itself.
+  'muddy or murky gradients', 'random glow', 'unnecessary glass cards', 'repeated pill buttons', 'random geometric blobs', 'meaningless technology lines',
   'person-right / text-left by default', 'giant logo blocks', 'fake 3D', 'plastic AI people', 'overloaded canvas', 'empty template pretending to be premium',
 ];
 export const COMPOSITING_FAILS = [
@@ -39,7 +40,7 @@ export const creativeRepair: DesignSkill<'creative-repair'> = {
   id: 'creative-repair', version: 'creative-repair:v1',
   purpose: 'Turns the critique into the smallest targeted repairs.',
   rules: [
-    'Never "make it more professional". Write concrete operations: "move the instructor 6% inward", "reduce the blue saturation of the background", "add a realistic contact shadow under the laptop", "match the subject’s colour temperature to the warm background", "create more breathing space above the CTA".',
+    'Never "make it more professional". Write concrete operations: "move the instructor 6% inward", "calm the busy background behind the headline", "add a realistic contact shadow under the laptop", "match the subject’s colour temperature to the warm background", "create more breathing space above the CTA".',
     'Each repair gets one operation and, when it is local, the region it affects (normalized 0..1). Use region width 0 when the repair is global.',
     'Use the smallest repair that fixes the problem. FULL_REGENERATE only when the idea or the whole composition fails.',
     'Return no repairs when the creative is publishable.',

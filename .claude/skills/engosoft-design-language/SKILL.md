@@ -18,7 +18,7 @@ Code (single source for director, image prompt and critic): `server/creative-int
 3. **Typography carries the idea.** Few words, large and confident, generous negative space. Short strong statements; never paragraphs.
 4. **Controlled, layered construction.** Considered background, one hero subject, intentional lighting, clear graphic composition, reserved headline space, restrained details. Nothing scattered, nothing flying in from every side.
 5. **Light.** Soft and directional with depth and gentle perspective; a subtle blue glow and at most one small orange accent of energy.
-6. **Colour.** Engosoft blue `#0046FF` and orange `#FF6600` are confident accents inside a contextual palette, never a flat flood.
+6. **Colour.** One of the two house worlds: vivid royal blue (`#0046FF` → `#001BB7`, the default) or light engineering paper; orange `#FF6600` for the CTA pill and a bright green `#4CFF7A` highlight bar. Never murky or dark navy. The colour director picks the world (`colorDirector.world`).
 7. **Adaptable.** Keep headline, subject and CTA in the central area so the master can be recomposed for 9:16 and 1.91:1 (recomposed — subject repositioned, headline reflowed, spacing and density changed — never just cropped).
 
 ## Avoid (the critic reports these as defects)

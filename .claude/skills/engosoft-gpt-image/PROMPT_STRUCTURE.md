@@ -1,5 +1,7 @@
 # Compiled prompt structure
 
+Since compiler v4 the default image prompt is the short creative brief from `compileBriefPrompt` (server/creative-intelligence/skills/engine.ts): use and format, IDEA, SCENE AND SUBJECT, LOOK (one house world), LAYOUT in words, LOGO SPACE, TEXT (exact), AVOID — about 4,500 characters. The 2,000-word spec contradicted itself and diluted the idea (docs/MODEL_COMPARISON.md, 2026-11-02). `CREATIVE_PROMPT=detailed` and typeset mode use the full structure below.
+
 Sections, in order. Write intentionally; length is not quality.
 
 ```
@@ -12,7 +14,7 @@ COMPOSITION Focal point, subject zone, text zones, visual flow — from the art 
 ART DIRECTION  Lighting, lens, depth, graphic language, density.
 REFERENCE USAGE  Image 1: composition only. Image 2: lighting and photographic treatment. Image 3: mood. Do not reproduce their text, people or logos.
 TYPOGRAPHY INTENT  Weight, scale contrast, Arabic-first hierarchy, Almarai-like geometric Arabic sans / Plus Jakarta Sans-like Latin.
-BRAND FEEL  Engosoft blue #0046FF and orange #FF6600 as identity accents where they serve the idea; not a blue flood.
+BRAND FEEL  One house world: vivid royal blue #0046FF → #001BB7 (default) or light engineering paper; orange #FF6600 CTA pill, green #4CFF7A highlight bar.
 LOGO RESERVATION  Keep the [zone] region visually calm and clean, about [w]% × [h]% of the canvas. Do not place logos, watermarks, brand names or lettering there.
 MUST PRESERVE  (edits only) What must not change.
 DO NOT      Invent dates, prices, names, certificates, discounts, URLs; add any logo or watermark; add fake UI; distort faces or hands.

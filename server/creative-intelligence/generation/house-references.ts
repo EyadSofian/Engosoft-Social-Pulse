@@ -40,9 +40,17 @@ export async function houseReferences(text: string, keyVisualPath = '', env: Nod
   return Promise.all(files.map(async (f) => ({ name: f.name, mime: 'image/jpeg' as const, data: await sharp(readFileSync(f.path)).flatten({ background: '#ffffff' }).resize({ width: 1024, height: 1024, fit: 'inside', withoutEnlargement: true }).jpeg({ quality: 88 }).toBuffer() })));
 }
 
-/** The prompt section that tells the model what the attached images are for. */
+/** The prompt section that tells the model what each attached image is for (numbered roles, as OpenAI recommends). */
 export function referencePrompt(images: ReferenceImage[]): string {
   if (!images.length) return '';
   const key = images[0].name === 'campaign key visual';
-  return `\n\nREFERENCE IMAGES\nThe ${images.length} attached images are ${key ? 'the campaign key visual (image 1) and ' : ''}approved Engosoft posts. They define the house style: match their colour world, the bold Arabic display typography with kashida and the green highlight bars, the photographic subject treatment, the spacing and the overall finish, so the new post clearly belongs to the same feed. Create a completely NEW post for this brief with its own composition — do not copy their layout one-to-one, their people, their text, their logos, footers, partner marks or website lines.`;
+  const posts = images.length - (key ? 1 : 0);
+  const first = key ? 2 : 1;
+  const range = posts > 1 ? `Images ${first}–${first + posts - 1} are` : `Image ${first} is`;
+  return [
+    '\n\nREFERENCE IMAGES — style only',
+    key ? 'Image 1 is the campaign key visual: follow its campaign look.' : '',
+    posts ? `${range} approved Engosoft posts: use their colour world, the bold Arabic display type with kashida, the green highlight bars, the orange button, the photo treatment and the finish, so the new post clearly belongs to the same feed.` : '',
+    'Create a completely NEW post for this brief with its own composition — do not copy their layout, their people, their text, their logos, footers, partner marks or website lines.',
+  ].filter(Boolean).join('\n');
 }
