@@ -36,11 +36,31 @@ test('with CREATIVE_LOGO=auto the prompt reserves the planned corner at the size
   assert.match(prompt, /ART DIRECTION STANDARD\nPremium launch quality/);
   assert.ok(prompt.includes(DESIGN_AVOID[0]));
   const story = compileFullCreativePrompt(brief, direction({ logoMark: 'lockup', logoCorner: 'bottom-left' }), 'story');
-  assert.match(story, /bottom-left area — about 32% of the width/);
+  // On a story the logo space is placed where the logo goes: above the bottom platform bar, at the logo's real height.
+  assert.match(story, /left area from 0% to 32% of the width and from 69% to 83% of the height \(just above the platform bar at the bottom/);
   assert.match(story, /just above the bottom 17%/);
 });
 
 test('older plans without a logo choice keep the format default', () => {
   assert.deepEqual(logoPlanOf(direction(), 'feed'), { mark: 'lockup', corner: 'top-left' });
   assert.deepEqual(logoPlanOf(direction({ logoMark: 'wordmark' as never, logoCorner: 'middle' as never }), 'story'), { mark: 'lockup', corner: 'top-left' });
+});
+
+test('a story keeps the logo space just below the top bar, and a recomposed story gets a full-height plan', async () => {
+  const { canvasOf, logoRepairZone, recomposePlan } = await import('../server/creative-intelligence/generation/full-creative');
+  const { logoReservation } = await import('../server/creative-intelligence/brand/design-language');
+  const c = canvasOf('instagram-story');
+  const prompt = logoReservation('lockup', 'top-left', { width: c.output.width, height: c.output.height, safe: c.safeArea });
+  assert.match(prompt, /from 6% to 38% of the width and from 13% to 27% of the height \(just below the platform bar/);
+  assert.match(prompt, /full lockup/);
+  // The corner repair cleans the same spot, starting below the top bar.
+  const zone = logoRepairZone(c, { mark: 'lockup', corner: 'top-left' });
+  assert.ok(zone.y > 0.12 * Number(c.generation.split('x')[1]));
+  // The feed keeps its zone unchanged.
+  assert.match(logoReservation('lockup', 'top-left', { width: 1080, height: 1350, safe: { top: 0, bottom: 0, left: 0, right: 0 } }), /top-left area — about 32% of the width and 20% of the height/);
+  const plan = recomposePlan('instagram-story');
+  assert.match(plan, /stretched/);
+  assert.match(plan, /use its whole height/);
+  assert.match(plan, /Below 80%: background only/);
+  assert.doesNotMatch(recomposePlan('feed'), /phone story/);
 });

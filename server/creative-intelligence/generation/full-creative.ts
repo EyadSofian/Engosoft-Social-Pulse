@@ -10,7 +10,7 @@ import { mediaDir } from '../../paths.js';
 import { randomUUID } from 'node:crypto';
 import { resolve } from 'node:path';
 import sharp from 'sharp';
-import { DESIGN_AVOID, DESIGN_LANGUAGE_VERSION, DESIGN_STANDARD, DIRECTION_ARCHETYPES, houseLogo, LOGO_CORNERS, LOGO_GUIDANCE, LOGO_MARKS, LOGO_ZONE, logoReservation, type LogoMark } from '../brand/design-language.js';
+import { DESIGN_AVOID, DESIGN_LANGUAGE_VERSION, DESIGN_STANDARD, DIRECTION_ARCHETYPES, houseLogo, LOGO_CORNERS, LOGO_GUIDANCE, LOGO_MARKS, logoReservation, logoZoneOn, type LogoCanvas, type LogoMark } from '../brand/design-language.js';
 import { BRAND } from '../brand/registry.js';
 import { resolveOdooContext, type VerifiedCourseContext } from '../context/odoo-context.js';
 import { inspectCreative, zonesFromInspection, type CreativeInspection } from '../criticism/inspect.js';
@@ -244,7 +244,7 @@ export function promptFor(brief: CreativeBriefPlan, direction: CreativeDirection
   if (!brief.engine || !direction.engine) return compileFullCreativePrompt(brief, direction, format);
   const plan = logoPlanOf(direction, format);
   const design = { ...direction.engine.design, logoDirector: { ...direction.engine.design.logoDirector, mark: plan.mark, corner: plan.corner } };
-  const input = { strategy: brief.engine.strategy, direction: direction.engine.strategy, design, copy: brief.canonicalCopy, format: { label: canvasOf(format).label, story: canvasOf(format).vertical }, adaptation };
+  const input = { strategy: brief.engine.strategy, direction: direction.engine.strategy, design, copy: brief.canonicalCopy, format: { label: canvasOf(format).label, story: canvasOf(format).vertical, canvas: logoCanvasOf(format) }, adaptation };
   if (mode === 'model' && style === 'brief') return compileBriefPrompt(input);
   return compileDesignPrompt({ ...input, typeset: mode === 'typeset' ? typesetPlanFor(direction, format, adaptation) : undefined });
 }
@@ -295,7 +295,7 @@ export function compileFullCreativePrompt(brief: CreativeBriefPlan, direction: C
     `ART DIRECTION STANDARD\n${DESIGN_STANDARD.join(' ')}`,
     `TYPOGRAPHY\n${direction.typography}. Arabic set right-to-left in a bold, modern geometric Arabic sans-serif (similar to Almarai); Latin in a clean geometric sans (similar to Plus Jakarta Sans). Clear hierarchy, generous margins, readable on a phone.`,
     `TEXT — render exactly these strings, verbatim, each once, and no other text:\n${text}\nSpell Arabic exactly with correctly joined letters. Copy digits exactly as written (Western digits).`,
-    `LOGO RESERVATION\n${logoReservation(mark, corner)}`,
+    `LOGO RESERVATION\n${logoReservation(mark, corner, logoCanvasOf(format))}`,
     `RIGHT-TO-LEFT\nThe layout reads right to left: arrows and directional cues on buttons point left.`,
     `DO NOT\nAdd extra words, fake UI, QR codes, prices, dates or names that are not listed above. No seals, badges, emblems, certificate marks or accreditation logos (they imply credentials). No clutter, no clip-art, no generic template look. Also avoid: ${DESIGN_AVOID.join('; ')}.`,
   ].join('\n\n');
@@ -354,11 +354,26 @@ export function drawnBox(spec: Pick<Canvas, 'generation' | 'output'>, box: NormB
 
 /** The reserved logo corner to repaint, inside the size's safe area (below a story's top bar, inside a cover's band). */
 export function logoRepairZone(spec: Pick<Canvas, 'generation' | 'output' | 'safeArea'>, plan: { mark: LogoMark; corner: Corner }): NormBox {
-  const { w, h } = LOGO_ZONE[plan.mark];
-  const s = spec.safeArea, out = spec.output;
-  const x = plan.corner.endsWith('left') ? s.left / out.width : 1 - s.right / out.width - w;
-  const y = plan.corner.startsWith('top') ? s.top / out.height : 1 - s.bottom / out.height - h;
-  return drawnBox(spec, { x: Math.max(0, x), y: Math.max(0, y), width: w, height: h });
+  const z = logoZoneOn(plan.mark, plan.corner, { width: spec.output.width, height: spec.output.height, safe: spec.safeArea });
+  return drawnBox(spec, { x: z.x, y: z.y, width: z.w, height: z.h });
+}
+/** The output pixels and covered edges of a canvas, for placing the logo space where the logo will go. */
+const logoCanvasOf = (format: CanvasTarget): LogoCanvas => { const c = canvasOf(format); return { width: c.output.width, height: c.output.height, safe: c.safeArea }; };
+
+/**
+ * How a recomposition fills a canvas of another shape. Given the master, the image model tends to keep its
+ * arrangement and only extend the background above and below (a feed post "stretched" into a story), so a
+ * vertical canvas gets an explicit top-to-bottom plan inside the platform's safe area.
+ */
+export function recomposePlan(format: CanvasTarget): string {
+  const c = canvasOf(format);
+  const never = 'Never keep the master\'s arrangement and only add plain background around it, above and below or at the sides: that reads as the old post stretched, not a design for this shape.';
+  if (!c.vertical) return never;
+  const pct = (v: number) => Math.round(v * 100);
+  const top = c.safeArea.top / c.output.height, bottom = 1 - c.safeArea.bottom / c.output.height;
+  const band = bottom - top;
+  const at = (f: number) => pct(top + band * f);
+  return `${never} This canvas is a full-screen phone story, much taller than the master: use its whole height. From the top — 0–${pct(top)}%: background only (the platform's top bar). ${pct(top)}–${at(0.3)}%: the headline block, right-aligned and larger than in the master, beside the logo space at the left. ${at(0.32)}–${at(0.8)}%: the hero subject, scaled up to fill the width, with the facts on or just below it. ${at(0.82)}–${at(0.95)}%: the button, centred. Below ${pct(bottom)}%: background only (the reply bar and buttons cover it) — the button never goes there.`;
 }
 
 async function toOutput(png: Buffer, format: CanvasTarget): Promise<Buffer> {
@@ -429,7 +444,7 @@ export async function produceDirection(input: {
   const started = Date.now();
   const style = promptStyleFor(env);
   const basePrompt = sourceImage
-    ? `${promptFor(brief, direction, format, true, 'model', style)}\n\nMASTER\nThe attached image is the approved master of this campaign. Design it again for this canvas: same concept, subject, palette, typography style and exact text, with the layout rebuilt from scratch for this shape. Never stretch, squash or crop it, never put it inside a frame or card, and never fill the space with blurred or repeated copies of it.`
+    ? `${promptFor(brief, direction, format, true, 'model', style)}\n\nMASTER\nThe attached image is the approved master of this campaign. Design it again for this canvas: same concept, subject, palette, typography style and exact text, with the layout rebuilt from scratch for this shape. Never stretch, squash or crop it, never put it inside a frame or card, and never fill the space with blurred or repeated copies of it. ${recomposePlan(format)}`
     : promptFor(brief, direction, format, false, 'model', style);
   // A new post is drawn with approved Engosoft posts attached as references; a recomposition follows its master.
   const references = sourceImage ? [] : await houseReferences(`${brief.objective} ${brief.audience} ${brief.canonicalCopy.headline} ${direction.concept}`, input.campaign?.keyVisualPath);
@@ -614,7 +629,7 @@ async function produceTypeset(input: Parameters<typeof produceDirection>[0]): Pr
   const started = Date.now();
   const adaptation = Boolean(sourceImage);
   const basePrompt = sourceImage
-    ? `${promptFor(brief, direction, format, true, 'typeset')}\n\nMASTER\nThe attached image is the approved master visual of this campaign (it has no text; the type is added afterwards). Design it again for this canvas: same concept, subject, palette, lighting and finish, with the layout rebuilt from scratch for this shape and the text areas above left calm. Never stretch, squash or crop it, never put it inside a frame or card, and never fill the space with blurred or repeated copies of it. Keep it free of any text.`
+    ? `${promptFor(brief, direction, format, true, 'typeset')}\n\nMASTER\nThe attached image is the approved master visual of this campaign (it has no text; the type is added afterwards). Design it again for this canvas: same concept, subject, palette, lighting and finish, with the layout rebuilt from scratch for this shape and the text areas above left calm. Never stretch, squash or crop it, never put it inside a frame or card, and never fill the space with blurred or repeated copies of it. ${recomposePlan(format)} Keep it free of any text.`
     : promptFor(brief, direction, format, false, 'typeset');
   const prompt = `${basePrompt}${stampRoom(input.campaign)}`;
   const problems: string[] = [];

@@ -79,8 +79,31 @@ export const LOGO_ZONE: Record<LogoMark, { w: number; h: number }> = { lockup: {
 
 export const markOfVariant = (variantId: string): LogoMark => (variantId.startsWith('symbol') ? 'symbol' : 'lockup');
 
-/** Prompt paragraph that keeps the planned logo corner clean in the generated image. */
-export function logoReservation(mark: LogoMark, corner: Corner): string {
+/** The canvas a logo zone is measured on: output pixels and the edges the platform covers. */
+export interface LogoCanvas { width: number; height: number; safe: { top: number; bottom: number; left: number; right: number } }
+
+/**
+ * Where the official logo will sit, as fractions of the canvas: in the corner, inside the safe area (below a
+ * story's top bar), and as tall as the logo really is there. LOGO_ZONE is measured on the 4:5 feed; the logo is
+ * sized from the canvas width, so on a 9:16 story the same logo takes a smaller share of the height.
+ */
+export function logoZoneOn(mark: LogoMark, corner: Corner, canvas?: LogoCanvas): { x: number; y: number; w: number; h: number } {
   const zone = LOGO_ZONE[mark];
-  return `Keep the ${corner} area — about ${Math.round(zone.w * 100)}% of the width and ${Math.round(zone.h * 100)}% of the height — a calm, uncluttered continuation of the background with no text, faces, objects or graphics. The official logo (${mark === 'lockup' ? 'full lockup' : 'symbol'}) will be placed there afterwards. Do NOT draw any logo, brand mark, monogram, wordmark, watermark, or the word "Engosoft" anywhere.`;
+  if (!canvas) return { x: corner.endsWith('left') ? 0 : 1 - zone.w, y: corner.startsWith('top') ? 0 : 1 - zone.h, w: zone.w, h: zone.h };
+  const { width, height, safe } = canvas;
+  const h = Math.min(0.5, Math.max(0.12, zone.h * (1350 / 1080) * (width / height)));
+  const x = corner.endsWith('left') ? safe.left / width : 1 - safe.right / width - zone.w;
+  const y = corner.startsWith('top') ? safe.top / height : 1 - safe.bottom / height - h;
+  return { x: Math.max(0, x), y: Math.max(0, y), w: zone.w, h };
+}
+
+/** Prompt paragraph that keeps the planned logo corner clean in the generated image, where the logo will really go. */
+export function logoReservation(mark: LogoMark, corner: Corner, canvas?: LogoCanvas): string {
+  const z = logoZoneOn(mark, corner, canvas);
+  const pct = (v: number) => Math.round(v * 100);
+  const covered = canvas && (corner.startsWith('top') ? canvas.safe.top : canvas.safe.bottom) > 0;
+  const where = covered
+    ? `the ${corner.endsWith('left') ? 'left' : 'right'} area from ${pct(z.x)}% to ${pct(z.x + z.w)}% of the width and from ${pct(z.y)}% to ${pct(z.y + z.h)}% of the height (just ${corner.startsWith('top') ? 'below the platform bar at the top' : 'above the platform bar at the bottom'}, which stays background too)`
+    : `the ${corner} area — about ${pct(z.w)}% of the width and ${pct(z.h)}% of the height —`;
+  return `Keep ${where} a calm, uncluttered continuation of the background with no text, faces, objects or graphics; the headline starts beside it or below it, never inside it. The official logo (${mark === 'lockup' ? 'full lockup: the symbol above the Engosoft wordmark' : 'symbol'}) will be placed there afterwards. Do NOT draw any logo, brand mark, monogram, wordmark, watermark, or the word "Engosoft" anywhere.`;
 }

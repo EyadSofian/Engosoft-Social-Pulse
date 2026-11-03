@@ -11,7 +11,7 @@
 import { existsSync, readFileSync } from 'node:fs';
 import { resolve } from 'node:path';
 import sharp from 'sharp';
-import { DESIGN_AVOID, DESIGN_STANDARD, HOUSE_STYLE, logoReservation, type LogoMark } from '../brand/design-language.js';
+import { DESIGN_AVOID, DESIGN_STANDARD, HOUSE_STYLE, logoReservation, type LogoCanvas, type LogoMark } from '../brand/design-language.js';
 import { BRAND } from '../brand/registry.js';
 import type { Corner } from '../logo-resolution/resolver.js';
 import { retrieveVisualReferences } from '../../../src/features/creative-studio/visual-references.js';
@@ -192,7 +192,7 @@ const hasArea = (z?: Zone) => Boolean(z && z.width > 0.01 && z.height > 0.01);
 
 /** The GPT Image prompt, compiled from the design decisions — nothing here is a fixed creative. */
 export function compileDesignPrompt(input: {
-  strategy: StrategyDecision; direction: StrategyDecision['themeDirector']['directions'][number]; design: DesignDecision; copy: { headline: string; subheadline?: string; cta?: string; facts?: string[] }; format: { label: string; story: boolean }; adaptation?: boolean;
+  strategy: StrategyDecision; direction: StrategyDecision['themeDirector']['directions'][number]; design: DesignDecision; copy: { headline: string; subheadline?: string; cta?: string; facts?: string[] }; format: { label: string; story: boolean; /** Output pixels and covered edges, so the logo space is where the logo will really go. */ canvas?: LogoCanvas }; adaptation?: boolean;
   /**
    * Typeset mode: the image carries no text; the design system sets the copy in brand fonts afterwards, in
    * these zones (normalized). The image model only has to leave them calm.
@@ -239,7 +239,7 @@ export function compileDesignPrompt(input: {
       `TYPOGRAPHY\nThe typography is designed into the composition, not laid on top: the headline sits in its own planned space, never over a face, the subject or busy detail, and the picture is built around it. Hierarchy with clear size steps (headline cap height about ${pct(T.scale.headline)} of the width, supporting line about ${pct(T.scale.subheadline)}, CTA about ${pct(T.scale.cta)}). ${T.alignment} aligned. ${T.emphasis} ${T.mixedScriptNotes} Arabic set right-to-left in a bold, modern geometric Arabic sans-serif (similar to Almarai); Latin in a clean geometric sans (similar to Plus Jakarta Sans). Leading: ${T.leading}.`,
       `TEXT — render exactly these strings, verbatim, each once, and no other text:\n${text}\nSpell Arabic exactly with correctly joined letters. Copy digits exactly as written (Western digits).`,
     ]),
-    `BRAND-SAFE AREA\n${logoReservation(design.logoDirector.mark, design.logoDirector.corner)}`,
+    `BRAND-SAFE AREA\n${logoReservation(design.logoDirector.mark, design.logoDirector.corner, input.format.canvas)}`,
     input.typeset ? `RIGHT-TO-LEFT\nThe composition reads right to left: the subject's gaze, gesture and leading lines guide the eye toward the text area.` : `RIGHT-TO-LEFT\nThe layout reads right to left: arrows and directional cues point left.`,
     input.adaptation ? `ADAPTATION\n${platformDesigner.rules.join(' ')}` : '',
     `AVOID\n${[...theme.avoid, ...DESIGN_AVOID].join('; ')}. ${input.typeset ? 'Absolutely no text, letters, numbers, fake writing, signage, labels, UI, buttons or text boxes.' : 'No extra words, fake UI, QR codes, prices, dates or names beyond the text above.'} No seals, badges or accreditation marks.`,
@@ -308,7 +308,7 @@ export function compileBriefPrompt(input: Omit<Parameters<typeof compileDesignPr
   const people = PEOPLE.test(`${I.subject} ${direction.subjectStrategy}`);
   // When the approved copy names Engosoft, the logo rule must not forbid the word the text asks for.
   const named = [copy.headline, copy.subheadline, copy.cta, ...(copy.facts ?? [])].some((t) => t && /engosoft|إنجوسوفت|انجوسوفت/i.test(t));
-  const logoSpace = logoReservation(design.logoDirector.mark, design.logoDirector.corner).replace(', or the word "Engosoft" anywhere.', named ? '. The word "Engosoft" appears only where the text below has it.' : ', or the word "Engosoft" anywhere.');
+  const logoSpace = logoReservation(design.logoDirector.mark, design.logoDirector.corner, input.format.canvas).replace(', or the word "Engosoft" anywhere.', named ? '. The word "Engosoft" appears only where the text below has it.' : ', or the word "Engosoft" anywhere.');
   const layout = input.adaptation
     ? `Rebuild the layout for this canvas shape; keep the master's hierarchy (${clause(L.primaryFocalPoint)}, then ${clause(L.secondaryFocalPoint)}). ${platformDesigner.rules.join(' ')}`
     : `${design.canvasDesigner ? `${clause(design.canvasDesigner.layoutRecipe)}. ` : ''}Headline in the ${regionWords(L.headlineZone)}; main subject in the ${regionWords(L.heroSubject)}${hasArea(L.ctaZone) ? `; button in the ${regionWords(L.ctaZone)}` : ''}. The eye goes first to ${clause(L.primaryFocalPoint)}, then to ${clause(L.secondaryFocalPoint)}. Related text grouped tightly, calm space around the type, essential content clear of the areas the platform covers.`;
