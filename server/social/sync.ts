@@ -1,3 +1,4 @@
+import { syncLinkedIn } from './linkedin.js';
 import { syncMeta } from '../connectors/meta.js';
 import { syncTikTok } from '../connectors/tiktok.js';
 import { syncSnapchat } from '../connectors/snapchat.js';
@@ -38,10 +39,11 @@ export async function syncSocialProviders(only?:SocialProvider) {
    results.push(result);
   }
  }
+ if(!only||only==='linkedin'){const linked=(await listAccounts('linkedin')).filter(a=>a.status!=='disconnected');if(linked.length)for(const a of linked)results.push(await syncLinkedIn(a));else results.push({platform:'linkedin',status:'needs_setup',message:'Connect your organization page through Zernio, then select it in Connections.',posts:[]});}
  // Persist pages independently, then aggregate provider status; a failed account cannot erase successful imports.
  for(const r of results)await saveConnectorResult(r);
  const grouped:ConnectorResult[]=[];
- for(const p of ['facebook','instagram','tiktok','snapchat','youtube'] as const) {
+ for(const p of ['facebook','instagram','tiktok','snapchat','youtube','linkedin'] as const) {
   const list=results.filter(r=>r.platform===p);if(!list.length)continue;
   const allAccounts=await listAccounts(p);
   const allDisconnected=allAccounts.length>0&&allAccounts.every(a=>a.status==='disconnected');

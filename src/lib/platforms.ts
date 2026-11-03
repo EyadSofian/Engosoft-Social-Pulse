@@ -1,10 +1,10 @@
 import type { ConnectorStatus, PlanPlatform, PlanState, PlanStatus, Platform } from '../types';
 
 /** Display order is fixed: the platform palette is validated for these neighbours. */
-export const PLATFORMS: Platform[] = ['facebook', 'instagram', 'tiktok', 'snapchat', 'youtube', 'website'];
+export const PLATFORMS: Platform[] = ['facebook', 'instagram', 'tiktok', 'snapchat', 'youtube', 'linkedin', 'website'];
 
-/** Platforms a calendar plan can be for: the measured ones, then LinkedIn and X, which are planned and published by hand. */
-export const PLAN_PLATFORMS: PlanPlatform[] = [...PLATFORMS, 'linkedin', 'x'];
+/** Platforms a calendar plan can be for: the measured ones, then X, which is published by hand. */
+export const PLAN_PLATFORMS: PlanPlatform[] = [...PLATFORMS, 'x'];
 
 export const platformName: Record<PlanPlatform, string> = {
   facebook: 'فيسبوك',
@@ -107,6 +107,7 @@ export const connectorGuide: Record<Platform, ConnectorGuide> = {
     env: ['SNAP_PROFILE_ACCESS_TOKEN', 'SNAP_PROFILE_REFRESH_TOKEN', 'SNAP_PROFILE_ID', 'SNAP_CLIENT_ID', 'SNAP_CLIENT_SECRET'],
   },
   youtube: { reads: 'فيديوهات القناة وإحصاءاتها وتحليلاتها بموافقة المالك.', steps: ['فعّل YouTube Data API v3 وYouTube Analytics API ثم اربط القناة عبر OAuth.'], env: ['YOUTUBE_CLIENT_ID','YOUTUBE_CLIENT_SECRET','YOUTUBE_REDIRECT_URI'] },
+  linkedin: { reads: 'منشورات صفحة الشركة وإحصاءاتها عبر Zernio.', steps: ['اربط صفحة الشركة في Zernio ثم اخترها من ربط المنصات.'], env: [] },
   website: {
     reads: 'مشاهدات الموقع اليومية وأداء كل صفحة خلال آخر 90 يومًا من Google Analytics 4.',
     steps: [

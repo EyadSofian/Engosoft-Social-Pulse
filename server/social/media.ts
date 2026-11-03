@@ -102,7 +102,8 @@ const signature=(id:string,exp:string)=>createHmac('sha256',Buffer.from(process.
 export function publicMediaUrl(id:string) {const exp=String(Date.now()+24*3600_000);return `${process.env.APP_URL}/api/social/media/${id}?expires=${exp}&signature=${signature(id,exp)}`;}
 export function validMediaSignature(id:string,exp:string,sig:string) {return /^\d+$/.test(exp)&&Number(exp)>Date.now()&&Number(exp)<=Date.now()+24*3600_000&&signature(id,exp)===sig;}
 export function validateMedia(provider:SocialProvider,input:PublishInput,media:Media[],caption:string) {
- if(input.kind==='text') {if(provider!=='facebook'||media.length||!caption.trim())throw new Error('Text publishing requires a Facebook caption and no media.');return;}
+ if(provider==='linkedin'){if(input.mode!=='direct'||caption.length>3000)throw new Error('LinkedIn requires direct publishing and a caption up to 3,000 characters.');if(input.kind==='carousel'&&media.some(m=>m.type!=='image'))throw new Error('LinkedIn carousels contain images only.');if(new Set(media.map(m=>m.url)).size!==media.length)throw new Error('Select each LinkedIn media item only once.');}
+ if(input.kind==='text') {if(!['facebook','linkedin'].includes(provider)||media.length||!caption.trim())throw new Error('Text publishing requires a Facebook or LinkedIn caption and no media.');return;}
  if(!media.length||input.kind!=='carousel'&&media.length!==1)throw new Error('Select one media item, or use a carousel.');
  if(input.kind==='image'&&media.some(m=>m.type!=='image')||input.kind==='video'&&media.some(m=>m.type!=='video'))throw new Error('Media does not match the selected content type.');
  if(provider==='instagram'&&caption.length>2200)throw new Error('Instagram captions are limited to 2,200 characters.');
@@ -116,6 +117,7 @@ export function validateMedia(provider:SocialProvider,input:PublishInput,media:M
   if(m.type==='video'&&(!m.duration||m.duration<=0||m.mimeType!=='video/mp4'))throw new Error('Use a verified MP4 video.');
   if(provider==='tiktok'&&((m.duration||0)>600||Math.min(m.width,m.height)<360))throw new Error('TikTok media exceeds the supported limits.');
   if(provider==='instagram'&&m.type==='video'&&((m.duration||0)>900||(m.duration||0)<3))throw new Error('Instagram video duration must be 3–900 seconds.');
+  if(provider==='linkedin'&&m.type==='video'&&((m.duration||0)>1800||m.bytes>200*1024*1024))throw new Error('LinkedIn videos must be at most 30 minutes and 200 MB in this app.');
   if(provider==='snapchat'&&(m.width<540||m.height<960||m.type==='video'&&((m.duration||0)<5||(m.duration||0)>60)))throw new Error('Snapchat requires at least 540×960; video duration 5–60 seconds.');
  }
  if(provider==='youtube'&&(!input.privacy||!['private','unlisted','public'].includes(input.privacy)||!input.categoryId||typeof input.madeForKids!=='boolean'))throw new Error('Choose YouTube privacy, category and audience.');

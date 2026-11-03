@@ -1,5 +1,5 @@
 /**
- * The simple publishing flow: an approved post goes to the chosen Facebook Pages and Instagram accounts now,
+ * The simple publishing flow: an approved post goes to the chosen Facebook Pages, Instagram accounts and LinkedIn pages now,
  * or at its calendar time. Each publication still runs through `publish`, so approval, consent, duplicate
  * protection and published-evidence rules are the same as the full publish panel. TikTok, YouTube and
  * Snapchat keep their own options and stay on the post page.
@@ -15,7 +15,7 @@ import { contentQueue, getAccount, listAccounts, toQueued, type QueuedPublicatio
 import type { PublishJob, SocialAccount, SocialProvider } from './types.js';
 
 /** Platforms whose publishing needs no extra per-post choices. */
-export const AUTO_PROVIDERS: SocialProvider[] = ['facebook', 'instagram'];
+export const AUTO_PROVIDERS: SocialProvider[] = ['facebook', 'instagram', 'linkedin'];
 /** A publication missed by more than this (the server was down) waits for a person instead of going out late. */
 const LATE_LIMIT_MS = 6 * 3600_000;
 
@@ -29,7 +29,7 @@ async function plan(item: StoredContent, account: SocialAccount): Promise<Omit<P
   const video = (await contentMedia(item.id)).find((m) => m.type === 'video');
   const choice = video ? { kind: 'video' as const, media: [{ url: video.url }] }
     : item.creative?.imageUrl ? { kind: 'image' as const, media: [{ url: item.creative.imageUrl }] }
-    : account.provider === 'facebook' && item.captions.facebook?.trim() ? { kind: 'text' as const, media: [] }
+    : ['facebook','linkedin'].includes(account.provider) && item.captions[account.provider]?.trim() ? { kind: 'text' as const, media: [] }
     : null;
   if (!choice) return no('no_media');
   if (capabilities(account.provider, account)[`publish_${choice.kind}`] !== 'available') return no('authorization');

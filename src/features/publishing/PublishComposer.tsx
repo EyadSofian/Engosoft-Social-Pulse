@@ -212,7 +212,7 @@ export function PublishComposer({ item, open, onClose, onDone, day }: { item: Pi
   }, [phase, pending, item.id]);
 
   const accountNames = Object.fromEntries([...chosen, ...destinations].reverse().map((d) => [d.provider, d.name])) as Partial<Record<Channel, string>>;
-  const manualChannels = item.channels.filter((c) => MANUAL.includes(c));
+  const manualChannels = item.channels.filter((c) => MANUAL.includes(c) && (c!=='linkedin'||!destinations.some(d=>d.provider==='linkedin')));
   const missingPlatforms = item.channels.filter((c) => !MANUAL.includes(c) && !destinations.some((d) => d.provider === c));
   const count = sendable.length;
   const action = when === 'now'

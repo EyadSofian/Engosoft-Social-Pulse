@@ -10,7 +10,7 @@ export interface Text {
   ar: string;
 }
 
-/** Channels content can be prepared for. LinkedIn and X have no connector yet: they can be planned, not measured. */
+/** Channels content can be prepared for. X can be planned and published by hand. */
 export type Channel = Platform | 'linkedin' | 'x' | 'whatsapp' | 'youtube';
 export const CHANNELS: Channel[] = ['facebook', 'instagram', 'whatsapp', 'linkedin', 'x', 'tiktok', 'snapchat', 'youtube', 'website'];
 

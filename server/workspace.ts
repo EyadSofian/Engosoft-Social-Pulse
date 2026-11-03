@@ -41,7 +41,7 @@ defineColumn('content_items', 'slot_id', 'TEXT');
 
 export type Channel = 'facebook' | 'instagram' | 'whatsapp' | 'linkedin' | 'x' | 'tiktok' | 'snapchat' | 'youtube' | 'website';
 /** Channels the sync can prove published; the others are tracked by status only. */
-const TRACKED: Partial<Record<Channel, Platform>> = { facebook: 'facebook', instagram: 'instagram', tiktok: 'tiktok', snapchat: 'snapchat', youtube: 'youtube' };
+const TRACKED: Partial<Record<Channel, Platform>> = { facebook: 'facebook', instagram: 'instagram', tiktok: 'tiktok', snapchat: 'snapchat', youtube: 'youtube', linkedin: 'linkedin' };
 
 export interface CreativeRef { requestId: string; directionId: string; imageUrl: string; storyUrl?: string; landscapeUrl?: string; youtubeUrl?: string; sizes?: Record<string, string>; model?: string; directionName?: string; svgTemplate?: { id: string; values: Record<string, string>; format?: 'feed' | 'square' | 'story' | 'landscape'; context?: string; outputPreset?: string }; pages?: Partial<Record<'feed' | 'square' | 'story', string[]>>; schedule?: { title: string; highlight: string; defaultCity: string; rows: { course: string; date: string; time: string; mode: 'online' | 'offline'; city: string }[] } }
 export interface StoredContent {

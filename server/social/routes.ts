@@ -1,3 +1,4 @@
+import { linkedInCandidates, connectLinkedIn } from './linkedin.js';
 import { tokenHealth } from './credentials.js';
 import express from 'express';
 import { z } from 'zod';
@@ -42,7 +43,7 @@ export function registerSocialRoutes(app:express.Express) {
   const item=await getContent(String(req.params.contentId));if(!item||!canSee(req.user!,item))return res.status(404).json({error:'المحتوى غير موجود.'});
   res.setHeader('Cache-Control','no-store');res.json({targets:await publishTargets(item),queue:await contentQueue(item.id),jobs:await contentJobs(item.id),manual:await manualPublications(item.id)});
  });
- // X, LinkedIn, WhatsApp and the website have no publishing API: the person posts by hand and records it here.
+ // X, WhatsApp, the website and unconnected LinkedIn pages can be recorded manually: the person posts by hand and records it here.
  app.post('/api/publishing/:contentId/manual',async(req,res)=>{
   const body=z.object({channel:z.enum(MANUAL_CHANNELS),url:z.string().max(500).optional()}).safeParse(req.body);
   if(!body.success)return res.status(400).json({error:'اختر المنصة.'});
@@ -67,6 +68,12 @@ export function registerSocialRoutes(app:express.Express) {
    const linked=accounts.filter(a=>a.provider===p);let oauthConfigured=false;try{configuredCallback(p);oauthConfigured=true;}catch{}
    return {provider:p,oauthConfigured,accounts:linked.map(({credentialSource,ownerId,...a})=>({...a,authorization:health[a.id],capabilities:capabilities(p,linked.find(x=>x.id===a.id)!)})),capabilities:capabilities(p,linked.find(a=>a.status==='connected')),requirements:requirements(p)};
   })});
+ });
+ app.get('/api/social/linkedin/candidates',requirePermission('connections.manage'),async(_req,res)=>{try{res.setHeader('Cache-Control','no-store');res.json({accounts:await linkedInCandidates()});}catch{res.status(409).json({error:'Connect the organization to Zernio and check its API-key Accounts permission.'});}});
+ app.post('/api/social/linkedin/connect',requirePermission('connections.manage'),async(req,res)=>{
+  const body=z.object({targetId:z.string().regex(/^[a-f0-9]{24}$/),organizationId:z.string().regex(/^\d+$/),apiKey:z.string().trim().min(16).max(4096).optional(),consent:z.literal(true)}).safeParse(req.body);
+  if(!body.success)return res.status(400).json({error:'Choose and confirm the exact LinkedIn organization.'});
+  try{res.setHeader('Cache-Control','no-store');res.json({account:await connectLinkedIn(body.data.targetId,body.data.organizationId,req.user!.id,body.data.apiKey)});}catch(e){res.status(409).json({error:e instanceof Error?e.message:'LinkedIn connection failed.'});}
  });
  app.post('/api/social/accounts/:id/disconnect',requirePermission('connections.manage'),async(req,res)=>{
   const a=await getAccount(String(req.params.id));if(!a)return res.status(404).json({error:'Account not found.'});await disconnect(a.id);res.json({disconnected:true});
@@ -163,6 +170,7 @@ export function registerSocialRoutes(app:express.Express) {
  });
 }
 function requirements(p:SocialProvider) {
+ if(p==='linkedin')return ['Authorize the organization page in Zernio, then select it here. A Zernio key needs Accounts, Publishing and Analytics. Text, images, image carousels and MP4 videos are supported; PDF documents are not supported in this app yet. Zernio manages OAuth refresh; reconnect there if LinkedIn revokes access.'];
  if(p==='facebook')return ['Meta Page authorization: pages_read_engagement; publishing additionally requires pages_manage_posts and CREATE_CONTENT Page task.'];
  if(p==='instagram')return ['Linked Instagram Professional account; instagram_basic, instagram_manage_insights; publishing additionally requires instagram_content_publish and Page publishing authorization when required.'];
  if(p==='tiktok')return ['Display API consent does not permit publishing. Enable Content Posting API; authorize video.publish or video.upload separately. Unaudited Direct Post is SELF_ONLY. General access requires app review and demonstration video.'];

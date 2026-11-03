@@ -1,6 +1,6 @@
-export type Platform = 'facebook' | 'instagram' | 'tiktok' | 'snapchat' | 'youtube' | 'website';
-/** A plan row can also be for a platform with no connector yet: planned and published by hand, never measured. */
-export type PlanPlatform = Platform | 'linkedin' | 'x';
+export type Platform = 'facebook' | 'instagram' | 'tiktok' | 'snapchat' | 'youtube' | 'linkedin' | 'website';
+/** X can also have plan rows, published by hand and not measured. */
+export type PlanPlatform = Platform | 'x';
 export type PlanStatus = 'draft' | 'approved' | 'scheduled' | 'published' | 'cancelled';
 export interface Metrics { views: number | null; reach: number | null; impressions: number | null; likes: number | null; comments: number | null; shares: number | null; saves: number | null; clicks: number | null; engagement: number | null; }
 export interface ObservedPost { platform: Platform; accountId: string; accountName: string; externalId: string; permalink: string; title: string; publishedAt: string; contentType: string; thumbnail: string; metrics: Metrics; }

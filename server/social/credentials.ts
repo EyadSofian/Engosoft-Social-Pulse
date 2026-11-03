@@ -11,6 +11,7 @@ export const oauthConfig = (provider:string) => {
 };
 const running=new Map<string,Promise<string>>();
 export function accessToken(a:SocialAccount):Promise<string> {
+ if(a.provider==='linkedin')return Promise.reject(new ProviderError(401,'Use the LinkedIn Zernio provider.'));
  if(a.credentialSource==='legacy:tiktok')return providerAccessToken('tiktok');
  if(a.credentialSource==='legacy:snapchat')return providerAccessToken('snapchat');
  if(a.credentialSource==='env:meta')return Promise.resolve(process.env.META_ACCESS_TOKEN||'');
@@ -32,6 +33,7 @@ async function resolve(a:SocialAccount) {
 }
 
 export async function tokenHealth(a:SocialAccount) {
+ if(a.provider==='linkedin'){const {linkedInTokenHealth}=await import('./linkedin.js');return linkedInTokenHealth(a);}
  if(a.credentialSource==='legacy:tiktok'||a.credentialSource==='legacy:snapchat')return oauthTokenHealth(a.provider as 'tiktok'|'snapchat');
  if(a.credentialSource==='env:meta')return {expiresAt:null,refreshEnabled:false,state:'environment'};
  try{const t=await loadSecret(a.credentialSource);if(!t)return {expiresAt:null,refreshEnabled:false,state:'reconnect_required'};return {expiresAt:t.expiresAt?new Date(t.expiresAt).toISOString():null,refreshEnabled:Boolean(t.refreshToken),state:!t.expiresAt||t.expiresAt>Date.now()?'valid':t.refreshToken?'refresh_due':'reconnect_required'};}catch{return {expiresAt:null,refreshEnabled:false,state:'reconnect_required'};}

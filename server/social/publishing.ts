@@ -1,3 +1,4 @@
+import { submitLinkedIn, pollLinkedIn, verifyLinkedInEvidence } from './linkedin.js';
 import { randomUUID } from 'node:crypto';
 import { db } from '../db.js';
 import { userCan, type AuthUser } from '../auth.js';
@@ -38,7 +39,7 @@ export async function publish(user:AuthUser,input:PublishInput):Promise<PublishJ
  const inserted=await db.run('INSERT INTO social_publish_jobs(id,content_id,account_id,provider,actor_id,state,phase,created_at,updated_at,attempt) VALUES(?,?,?,?,?,?,?,?,?,?) ON CONFLICT(content_id,account_id,attempt) DO NOTHING',[id,item.id,account.id,account.provider,user.id,'processing',hybrid?'hybrid:starting':'submitting',now,now,attempt]);
  if(!inserted.changes)return toJob((await db.get('SELECT * FROM social_publish_jobs WHERE content_id=? AND account_id=? ORDER BY attempt DESC LIMIT 1',[item.id,account.id]))!);
  const job=(await getJob(id))!;
- try {await updateJob(id,hybrid?await submitHybrid(account,input,caption,media,job,r=>updateJob(id,r),item.title):await submit(account,input,caption,item.title,media,job,r=>updateJob(id,r)));}
+ try {await updateJob(id,account.provider==='linkedin'?await submitLinkedIn(account,input,caption,media,job,r=>updateJob(id,r)):hybrid?await submitHybrid(account,input,caption,media,job,r=>updateJob(id,r),item.title):await submit(account,input,caption,item.title,media,job,r=>updateJob(id,r)));}
  catch(e) {
   const latest=(await getJob(id))!;
   // Transport/server errors can hide a successful write; keep the job and remote handle for reconciliation.
@@ -60,7 +61,7 @@ async function check(id:string) {
  // Persistent compare-and-set prevents simultaneous polling and media_publish on separate replicas.
  const lock=await db.run('UPDATE social_publish_jobs SET updated_at=? WHERE id=? AND updated_at=?',[new Date().toISOString(),id,job.updatedAt]);if(!lock.changes)return (await getJob(id))!;
  try {
-  let result=job.phase?.startsWith('hybrid:')?await pollHybrid(job):await poll(account,job);
+  let result=account.provider==='linkedin'?await pollLinkedIn(account,job):job.phase?.startsWith('hybrid:')?await pollHybrid(job):await poll(account,job);
   if(account.provider==='instagram'&&result.phase==='instagram_ready') {
    await updateJob(id,{state:'processing',phase:'instagram_publishing'});
    const externalId=await publishInstagramContainer(account,job);
@@ -94,5 +95,5 @@ export async function reconcileJob(user:AuthUser,id:string,externalId:string) {
  if(!job||!item||!canSee(user,item)||!a||a.status!=='connected')throw new Error('Publication unavailable.');
  if(!['unknown','processing','awaiting_user'].includes(job.state))return job;
  const {verifyEvidence}=await import('./publish-providers.js');
- const result=await verifyEvidence(a,externalId,job);await updateJob(id,result);await recordEvidence(id);return (await getJob(id))!;
+ const result=a.provider==='linkedin'?await verifyLinkedInEvidence(a,externalId,job):await verifyEvidence(a,externalId,job);await updateJob(id,result);await recordEvidence(id);return (await getJob(id))!;
 }
