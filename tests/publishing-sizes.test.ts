@@ -191,3 +191,19 @@ test('chosen sizes become one design per distinct shape; the main design covers 
   // A size of a platform that is not chosen is ignored.
   assert.deepEqual(sizeTargets(['facebook'], ['x-header']), []);
 });
+
+test('the two designs are made at the ticked size: Story alone gives 9:16 designs, a pick wins among ticked shapes', async () => {
+  const { coveredByMain, mainFormat, sizeTargets } = await import('../src/features/creative-studio/platforms');
+  // Instagram with only Story ticked: both designs are stories and nothing is left to adapt.
+  assert.equal(mainFormat(['instagram'], ['instagram-story']), 'story');
+  assert.deepEqual(sizeTargets(['instagram'], ['instagram-story'], 'story'), []);
+  assert.ok(coveredByMain(['instagram'], 'story').includes('instagram-reel'));
+  // Feed and Story ticked: feed first unless Story is picked, and the other becomes the extra size.
+  assert.equal(mainFormat(['instagram'], ['instagram-feed', 'instagram-story']), 'feed');
+  assert.equal(mainFormat(['instagram'], ['instagram-feed', 'instagram-story'], 'story'), 'story');
+  assert.deepEqual(sizeTargets(['instagram'], ['instagram-feed', 'instagram-story'], 'story').map((t) => `${t.width}x${t.height}`), ['1080x1350']);
+  // A pick that is no longer ticked, or nothing master-shaped ticked, falls back.
+  assert.equal(mainFormat(['instagram'], ['instagram-feed'], 'story'), 'feed');
+  assert.equal(mainFormat(['instagram'], ['instagram-square']), 'feed');
+  assert.equal(mainFormat(['tiktok'], []), 'story');
+});

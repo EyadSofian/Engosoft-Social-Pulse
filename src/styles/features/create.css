@@ -79,7 +79,7 @@
 .create-sizes__platform input { accent-color: var(--brand); margin: 0; }
 
 /* Extra sizes offered under a finished AI design. */
-.creative-job__sizes { display: grid; gap: 8px; padding-top: 12px; border-top: 1px solid var(--border); }
+.creative-job__sizes { display: grid; gap: 10px; padding: 12px; border-radius: 14px; background: color-mix(in srgb, var(--brand) 5%, var(--surface-subtle)); }
 .creative-job__sizes > p { margin: 0; }
 .creative-job__sizes .ui-btn { justify-content: flex-start; gap: 8px; }
 .creative-job__size-icons { display: inline-flex; gap: 3px; }
@@ -165,3 +165,96 @@
 .reel__ai { display: flex; flex-wrap: wrap; align-items: center; justify-content: space-between; gap: 8px; }
 .reel__submit { display: grid; gap: 6px; justify-items: start; }
 @media (max-width: 860px) { .reel { grid-template-columns: minmax(0, 1fr); } .reel__media { position: static; max-width: 280px; } }
+
+/* ── Size tiles on the Create page ─────────────────────────────────── */
+.create-preview__head { display: grid; gap: 2px; }
+.create-preview__head p { margin: 0; }
+.size-tiles { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 8px; }
+.size-tile {
+  position: relative;
+  display: grid;
+  gap: 6px;
+  padding: 10px 10px 9px;
+  border: 1.5px solid var(--border);
+  border-radius: 14px;
+  background: var(--surface);
+  color: var(--text);
+  font: inherit;
+  text-align: start;
+  cursor: pointer;
+  transition: border-color 160ms, background 160ms, transform 160ms;
+}
+.size-tile:hover { border-color: color-mix(in srgb, var(--brand) 45%, var(--border)); }
+.size-tile:active { transform: scale(0.98); }
+.size-tile:focus-visible { outline: 2px solid var(--brand); outline-offset: 2px; }
+.size-tile[aria-pressed='true'] { border-color: var(--brand); background: color-mix(in srgb, var(--brand) 8%, var(--surface)); }
+.size-tile__stage { display: flex; align-items: center; justify-content: center; height: 64px; }
+.size-tile__shape {
+  display: grid;
+  place-items: center;
+  max-width: 100%;
+  max-height: 100%;
+  border-radius: 6px;
+  border: 1.5px dashed color-mix(in srgb, var(--text-subtle) 60%, transparent);
+  color: var(--text-subtle);
+  font-size: 11px;
+  transition: background 160ms, border-color 160ms, color 160ms;
+}
+.size-tile[aria-pressed='true'] .size-tile__shape { border: 0; background: linear-gradient(150deg, #0046ff, #001bb7 70%); color: #fff; box-shadow: 0 8px 18px -10px rgb(0 47 180 / 0.8); }
+.size-tile[data-main] .size-tile__shape { background: linear-gradient(170deg, #ff6600, #0046ff 60%, #001bb7); }
+.size-tile__name { font-size: 12.5px; font-weight: 700; line-height: 1.35; overflow: hidden; display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; }
+.size-tile__meta { display: flex; align-items: center; justify-content: space-between; gap: 6px; color: var(--text-subtle); }
+.size-tile__meta small { font-size: 10.5px; }
+.size-tile__icons { display: inline-flex; gap: 3px; }
+.size-tile__check {
+  position: absolute;
+  top: 8px;
+  inset-inline-end: 8px;
+  display: grid;
+  place-items: center;
+  width: 18px;
+  height: 18px;
+  border-radius: 50%;
+  border: 1.5px solid var(--border);
+  background: var(--surface);
+}
+.size-tile[aria-pressed='true'] .size-tile__check { border-color: var(--brand); background: var(--brand); color: #fff; }
+.size-tile__badge { position: absolute; top: 8px; inset-inline-start: 8px; padding: 1px 7px; border-radius: 999px; background: var(--brand); color: #fff; font-size: 10px; font-style: normal; font-weight: 800; }
+.size-more summary { display: flex; align-items: center; gap: 8px; padding: 6px 2px; color: var(--text-muted); font-size: 12.5px; font-weight: 700; cursor: pointer; list-style: none; }
+.size-more summary::-webkit-details-marker { display: none; }
+.size-more summary::before { content: '+'; display: grid; place-items: center; width: 18px; height: 18px; border-radius: 6px; background: var(--surface-subtle); }
+.size-more[open] summary::before { content: '−'; }
+.size-more summary small { margin-inline-start: auto; color: var(--brand); }
+.size-more .size-tiles { padding-top: 6px; }
+.size-plan { display: grid; gap: 8px; padding-top: 12px; border-top: 1px solid var(--border); }
+.size-plan__row { display: grid; gap: 6px; font-size: 12.5px; color: var(--text-muted); }
+.size-plan__row b { color: var(--text); font-size: 14px; }
+.size-plan__switch { display: flex; gap: 4px; padding: 3px; border-radius: 12px; background: var(--surface-subtle); }
+.size-plan__switch button { flex: 1; padding: 7px 8px; border: 0; border-radius: 9px; background: transparent; color: var(--text-muted); font: inherit; font-size: 12.5px; font-weight: 700; cursor: pointer; }
+.size-plan__switch button[aria-checked='true'] { background: var(--surface); color: var(--brand); box-shadow: 0 1px 3px rgb(0 0 0 / 0.12); }
+.size-plan__extra { display: flex; gap: 7px; align-items: flex-start; margin: 0; color: var(--text-muted); font-size: 12px; line-height: 1.6; }
+.size-plan__extra svg { flex: none; margin-top: 3px; color: var(--brand); }
+
+/* Main design of another shape than 4:5: drawn whole, tall ones kept to a readable width. */
+.creative-job__frame[data-format='story'] { width: min(100%, 360px); margin-inline: auto; }
+
+/* Ticked sizes still to design under a finished design: visible frames, one tap each. */
+.creative-job__sizes-head { display: grid; gap: 2px; }
+.creative-job__sizes-head b { font-size: 13.5px; }
+.creative-job__slots { display: flex; flex-wrap: wrap; align-items: flex-end; gap: 10px; }
+.size-slot { display: grid; justify-items: center; gap: 5px; width: 92px; padding: 0; border: 0; background: none; color: var(--text); font: inherit; cursor: pointer; }
+.size-slot:has(.size-slot__frame[data-wide]) { width: 150px; }
+.size-slot__frame {
+  display: grid;
+  place-items: center;
+  width: 100%;
+  border: 1.5px dashed color-mix(in srgb, var(--brand) 55%, var(--border));
+  border-radius: 10px;
+  background: color-mix(in srgb, var(--brand) 6%, var(--surface));
+  color: var(--brand);
+  transition: background 160ms, transform 160ms;
+}
+.size-slot:hover:not(:disabled) .size-slot__frame { background: color-mix(in srgb, var(--brand) 14%, var(--surface)); transform: translateY(-2px); }
+.size-slot:disabled { cursor: progress; }
+.size-slot__name { display: inline-flex; align-items: center; gap: 4px; font-size: 11px; color: var(--text-subtle); }
+.size-slot small { font-size: 11.5px; font-weight: 800; color: var(--brand); text-align: center; }
