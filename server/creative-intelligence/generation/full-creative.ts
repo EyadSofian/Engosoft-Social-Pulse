@@ -15,11 +15,12 @@ import { BRAND } from '../brand/registry.js';
 import { resolveOdooContext, type VerifiedCourseContext } from '../context/odoo-context.js';
 import { inspectCreative, zonesFromInspection, type CreativeInspection } from '../criticism/inspect.js';
 import { compositeLogo, verifyComposite } from '../logo-resolution/compositor.js';
-import { applyCampaignStamp, campaignBrief, stampRoom, textStamp, withHashtag, type CampaignIdentity } from '../logo-resolution/campaign-stamp.js';
+import { applyCampaignStamp, campaignBrief, stampGeometry, stampRoom, stampText, stampZone, textStamp, withHashtag, type CampaignIdentity } from '../logo-resolution/campaign-stamp.js';
+import { checkFinish, finishCheckOn, type FinishProblem, type Overlay } from '../criticism/finish-check.js';
 import { resolveLogo, type Corner, type LogoDecision, type NoLogoDecision } from '../logo-resolution/resolver.js';
 import type { SafeArea } from '../logo-resolution/validator.js';
 import { checkCopy, copyPasses, type CanonicalCopy, type CopyCheck } from '../typography-validation/copy-check.js';
-import { compileBriefPrompt, compileDesignPrompt, DEFAULT_SETTINGS, ENGINE_SKILL_VERSIONS, ENGINE_VERSION, planCaptions, planDesign, planStrategy, type DesignDecision, type EngineSettings, type ReferenceInput, type StrategyDecision, type UserReference } from '../skills/engine.js';
+import { compileBriefPrompt, compileDesignPrompt, DEFAULT_SETTINGS, ENGINE_SKILL_VERSIONS, ENGINE_VERSION, planCaptions, planDesign, planStrategy, type DesignDecision, type EngineSettings, type ReferenceInput, type ReservedArea, type StrategyDecision, type UserReference } from '../skills/engine.js';
 import { THEMES, type ThemeId } from '../skills/themes.js';
 import { pasteInside, patchRejected } from './patch.js';
 import { houseReferences, referencePrompt } from './house-references.js';
@@ -198,7 +199,7 @@ export async function planCreative(prompt: string, format: CreativeFormat, count
  * Design-engine planning: the strategy stage (idea, copy, hooks, captions, references, themes), then a design
  * plan per direction (layout, weight, spacing, type, image, light, colour, brand, logo, compositing).
  */
-export async function planCreativeWithEngine(prompt: string, format: CreativeFormat, count: number, context: VerifiedCourseContext | undefined, env: NodeJS.ProcessEnv, style: string | undefined, requested: Partial<EngineSettings> | undefined, onDesigning?: () => void, extra: { objective?: string; attachments?: UserReference[] } = {}): Promise<CreativeBriefPlan> {
+export async function planCreativeWithEngine(prompt: string, format: CreativeFormat, count: number, context: VerifiedCourseContext | undefined, env: NodeJS.ProcessEnv, style: string | undefined, requested: Partial<EngineSettings> | undefined, onDesigning?: () => void, extra: { objective?: string; attachments?: UserReference[]; campaign?: CampaignIdentity } = {}): Promise<CreativeBriefPlan> {
   const settings: EngineSettings = { ...DEFAULT_SETTINGS, ...requested };
   const facts = factLines(context);
   const factContext = context ? JSON.stringify({ course: context.facts.title.value, lines: facts, registration: context.facts.registrationUrl?.value ?? null }) : 'none — do not imply any date or schedule';
@@ -206,10 +207,11 @@ export async function planCreativeWithEngine(prompt: string, format: CreativeFor
   const { decision: strategy, references } = await planStrategy({ prompt, format: spec.label, count, facts, factContext, settings, style, objective: extra.objective, attachments: extra.attachments, env });
   onDesigning?.();
   const planned = strategy.themeDirector.directions;
+  const reserved = await reservedAreas(format, extra.campaign);
   const [captions, ...designs] = await Promise.all([
     // A caption failure must not cost the images: the post can still be captioned in the editor.
     planCaptions({ prompt, strategy, factContext, env }).catch(() => strategy.captionWriter),
-    ...planned.map((direction) => planDesign({ strategy, direction, format: { label: spec.label, ...spec.output }, facts, settings, env })),
+    ...planned.map((direction) => planDesign({ strategy, direction, format: { label: spec.label, ...spec.output }, facts, settings, env, reserved })),
   ]);
   strategy.captionWriter = captions;
   const copy = strategy.copywriter;
@@ -313,6 +315,50 @@ async function stampCampaign(image: Buffer, campaign: CampaignIdentity, avoid: P
   return text ? applyCampaignStamp(image, { ...campaign, width: text.width }, text.png, avoid, safeArea) : { image };
 }
 
+type PxBox = { x: number; y: number; width: number; height: number };
+const grow = (b: PxBox, pad: number): PxBox => ({ x: b.x - pad, y: b.y - pad, width: b.width + 2 * pad, height: b.height + 2 * pad });
+
+/**
+ * The overlays go on last, planned from what the vision pass saw and checked by a second look at the result.
+ * The stamp is placed in free space clear of every text (padded, so a button's pill around its words is
+ * covered too), face, subject and the logo. Then the finished image is looked at once more; when the stamp
+ * still covers or crowds something, it moves away from what was reported and the result is looked at again.
+ * Whatever is still wrong after that is reported for review, never hidden.
+ */
+async function finishOverlays(input: { logoImage: Buffer; logo: PxBox; content: PxBox[]; campaign?: CampaignIdentity; spec: Canvas; env: NodeJS.ProcessEnv }): Promise<{ image: Buffer; problems: string[] }> {
+  const { spec, env, campaign } = input;
+  const W = spec.output.width, H = spec.output.height;
+  const gap = Math.round(0.025 * W);
+  const avoid = [...input.content.map((b) => grow(b, gap)), grow(input.logo, gap)];
+  const problems: string[] = [];
+  let stamped: { image: Buffer; problem?: string; placement?: PxBox } = campaign ? await stampCampaign(input.logoImage, campaign, avoid, spec.safeArea) : { image: input.logoImage };
+  const norm = (b: PxBox) => ({ x: b.x / W, y: b.y / H, width: b.width / W, height: b.height / H });
+  const overlays = (placement?: PxBox): Overlay[] => [{ name: 'logo', box: norm(input.logo) }, ...(placement ? [{ name: 'stamp' as const, box: norm(placement) }] : [])];
+  if (!finishCheckOn(env)) return { image: stamped.image, problems: stamped.problem ? [stamped.problem] : [] };
+  let seen: FinishProblem[] = [];
+  try {
+    seen = await checkFinish(stamped.image, overlays(stamped.placement), env);
+    const onStamp = seen.filter((p) => p.source === 'stamp');
+    if (campaign && stamped.placement && onStamp.length) {
+      const reported = onStamp.map((p) => grow({ x: p.box.x * W, y: p.box.y * H, width: p.box.width * W, height: p.box.height * H }, gap));
+      const moved = await stampCampaign(input.logoImage, campaign, [...avoid, ...reported, stamped.placement], spec.safeArea);
+      if (moved.placement) {
+        const again = await checkFinish(moved.image, overlays(moved.placement), env);
+        if (again.filter((p) => p.source === 'stamp').length < onStamp.length) { stamped = moved; seen = again; }
+      } else if (moved.problem) {
+        // Nowhere else is free: leave the stamp off rather than ship it on the text or the button.
+        stamped = { image: input.logoImage, problem: moved.problem };
+        seen = seen.filter((p) => p.source !== 'stamp');
+      }
+    }
+  } catch (e) {
+    problems.push(`Final layout check could not run: ${e instanceof Error ? e.message : String(e)}`);
+  }
+  if (stamped.problem) problems.push(stamped.problem);
+  problems.push(...seen.map((p) => `Final layout check (${p.source}): ${p.issue}`));
+  return { image: stamped.image, problems };
+}
+
 /** The logo mark and corner for a direction: the house logo, or (CREATIVE_LOGO=auto) the direction's plan with the format's defaults. */
 export function logoPlanOf(direction: CreativeDirectionPlan, format: CanvasTarget): { mark: LogoMark; corner: Corner } {
   const house = houseLogo();
@@ -359,6 +405,22 @@ export function logoRepairZone(spec: Pick<Canvas, 'generation' | 'output' | 'saf
 }
 /** The output pixels and covered edges of a canvas, for placing the logo space where the logo will go. */
 const logoCanvasOf = (format: CanvasTarget): LogoCanvas => { const c = canvasOf(format); return { width: c.output.width, height: c.output.height, safe: c.safeArea }; };
+
+/**
+ * What the layout is planned around: the house logo's area, the campaign stamp's area (measured from its file or
+ * pill) and the edges the platform covers — the same areas the image prompt keeps calm and the overlays use.
+ */
+export async function reservedAreas(format: CanvasTarget, campaign?: CampaignIdentity): Promise<ReservedArea[]> {
+  const c = canvasOf(format), canvas = logoCanvasOf(format);
+  const house = houseLogo() ?? { mark: 'lockup' as LogoMark, corner: c.reservedCorner };
+  const logo = logoZoneOn(house.mark, house.corner, canvas);
+  const areas: ReservedArea[] = [{ name: `official logo (${house.mark === 'lockup' ? 'full lockup' : 'symbol'})`, zone: { x: logo.x, y: logo.y, width: logo.w, height: logo.h } }];
+  const geometry = campaign && (campaign.stampPath || stampText(campaign)) ? await stampGeometry(campaign) : null;
+  if (campaign && geometry) areas.push({ name: 'campaign stamp', zone: stampZone(canvas, campaign.corner, geometry) });
+  if (c.safeArea.top) areas.push({ name: 'platform top bar', zone: { x: 0, y: 0, width: 1, height: c.safeArea.top / c.output.height } });
+  if (c.safeArea.bottom) areas.push({ name: 'platform bottom bar', zone: { x: 0, y: 1 - c.safeArea.bottom / c.output.height, width: 1, height: c.safeArea.bottom / c.output.height } });
+  return areas;
+}
 
 /**
  * How a recomposition fills a canvas of another shape. Given the master, the image model tends to keep its
@@ -467,7 +529,7 @@ export async function produceDirection(input: {
   // same text picks the same set); another size also gets its design as the last, labelled reference.
   const references = await houseReferences(`${brief.objective} ${brief.audience} ${brief.canonicalCopy.headline} ${direction.concept}`, input.campaign?.keyVisualPath);
   const images = [...references.map(({ data, mime }) => ({ data, mime })), ...(master ? [{ data: await asReference(master), mime: 'image/jpeg' as const }] : [])];
-  const prompt = `${basePrompt}${stampRoom(input.campaign)}${referencePrompt(references)}${master ? masterReference(references.length + 1) : ''}`;
+  const prompt = `${basePrompt}${stampRoom(input.campaign, logoCanvasOf(format), await stampGeometry(input.campaign))}${referencePrompt(references)}${master ? masterReference(references.length + 1) : ''}`;
   const problems: string[] = [];
   progress('generating');
   const n = master ? 1 : candidatesFor(env);
@@ -579,10 +641,11 @@ export async function produceDirection(input: {
     const { image, record } = await compositeLogo(output, { variantId: logo.variantId, x: logo.placement.x, y: logo.placement.y, width: logo.placement.width });
     const honesty = await verifyComposite(output, image, record);
     if (honesty.length) problems.unshift(...honesty.map((p) => `Logo composite: ${p}`));
-    const stamped = input.campaign ? await stampCampaign(image, input.campaign, [record], spec.safeArea) : { image };
-    if (stamped.problem) problems.push(stamped.problem);
+    const content = zonesFromInspection(inspection, spec.output.width, spec.output.height).map((z) => z.box);
+    const finished = await finishOverlays({ logoImage: image, logo: record, content, campaign: input.campaign, spec, env });
+    problems.push(...finished.problems);
     imagePath = resolve(dir, `${direction.id}.png`);
-    writeFileSync(imagePath, stamped.image);
+    writeFileSync(imagePath, finished.image);
   }
   const status: FullCreativeResult['status'] = !imagePath ? 'failed' : problems.length ? 'needs_review' : 'ready';
   return { directionId: direction.id, directionName: direction.name, status, problems, imagePath, rawImagePath: resolve(dir, `${direction.id}-raw.png`), logo, repaired, refinements, copyChecks, inspection, prompt, model: generated.model, latencyMs: Date.now() - started, textMode: 'model', candidates: read.length > 1 ? read.map((r) => Math.round(r.score * 10) / 10) : undefined };
@@ -648,7 +711,7 @@ async function produceTypeset(input: Parameters<typeof produceDirection>[0]): Pr
   const basePrompt = master
     ? `${promptFor(brief, direction, format, true, 'typeset')}\n\n${freshSizeBrief(format)} The text areas above stay calm; keep the image free of any text.`
     : promptFor(brief, direction, format, false, 'typeset');
-  const prompt = `${basePrompt}${stampRoom(input.campaign)}${master ? masterReference(1) : ''}`;
+  const prompt = `${basePrompt}${stampRoom(input.campaign, logoCanvasOf(format), await stampGeometry(input.campaign))}${master ? masterReference(1) : ''}`;
   const problems: string[] = [];
   progress('generating');
   const [generated] = master
@@ -690,9 +753,9 @@ async function produceTypeset(input: Parameters<typeof produceDirection>[0]): Pr
     if (logo.requiresCreativeRepair) return undefined;
     const { image, record } = await compositeLogo(ts.png, { variantId: logo.variantId, x: logo.placement.x, y: logo.placement.y, width: logo.placement.width });
     const honesty = await verifyComposite(ts.png, image, record);
-    // The campaign stamp goes last, clear of every typeset line and the logo.
-    const stamped = input.campaign ? await stampCampaign(image, input.campaign, [...ts.layout.blocks.map((b) => b.box), record], spec.safeArea) : { image };
-    return { image: stamped.image, honesty: stamped.problem ? [...honesty, stamped.problem] : honesty };
+    // The campaign stamp goes last, clear of every typeset line, the planned subject and the logo, then the result is checked.
+    const finished = await finishOverlays({ logoImage: image, logo: record, content: [...ts.layout.blocks.map((b) => b.box), ...heroZone.map((z) => z.box)], campaign: input.campaign, spec, env });
+    return { image: finished.image, honesty: [...honesty, ...finished.problems] };
   };
   let finished = await finish();
 
@@ -760,7 +823,7 @@ export async function generateFullCreative(request: FullCreativeRequest, env = p
   const attachments = [...(request.attachments ?? []), ...(keyVisual ? [keyVisual] : [])].slice(0, 6);
   const brief = request.engine === 'legacy'
     ? await planCreative(request.objective ? `${planningPrompt}\nObjective: ${request.objective}` : planningPrompt, format, count, context, env, request.style)
-    : await planCreativeWithEngine(planningPrompt, format, count, context, env, request.style, request.settings, () => onProgress?.({ stage: 'designing' }), { objective: request.objective, attachments: attachments.length ? attachments : undefined });
+    : await planCreativeWithEngine(planningPrompt, format, count, context, env, request.style, request.settings, () => onProgress?.({ stage: 'designing' }), { objective: request.objective, attachments: attachments.length ? attachments : undefined, campaign });
   if (campaign?.hashtag) {
     brief.caption = withHashtag(brief.caption, campaign.hashtag);
     brief.captions = Object.fromEntries(Object.entries(brief.captions).map(([platform, text]) => [platform, typeof text === 'string' ? withHashtag(text, campaign.hashtag) : text])) as CreativeBriefPlan['captions'];

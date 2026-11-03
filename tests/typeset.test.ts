@@ -123,7 +123,7 @@ test('typeset mode (CREATIVE_TEXT_MODE=typeset) sets the copy, places the logo a
     assert.equal(result.status, 'ready', result.problems.join(' | '));
     assert.ok(result.copyChecks.every((c) => c.verdict === 'exact'));
     assert.equal(result.logo.requiresCreativeRepair, false);
-    assert.equal(visionCalls, 1, 'one critic pass, no audit or repair loop');
+    assert.equal(visionCalls, 2, 'one critic pass and one final layout check, no audit or repair loop');
     assert.ok(stages.includes('typesetting'));
     assert.match(prompts[0], /NO TEXT IN THE IMAGE/);
     assert.ok(result.imagePath && existsSync(result.imagePath) && existsSync(result.cleanImagePath!));
@@ -155,6 +155,57 @@ test('another size is a new design at that canvas: the finished design is the la
     assert.match(first.prompt, new RegExp(`Image ${first.images.length} is the approved design of this same post in another shape`));
     assert.match(first.prompt, /Do not copy, trace, extend or re-frame its layout/);
     assert.doesNotMatch(first.prompt, /The attached image is the approved master/);
+  } finally {
+    globalThis.fetch = realFetch;
+  }
+});
+
+test('the layout plan is checked against the logo and stamp areas', async () => {
+  const { planConflicts } = await import('../server/creative-intelligence/skills/engine');
+  const { reservedAreas } = await import('../server/creative-intelligence/generation/full-creative');
+  const campaign = { id: 'c', name: 'جمعة', slogan: '', hashtag: '#جمعة_تغير_مسارك', corner: 'bottom-right' as const, width: 0.3, stampPath: '', keyVisualPath: '' };
+  const areas = await reservedAreas('story', campaign);
+  assert.deepEqual(areas.map((a) => a.name), ['official logo (full lockup)', 'campaign stamp', 'platform top bar', 'platform bottom bar']);
+  const stampArea = areas[1].zone;
+  const clash = { layoutDesigner: { ...design.layoutDesigner, ctaZone: { x: stampArea.x, y: stampArea.y, width: stampArea.width, height: stampArea.height } } };
+  assert.match(planConflicts(clash as never, areas).join(' '), /button \(CTA\).*campaign stamp/);
+  const clean = { layoutDesigner: { ...design.layoutDesigner, headlineZone: z(0.4, 0.14, 0.55, 0.16), supportingCopyZone: z(0.4, 0.31, 0.55, 0.04), factsZone: z(0.4, 0.6, 0.55, 0.06), ctaZone: z(0.3, 0.7, 0.4, 0.05), heroSubject: z(0.1, 0.36, 0.8, 0.22) } };
+  assert.deepEqual(planConflicts(clean as never, areas), []);
+});
+
+test('the finished post is looked at again: a stamp that crowds something moves, and the move is checked', async () => {
+  const brief = { language: 'ar', objective: 'o', audience: 'a', caption: '', captions: strategy.captionWriter.captions, canonicalCopy: copy, directions: [], engine: { version: 'design-engine:v1', skills: {}, settings: DEFAULT_SETTINGS, strategy, references: [] } } as never;
+  const campaign = { id: 'c', name: 'جمعة', slogan: '', hashtag: '#جمعة_تغير_مسارك', corner: 'bottom-right' as const, width: 0.3, stampPath: '', keyVisualPath: '' };
+  const visual = await canvas(1088, 1360, '#0b1530', '#14203d');
+  const provider = { name: 'fake', model: 'fake-image', generate: async () => [{ png: visual, model: 'fake-image', size: '1088x1360', quality: 'high' as const, latencyMs: 1 }], edit: async () => [{ png: visual, model: 'fake-image', size: '1088x1360', quality: 'high' as const, latencyMs: 1 }] };
+  // The button sits bottom-centre: the vision map keeps the stamp off it from the start.
+  const inspection = { texts: [{ text: copy.headline, box: z(0.4, 0.08, 0.55, 0.12) }, { text: copy.cta, box: z(0.35, 0.86, 0.3, 0.05) }], faces: [], subjects: [], logosOrWatermarks: [], copyAudit: [], defects: [], scores: { design: 8, marketing: 8, imageQuality: 8, brandFit: 8 }, verdict: 'accept', summary: 'ok', critique: { rubric: {}, aiTells: [], compositingIssues: [], professionalTest: { designerWouldPublish: true, marketingWouldPublish: true, looksDesigned: true }, firstSeen: '' }, repairs: [] };
+  const checks: string[] = [];
+  const realFetch = globalThis.fetch;
+  globalThis.fetch = (async (_url: string, init: { body: string }) => {
+    const body = JSON.parse(init.body);
+    const finish = body.text?.format?.name === 'engosoft_finish_check' || JSON.stringify(body).includes('engosoft_finish_check');
+    let out: unknown = inspection;
+    if (finish) {
+      checks.push(body.instructions);
+      // First look: the stamp crowds a graphic the first pass did not list, wherever it was put.
+      const at = /campaign stamp \(slogan \/ hashtag sticker\) at x (\d+)%–(\d+)%, y (\d+)%–(\d+)%/.exec(body.instructions)!.slice(1).map((n) => Number(n) / 100);
+      out = { problems: checks.length === 1 ? [{ source: 'stamp', issue: 'The stamp crowds the arrow graphic.', box: { x: at[0], y: at[2], width: at[1] - at[0], height: at[3] - at[2] } }] : [] };
+    }
+    return new Response(JSON.stringify({ output: [{ content: [{ type: 'output_text', text: JSON.stringify(out) }] }], usage: { input_tokens: 1, output_tokens: 1 } }), { status: 200 });
+  }) as typeof fetch;
+  try {
+    const dir = mkdtempSync(join(tmpdir(), 'engosoft-finish-'));
+    const result = await produceDirection({ provider, brief, direction: { id: 'd1', name: 'القائد', concept: 'c', subject: 's', composition: 'x', palette: 'p', typography: 't', mood: 'm', engine: { strategy: direction0, design } } as never, format: 'feed', quality: 'high', dir, env: { OPENAI_API_KEY: 'test', CREATIVE_REFERENCE_IMAGES: 'off' }, mode: 'model', campaign });
+    assert.equal(checks.length, 2, 'looked at the result, then at the moved stamp');
+    const spot = (text: string) => /campaign stamp \(slogan \/ hashtag sticker\) at (x \d+%–\d+%, y \d+%–\d+%)/.exec(text)![1];
+    assert.notEqual(spot(checks[0]), spot(checks[1]), 'the stamp moved');
+    // Never on the button: the bottom-centre CTA box is free of the stamp in both placements.
+    for (const text of checks) {
+      const [x0, x1, y0, y1] = /campaign stamp \(slogan \/ hashtag sticker\) at x (\d+)%–(\d+)%, y (\d+)%–(\d+)%/.exec(text)!.slice(1).map((n) => Number(n) / 100);
+      assert.ok(x1 <= 0.35 || x0 >= 0.65 || y1 <= 0.86 || y0 >= 0.91, `stamp ${x0}-${x1},${y0}-${y1} clear of the button`);
+    }
+    assert.ok(!result.problems.some((p) => /Final layout check \(stamp\)/.test(p)), result.problems.join(' | '));
   } finally {
     globalThis.fetch = realFetch;
   }

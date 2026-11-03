@@ -1,8 +1,10 @@
 /**
  * The campaign stamp: a campaign's own slogan lockup (e.g. "#جمعة_تغير_مسارك") placed on every design made for
  * that campaign. Like the official logo, the exact uploaded file is composited after the copy is set, so the
- * image model never redraws or misspells it. It goes in a corner clear of the text and the logo.
+ * image model never redraws or misspells it. It goes where the vision map of the finished image shows free space,
+ * clear of every text, the button, faces, subjects and the logo — never on top of them.
  */
+import { readFileSync } from 'node:fs';
 import sharp from 'sharp';
 import { BRAND_BLUE } from '../brand/registry.js';
 import { outlineText } from '../typography/text-outline.js';
@@ -31,29 +33,57 @@ export interface CampaignIdentity {
 interface Box { x: number; y: number; width: number; height: number }
 const overlaps = (a: Box, b: Box) => a.x < b.x + b.width && b.x < a.x + a.width && a.y < b.y + b.height && b.y < a.y + a.height;
 
-/** The corners to try, preferred first, then the other bottom corner, then the top ones. */
-const order = (preferred: StampCorner): StampCorner[] => [preferred, ...STAMP_CORNERS.filter((c) => c !== preferred).sort((a, b) => Number(b.startsWith('bottom')) - Number(a.startsWith('bottom')))];
-
 /**
- * Where the stamp goes: the first corner (at full size, then at 75%) whose box touches no text block and not
- * the logo. Story safe areas are respected. `clear` false means every corner was taken and a person must check.
+ * Where the stamp goes: the first free spot at full size, then at 85% and 70%. Spots run from the preferred corner
+ * along its band (the stamp may sit anywhere on the bottom or top edge, not only in a corner), then along the
+ * other band. A spot is free when it touches none of `avoid` (text, button, faces, subjects, the logo). Story
+ * safe areas are respected. `clear` false means there is no free spot: the stamp must not be placed.
  */
 export function stampPlacement(canvas: { width: number; height: number }, stamp: { width: number; height: number }, preferred: StampCorner, widthShare: number, avoid: Box[], safeArea = { top: 0, bottom: 0 }): Box & { corner: StampCorner; clear: boolean } {
   const margin = Math.round(canvas.width * 0.045);
-  const boxFor = (corner: StampCorner, scale: number): Box => {
+  const step = Math.max(8, Math.round(canvas.width * 0.02));
+  const bands: ('top' | 'bottom')[] = preferred.startsWith('bottom') ? ['bottom', 'top'] : ['top', 'bottom'];
+  const cornerOf = (band: 'top' | 'bottom', box: Box): StampCorner => `${band}-${box.x + box.width / 2 > canvas.width / 2 ? 'right' : 'left'}`;
+  const spots = (scale: number): Box[] => {
     const width = Math.round(canvas.width * widthShare * scale);
     const height = Math.round(width * (stamp.height / stamp.width));
-    const x = corner.endsWith('left') ? margin : canvas.width - margin - width;
-    const y = corner.startsWith('top') ? margin + safeArea.top : canvas.height - margin - safeArea.bottom - height;
-    return { x, y, width, height };
+    const left = margin, right = canvas.width - margin - width;
+    const xs: number[] = [];
+    for (let x = right; x > left; x -= step) xs.push(x);
+    xs.push(left);
+    return bands.flatMap((band) => {
+      const y = band === 'top' ? margin + safeArea.top : canvas.height - margin - safeArea.bottom - height;
+      return (preferred.endsWith('right') ? xs : [...xs].reverse()).map((x) => ({ x, y, width, height }));
+    });
   };
-  for (const scale of [1, 0.75]) {
-    for (const corner of order(preferred)) {
-      const box = boxFor(corner, scale);
-      if (!avoid.some((other) => overlaps(box, other))) return { ...box, corner, clear: true };
+  for (const scale of [1, 0.85, 0.7]) {
+    for (const box of spots(scale)) {
+      if (!avoid.some((other) => overlaps(box, other))) return { ...box, corner: cornerOf(box.y < canvas.height / 2 ? 'top' : 'bottom', box), clear: true };
     }
   }
-  return { ...boxFor(preferred, 0.75), corner: preferred, clear: false };
+  const [fallback] = spots(0.7);
+  return { ...fallback, corner: preferred, clear: false };
+}
+
+/** A stamp's share of the canvas width and its width-to-height ratio: the uploaded file, or the hashtag pill. */
+export async function stampGeometry(campaign: CampaignIdentity | undefined): Promise<{ width: number; aspect: number } | null> {
+  if (!campaign) return null;
+  if (campaign.stampPath) {
+    try { const m = await sharp(readFileSync(campaign.stampPath)).metadata(); if (m.width && m.height) return { width: campaign.width, aspect: m.width / m.height }; } catch { /* unreadable file: fall back to the text stamp */ }
+  }
+  const text = await textStamp(campaign);
+  if (!text) return null;
+  const m = await sharp(text.png).metadata();
+  return { width: text.width, aspect: (m.width ?? 3) / (m.height ?? 1) };
+}
+
+/** The area the stamp is planned into, as fractions of the canvas: its preferred corner, inside the safe area. */
+export function stampZone(canvas: { width: number; height: number; safe: { top: number; bottom: number } }, corner: StampCorner, geometry: { width: number; aspect: number }): Box {
+  const mx = 0.045, my = (0.045 * canvas.width) / canvas.height;
+  const width = geometry.width, height = (geometry.width * canvas.width) / geometry.aspect / canvas.height;
+  const x = corner.endsWith('right') ? 1 - mx - width : mx;
+  const y = corner.startsWith('bottom') ? 1 - my - canvas.safe.bottom / canvas.height - height : my + canvas.safe.top / canvas.height;
+  return { x, y, width, height };
 }
 
 /** Pastes the campaign stamp onto a finished creative. Returns the image unchanged when the campaign has no stamp. */
@@ -63,9 +93,11 @@ export async function applyCampaignStamp(creative: Buffer, campaign: CampaignIde
   const stamp = await sharp(stampPng).metadata();
   if (!canvas.width || !canvas.height || !stamp.width || !stamp.height) return { image: creative, problem: 'Campaign stamp: the image could not be read.' };
   const place = stampPlacement({ width: canvas.width, height: canvas.height }, { width: stamp.width, height: stamp.height }, campaign.corner, campaign.width, avoid, safeArea);
+  // No free spot: leaving the stamp off is better than covering the headline or the button.
+  if (!place.clear) return { image: creative, problem: `Campaign stamp «${campaign.name}»: no free space on the top or bottom edge clear of the text, the button and the logo, so it was left off. Add it by hand or design again.` };
   const resized = await sharp(stampPng).resize(place.width, place.height, { fit: 'fill', kernel: 'lanczos3' }).png().toBuffer();
   const image = await sharp(creative).composite([{ input: resized, left: place.x, top: place.y }]).png().toBuffer();
-  return { image, placement: place, problem: place.clear ? undefined : `Campaign stamp «${campaign.name}» touches the text or the logo in every corner; check it before approving.` };
+  return { image, placement: place };
 }
 
 /** The words a campaign without an uploaded stamp still shows on its designs: the hashtag, else the slogan. */
@@ -91,11 +123,17 @@ export async function textStamp(campaign: CampaignIdentity): Promise<{ png: Buff
   return { png, width };
 }
 
-/** A line for the image prompt: keep the stamp's corner calm, because the official stamp is placed there afterwards. */
-export function stampRoom(campaign: CampaignIdentity | undefined): string {
+/**
+ * A line for the image prompt: keep the stamp's area calm, because the official stamp is placed there afterwards.
+ * With the canvas and the stamp's measured size, the area is given exactly, the same one the layout was planned around.
+ */
+export function stampRoom(campaign: CampaignIdentity | undefined, canvas?: { width: number; height: number; safe: { top: number; bottom: number } }, geometry?: { width: number; aspect: number } | null): string {
   if (!campaign || (!campaign.stampPath && !stampText(campaign))) return '';
   const side = campaign.corner.replace('-', ' ');
-  return `\n\nCAMPAIGN STAMP RESERVATION\nKeep the ${side} corner (about ${Math.round(campaign.width * 100)}% of the width, a short band) calm and free of text, faces and key subjects. The campaign's official slogan stamp is placed there afterwards; do not draw any slogan, hashtag or stamp yourself.`;
+  const pct = (v: number) => Math.round(v * 100);
+  const z = canvas && geometry ? stampZone(canvas, campaign.corner, geometry) : null;
+  const area = z ? `the ${side} area from ${pct(z.x)}% to ${pct(z.x + z.width)}% of the width and ${pct(z.y)}% to ${pct(z.y + z.height)}% of the height` : `the ${side} corner (about ${Math.round(campaign.width * 100)}% of the width, a short band)`;
+  return `\n\nCAMPAIGN STAMP RESERVATION\nKeep ${area} calm and free of text, the button, faces and key subjects — the button goes elsewhere. The campaign's official slogan stamp is placed there afterwards; do not draw any slogan, hashtag or stamp yourself.`;
 }
 
 /** What the strategist hears about the campaign, so the copy and captions are written around its slogan. */

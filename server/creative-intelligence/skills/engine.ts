@@ -166,7 +166,32 @@ export async function planCaptions(input: { prompt: string; strategy: StrategyDe
   return result.captionWriter;
 }
 
-export async function planDesign(input: { strategy: StrategyDecision; direction: StrategyDecision['themeDirector']['directions'][number]; format: { label: string; width: number; height: number }; facts: string[]; settings: EngineSettings; env: NodeJS.ProcessEnv }): Promise<DesignDecision> {
+/** An area the layout must leave free: where the logo and the campaign stamp are composited, or the platform covers. */
+export interface ReservedArea { name: string; zone: Zone }
+
+/**
+ * Where a plan puts text, the button or the subject inside a reserved area. Text and the button may not enter at
+ * all (a little box error aside); the subject may brush an edge but not sit under the logo or the stamp.
+ */
+export function planConflicts(design: Pick<DesignDecision, 'layoutDesigner'>, reserved: ReservedArea[]): string[] {
+  const L = design.layoutDesigner;
+  const planned: [string, Zone | undefined, number][] = [['headline', L.headlineZone, 0.06], ['supporting line', L.supportingCopyZone, 0.06], ['facts', L.factsZone, 0.06], ['button (CTA)', L.ctaZone, 0.06], ['hero subject', L.heroSubject, 0.25]];
+  const share = (a: Zone, b: Zone) => (Math.max(0, Math.min(a.x + a.width, b.x + b.width) - Math.max(a.x, b.x)) * Math.max(0, Math.min(a.y + a.height, b.y + b.height) - Math.max(a.y, b.y))) / Math.max(1e-6, a.width * a.height);
+  return planned.flatMap(([name, zone, limit]) => !zone || !hasArea(zone) ? [] : reserved.filter((r) => share(zone, r.zone) > limit).map((r) => `the ${name} (${where(zone)}) enters the ${r.name} area (${where(r.zone)})`));
+}
+
+export async function planDesign(input: { strategy: StrategyDecision; direction: StrategyDecision['themeDirector']['directions'][number]; format: { label: string; width: number; height: number }; facts: string[]; settings: EngineSettings; env: NodeJS.ProcessEnv; /** Logo, campaign stamp and platform areas the layout must stay out of. */ reserved?: ReservedArea[] }): Promise<DesignDecision> {
+  const reserved = input.reserved ?? [];
+  const first = await designStage(input, reserved, '');
+  // The plan is checked against the reserved areas; a plan that puts the button under the stamp or the headline
+  // under the logo goes back to the team once with what is wrong, so the image is never drawn around a collision.
+  const conflicts = planConflicts(first, reserved);
+  if (!conflicts.length) return first;
+  const revised = await designStage(input, reserved, `Your previous plan had these collisions: ${conflicts.join('; ')}. Return the complete plan again with every zone moved fully out of the reserved areas, keeping the idea and hierarchy.`).catch(() => first);
+  return planConflicts(revised, reserved).length <= conflicts.length ? revised : first;
+}
+
+async function designStage(input: Parameters<typeof planDesign>[0], reserved: ReservedArea[], revision: string): Promise<DesignDecision> {
   const { strategy, direction } = input;
   const theme = THEMES[direction.theme] ?? THEMES['corporate-premium'];
   const refs = strategy.referenceDirector.references.filter((r) => direction.references.includes(r.id) && r.quality !== 'reject' && r.quality !== 'weak');
@@ -175,6 +200,8 @@ export async function planDesign(input: { strategy: StrategyDecision; direction:
     intro: 'You are the Engosoft design team turning one creative direction into a precise design plan before any image is generated. Decide every position in normalized coordinates of the final canvas.',
     content: [{ type: 'input_text', text: [
       `Canvas: ${input.format.label}`,
+      reserved.length ? `Reserved areas (fractions of the canvas from the top-left). The official logo and the campaign stamp are composited there after the image is made, and the platform's interface covers its edges, so no headline, supporting line, fact, button, face or key subject may enter them — plan every zone around them, with a clear gap: ${reserved.map((r) => `${r.name}: ${where(r.zone)}`).join('; ')}.` : '',
+      revision,
       `Objective: ${strategy.creativeDirector.objective}. Audience: ${strategy.creativeDirector.audience}. Message: ${strategy.creativeDirector.message}. Desired reaction: ${strategy.creativeDirector.desiredReaction}. Angle: ${strategy.contentStrategist.angle}.`,
       `Direction "${direction.name}": ${direction.idea} Subject strategy: ${direction.subjectStrategy}.`,
       `Theme ${theme.id}: ${JSON.stringify({ composition: theme.composition, photography: theme.photography, lighting: theme.lighting, typography: theme.typography, spacing: theme.spacing, graphics: theme.graphics, texture: theme.texture, imageTreatment: theme.imageTreatment, density: theme.density, mood: theme.mood, avoid: theme.avoid })}`,
@@ -182,7 +209,7 @@ export async function planDesign(input: { strategy: StrategyDecision; direction:
       refs.length ? `References to use, with roles: ${refs.map((r) => `${r.id} [${r.roles.join(', ')}; ${r.quality}]: ${r.useFor}`).join(' | ')}` : 'No references for this direction.',
       settingsText(input.settings),
       `Design standard: ${DESIGN_STANDARD.join(' ')}`,
-    ].join('\n\n') }],
+    ].filter(Boolean).join('\n\n') }],
   });
 }
 

@@ -140,3 +140,29 @@ test('an image with no sticker gives no stamp, and a transparent PNG is only tri
   assert.equal(none.stamp, null);
   assert.equal((await analysis.cutOut(await lockup())).background, 'transparent');
 });
+
+test('the stamp slides along the free edge, and stays off rather than cover the button', async () => {
+  // A button across the bottom-right half: the stamp keeps to the bottom edge, on the free left side.
+  const button = { x: 500, y: 1150, width: 580, height: 200 };
+  const slid = stamp.stampPlacement(canvas, { width: 600, height: 200 }, 'bottom-right', 0.3, [button]);
+  assert.ok(slid.y > canvas.height / 2 && slid.x + slid.width <= button.x, 'bottom edge, left of the button');
+  // The whole bottom taken: the top edge.
+  const top = stamp.stampPlacement(canvas, { width: 600, height: 200 }, 'bottom-right', 0.3, [{ x: 0, y: 1000, width: 1080, height: 350 }]);
+  assert.ok(top.clear && top.y < canvas.height / 2);
+  // Nowhere free: nothing is pasted, and it is reported.
+  const creative = await sharp({ create: { width: 1080, height: 1350, channels: 3, background: '#0046ff' } }).png().toBuffer();
+  const identity = { id: 'c', name: 'Black Friday', slogan: '', hashtag: '', corner: 'bottom-right' as const, width: 0.3, stampPath: '', keyVisualPath: '' };
+  const blocked = await stamp.applyCampaignStamp(creative, identity, await lockup(), [{ x: 0, y: 0, width: 1080, height: 1350 }]);
+  assert.equal(blocked.image, creative);
+  assert.equal(blocked.placement, undefined);
+  assert.match(blocked.problem!, /left off/);
+});
+
+test('the stamp reservation in the prompt is the measured area the layout is planned around', async () => {
+  const identity = { id: 'c', name: 'جمعة', slogan: '', hashtag: '#جمعة_تغير_مسارك', corner: 'bottom-right' as const, width: 0.3, stampPath: '', keyVisualPath: '' };
+  const geometry = await stamp.stampGeometry(identity);
+  assert.ok(geometry && geometry.aspect > 2, 'the hashtag pill is wide');
+  const zone = stamp.stampZone({ width: 1080, height: 1920, safe: { top: 230, bottom: 330 } }, 'bottom-right', geometry!);
+  assert.ok(zone.y + zone.height <= 1 - 330 / 1920 + 1e-9, 'above the story bottom bar');
+  assert.match(stamp.stampRoom(identity, { width: 1080, height: 1920, safe: { top: 230, bottom: 330 } }, geometry), /bottom right area from \d+% to \d+% of the width .* the button goes elsewhere/);
+});
