@@ -154,7 +154,8 @@ async function placeLogoAndSave(raw: Buffer, preset: PublishingPreset, words: st
     .catch(() => []);
   // The resolver picks the corner and variant that read on this background; a fixed top-left lockup is the fallback.
   const decision = await resolveLogo({ creative: raw, zones, preferredCorner: 'top-left', preferredMark: 'lockup', safeArea: preset.safe });
-  const { dominant } = await sharp(raw).extract({ left: 0, top: 0, width: Math.round(preset.width * 0.3), height: Math.round(preset.height * 0.25) }).stats();
+  // stats() reads the input, not the pipeline: extract to a buffer first, or it measures the whole picture.
+  const { dominant } = await sharp(await sharp(raw).extract({ left: 0, top: 0, width: Math.round(preset.width * 0.3), height: Math.round(preset.height * 0.25) }).toBuffer()).stats();
   const light = (dominant.r * 299 + dominant.g * 587 + dominant.b * 114) / 1000 > 150;
   const placement = decision.requiresCreativeRepair
     ? { variantId: light ? 'lockup-positive' as const : 'lockup-reversed' as const, x: Math.max(Math.round(preset.width * 0.04), preset.safe.left + 20), y: Math.max(Math.round(preset.height * 0.03), preset.safe.top + 20), width: Math.round(Math.min(preset.width * 0.19, preset.height * 0.3)) }

@@ -210,3 +210,73 @@ test('the finished post is looked at again: a stamp that crowds something moves,
     globalThis.fetch = realFetch;
   }
 });
+
+test('house story layout: full logo under the top bar, headline below it, emphasis on its own green line, button above the reply bar', async () => {
+  const { storyLayout } = await import('../server/creative-intelligence/typography/typeset');
+  const { resolveLogo } = await import('../server/creative-intelligence/logo-resolution/resolver');
+  const W = 1080, H = 1920, safe = { top: 250, bottom: 390, left: 60, right: 60 };
+  const story = { headline: '3 دورات تغيّر المسار', subheadline: 'PMP + Primavera P6 + PMI-RMP', facts: ['خصم 50% لفترة محدودة'], cta: 'سجّل الحين' };
+  const logo = { corner: 'top-left' as const, mark: 'lockup' as const };
+  const layout = storyLayout(story, W, H, safe, logo, { emphasis: 'تغيّر المسار' });
+  assert.equal(layout.logo.y, 250, 'the logo sits right under the platform bar');
+  // The short first line sits beside the logo, as on the house posts; no line touches the logo.
+  assert.equal(layout.headline.box.y, layout.logo.y);
+  const touches = (a: { x: number; y: number; width: number; height: number }, b: typeof a) => a.x < b.x + b.width && b.x < a.x + a.width && a.y < b.y + b.height && b.y < a.y + a.height;
+  assert.ok(layout.headline.lineBoxes.every((line) => !touches(line, { ...layout.logo, width: layout.logo.width + 30 })), 'no headline line touches the logo');
+  assert.equal(layout.headline.lines, 2, '«3 دورات» / «تغيّر المسار»');
+  assert.ok(layout.headline.size >= 0.1 * W, 'story-sized type');
+  assert.ok(layout.cta!.box.y + layout.cta!.box.height <= H - safe.bottom, 'the button stays above the reply bar');
+  assert.ok(layout.subject.height >= 0.25 * H, 'a quarter of the screen at least for the picture');
+  assert.deepEqual(layout.problems, []);
+  // Rendered on a plain blue picture: the green bar is under the second line, and the full lockup fits its corner.
+  const blue = await canvas(W, H, '#0a3be0', '#062a9e');
+  const ts = await typesetCreative({ image: blue, copy: story, plan: {}, safeArea: safe, logo, logoShade: true, emphasis: 'تغيّر المسار' });
+  const line2 = layout.headline.box.y + layout.headline.box.height * 0.72;
+  const { data } = await sharp(ts.png).extract({ left: Math.round(W * 0.6), top: Math.round(line2), width: 1, height: 1 }).raw().toBuffer({ resolveWithObject: true });
+  assert.ok(data[1] > 200 && data[0] < 140, `green bar behind the emphasis (got ${[...data].slice(0, 3)})`);
+  const placed = await resolveLogo({ creative: ts.png, zones: ts.zones, preferredCorner: 'top-left', preferredMark: 'lockup', strictCorner: true, safeArea: safe });
+  assert.equal(placed.requiresCreativeRepair, false);
+  assert.match((placed as { variantId: string }).variantId, /^lockup/, 'the full lockup, not the symbol');
+});
+
+test('a story of a design is layered: the picture is drawn text-free around the measured areas', async () => {
+  const { sizeModeFor } = await import('../server/creative-intelligence/generation/full-creative');
+  const brief = { language: 'ar', objective: 'o', audience: 'a', caption: '', captions: strategy.captionWriter.captions, canonicalCopy: copy, directions: [], engine: { version: 'design-engine:v1', skills: {}, settings: DEFAULT_SETTINGS, strategy, references: [] } } as never;
+  assert.equal(sizeModeFor('instagram-story', 'model', brief, {}), 'typeset');
+  assert.equal(sizeModeFor('instagram-square', 'model', brief, {}), 'model');
+  assert.equal(sizeModeFor('instagram-story', 'model', brief, { CREATIVE_STORY_LAYERS: 'off' }), 'model');
+  const master = await canvas(1088, 1360, '#ff6600', '#0046ff');
+  const drawn = await canvas(1088, 1936, '#0b1530', '#14203d');
+  const calls: { prompt: string; images: { data: Buffer }[] }[] = [];
+  const provider = { name: 'fake', model: 'fake-image', generate: async () => { throw new Error('the master is attached'); }, edit: async (r: { prompt: string; images: { data: Buffer }[] }) => { calls.push(r); return [{ png: drawn, model: 'fake-image', size: '1088x1936', quality: 'high' as const, latencyMs: 1 }]; } };
+  const inspection = { texts: [], faces: [], subjects: [], logosOrWatermarks: [], copyAudit: [], defects: [], scores: { design: 8, marketing: 8, imageQuality: 8, brandFit: 8 }, verdict: 'accept', summary: 'ok', critique: { rubric: {}, aiTells: [], compositingIssues: [], professionalTest: { designerWouldPublish: true, marketingWouldPublish: true, looksDesigned: true }, firstSeen: '' }, repairs: [] };
+  const realFetch = globalThis.fetch;
+  globalThis.fetch = (async () => new Response(JSON.stringify({ output: [{ content: [{ type: 'output_text', text: JSON.stringify(inspection) }] }], usage: { input_tokens: 1, output_tokens: 1 } }), { status: 200 })) as typeof fetch;
+  try {
+    const dir = mkdtempSync(join(tmpdir(), 'engosoft-story-'));
+    const result = await produceDirection({ provider, brief, direction: { id: 'd1-instagram-story', name: 'القائد', concept: 'c', subject: 's', composition: 'x', palette: 'p', typography: 't', mood: 'm', engine: { strategy: direction0, design } } as never, format: 'instagram-story', quality: 'high', dir, env: { OPENAI_API_KEY: 'test' }, master, mode: 'typeset' });
+    assert.equal(result.textMode, 'typeset');
+    assert.match(calls[0].prompt, /THE PICTURE ONLY, DRAWN FROM SCRATCH/);
+    assert.match(calls[0].prompt, /Ignore all of its text, its button, its highlight bars and its logo/);
+    assert.match(calls[0].prompt, /the hero subject, scaled up to fill the width/);
+    assert.equal(result.logo.requiresCreativeRepair, false);
+    assert.match((result.logo as { variantId: string }).variantId, /^lockup/);
+    const meta = await sharp(result.imagePath!).metadata();
+    assert.equal(meta.width, 1080); assert.equal(meta.height, 1920);
+  } finally {
+    globalThis.fetch = realFetch;
+  }
+});
+
+test('readability is measured under the text and the logo, not across the whole picture', async () => {
+  // A clean light top over a dark, busy lower half: the logo corner stays clean, and the headline turns royal blue.
+  const W = 1080, H = 1920, safe = { top: 250, bottom: 390, left: 60, right: 60 };
+  const stripes = Array.from({ length: 40 }, (_, i) => `<rect x="0" y="${1000 + i * 23}" width="${W}" height="11" fill="${i % 2 ? '#ffffff' : '#000000'}"/>`).join('');
+  const image = await sharp(Buffer.from(`<svg xmlns="http://www.w3.org/2000/svg" width="${W}" height="${H}"><rect width="${W}" height="${H}" fill="#eef2f7"/><rect y="1000" width="${W}" height="920" fill="#101820"/>${stripes}</svg>`)).png().toBuffer();
+  const story = { headline: '3 دورات تغيّر الاتجاه', subheadline: 'PMP 8th + Primavera P6 + PMI-RMP', facts: [], cta: 'سجّل الآن' };
+  const ts = await typesetCreative({ image, copy: story, plan: {}, safeArea: safe, logo: { corner: 'top-left', mark: 'lockup' }, logoShade: true, emphasis: 'تغيّر الاتجاه' });
+  const { data } = await sharp(ts.png).extract({ left: 100, top: 300, width: 1, height: 1 }).raw().toBuffer({ resolveWithObject: true });
+  assert.ok(data[0] > 225, `the logo corner is not shaded (got ${data[0]})`);
+  assert.equal(ts.layout.tone, 'dark-text');
+  assert.equal(ts.layout.blocks[0].color, '#0046FF', 'royal-blue headline on the light world');
+});

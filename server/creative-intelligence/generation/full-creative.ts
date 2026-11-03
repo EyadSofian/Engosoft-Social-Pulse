@@ -24,7 +24,7 @@ import { compileBriefPrompt, compileDesignPrompt, DEFAULT_SETTINGS, ENGINE_SKILL
 import { THEMES, type ThemeId } from '../skills/themes.js';
 import { pasteInside, patchRejected } from './patch.js';
 import { houseReferences, referencePrompt } from './house-references.js';
-import { TYPESET_VERSION, typesetCreative, type TypesetPlan, type TypesetResult } from '../typography/typeset.js';
+import { highlightPhrase, storyLayout, storyZones, TYPESET_VERSION, typesetCreative, type TypesetPlan, type TypesetResult } from '../typography/typeset.js';
 import { openAIJson, OpenAIImageProvider, type CreativeImageProvider, type ImageQuality } from './provider.js';
 import { canvasBrief, copyDensityOf, coverWindow, describeCanvas, generationSizeFor, publishingPreset } from '../../../src/domain/output-presets.js';
 
@@ -248,7 +248,7 @@ export function promptFor(brief: CreativeBriefPlan, direction: CreativeDirection
   const design = { ...direction.engine.design, logoDirector: { ...direction.engine.design.logoDirector, mark: plan.mark, corner: plan.corner } };
   const input = { strategy: brief.engine.strategy, direction: direction.engine.strategy, design, copy: brief.canonicalCopy, format: { label: canvasOf(format).label, story: canvasOf(format).vertical, canvas: logoCanvasOf(format) }, adaptation };
   if (mode === 'model' && style === 'brief') return compileBriefPrompt(input);
-  return compileDesignPrompt({ ...input, typeset: mode === 'typeset' ? typesetPlanFor(direction, format, adaptation) : undefined });
+  return compileDesignPrompt({ ...input, typeset: mode === 'typeset' ? typesetPlanFor(direction, format, adaptation, { copy: withCanvasCopy(brief, format).canonicalCopy, emphasis: emphasisFor(brief, direction) }) : undefined });
 }
 
 /**
@@ -256,10 +256,20 @@ export function promptFor(brief: CreativeBriefPlan, direction: CreativeDirection
  * shape cannot reuse them, so the type gets the area such shapes are read in: the upper part of a 9:16 story
  * (below the platform bar), the right-hand side of a wide banner for Arabic (left for English).
  */
-export function typesetPlanFor(direction: CreativeDirectionPlan, format: CanvasTarget, adaptation: boolean): TypesetPlan {
+/** The green-bar phrase of a design: as its typography director placed it, or the copywriter's emphasis. */
+const emphasisFor = (brief: CreativeBriefPlan, direction: CreativeDirectionPlan) =>
+  highlightPhrase(brief.canonicalCopy.headline, direction.engine?.design.typographyDirector.emphasis ?? '', brief.engine?.strategy.copywriter.emphasis ?? '');
+
+export function typesetPlanFor(direction: CreativeDirectionPlan, format: CanvasTarget, adaptation: boolean, story?: { copy: CanonicalCopy; emphasis?: string }): TypesetPlan & { subjectZone?: NormBox } {
   const design = direction.engine?.design;
   const base: TypesetPlan = { alignment: design?.typographyDirector.alignment, headlineLines: design?.typographyDirector.headlineLines, headlineScale: design?.typographyDirector.scale.headline };
   const canvas = canvasOf(format);
+  // A full-screen vertical canvas is set in the house story layout: the picture is drawn around its measured areas.
+  if (story && canvas.output.height / canvas.output.width > 1.6) {
+    const { width: W, height: H } = canvas.output;
+    const layout = storyLayout(story.copy, W, H, canvas.safeArea, logoPlanOf(direction, format), { headlineLines: base.headlineLines, emphasis: story.emphasis });
+    return { ...base, ...storyZones(layout, W, H) };
+  }
   const ratio = canvas.output.width / canvas.output.height;
   if (adaptation || !design) {
     if (canvas.vertical || ratio < 0.7) return { ...base, headlineScale: undefined, headlineZone: { x: 0.08, y: 0.15, width: 0.84, height: 0.17 }, supportingCopyZone: { x: 0.08, y: 0.32, width: 0.84, height: 0.08 }, factsZone: { x: 0.08, y: 0.4, width: 0.84, height: 0.06 }, ctaZone: { x: 0.08, y: 0.46, width: 0.84, height: 0.05 } };
@@ -444,8 +454,24 @@ export function freshSizeBrief(format: CanvasTarget): string {
 }
 
 /** The prompt line for the finished design of another size when it is attached as a reference. */
-export function masterReference(index: number): string {
-  return `\nImage ${index} is the approved design of this same post in another shape. Take from it only its main subject and objects, its colour world, its typography style and its highlight and button treatment, so both sizes read as one campaign. Do not copy, trace, extend or re-frame its layout, proportions or empty space.`;
+export function masterReference(index: number, pictureOnly = false): string {
+  return pictureOnly
+    ? `\nImage ${index} is the approved design of this same post in another shape. Take from it only its main subject and objects, their look and lighting, and its colour world, so both sizes read as one campaign. Ignore all of its text, its button, its highlight bars and its logo: this image has none. Do not copy, trace, extend or re-frame its layout, proportions or empty space.`
+    : `\nImage ${index} is the approved design of this same post in another shape. Take from it only its main subject and objects, its colour world, its typography style and its highlight and button treatment, so both sizes read as one campaign. Do not copy, trace, extend or re-frame its layout, proportions or empty space.`;
+}
+
+/**
+ * The picture brief for a layered size: the image model draws only the picture, at this canvas, with the subject
+ * in the band the measured layout leaves for it; the type, button and logo are set afterwards in exact areas.
+ */
+export function layeredSizeBrief(format: CanvasTarget, plan: { subjectZone?: NormBox }): string {
+  const pct = (v: number) => Math.round(v * 100);
+  const z = plan.subjectZone;
+  const never = 'Never take another size\'s arrangement and only add plain background around it: that reads as the old post stretched.';
+  const bands = z
+    ? ` From the top: 0–${pct(z.y)}% is calm, simple continuation of the background — the platform bar, the Engosoft logo and the headline are set there afterwards. ${pct(z.y)}–${pct(z.y + z.height)}%: the hero subject, scaled up to fill the width, the strongest part of the picture. From ${pct(z.y + z.height)}% down: calm background again — the fact chips, the button and the platform's reply bar go there. Calm means a soft gradient, light or texture, with no objects, icons, people or graphics.`
+    : '';
+  return `NEW SIZE — THE PICTURE ONLY, DRAWN FROM SCRATCH\nThis is the picture of a new design of the same post at this canvas size: not an edit, extension, crop or re-framing of another image. It contains no text, letters, numbers, buttons or logos of any kind; the design system sets all of them afterwards.${bands} ${never}`;
 }
 
 /** A finished design attached as a reference: flattened and at most 1024 px, like the house references. */
@@ -708,10 +734,12 @@ async function produceTypeset(input: Parameters<typeof produceDirection>[0]): Pr
   const plan = logoPlanOf(direction, format);
   const started = Date.now();
   const adaptation = Boolean(master);
+  const emphasis = emphasisFor(brief, direction);
+  const layered = typesetPlanFor(direction, format, adaptation, { copy: brief.canonicalCopy, emphasis });
   const basePrompt = master
-    ? `${promptFor(brief, direction, format, true, 'typeset')}\n\n${freshSizeBrief(format)} The text areas above stay calm; keep the image free of any text.`
+    ? `${promptFor(brief, direction, format, true, 'typeset')}\n\n${layeredSizeBrief(format, layered)}`
     : promptFor(brief, direction, format, false, 'typeset');
-  const prompt = `${basePrompt}${stampRoom(input.campaign, logoCanvasOf(format), await stampGeometry(input.campaign))}${master ? masterReference(1) : ''}`;
+  const prompt = `${basePrompt}${stampRoom(input.campaign, logoCanvasOf(format), await stampGeometry(input.campaign))}${master ? masterReference(1, true) : ''}`;
   const problems: string[] = [];
   progress('generating');
   const [generated] = master
@@ -721,7 +749,7 @@ async function produceTypeset(input: Parameters<typeof produceDirection>[0]): Pr
   const rawPath = resolve(dir, `${direction.id}-raw.png`);
   writeFileSync(rawPath, raw);
   const [gw, gh] = spec.generation.split('x').map(Number);
-  const tsPlan = typesetPlanFor(direction, format, adaptation);
+  const tsPlan = typesetPlanFor(direction, format, adaptation, { copy: brief.canonicalCopy, emphasis });
   const hero = !adaptation && direction.engine?.design.layoutDesigner.heroSubject;
   const heroZone = hero && hero.width > 0.02 && hero.height > 0.02 && hero.width * hero.height < 0.45
     ? [{ kind: 'subject' as const, label: 'planned hero', box: { x: hero.x * spec.output.width, y: hero.y * spec.output.height, width: hero.width * spec.output.width, height: hero.height * spec.output.height } }] : [];
@@ -729,7 +757,7 @@ async function produceTypeset(input: Parameters<typeof produceDirection>[0]): Pr
   const compose = async (visual: Buffer) => {
     const clean = await toOutput(visual, format);
     progress('typesetting');
-    const ts = await typesetCreative({ image: clean, copy: brief.canonicalCopy, plan: tsPlan, safeArea: spec.safeArea, logo: plan, logoShade: Boolean(houseLogo()) });
+    const ts = await typesetCreative({ image: clean, copy: brief.canonicalCopy, plan: tsPlan, safeArea: spec.safeArea, logo: plan, logoShade: Boolean(houseLogo()), emphasis });
     progress('logo');
     const logo = await resolveLogo({ creative: ts.png, zones: [...ts.zones, ...heroZone], preferredCorner: plan.corner, preferredMark: plan.mark, strictCorner: Boolean(houseLogo()), safeArea: spec.safeArea });
     return { clean, ts, logo };
@@ -858,11 +886,23 @@ export async function adaptFullCreative(run: FullCreativeRun, directionId: strin
   if (!direction || !source?.rawImagePath) throw new Error('That direction has no generated image to adapt');
   const provider = new OpenAIImageProvider(env.OPENAI_API_KEY ?? '', source.model);
   const raw = readFileSync(source.rawImagePath);
-  const result = await produceDirection({ provider, brief: run.brief, direction: { ...direction, id: `${direction.id}-${format}` }, format, quality: run.request.quality ?? imageQualityFor(env), dir: run.outputDir, env, master: raw, onProgress, mode: source.textMode ?? 'model', campaign: run.request.campaign });
+  const result = await produceDirection({ provider, brief: run.brief, direction: { ...direction, id: `${direction.id}-${format}` }, format, quality: run.request.quality ?? imageQualityFor(env), dir: run.outputDir, env, master: raw, onProgress, mode: sizeModeFor(format, source.textMode ?? 'model', run.brief, env), campaign: run.request.campaign });
   run.results.push(result);
   writeFileSync(resolve(run.outputDir, 'trace.json'), JSON.stringify(run, null, 2));
   onProgress?.({ stage: 'done' });
   return result;
+}
+
+/**
+ * Who sets the words on another size. A full-screen story is layered (CREATIVE_STORY_LAYERS, on by default): the
+ * picture is drawn text-free and the house story layout sets the copy, the full logo and the button at measured
+ * positions — the image model does not keep text out of the logo corner or size a story's type reliably. Other
+ * sizes follow their design.
+ */
+export function sizeModeFor(format: CanvasTarget, designMode: TextMode, brief: CreativeBriefPlan, env: NodeJS.ProcessEnv = process.env): TextMode {
+  const c = canvasOf(format);
+  const story = c.output.height / c.output.width > 1.6;
+  return story && brief.engine && env.CREATIVE_STORY_LAYERS?.trim() !== 'off' ? 'typeset' : designMode;
 }
 
 export function loadFullCreativeRun(requestId: string): FullCreativeRun {
