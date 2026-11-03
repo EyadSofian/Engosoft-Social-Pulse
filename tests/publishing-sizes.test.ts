@@ -37,7 +37,7 @@ test('each shape gets its own layout brief, and covers keep content out of the c
   assert.equal(shapeOf(1500, 500), 'banner');
   const header = canvasBrief(publishingPreset('x-header')!);
   assert.match(header, /Very wide banner/);
-  assert.match(header, /top 12%, bottom 22%/);
+  assert.match(header, /top 10%, bottom 22%, left 10%, right 10%/);
   assert.match(canvasBrief(publishingPreset('instagram-story')!), /Full-screen vertical/);
   assert.deepEqual(presetsFor(['x']).map((p) => p.id), ['x-landscape', 'x-square', 'x-portrait', 'x-header']);
 });
@@ -47,8 +47,8 @@ test('recomposing for a size asks for a new layout of the same design, never a s
     directions: [{ id: 'd1', name: 'Authority', concept: 'c', subject: 's', composition: 'x', palette: 'p', typography: 't', mood: 'm' }] };
   const prompt = compileFullCreativePrompt(brief, brief.directions[0], 'linkedin-event');
   assert.match(prompt, /linkedin Event cover 16:9, 1600×900 px\. The cover of a LinkedIn event page[^.]*\. Landscape canvas/);
-  // A vertical size reserves its own interface zones (13% / 20% for the publishing story inset).
-  assert.match(compileFullCreativePrompt(brief, brief.directions[0], 'tiktok-photo'), /top 13% and bottom 20%/);
+  // A vertical video cover reserves its own interface zones: the top bar and the caption over the bottom 35%.
+  assert.match(compileFullCreativePrompt(brief, brief.directions[0], 'tiktok-photo'), /top 14% and bottom 35%/);
   const template = { fields: [{ key: 'title', label: 'Headline', type: 'text' }] } as never;
   const adapt = referenceAdaptPrompt(template, { title: 'دورة CFM' }, publishingPreset('facebook-page-cover')!);
   assert.match(adapt, /do not stretch, squash or simply crop/);

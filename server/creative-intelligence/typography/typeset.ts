@@ -12,7 +12,7 @@ import { LOGO_ZONE, type LogoMark } from '../brand/design-language.js';
 import { plannedLogoBox, type Corner } from '../logo-resolution/resolver.js';
 import type { ContentZone, SafeArea } from '../logo-resolution/validator.js';
 import type { CanonicalCopy } from '../typography-validation/copy-check.js';
-import { measureText, outlineText, paragraphDirection } from './text-outline.js';
+import { measureText, outlineText, paragraphDirection, type OutlinedText } from './text-outline.js';
 
 export const TYPESET_VERSION = 'typeset:v3';
 
@@ -37,6 +37,8 @@ export interface TypesetInput {
   logoShade?: boolean;
   /** The copywriter's emphasis phrase: set on the green highlight bar in the house story layout. */
   emphasis?: string;
+  /** How a story distributes its elements; thirds by default. */
+  arrangement?: StoryArrangement;
 }
 export interface TypesetBlock { role: 'headline' | 'subheadline' | 'fact' | 'cta'; text: string; box: { x: number; y: number; width: number; height: number }; size: number; weight: number; color: string }
 export interface TypesetResult {
@@ -45,6 +47,8 @@ export interface TypesetResult {
   zones: ContentZone[];
   layout: { version: string; placement: Placement; column: { x: number; y: number; width: number; height: number }; anchor: 'top' | 'bottom' | 'middle'; align: 'start' | 'center' | 'end'; tone: 'light-text' | 'dark-text'; scrim: number; blocks: TypesetBlock[] };
   problems: string[];
+  /** Where this layout planned the logo: the resolver uses this inset and lockup width (the story's logo sits near the top). */
+  logoHint?: { safeArea: SafeArea; lockupWidths: number[] };
 }
 
 const DARK_TEXT = '#0B1530';
@@ -332,17 +336,48 @@ type Px = { x: number; y: number; width: number; height: number };
 const GREEN = '#4CFF7A';
 const ON_GREEN = '#001BB7';
 const ROYAL_BLUE = '#0046FF';
+const WEBSITE = 'www.engosoft.com';
 /** Latin letters reorder as a group inside Arabic text, so a line with them is set whole, without a highlight. */
 const HAS_LATIN = /[A-Za-z]/;
 
+/**
+ * How a story distributes its elements, with the proportions measured from the story references the marketing
+ * team chose (docs/PLATFORM_LAYOUT_RULES.md): text-top puts the headline and body in the upper half and the
+ * picture's subject in the lower ~40%; picture-top swaps them.
+ */
+export type StoryArrangement = 'text-top' | 'picture-top';
+export const STORY_ARRANGEMENTS: StoryArrangement[] = ['text-top', 'picture-top'];
+
+/** The reference stories' proportions, as shares of the canvas width (x, sizes) or height (y). */
+export const STORY_PROPORTIONS = {
+  /** Side margins: 10–11% of the width on the references. */ margin: 0.1,
+  /** The logo's top edge: 6–8% from the top. */ logoTop: 0.06,
+  /** The lockup's width, just above the brand minimum (22%). */ logoShare: 0.23,
+  /** The earliest the headline starts (text-top): 13–20%. */ headlineTop: 0.16,
+  /** Headline line pitch: about 12.5% of the width. */ linePitch: 0.125,
+  /** The smallest line pitch before the copy is reported too long. */ minLinePitch: 0.085,
+  /** Body text size (the supporting line and facts, one per line). */ bodySize: 0.038,
+  /** Text-top: headline and body end by the middle of the screen, leaving the lower ~40% to the picture. */ textTopEnd: 0.5,
+  /** Picture-top: the picture's band ends here and the headline starts just below (references: 39–48%). */ pictureTopEnd: 0.5,
+  /** The button's bottom edge. */ ctaBottom: 0.86,
+  /** The website footer's top: about 93% on the references. */ footerTop: 0.925,
+} as const;
+
 export interface StoryLayout {
+  arrangement: StoryArrangement;
+  align: 'start' | 'center';
   logo: Px;
+  /** Inset the logo resolver must use for this layout's logo spot (the logo sits near the very top). */
+  logoSafe: SafeArea;
   headline: { text: string; lines: number; size: number; box: Px; preserveNewlines: boolean; /** Each set line's own box: what the logo and stamp must keep clear of. */ lineBoxes: Px[] };
   emphasis?: string;
+  /** The body: the supporting line and the facts, one per line. */
   sub?: { text: string; size: number; box: Px };
+  /** Kept for the shape the renderer expects: the facts are set in the body on this layout. */
   facts: { text: string; size: number; box: Px; padX: number; padY: number }[];
   cta?: { text: string; size: number; box: Px; padX: number; padY: number; arrow: number };
-  /** The middle band left for the picture's subject. */
+  footer: { text: string; x: number; y: number; size: number; width: number };
+  /** The band left for the picture's subject. */
   subject: Px;
   column: { left: number; right: number };
   problems: string[];
@@ -374,119 +409,99 @@ function emphasisOf(headline: string, given?: string): string | undefined {
 }
 
 /**
- * Positions for the house story: the full logo under the platform's top bar, the headline right below it (as
- * large as fits, at most three lines), the supporting line, the subject's band in the middle, and the fact chips
- * and orange button just above the reply bar. Measured from the real copy, so the image is drawn around exactly
- * these areas and nothing set later can collide with the logo.
+ * The story's spacing scale: every gap is a multiple of one unit (W/45 — 24 px on a 1080 story), so the rhythm is
+ * the same on every story instead of a different hand-picked gap between each pair of elements.
  */
-export function storyLayout(copy: CanonicalCopy, W: number, H: number, safe: SafeArea, logo: { corner: Corner; mark: LogoMark }, options: { headlineLines?: string[]; emphasis?: string } = {}): StoryLayout {
+/**
+ * Positions for a story, from the reference proportions: the logo small at the top corner, the headline of short
+ * lines (the emphasis whole on its own line, on its green bar), the body under it, the orange button, the website
+ * footer, and the picture's band. Measured from the real copy, so the picture is drawn around exactly these areas
+ * and nothing set later can collide with the logo.
+ */
+export function storyLayout(copy: CanonicalCopy, W: number, H: number, safe: SafeArea, logo: { corner: Corner; mark: LogoMark }, options: { headlineLines?: string[]; emphasis?: string; arrangement?: StoryArrangement } = {}): StoryLayout {
+  const P = STORY_PROPORTIONS;
   const problems: string[] = [];
-  const margin = Math.round(0.06 * W);
-  const left = Math.max(margin, safe.left), right = W - Math.max(margin, safe.right), colW = right - left;
-  const logoBox = plannedLogoBox({ width: W, height: H }, logo.mark, logo.corner, safe);
-  const logoTop = logo.corner.startsWith('top');
-  const below = (logoTop ? logoBox.y + logoBox.height : Math.max(margin, safe.top)) + Math.round(0.022 * H);
-  // The first lines may sit beside the logo, as on the house posts, when they fit between it and the margin; the
-  // reading start is the opposite side (right for Arabic with the logo top-left).
-  // The logo's clear space: the validator refuses a lockup with type or the green bar this close to it.
-  const clear = Math.round(0.05 * W);
-  const besideWidth = right - (logoBox.x + logoBox.width + clear);
-  const canSitBeside = logoTop && (paragraphDirection(copy.headline) === 'rtl' ? logo.corner.endsWith('left') : logo.corner.endsWith('right'));
-  const bottom = (logo.corner.startsWith('bottom') ? logoBox.y : H - Math.max(margin, safe.bottom)) - Math.round(0.012 * H);
+  const arrangement = options.arrangement ?? 'text-top';
+  const u = W / 45;
+  const m = Math.round(P.margin * W);
+  const left = m, right = W - m, colW = right - left;
+  const logoSafe: SafeArea = { top: Math.round(P.logoTop * H), bottom: safe.bottom, left: m, right: m };
+  const logoBox = plannedLogoBox({ width: W, height: H }, logo.mark, logo.corner, logoSafe, P.logoShare);
+  const logoBottom = logo.corner.startsWith('top') ? logoBox.y + logoBox.height : logoSafe.top;
   const rtl = paragraphDirection(copy.headline) === 'rtl';
   const norm = (t: string) => t.replace(/\s+/g, ' ').trim();
   const planned = options.headlineLines?.length && norm(options.headlineLines.join(' ')) === norm(copy.headline) ? options.headlineLines : undefined;
   const emphasis = rtl ? emphasisOf(copy.headline, options.emphasis) : undefined;
-  // The emphasis phrase stays whole on one line — on its own line when words come before or after it — so
-  // it can sit on its green bar («3 دورات» / «تغيّر المسار»). The planned breaks are kept when they already do that.
+  // The emphasis phrase stays whole on one line — on its own line when words come before or after it — so it
+  // can sit on its green bar («3 دورات» / «تغيّر الاتجاه»). The planned breaks are kept when they already do that.
   const aroundEmphasis = (): string[] | undefined => {
     if (!emphasis) return undefined;
     const text = norm(copy.headline), at = text.indexOf(emphasis);
     return [text.slice(0, at).trim(), emphasis, text.slice(at + emphasis.length).trim()].filter(Boolean);
   };
-  const preferred = planned && (!emphasis || planned.some((l) => norm(l).includes(emphasis))) ? planned : aroundEmphasis() ?? planned;
-  let fixed = preferred;
+  let fixed = planned && (!emphasis || planned.some((l) => norm(l).includes(emphasis))) ? planned : aroundEmphasis() ?? planned;
   let headText = fixed ? fixed.join('\n') : copy.headline;
   const style = (size: number, weight: number, lineHeight: number) => ({ family: 'brand' as const, weight, size, color: '#fff', lineHeight });
+  const bodyText = [copy.subheadline, ...(copy.facts ?? [])].filter(Boolean).join('\n');
+  const bodySize = P.bodySize * W;
 
-  // The bottom group, stacked up from the reply bar: the button, then the fact chips above it.
+  // The footer and the button are fixed to the bottom of the layout.
+  const footerSize = 0.026 * W;
+  const footerWidth = measureText(WEBSITE, style(footerSize, 700, 1.2), 'ltr');
+  const footer = { text: WEBSITE, x: left, y: Math.round(P.footerTop * H), size: footerSize, width: Math.round(footerWidth) };
   const ctaSize = 0.05 * W;
-  let cursor = bottom;
   let cta: StoryLayout['cta'];
-  if (copy.cta) {
+  const ctaBox = (y: number) => {
+    if (!copy.cta) return undefined;
     const padY = ctaSize * 0.62, padX = ctaSize * 1.1, arrow = ctaSize * 0.9;
     const lineW = measureText(copy.cta, style(ctaSize, 800, 1.2));
     const out = outlineText({ text: copy.cta, x: 0, y: 0, width: colW, maxLines: 1, style: style(ctaSize, 800, 1.2) });
     const width = Math.min(colW, lineW + padX * 2 + arrow), height = out.height + padY * 2;
-    cta = { text: copy.cta, size: ctaSize, padX, padY, arrow, box: { x: Math.round((W - width) / 2), y: Math.round(cursor - height), width: Math.round(width), height: Math.round(height) } };
-    cursor -= height + 0.022 * H;
-  }
-  const facts: StoryLayout['facts'] = [];
-  const factSize = 0.036 * W;
-  for (const fact of [...(copy.facts ?? [])].reverse()) {
-    const padY = factSize * 0.55, padX = factSize * 0.9;
-    const out = outlineText({ text: fact, x: 0, y: 0, width: colW - padX * 2, maxLines: 2, style: style(factSize, 700, 1.3) });
-    const lineW = Math.max(...out.lines.map((l) => l.width), 0);
-    const width = lineW + padX * 2, height = out.height + padY * 2;
-    facts.unshift({ text: fact, size: factSize, padX, padY, box: { x: Math.round((W - width) / 2), y: Math.round(cursor - height), width: Math.round(width), height: Math.round(height) } });
-    cursor -= height + 0.012 * H;
-  }
-  const bottomTop = cursor;
+    // Aligned to the text's reading start, as the references keep one edge.
+    const x = rtl ? right - width : left;
+    return { text: copy.cta, size: ctaSize, padX, padY, arrow, box: { x: Math.round(x), y: Math.round(y), width: Math.round(width), height: Math.round(height) } };
+  };
+  const ctaHeight = ctaBox(0)?.box.height ?? 0;
 
-  // The top group: the largest headline that fits (its planned line breaks kept), then the supporting line.
-  let size = 0.12 * W, top = below;
-  let head = outlineText({ text: headText, x: left, y: top, width: colW, maxLines: 3, preserveNewlines: Boolean(fixed), style: style(size, 800, 1.18) });
-  let sub: StoryLayout['sub'];
-  const lineBoxesOf = (out: typeof head, y: number): Px[] => out.lines.map((line, i) => {
+  const lineBoxesOf = (out: OutlinedText, y: number, size: number): Px[] => out.lines.map((line, i) => {
     const lineH = size * 1.18, ascent = out.lines[0].baseline - y;
     const x = rtl ? right - line.width : left;
     return { x: Math.round(x), y: Math.round(line.baseline - ascent), width: Math.round(line.width), height: Math.round(i === out.lines.length - 1 ? out.height - i * lineH : lineH) };
   });
-  const besideFits = (out: typeof head) => lineBoxesOf(out, logoBox.y).every((b) => b.y >= logoBox.y + logoBox.height + clear * 0.5 || b.width + size * 0.2 <= besideWidth);
-  const place = (y: number) => {
-    head = outlineText({ text: headText, x: left, y, width: colW, maxLines: 3, preserveNewlines: Boolean(fixed), style: style(size, 800, 1.18) });
-    const subSize = Math.max(0.034 * W, Math.min(0.046 * W, size * 0.4));
-    const subY = y + head.height + size * 0.34;
-    const subOut = copy.subheadline ? outlineText({ text: copy.subheadline, x: left, y: subY, width: colW, maxLines: 2, style: style(subSize, 700, 1.35) }) : null;
-    sub = copy.subheadline && subOut ? { text: copy.subheadline, size: subSize, box: { x: left, y: Math.round(subY), width: colW, height: Math.round(subOut.height) } } : undefined;
-    const groupBottom = sub ? sub.box.y + sub.box.height : y + head.height;
+  // Where the text group starts and the most it may reach.
+  const textTop = arrangement === 'text-top' ? Math.max(logoBottom + 1.5 * u, P.headlineTop * H) : P.pictureTopEnd * H + 2 * u;
+  const textLimit = arrangement === 'text-top' ? P.textTopEnd * H : P.ctaBottom * H - (ctaHeight ? ctaHeight + 2 * u : 0);
+
+  let size = (P.linePitch * W) / 1.18;
+  let head = outlineText({ text: headText, x: left, y: textTop, width: colW, maxLines: 4, preserveNewlines: Boolean(fixed), style: style(size, 800, 1.18) });
+  let sub: StoryLayout['sub'];
+  for (let i = 0; i < 50; i++) {
+    head = outlineText({ text: headText, x: left, y: textTop, width: colW, maxLines: 4, preserveNewlines: Boolean(fixed), style: style(size, 800, 1.18) });
+    const subY = textTop + head.height + 0.025 * H;
+    const out = bodyText ? outlineText({ text: bodyText, x: left, y: subY, width: colW, maxLines: 4, preserveNewlines: true, style: style(bodySize, 700, 1.5) }) : null;
+    sub = out ? { text: bodyText, size: bodySize, box: { x: left, y: Math.round(subY), width: colW, height: Math.round(out.height) } } : undefined;
+    const bottom = sub ? sub.box.y + sub.box.height : textTop + head.height;
     const broke = fixed ? head.lines.length > fixed.length : false;
-    // The subject needs at least a fifth of the screen between the two groups.
-    return !head.overflow && !broke && bottomTop - groupBottom >= 0.2 * H;
-  };
-  // Beside the logo first, as on the house posts, down to a still-large headline (9% of the width): the type is
-  // a little smaller but the picture gets the whole middle of the screen. Then below the logo, down to 7.5%.
-  let placed = false;
-  if (canSitBeside) {
-    for (size = 0.12 * W; size >= 0.09 * W && !placed; size *= 0.96) {
-      const trial = outlineText({ text: headText, x: left, y: logoBox.y, width: colW, maxLines: 3, preserveNewlines: Boolean(fixed), style: style(size, 800, 1.18) });
-      if (besideFits(trial) && place(logoBox.y)) { top = logoBox.y; placed = true; }
-    }
-    if (placed) size /= 0.96;
-  }
-  for (let i = 0; i < 40 && !placed; i++) {
-    if (i === 0) size = 0.12 * W;
-    top = below;
-    if (place(top)) { placed = true; break; }
-    if (size <= 0.075 * W) {
-      // The preferred breaks cannot be kept at any size: let the headline wrap freely and try again from the top.
-      if (fixed) { fixed = undefined; headText = copy.headline; size = 0.12 * W; continue; }
-      problems.push('Story layout: the copy leaves less than a fifth of the screen for the picture; shorten the headline or facts.');
+    if (!head.overflow && !broke && bottom <= textLimit) break;
+    if (size * 1.18 <= P.minLinePitch * W) {
+      // The preferred breaks cannot be kept at any size: let the headline wrap freely and try again.
+      if (fixed) { fixed = undefined; headText = copy.headline; size = (P.linePitch * W) / 1.18; continue; }
+      problems.push('Story layout: the copy is too long for a story at this size; shorten the headline or the facts.');
       break;
     }
-    size *= 0.94;
+    size *= 0.96;
   }
-  // Settle the final geometry at the chosen size.
-  place(top);
-  const headBox = { x: left, y: top, width: colW, height: Math.round(head.height) };
-  const groupBottom = sub ? sub.box.y + sub.box.height : headBox.y + headBox.height;
-  const gap = 0.02 * H;
+  const headBox = { x: left, y: Math.round(textTop), width: colW, height: Math.round(head.height) };
+  const textBottom = sub ? sub.box.y + sub.box.height : headBox.y + headBox.height;
+  // The button: at the bottom of the picture (text-top), or right under the body (picture-top).
+  cta = ctaBox(arrangement === 'text-top' ? P.ctaBottom * H - ctaHeight : textBottom + 2 * u);
+  const subject = arrangement === 'text-top'
+    ? { x: 0, y: Math.round(textBottom + 0.03 * H), width: W, height: Math.round(Math.max(0, footer.y - 0.015 * H - (textBottom + 0.03 * H))) }
+    : { x: 0, y: Math.round(logoBottom + 0.015 * H), width: W, height: Math.round(Math.max(0, P.pictureTopEnd * H - (logoBottom + 0.015 * H))) };
   return {
-    logo: logoBox,
-    headline: { text: headText, lines: head.lines.length, size, box: headBox, preserveNewlines: Boolean(fixed), lineBoxes: lineBoxesOf(head, top) },
-    emphasis,
-    sub, facts, cta,
-    subject: { x: 0, y: Math.round(groupBottom + gap), width: W, height: Math.round(Math.max(0, bottomTop - gap - (groupBottom + gap))) },
+    arrangement, align: 'start', logo: logoBox, logoSafe,
+    headline: { text: headText, lines: head.lines.length, size, box: headBox, preserveNewlines: Boolean(fixed), lineBoxes: lineBoxesOf(head, textTop, size) },
+    emphasis, sub, facts: [], cta, footer, subject,
     column: { left, right },
     problems,
   };
@@ -500,7 +515,7 @@ export function storyZones(layout: StoryLayout, W: number, H: number): TypesetPl
   return {
     headlineZone: n(layout.headline.box), supportingCopyZone: layout.sub ? n(layout.sub.box) : undefined,
     factsZone: facts ? n(facts) : undefined, ctaZone: layout.cta ? n(layout.cta.box) : undefined,
-    subjectZone: n(layout.subject), alignment: 'right',
+    subjectZone: n(layout.subject), alignment: layout.align === 'center' ? 'center' : 'right',
   };
 }
 
@@ -508,7 +523,8 @@ export function storyZones(layout: StoryLayout, W: number, H: number): TypesetPl
 async function typesetStory(input: TypesetInput, W: number, H: number): Promise<TypesetResult> {
   const { copy } = input;
   const rtl = paragraphDirection(copy.headline) === 'rtl';
-  const layout = storyLayout(copy, W, H, input.safeArea, input.logo, { headlineLines: input.plan.headlineLines, emphasis: input.emphasis });
+  const layout = storyLayout(copy, W, H, input.safeArea, input.logo, { headlineLines: input.plan.headlineLines, emphasis: input.emphasis, arrangement: input.arrangement });
+  const lineAlign = layout.align;
   const problems = [...layout.problems];
   const topBottom = layout.sub ? layout.sub.box.y + layout.sub.box.height : layout.headline.box.y + layout.headline.box.height;
   // Readability from the real pixels under the headline group: dark text on a light picture, and a soft
@@ -532,41 +548,16 @@ async function typesetStory(input: TypesetInput, W: number, H: number): Promise<
 
   // Headline, line by line, so the emphasis phrase can sit on its green bar in its own colour.
   const h = layout.headline;
-  const head = outlineText({ text: h.text, x: h.box.x, y: h.box.y, width: h.box.width, maxLines: 3, preserveNewlines: h.preserveNewlines, direction: rtl ? 'rtl' : 'ltr', style: st(h.size, 800, 1.18, textColor) });
   // House look: on the light engineering-paper world the headline is royal blue; on the blue world, white.
   const headColor = darkText ? ROYAL_BLUE : LIGHT_TEXT;
-  const lineStyle = st(h.size, 800, 1.18, headColor);
-  const space = Math.max(1, measureText('ا ا', lineStyle, 'rtl') - 2 * measureText('ا', lineStyle, 'rtl'));
-  // outlineText takes the top of a line; its baseline sits one ascent lower.
-  const ascent = head.lines.length ? head.lines[0].baseline - h.box.y : h.size;
-  let highlighted = false;
-  for (const line of head.lines) {
-    const at = layout.emphasis && !highlighted && rtl && !HAS_LATIN.test(line.text) ? line.text.indexOf(layout.emphasis) : -1;
-    const right = h.box.x + h.box.width;
-    if (at < 0) {
-      body.push(outlineText({ text: line.text, x: h.box.x, y: line.baseline - ascent, width: h.box.width, maxLines: 1, direction: rtl ? 'rtl' : 'ltr', style: lineStyle }).svg.replace('<path', `<path${shadow}`));
-      continue;
-    }
-    highlighted = true;
-    const prefix = line.text.slice(0, at).trim(), word = layout.emphasis!, suffix = line.text.slice(at + word.length).trim();
-    const pw = prefix ? measureText(prefix, lineStyle, 'rtl') : 0, ew = measureText(word, lineStyle, 'rtl'), sw = suffix ? measureText(suffix, lineStyle, 'rtl') : 0;
-    const lineW = pw + ew + sw + (prefix ? space : 0) + (suffix ? space : 0);
-    const lineRight = rtl ? right : h.box.x + lineW;
-    const emRight = lineRight - (prefix ? pw + space : 0), emLeft = emRight - ew;
-    const pad = h.size * 0.16;
-    decor.push(`<rect x="${r(emLeft - pad)}" y="${r(line.baseline - h.size * 0.98)}" width="${r(ew + pad * 2)}" height="${r(h.size * 1.28)}" rx="${r(h.size * 0.08)}" fill="${GREEN}"/>`);
-    const seg = (text: string, xRight: number, width: number, color: string, withShadow: boolean) =>
-      outlineText({ text, x: xRight - width - 1, y: line.baseline - ascent, width: width + 2, maxLines: 1, direction: 'rtl', style: st(h.size, 800, 1.18, color) }).svg.replace('<path', withShadow ? `<path${shadow}` : '<path');
-    if (prefix) body.push(seg(prefix, lineRight, pw, headColor, true));
-    body.push(seg(word, emRight, ew, ON_GREEN, false));
-    if (suffix) body.push(seg(suffix, emLeft - space, sw, headColor, true));
-  }
-  if (head.missingGlyphs.length) problems.push(`Typeset headline: the brand font has no glyph for ${head.missingGlyphs.join(' ')}`);
+  const set = headlineMarkup({ text: h.text, preserveNewlines: h.preserveNewlines, box: h.box, size: h.size, align: lineAlign, rtl, color: headColor, shadow, emphasis: layout.emphasis });
+  decor.push(...set.decor); body.push(...set.body);
+  if (set.missing.length) problems.push(`Typeset headline: the brand font has no glyph for ${set.missing.join(' ')}`);
   blocks.push({ role: 'headline', text: copy.headline, box: h.box, size: r(h.size), weight: 800, color: headColor });
 
   if (layout.sub) {
-    const out = outlineText({ text: layout.sub.text, x: layout.sub.box.x, y: layout.sub.box.y, width: layout.sub.box.width, maxLines: 2, direction: rtl ? 'rtl' : 'auto', style: st(layout.sub.size, 700, 1.35, textColor) });
-    body.push(out.svg.replace('<path', `<path${shadow} fill-opacity="0.94"`));
+    const out = outlineText({ text: layout.sub.text, x: layout.sub.box.x, y: layout.sub.box.y, width: layout.sub.box.width, maxLines: 4, preserveNewlines: true, align: lineAlign, direction: rtl ? 'rtl' : 'auto', style: st(layout.sub.size, 700, 1.5, textColor) });
+    body.push(out.svg.replace('<path', `<path${shadow} fill-opacity="0.9"`));
     blocks.push({ role: 'subheadline', text: layout.sub.text, box: layout.sub.box, size: r(layout.sub.size), weight: 700, color: textColor });
   }
   const chipFill = darkText ? 'rgba(255,255,255,0.78)' : 'rgba(8,16,40,0.5)';
@@ -587,6 +578,12 @@ async function typesetStory(input: TypesetInput, W: number, H: number): Promise<
     blocks.push({ role: 'cta', text: c.text, box: c.box, size: r(c.size), weight: 800, color: '#FFFFFF' });
   }
   // The headline counts line by line: its box spans the column, and the logo sits beside its shorter first line.
+  // Footer: the website at the left margin with a thin rule across to the other margin, as on the house posts.
+  const f = layout.footer;
+  const footColor = darkText ? 'rgba(11,21,48,0.7)' : 'rgba(255,255,255,0.82)';
+  body.push(outlineText({ text: f.text, x: f.x, y: f.y, width: f.width + 2, maxLines: 1, direction: 'ltr', style: st(f.size, 700, 1.2, footColor) }).svg);
+  decor.push(`<rect x="${r(f.x + f.width + W / 45)}" y="${r(f.y + f.size * 0.62)}" width="${r(Math.max(0, layout.column.right - (f.x + f.width + W / 45)))}" height="${r(Math.max(2, W * 0.002))}" fill="${footColor}"/>`);
+  zones.push({ kind: 'text', label: f.text, box: { x: f.x, y: f.y, width: f.width, height: Math.round(f.size * 1.3) } });
   for (const b of blocks) {
     if (b.role === 'headline') h.lineBoxes.forEach((box, i) => zones.push({ kind: 'text', label: `${b.text.slice(0, 30)} · line ${i + 1}`, box }));
     else zones.push({ kind: b.role === 'cta' ? 'cta' : 'text', label: b.text.slice(0, 40), box: b.box });
@@ -598,5 +595,42 @@ async function typesetStory(input: TypesetInput, W: number, H: number): Promise<
   const svg = `<svg xmlns="http://www.w3.org/2000/svg" width="${W}" height="${H}" viewBox="0 0 ${W} ${H}"><defs>${defs.join('')}${shadeDef}<filter id="ts-shadow" x="-10%" y="-20%" width="120%" height="160%"><feDropShadow dx="0" dy="${r(unit * 0.003)}" stdDeviation="${r(unit * 0.006)}" flood-color="#000" flood-opacity="0.35"/></filter><filter id="ts-lift" x="-20%" y="-40%" width="140%" height="200%"><feDropShadow dx="0" dy="${r(unit * 0.006)}" stdDeviation="${r(unit * 0.01)}" flood-color="#7a2a00" flood-opacity="0.35"/></filter></defs>${decor.join('')}${body.join('')}</svg>`;
   const png = await sharp(input.image).composite([{ input: Buffer.from(svg), top: 0, left: 0 }]).png().toBuffer();
   const col = { x: layout.column.left, y: h.box.y, width: layout.column.right - layout.column.left, height: Math.round((layout.cta ? layout.cta.box.y + layout.cta.box.height : topBottom) - h.box.y) };
-  return { png, zones, layout: { version: TYPESET_VERSION, placement: 'planned', column: col, anchor: 'top', align: 'start', tone: darkText ? 'dark-text' : 'light-text', scrim: r(fade), blocks }, problems };
+  return { png, zones, layout: { version: TYPESET_VERSION, placement: 'planned', column: col, anchor: 'top', align: 'start', tone: darkText ? 'dark-text' : 'light-text', scrim: r(fade), blocks }, problems, logoHint: { safeArea: layout.logoSafe, lockupWidths: [STORY_PROPORTIONS.logoShare] } };
+}
+
+/**
+ * A headline set line by line in the house style: the emphasis phrase on its flat green bar in dark blue, the rest
+ * in the headline colour. Arabic lines only (Latin words reorder inside Arabic text, so such a line is set whole).
+ */
+function headlineMarkup(p: { text: string; preserveNewlines: boolean; box: Px; size: number; align: 'start' | 'center'; rtl: boolean; color: string; shadow: string; emphasis?: string; maxLines?: number }): { decor: string[]; body: string[]; missing: string[] } {
+  const st = (color: string) => ({ family: 'brand' as const, weight: 800, size: p.size, color, lineHeight: 1.18 });
+  const head = outlineText({ text: p.text, x: p.box.x, y: p.box.y, width: p.box.width, maxLines: p.maxLines ?? 3, align: p.align, preserveNewlines: p.preserveNewlines, direction: p.rtl ? 'rtl' : 'ltr', style: st(p.color) });
+  const lineStyle = st(p.color);
+  const space = Math.max(1, measureText('ا ا', lineStyle, 'rtl') - 2 * measureText('ا', lineStyle, 'rtl'));
+  // outlineText takes the top of a line; its baseline sits one ascent lower.
+  const ascent = head.lines.length ? head.lines[0].baseline - p.box.y : p.size;
+  const decor: string[] = [], body: string[] = [];
+  let highlighted = false;
+  for (const line of head.lines) {
+    const at = p.emphasis && !highlighted && p.rtl && !HAS_LATIN.test(line.text) ? line.text.indexOf(p.emphasis) : -1;
+    const right = p.box.x + p.box.width;
+    if (at < 0) {
+      body.push(outlineText({ text: line.text, x: p.box.x, y: line.baseline - ascent, width: p.box.width, maxLines: 1, align: p.align, direction: p.rtl ? 'rtl' : 'ltr', style: lineStyle }).svg.replace('<path', `<path${p.shadow}`));
+      continue;
+    }
+    highlighted = true;
+    const prefix = line.text.slice(0, at).trim(), word = p.emphasis!, suffix = line.text.slice(at + word.length).trim();
+    const pw = prefix ? measureText(prefix, lineStyle, 'rtl') : 0, ew = measureText(word, lineStyle, 'rtl'), sw = suffix ? measureText(suffix, lineStyle, 'rtl') : 0;
+    const lineW = pw + ew + sw + (prefix ? space : 0) + (suffix ? space : 0);
+    const lineRight = p.align === 'center' ? p.box.x + (p.box.width + lineW) / 2 : p.rtl ? right : p.box.x + lineW;
+    const emRight = lineRight - (prefix ? pw + space : 0), emLeft = emRight - ew;
+    const pad = p.size * 0.16;
+    decor.push(`<rect x="${r(emLeft - pad)}" y="${r(line.baseline - p.size * 0.98)}" width="${r(ew + pad * 2)}" height="${r(p.size * 1.28)}" rx="${r(p.size * 0.08)}" fill="${GREEN}"/>`);
+    const seg = (text: string, xRight: number, width: number, color: string, withShadow: boolean) =>
+      outlineText({ text, x: xRight - width - 1, y: line.baseline - ascent, width: width + 2, maxLines: 1, direction: 'rtl', style: st(color) }).svg.replace('<path', withShadow ? `<path${p.shadow}` : '<path');
+    if (prefix) body.push(seg(prefix, lineRight, pw, p.color, true));
+    body.push(seg(word, emRight, ew, ON_GREEN, false));
+    if (suffix) body.push(seg(suffix, emLeft - space, sw, p.color, true));
+  }
+  return { decor, body, missing: head.missingGlyphs };
 }

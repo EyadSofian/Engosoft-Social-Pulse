@@ -62,15 +62,25 @@ export function coverWindow(drawn: { width: number; height: number }, output: { 
 }
 
 const safe = { top: 0, bottom: 0, left: 0, right: 0 };
-const vertical = { top: 250, bottom: 390, left: 60, right: 60 };
-/** Facebook page cover: mobile shows a 2.4:1 centre crop and the profile photo overlaps the lower edge. */
-const facebookCover = { top: 0, bottom: 90, left: 100, right: 100 };
-/** X header: phones trim the top and bottom, and the profile photo sits over the lower corner. */
-const xHeader = { top: 60, bottom: 110, left: 40, right: 40 };
-/** LinkedIn page cover: trimmed on some screens, the page logo overlaps the lower left, LinkedIn warns about the lower right. */
-const linkedinCover = { top: 16, bottom: 56, left: 260, right: 200 };
-/** LinkedIn profile banner: the round profile photo covers the lower left on desktop; phones trim the sides. */
-const linkedinBanner = { top: 24, bottom: 60, left: 480, right: 60 };
+/*
+ * Covered areas per placement, from the platform guides gathered in docs/PLATFORM_LAYOUT_RULES.md (2026-11-03).
+ * Stories and status: Meta's unified 9:16 guardrail keeps the top 14% and 6% at each side clear; an organic story's
+ * reply bar and stickers take the bottom ~20%.
+ */
+const vertical = { top: 270, bottom: 390, left: 65, right: 65 };
+/**
+ * Vertical video covers (Reels, TikTok, Shorts): the same top and sides, plus the caption over the bottom 35% and
+ * the like / comment / share column over the right ~15%.
+ */
+const verticalVideo = { top: 270, bottom: 672, left: 65, right: 160 };
+/** Facebook page cover: phones show only the central ~75% (640 of 851 px) and the profile photo overlaps the lower edge. */
+const facebookCover = { top: 0, bottom: 90, left: 211, right: 211 };
+/** X header: phones keep about the central 1200×400 of 1500×500, and the profile photo sits over the lower-left. */
+const xHeader = { top: 50, bottom: 110, left: 150, right: 150 };
+/** LinkedIn page cover: trimmed on some screens; the page logo covers about the left quarter; LinkedIn warns about the lower right. */
+const linkedinCover = { top: 16, bottom: 56, left: 390, right: 200 };
+/** LinkedIn profile banner: the round profile photo covers the lower left on desktop; text belongs between x 420 and 1424. */
+const linkedinBanner = { top: 40, bottom: 40, left: 420, right: 160 };
 const p = (
   id: string,
   channel: Channel,
@@ -97,7 +107,7 @@ export const PUBLISHING_PRESETS: PublishingPreset[] = [
   p('facebook-feed', 'facebook', 'Portrait post', 'منشور طولي', 1080, 1350, 'feed'),
   p('facebook-square', 'facebook', 'Square / carousel card', 'مربع / شريحة كاروسيل', 1080, 1080, 'square'),
   p('facebook-story', 'facebook', 'Story', 'ستوري', 1080, 1920, 'story', vertical),
-  p('facebook-reel', 'facebook', 'Reel cover', 'غلاف ريل', 1080, 1920, 'story', vertical),
+  p('facebook-reel', 'facebook', 'Reel cover', 'غلاف ريل', 1080, 1920, 'story', verticalVideo),
   p('facebook-link', 'facebook', 'Link image', 'صورة رابط', 1200, 630, 'landscape'),
   p('facebook-video', 'facebook', 'Video cover 16:9', 'غلاف فيديو 16:9', 1920, 1080, 'landscape'),
   p('facebook-page-cover', 'facebook', 'Page cover', 'غلاف الصفحة', 1702, 630, 'landscape', facebookCover),
@@ -106,10 +116,10 @@ export const PUBLISHING_PRESETS: PublishingPreset[] = [
   p('instagram-square', 'instagram', 'Square / carousel card', 'مربع / شريحة كاروسيل', 1080, 1080, 'square'),
   p('instagram-grid', 'instagram', 'Grid portrait 3:4', 'طولي بمقاس الجريد 3:4', 1080, 1440, 'feed'),
   p('instagram-story', 'instagram', 'Story', 'ستوري', 1080, 1920, 'story', vertical),
-  p('instagram-reel', 'instagram', 'Reel cover', 'غلاف ريل', 1080, 1920, 'story', vertical),
+  p('instagram-reel', 'instagram', 'Reel cover', 'غلاف ريل', 1080, 1920, 'story', verticalVideo),
   p('youtube-thumbnail', 'youtube', 'Video thumbnail 4K', 'صورة مصغرة للفيديو 4K', 3840, 2160, 'landscape'),
   p('youtube-thumbnail-hd', 'youtube', 'Video thumbnail HD', 'صورة مصغرة للفيديو HD', 1280, 720, 'landscape'),
-  p('youtube-short', 'youtube', 'Shorts cover', 'غلاف شورتس', 1080, 1920, 'story', vertical),
+  p('youtube-short', 'youtube', 'Shorts cover', 'غلاف شورتس', 1080, 1920, 'story', verticalVideo),
   p('youtube-banner', 'youtube', 'Channel banner', 'بانر القناة', 2560, 1440, 'landscape', { top: 509, bottom: 508, left: 507, right: 507 }),
   p('youtube-community', 'youtube', 'Community image', 'صورة منشور المجتمع', 1080, 1080, 'square'),
   p('linkedin-feed', 'linkedin', 'Portrait post 4:5', 'منشور طولي 4:5', 1080, 1350, 'feed'),
@@ -129,8 +139,8 @@ export const PUBLISHING_PRESETS: PublishingPreset[] = [
   p('x-header', 'x', 'Profile header', 'غلاف الحساب', 1500, 500, 'landscape', xHeader),
   p('whatsapp-status', 'whatsapp', 'Status', 'حالة', 1080, 1920, 'story', vertical),
   p('whatsapp-square', 'whatsapp', 'Square image', 'صورة مربعة', 1080, 1080, 'square'),
-  p('tiktok-cover', 'tiktok', 'Vertical cover', 'غلاف عمودي', 1080, 1920, 'story', vertical),
-  p('tiktok-photo', 'tiktok', 'Photo / carousel slide', 'صورة / شريحة كاروسيل', 1080, 1920, 'story', vertical),
+  p('tiktok-cover', 'tiktok', 'Vertical cover', 'غلاف عمودي', 1080, 1920, 'story', verticalVideo),
+  p('tiktok-photo', 'tiktok', 'Photo / carousel slide', 'صورة / شريحة كاروسيل', 1080, 1920, 'story', verticalVideo),
   p('snapchat-story', 'snapchat', 'Story', 'ستوري', 1080, 1920, 'story', vertical),
   p('website-banner', 'website', 'Article / link banner', 'بانر مقال / رابط', 1200, 630, 'landscape'),
 ];
@@ -205,6 +215,24 @@ const SEEN_AT: Record<string, string> = {
   'linkedin-custom-module': 'A small card in the Life tab of the Engosoft LinkedIn page: very few, large words.',
   'x-header': 'The header across the top of the Engosoft X profile, behind the profile photo.',
 };
+/**
+ * Where each element goes on a placement, from the same guides: what to keep out of the corners the platform covers
+ * and where the logo, headline, subject and button sit. Shapes without a rule use the shape recipe alone.
+ */
+const PLACEMENT_RULES: Record<string, string> = {
+  story: 'Element distribution: the logo and the headline inside the safe band, never in the top 14%; the subject in the middle of the screen; the button in the lower part of the central band, never in the bottom 20% where the reply bar and stickers sit.',
+  video: 'Element distribution: everything between 14% and 65% of the height and clear of the right 15% (like, comment and share buttons); the caption covers the bottom third, so only background goes there. The profile grid shows the central 3:4 area, so the headline sits inside it.',
+  'youtube-thumbnail': 'Element distribution: three to five very large words on one side, a big face or object on the other; the bottom-right corner (about 15%) carries the video length, so no text, face or logo there; keep the essentials in the central 80%.',
+  'youtube-thumbnail-hd': 'Element distribution: three to five very large words on one side, a big face or object on the other; the bottom-right corner (about 15%) carries the video length, so no text, face or logo there; keep the essentials in the central 80%.',
+  'facebook-page-cover': 'Element distribution: phones show only the central 75% of the width, so the headline and the logo sit there; the lower-left is covered by the page photo on desktop.',
+  'x-header': 'Element distribution: only the central 1200×400 is safe on every screen; the profile photo covers the lower-left, so the headline sits centre-right.',
+  'linkedin-page-cover': 'Element distribution: the page logo covers the left quarter; the headline sits centre-right, one short line.',
+  'linkedin-profile-banner': 'Element distribution: the profile photo covers the lower-left on desktop and the centre on phones; keep text between 27% and 90% of the width, upper half.',
+  'instagram-feed': 'Element distribution: the profile grid shows only the central 3:4 area, so the headline, the button and the logo stay inside it.',
+};
+const placementRule = (canvas: { id?: string; height: number; width: number }, safe: PublishingPreset['safe']) =>
+  (canvas.id && PLACEMENT_RULES[canvas.id]) || (canvas.height / canvas.width > 1.6 ? (safe.bottom > canvas.height * 0.3 ? PLACEMENT_RULES.video : PLACEMENT_RULES.story) : '');
+
 const seenOn = (preset: PublishingPreset) => SEEN_AT[preset.id] ?? (preset.format === 'story' ? 'Seen full-screen on a phone, with the platform interface over the top and bottom.' : SEEN_IN_FEED[preset.channel]);
 
 /**
@@ -225,7 +253,8 @@ export function describeCanvas(canvas: { id?: string; title: string; seen: strin
   const band = drawn.band
     ? ` The model cannot draw a shape this wide, so the canvas is drawn at 3:1 and only its central band, from ${pct(kept.top, drawn.height)}% to ${pct(kept.top + kept.height, drawn.height)}% of the height, is kept: the complete design — every word, the subject and the logo space — sits inside that band; above and below it the background only continues. The logo space and any corner named elsewhere mean the corners of that band.`
     : '';
-  return `${canvas.title}, ${width}×${height} px. ${canvas.seen} ${SHAPE_LAYOUT[shapeOf(width, height)]}${COPY_DENSITY_NOTE[copyDensityOf(canvas)]}${band}${zones.length ? ` Keep text and the logo out of the ${zones.join(', ')} of the drawn canvas (platform interface, profile photo or crop).` : ''}`;
+  const rule = placementRule(canvas, safe);
+  return `${canvas.title}, ${width}×${height} px. ${canvas.seen} ${SHAPE_LAYOUT[shapeOf(width, height)]}${COPY_DENSITY_NOTE[copyDensityOf(canvas)]}${band}${zones.length ? ` Keep text and the logo out of the ${zones.join(', ')} of the drawn canvas (platform interface, profile photo or crop).` : ''}${rule ? ` ${rule}` : ''}`;
 }
 
 /** Layout instructions for the image model when a design is made or recomposed for this size. */

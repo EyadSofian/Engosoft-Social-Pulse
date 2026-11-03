@@ -211,32 +211,40 @@ test('the finished post is looked at again: a stamp that crowds something moves,
   }
 });
 
-test('house story layout: full logo under the top bar, headline below it, emphasis on its own green line, button above the reply bar', async () => {
-  const { storyLayout } = await import('../server/creative-intelligence/typography/typeset');
+test('story layout follows the reference proportions: logo at the top, text on top, the picture in the lower part', async () => {
+  const { storyLayout, STORY_PROPORTIONS: P } = await import('../server/creative-intelligence/typography/typeset');
   const { resolveLogo } = await import('../server/creative-intelligence/logo-resolution/resolver');
-  const W = 1080, H = 1920, safe = { top: 250, bottom: 390, left: 60, right: 60 };
-  const story = { headline: '3 دورات تغيّر المسار', subheadline: 'PMP + Primavera P6 + PMI-RMP', facts: ['خصم 50% لفترة محدودة'], cta: 'سجّل الحين' };
+  const W = 1080, H = 1920, safe = { top: 270, bottom: 390, left: 65, right: 65 };
+  const story = { headline: '3 دورات تغيّر الاتجاه', subheadline: 'PMP 8th + Primavera P6 + PMI-RMP', facts: ['خصم 50% لفترة محدودة'], cta: 'سجّل الآن' };
   const logo = { corner: 'top-left' as const, mark: 'lockup' as const };
-  const layout = storyLayout(story, W, H, safe, logo, { emphasis: 'تغيّر المسار' });
-  assert.equal(layout.logo.y, 250, 'the logo sits right under the platform bar');
-  // The short first line sits beside the logo, as on the house posts; no line touches the logo.
-  assert.equal(layout.headline.box.y, layout.logo.y);
-  const touches = (a: { x: number; y: number; width: number; height: number }, b: typeof a) => a.x < b.x + b.width && b.x < a.x + a.width && a.y < b.y + b.height && b.y < a.y + a.height;
-  assert.ok(layout.headline.lineBoxes.every((line) => !touches(line, { ...layout.logo, width: layout.logo.width + 30 })), 'no headline line touches the logo');
-  assert.equal(layout.headline.lines, 2, '«3 دورات» / «تغيّر المسار»');
-  assert.ok(layout.headline.size >= 0.1 * W, 'story-sized type');
-  assert.ok(layout.cta!.box.y + layout.cta!.box.height <= H - safe.bottom, 'the button stays above the reply bar');
-  assert.ok(layout.subject.height >= 0.25 * H, 'a quarter of the screen at least for the picture');
+  const layout = storyLayout(story, W, H, safe, logo, { emphasis: 'تغيّر الاتجاه' });
+  assert.equal(layout.arrangement, 'text-top', 'the arrangement the team chose');
+  assert.equal(layout.logo.y, Math.round(P.logoTop * H), 'the logo near the very top');
+  assert.equal(layout.logo.x, Math.round(P.margin * W), 'on the side margin');
+  assert.equal(layout.logo.width, Math.round(P.logoShare * W), 'small, just above the brand minimum');
+  assert.ok(layout.headline.box.y >= layout.logo.y + layout.logo.height, 'the headline under the logo');
+  assert.ok(layout.headline.box.y >= P.headlineTop * H - 1, 'from 16% down');
+  assert.equal(layout.headline.lines, 2, '«3 دورات» / «تغيّر الاتجاه»');
+  assert.ok(Math.abs(layout.headline.size * 1.18 - P.linePitch * W) < 1, 'line pitch 12.5% of the width');
+  assert.ok(layout.sub!.box.y + layout.sub!.box.height <= P.textTopEnd * H, 'text ends by the middle');
+  assert.ok(layout.subject.y >= layout.sub!.box.y + layout.sub!.box.height && layout.subject.height >= 0.4 * H, 'the picture takes the lower ~40%+');
+  assert.ok(Math.abs(layout.cta!.box.y + layout.cta!.box.height - P.ctaBottom * H) <= 1, 'the button at the picture\'s lower edge');
+  assert.equal(layout.cta!.box.x + layout.cta!.box.width, W - Math.round(P.margin * W), 'aligned with the text\'s reading start');
+  assert.equal(layout.footer.y, Math.round(P.footerTop * H));
   assert.deepEqual(layout.problems, []);
-  // Rendered on a plain blue picture: the green bar is under the second line, and the full lockup fits its corner.
+  // Rendered: the green bar is under the second line, and the small full lockup fits its spot at the top.
   const blue = await canvas(W, H, '#0a3be0', '#062a9e');
-  const ts = await typesetCreative({ image: blue, copy: story, plan: {}, safeArea: safe, logo, logoShade: true, emphasis: 'تغيّر المسار' });
-  const line2 = layout.headline.box.y + layout.headline.box.height * 0.72;
-  const { data } = await sharp(ts.png).extract({ left: Math.round(W * 0.6), top: Math.round(line2), width: 1, height: 1 }).raw().toBuffer({ resolveWithObject: true });
-  assert.ok(data[1] > 200 && data[0] < 140, `green bar behind the emphasis (got ${[...data].slice(0, 3)})`);
-  const placed = await resolveLogo({ creative: ts.png, zones: ts.zones, preferredCorner: 'top-left', preferredMark: 'lockup', strictCorner: true, safeArea: safe });
+  const ts = await typesetCreative({ image: blue, copy: story, plan: {}, safeArea: safe, logo, logoShade: true, emphasis: 'تغيّر الاتجاه' });
+  // Across the second line, a good share of the row is the bar's green (the rest is its dark-blue letters).
+  const line2 = Math.round(layout.headline.box.y + layout.headline.box.height * 0.72);
+  const { data, info } = await sharp(ts.png).extract({ left: 0, top: line2, width: W, height: 1 }).raw().toBuffer({ resolveWithObject: true });
+  let green = 0;
+  for (let x = 0; x < W; x++) { const i = x * info.channels; if (data[i + 1] > 200 && data[i] < 140) green++; }
+  assert.ok(green > 0.15 * W, `green bar behind the emphasis (${green} green pixels)`);
+  const placed = await resolveLogo({ creative: ts.png, zones: ts.zones, preferredCorner: 'top-left', preferredMark: 'lockup', strictCorner: true, safeArea: ts.logoHint!.safeArea, lockupWidths: ts.logoHint!.lockupWidths });
   assert.equal(placed.requiresCreativeRepair, false);
   assert.match((placed as { variantId: string }).variantId, /^lockup/, 'the full lockup, not the symbol');
+  assert.equal((placed as { placement: { y: number } }).placement.y, layout.logo.y);
 });
 
 test('a story of a design is layered: the picture is drawn text-free around the measured areas', async () => {
@@ -258,7 +266,7 @@ test('a story of a design is layered: the picture is drawn text-free around the 
     assert.equal(result.textMode, 'typeset');
     assert.match(calls[0].prompt, /THE PICTURE ONLY, DRAWN FROM SCRATCH/);
     assert.match(calls[0].prompt, /Ignore all of its text, its button, its highlight bars and its logo/);
-    assert.match(calls[0].prompt, /the hero subject, scaled up to fill the width/);
+    assert.match(calls[0].prompt, /the hero subject, scaled up to fill this band edge to edge/);
     assert.equal(result.logo.requiresCreativeRepair, false);
     assert.match((result.logo as { variantId: string }).variantId, /^lockup/);
     const meta = await sharp(result.imagePath!).metadata();
@@ -275,7 +283,8 @@ test('readability is measured under the text and the logo, not across the whole 
   const image = await sharp(Buffer.from(`<svg xmlns="http://www.w3.org/2000/svg" width="${W}" height="${H}"><rect width="${W}" height="${H}" fill="#eef2f7"/><rect y="1000" width="${W}" height="920" fill="#101820"/>${stripes}</svg>`)).png().toBuffer();
   const story = { headline: '3 دورات تغيّر الاتجاه', subheadline: 'PMP 8th + Primavera P6 + PMI-RMP', facts: [], cta: 'سجّل الآن' };
   const ts = await typesetCreative({ image, copy: story, plan: {}, safeArea: safe, logo: { corner: 'top-left', mark: 'lockup' }, logoShade: true, emphasis: 'تغيّر الاتجاه' });
-  const { data } = await sharp(ts.png).extract({ left: 100, top: 300, width: 1, height: 1 }).raw().toBuffer({ resolveWithObject: true });
+  // Inside the logo's spot at the top-left (the lockup is composited later, so the picture there must stay clean).
+  const { data } = await sharp(ts.png).extract({ left: 125, top: 125, width: 1, height: 1 }).raw().toBuffer({ resolveWithObject: true });
   assert.ok(data[0] > 225, `the logo corner is not shaded (got ${data[0]})`);
   assert.equal(ts.layout.tone, 'dark-text');
   assert.equal(ts.layout.blocks[0].color, '#0046FF', 'royal-blue headline on the light world');

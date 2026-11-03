@@ -136,8 +136,8 @@ test('the brief prompt is short, picks one colour world and adds a person only w
   assert.match(adapted, /Rebuild the layout for this canvas shape/);
   // The interface zones come from the canvas itself, once, never a second hard-coded set.
   assert.match(adapted, /CANVAS\nStory \/ status 9:16, 1080×1920 px\. Seen full-screen/);
-  assert.match(adapted, /top 12%, bottom 17% of the drawn canvas/);
-  assert.equal(adapted.match(/top \d+%/g)?.length, 1);
+  assert.match(adapted, /top 14%, bottom 20%, left 6%, right 6% of the drawn canvas/);
+  assert.equal(adapted.match(/top \d+%, bottom \d+%/g)?.length, 1);
 });
 
 test('the repair router applies only local, non-text repairs automatically', () => {

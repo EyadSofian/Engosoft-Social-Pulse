@@ -34,10 +34,10 @@ function cornerPosition(corner: Corner, width: number, height: number, canvas: R
  * Where the logo lands when its corner is free: the first size the resolver tries for that mark, in output
  * pixels. Layouts that set the type themselves (the house story) keep this box and its clear space free.
  */
-export function plannedLogoBox(canvas: { width: number; height: number }, mark: 'lockup' | 'symbol', corner: Corner, safe?: SafeArea): Box {
+export function plannedLogoBox(canvas: { width: number; height: number }, mark: 'lockup' | 'symbol', corner: Corner, safe?: SafeArea, widthShare?: number): Box {
   const variant = allLogoVariants().find((v) => v.kind === mark)!;
   const basis = logoSizeBasis(canvas.width, canvas.height);
-  const width = Math.max(minimumLogoWidth(variant, basis), Math.round((mark === 'lockup' ? LOCKUP_WIDTHS[0] : SYMBOL_WIDTHS[0]) * basis));
+  const width = Math.max(minimumLogoWidth(variant, basis), Math.round((widthShare ?? (mark === 'lockup' ? LOCKUP_WIDTHS[0] : SYMBOL_WIDTHS[0])) * basis));
   const height = logoHeightFor(variant, width);
   const inset = Math.round(logoEdgeMargin(canvas.width) * 1.1);
   const { x, y } = cornerPosition(corner, width, height, { width: canvas.width, height: canvas.height } as RasterImage, inset, safe);
@@ -54,6 +54,8 @@ export async function resolveLogo(input: {
   /** The house corner: another corner is used only when nothing fits in this one. */
   strictCorner?: boolean;
   safeArea?: SafeArea;
+  /** Lockup widths to try, as shares of the canvas width (a layout that planned a smaller logo); never below the minimum. */
+  lockupWidths?: number[];
 }): Promise<LogoDecision | NoLogoDecision> {
   const image = Buffer.isBuffer(input.creative) ? await decodeImage(input.creative) : input.creative;
   const inset = Math.round(logoEdgeMargin(image.width) * 1.1);
@@ -65,7 +67,7 @@ export async function resolveLogo(input: {
   let fewestErrors = Infinity;
   for (const corner of corners) {
     for (const variant of allLogoVariants()) {
-      const fractions = variant.kind === 'lockup' ? LOCKUP_WIDTHS : SYMBOL_WIDTHS;
+      const fractions = variant.kind === 'lockup' ? input.lockupWidths ?? LOCKUP_WIDTHS : SYMBOL_WIDTHS;
       for (const fraction of fractions) {
         const width = Math.max(minimumLogoWidth(variant, basis), Math.round(fraction * basis));
         const height = logoHeightFor(variant, width);

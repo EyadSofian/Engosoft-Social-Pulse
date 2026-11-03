@@ -45,7 +45,7 @@ test('full-creative prompt asks for the whole post, reserves the logo corner and
   assert.match(prompt, /top-left area/);
   assert.match(prompt, /Do NOT draw any logo/);
   assert.match(prompt, /No seals, badges, emblems/);
-  assert.match(compileFullCreativePrompt(brief, brief.directions[0], 'story'), /top 12% and bottom 17%/);
+  assert.match(compileFullCreativePrompt(brief, brief.directions[0], 'story'), /top 14% and bottom 20%/);
 });
 
 test('public run exposes image URLs but not server paths or prompts', () => {

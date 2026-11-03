@@ -49,7 +49,7 @@ export const CREATIVE_FORMATS: Record<CreativeFormat, { generation: string; outp
   feed: master('feed', 1080, 1350, 'Feed post 4:5', 'Seen in the Facebook, Instagram, LinkedIn and X feeds, mostly on phones: the tallest image every one of them shows uncropped.'),
   video: master('video', 1280, 720, 'YouTube video thumbnail 16:9', 'Seen on YouTube as a small thumbnail beside other videos: a big face or object and very few large words.'),
   landscape: master('landscape', 1200, 630, 'Website article banner and link preview 1.91:1', 'Seen as the Engosoft website article banner and as the link preview when the page is shared.'),
-  story: master('story', 1080, 1920, 'Story / status 9:16', 'Seen full-screen on a phone in WhatsApp status and Instagram or Facebook stories, under the platform interface.', { top: 230, right: 0, bottom: 330, left: 0 }),
+  story: master('story', 1080, 1920, 'Story / status 9:16', 'Seen full-screen on a phone in WhatsApp status and Instagram or Facebook stories, under the platform interface.', { top: 270, right: 65, bottom: 390, left: 65 }),
 };
 
 /**
@@ -468,8 +468,9 @@ export function layeredSizeBrief(format: CanvasTarget, plan: { subjectZone?: Nor
   const pct = (v: number) => Math.round(v * 100);
   const z = plan.subjectZone;
   const never = 'Never take another size\'s arrangement and only add plain background around it: that reads as the old post stretched.';
+  const cta = (plan as { ctaZone?: NormBox }).ctaZone;
   const bands = z
-    ? ` From the top: 0–${pct(z.y)}% is calm, simple continuation of the background — the platform bar, the Engosoft logo and the headline are set there afterwards. ${pct(z.y)}–${pct(z.y + z.height)}%: the hero subject, scaled up to fill the width, the strongest part of the picture. From ${pct(z.y + z.height)}% down: calm background again — the fact chips, the button and the platform's reply bar go there. Calm means a soft gradient, light or texture, with no objects, icons, people or graphics.`
+    ? ` From the top: 0–${pct(z.y)}% is calm, simple continuation of the background (a soft gradient, light or texture, with no objects, icons, people or graphics) — the Engosoft logo, the headline and its supporting lines are set there afterwards. ${pct(z.y)}–${pct(z.y + z.height)}%: the hero subject, scaled up to fill this band edge to edge — the strongest part of the picture.${cta ? ` The orange button is set over the subject's lower ${cta.x + cta.width / 2 > 0.5 ? 'right' : 'left'} corner (${pct(cta.y)}–${pct(cta.y + cta.height)}% of the height), so keep faces and key detail out of that corner.` : ''} Below ${pct(z.y + z.height)}%: calm background again for the website line.`
     : '';
   return `NEW SIZE — THE PICTURE ONLY, DRAWN FROM SCRATCH\nThis is the picture of a new design of the same post at this canvas size: not an edit, extension, crop or re-framing of another image. It contains no text, letters, numbers, buttons or logos of any kind; the design system sets all of them afterwards.${bands} ${never}`;
 }
@@ -759,7 +760,7 @@ async function produceTypeset(input: Parameters<typeof produceDirection>[0]): Pr
     progress('typesetting');
     const ts = await typesetCreative({ image: clean, copy: brief.canonicalCopy, plan: tsPlan, safeArea: spec.safeArea, logo: plan, logoShade: Boolean(houseLogo()), emphasis });
     progress('logo');
-    const logo = await resolveLogo({ creative: ts.png, zones: [...ts.zones, ...heroZone], preferredCorner: plan.corner, preferredMark: plan.mark, strictCorner: Boolean(houseLogo()), safeArea: spec.safeArea });
+    const logo = await resolveLogo({ creative: ts.png, zones: [...ts.zones, ...heroZone], preferredCorner: plan.corner, preferredMark: plan.mark, strictCorner: Boolean(houseLogo()), safeArea: ts.logoHint?.safeArea ?? spec.safeArea, lockupWidths: ts.logoHint?.lockupWidths });
     return { clean, ts, logo };
   };
   let composed = await compose(raw);
