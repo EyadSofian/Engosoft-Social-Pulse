@@ -1,3 +1,4 @@
+import { imageForChannel } from '../../domain/output-presets';
 import { useEffect, useMemo, useState } from 'react';
 import { DateTime } from 'luxon';
 import { CalendarClock, Check, CircleAlert, Clock, Copy, Download, ExternalLink, Hand, Loader2, RotateCcw, Send, Zap } from 'lucide-react';
@@ -87,13 +88,13 @@ export function PublishComposer({ item, open, onClose, onDone, day }: { item: Pi
   }, [open, item.id]);
 
   const video = media.find((m) => m.type === 'video');
-  const image = item.creative?.imageUrl;
   const destinations = useMemo<Destination[]>(() => {
     const auto = (targets ?? []).filter((target) => !OPTION_PROVIDERS.includes(target.provider)).map((target): Destination => ({
       accountId: target.accountId, provider: target.provider, name: target.name, options: false, kind: null, media: [], reconnect: !target.ready && target.reason !== 'no_media',
       blocked: target.ready ? '' : target.reason === 'authorization' ? t('Needs reconnecting with publishing permission.', 'محتاج إعادة ربط بصلاحية النشر.') : target.reason === 'no_media' ? t('Add an image or video to the post first.', 'أضف صورة أو فيديو للمنشور الأول.') : t('The last check of this account failed. Review it in Connections.', 'آخر فحص للحساب ده فشل. راجعه من ربط المنصات.'),
     }));
     const withOptions = providers.flatMap((p) => p.accounts).filter((a) => a.status !== 'disconnected' && OPTION_PROVIDERS.includes(a.provider) && item.channels.includes(a.provider)).map((a): Destination => {
+      const image = imageForChannel(a.provider, item.creative);
       const kind = video ? 'video' : image && a.provider !== 'youtube' ? 'image' : null;
       const photoDraft = a.provider === 'tiktok' && kind === 'image' && choices[a.id]?.ai;
       const availability = kind ? a.capabilities[photoDraft ? 'upload_draft' : `publish_${kind}` as const] : null;
@@ -105,7 +106,7 @@ export function PublishComposer({ item, open, onClose, onDone, day }: { item: Pi
       return { accountId: a.id, provider: a.provider, name: a.name, options: true, kind, media: kind === 'video' ? [{ url: video!.url }] : kind === 'image' ? [{ url: image! }] : [], blocked, reconnect: a.status !== 'connected' || (Boolean(kind) && availability !== 'available' && availability !== 'approval_required') };
     });
     return [...auto, ...withOptions];
-  }, [targets, providers, video, image, choices, item.channels]);
+  }, [targets, providers, video, item.creative, choices, item.channels]);
 
   const choiceOf = (id: string) => choices[id] ?? NO_CHOICES;
   const setChoice = (id: string, patch: Partial<Choices>) => setChoices((current) => ({ ...current, [id]: { ...(current[id] ?? NO_CHOICES), ...patch } }));
@@ -362,7 +363,7 @@ function ManualKit({ item, channel, record, canRecord, onRecorded }: { item: Pip
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState('');
   const open = OPEN_URL[channel]?.(caption);
-  const image = item.creative?.imageUrl;
+  const image = imageForChannel(channel, item.creative);
   const copy = async () => { try { await navigator.clipboard.writeText(caption); setCopied(true); setTimeout(() => setCopied(false), 2000); } catch { setError(t('Could not copy: select the caption in the preview and copy it.', 'تعذّر النسخ: حدد النص من المعاينة وانسخه.')); } };
   const save = async () => {
     setBusy(true); setError('');

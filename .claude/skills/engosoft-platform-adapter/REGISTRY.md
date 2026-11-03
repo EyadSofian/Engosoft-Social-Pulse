@@ -24,4 +24,4 @@ Starting values for the Phase 9 registry. They are common current practice, **no
 
 Vertical formats have UI overlays at the top and bottom; their safe areas are larger than feed formats'.
 
-Today's code defines sizes twice (`POST_SIZES` in `src/features/post-design/templates.ts`, `PLATFORM_FORMATS` in `src/features/creative-studio/platforms.ts`) and maps Facebook to square. Both are replaced by the registry.
+**Current registry (2026-11-03):** `PUBLISHING_PRESETS` in `src/domain/output-presets.ts` is the one source — 40 sizes, 11 of them LinkedIn, with official sources in `docs/publishing-formats.md`. The drawn size of each comes from the image API rules (`generationSizeFor`: multiples of 16, at most 3:1, never upscaled); sizes wider than 3:1 are drawn at 3:1 and keep a planned central band. `describeCanvas` gives the model where the size is seen, its shape recipe and the covered areas; `copyDensityOf` decides how many copy lines it carries; `imageForChannel` picks the image each platform publishes. `POST_SIZES` (fixed SVG templates) and `PLATFORM_FORMATS` (Create-page masters) remain for their own renderers.

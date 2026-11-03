@@ -22,7 +22,8 @@ import { clearActiveCreative, getActiveCreative, setActiveCreative } from '../..
 import { TemplateComposer, TemplateGrid, KindPicker, useSvgTemplates } from '../../features/svg-templates/SvgTemplates';
 import { KIND_LABEL, type TemplateKind } from '../../features/svg-templates/render';
 import { ChannelIcon } from '../../components/data-display/ChannelIcon';
-import { CREATIVE_PLATFORMS, masterFormat, PLATFORM_FORMATS, type CreativePlatform } from '../../features/creative-studio/platforms';
+import { coveredByMain, CREATIVE_PLATFORMS, DEFAULT_SIZES, masterFormat, masterSize, PLATFORM_FORMATS, sizeTargets, type CreativePlatform } from '../../features/creative-studio/platforms';
+import { presetsFor, shapeOf } from '../../domain/output-presets';
 import { useWorkspace } from '../../features/workspace/WorkspaceProvider';
 import { useI18n } from '../../i18n/I18nProvider';
 
@@ -88,6 +89,12 @@ export function CreationHomePage() {
   const [objective, setObjective] = useState<Objective | 'auto'>('auto');
   const [platforms, setPlatforms] = useState<CreativePlatform[]>(() => getActiveCreative()?.platforms ?? ['instagram']);
   const [platformTouched, setPlatformTouched] = useState(false);
+  // Sizes ticked or unticked on top of each platform's defaults; restored with a running design.
+  const [sizeChoice, setSizeChoice] = useState<Record<string, boolean>>(() => {
+    const active = getActiveCreative();
+    return active?.sizes ? Object.fromEntries(presetsFor(active.platforms).map((p) => [p.id, active.sizes!.includes(p.id)])) : {};
+  });
+  const chosenSizes = presetsFor(platforms).filter((p) => sizeChoice[p.id] ?? DEFAULT_SIZES[p.channel as CreativePlatform]?.includes(p.id)).map((p) => p.id);
   const [references, setReferences] = useState<CreativeReference[]>([]);
   const [message, setMessage] = useState('');
   const [creating, setCreating] = useState(false);
@@ -164,7 +171,7 @@ export function CreationHomePage() {
       const attachments = references.filter((file) => file.dataUrl).map(({ name, mime, dataUrl }) => ({ name, mime, dataUrl: dataUrl! }));
       const body = await api<{ jobId: string; requestId?: string }>('/api/ai/full-creative', { body: { prompt, ...(campaignId ? { campaignId } : {}), format, directions: 2, settings: designSettings, ...(objective !== 'auto' ? { objective } : {}), ...(attachments.length ? { attachments } : {}), ...(template ? { templateId: template.id } : {}) } });
       setJobId(body.jobId); setRequestId(body.requestId ?? ''); setStage('generating');
-      setActiveCreative({ jobId: body.jobId, requestId: body.requestId ?? '', prompt, platforms, startedAt: new Date().toISOString(), status: 'running' });
+      setActiveCreative({ jobId: body.jobId, requestId: body.requestId ?? '', prompt, platforms, sizes: chosenSizes, startedAt: new Date().toISOString(), status: 'running' });
     } catch (error) { setMessage(error instanceof Error ? error.message : String(error)); }
     setCreating(false);
   };
@@ -255,42 +262,67 @@ export function CreationHomePage() {
         </details>
         <div className="creative-home__action"><p className="u-xs">{t('Attached images, PDFs and text files are read by the AI as context. Up to 6 files, 2 MB each.', 'يقرأ الذكاء الاصطناعي الصور وملفات PDF والنصوص المرفقة كسياق للتصميم. حتى ٦ ملفات، ٢ ميجابايت لكل ملف.')}</p><Button variant="primary" className="cta-create" disabled={creating} busy={creating} onClick={() => void startFullCreative()}>{!creating && <Sparkles size={17} className="cta-create__spark" />}{creating ? t('Starting…', 'جارٍ البدء…') : t('Design the post', 'صمّم المنشور')}</Button></div>
       </>}
-      {stage === 'generating' && (jobId || requestId) && <FullCreativeJob key={`${jobId}:${requestId}`} jobId={jobId} requestId={requestId} platforms={platforms} prompt={prompt} onRestart={() => { setStage('compose'); setJobId(''); setRequestId(''); clearActiveCreative(); }} />}
+      {stage === 'generating' && (jobId || requestId) && <FullCreativeJob key={`${jobId}:${requestId}`} jobId={jobId} requestId={requestId} platforms={platforms} sizes={getActiveCreative()?.requestId === requestId && getActiveCreative()?.sizes ? getActiveCreative()!.sizes! : chosenSizes} prompt={prompt} onRestart={() => { setStage('compose'); setJobId(''); setRequestId(''); clearActiveCreative(); }} />}
       {message && <p role="alert" className="creative-home__error">{message}</p>}
     </div>
-    {stage === 'compose' && <PlatformPreview platforms={platforms} />}
+    {stage === 'compose' && <PlatformPreview platforms={platforms} chosen={chosenSizes} onToggle={(id, on) => setSizeChoice((current) => ({ ...current, [id]: on }))} />}
     </div>}
     <RecentContent />
   </div>;
 }
 
-/** Exact delivery sizes of the chosen platforms, drawn to scale, with the expected AI cost. */
-function PlatformPreview({ platforms }: { platforms: CreativePlatform[] }) {
-  const { t } = useI18n();
+/** Frame width class for a shape, so the frames stay comparable when drawn to scale. */
+const frameFormat = (width: number, height: number) => { const shape = shapeOf(width, height); return shape === 'vertical' ? 'story' : shape === 'landscape' || shape === 'banner' ? 'landscape' : 'feed'; };
+
+/**
+ * The sizes the post will be delivered in: the main design and one design for each other shape that was ticked,
+ * drawn to scale, every platform's sizes to tick, and the expected AI cost.
+ */
+function PlatformPreview({ platforms, chosen, onToggle }: { platforms: CreativePlatform[]; chosen: string[]; onToggle: (id: string, on: boolean) => void }) {
+  const { t, tx } = useI18n();
   const [estimate, setEstimate] = useState<{ usd: number } | null>(null);
+  const [open, setOpen] = useState<CreativePlatform | null>(null);
   useEffect(() => {
     void api<{ averageImageUsd: number | null }>('/api/usage').then((report) => setEstimate({ usd: report.averageImageUsd ?? 0.2 })).catch(() => {});
   }, []);
-  const groups = (['feed', 'story', 'landscape'] as const).map((format) => ({ format, items: platforms.filter((p) => PLATFORM_FORMATS[p].master === format) })).filter((group) => group.items.length);
-  const extra = groups.length - 1;
+  const main = masterSize(platforms);
+  const covered = coveredByMain(platforms);
+  const targets = sizeTargets(platforms, chosen);
+  const frames = platforms.length ? [{ key: 'main', width: main.width, height: main.height, channels: [...new Set(covered.map((id) => presetsFor(platforms).find((p) => p.id === id)!.channel))], main: true }, ...targets.map((target) => ({ key: target.key, width: target.width, height: target.height, channels: [...new Set(target.presets.map((p) => p.channel))], main: false }))] : [];
   return <aside className="create-preview glass" aria-label={t('Sizes', 'المقاسات')}>
     <h2>{t('What you will get', 'ما ستحصل عليه')}</h2>
     <div className="create-preview__frames">
       <AnimatePresence initial={false}>
-        {groups.map(({ format, items }) => {
-          const spec = PLATFORM_FORMATS[items[0]];
-          return <motion.figure layout key={format} className="create-frame" data-format={format} initial={{ opacity: 0, scale: 0.9 }} animate={{ opacity: 1, scale: 1 }} exit={{ opacity: 0, scale: 0.9 }} transition={{ type: 'spring', stiffness: 320, damping: 28 }}>
-            <div className="create-frame__shape" style={{ aspectRatio: `${spec.width} / ${spec.height}` }}>
-              <span className="create-frame__shine" />
-              <span className="create-frame__icons">{items.map((p) => <ChannelIcon key={p} channel={p} size={15} />)}</span>
-            </div>
-            <figcaption><b>{t(spec.format, spec.format)}</b><span dir="ltr">{spec.width}×{spec.height}</span><small>{items.map((p) => PLATFORM_FORMATS[p].label).join(' · ')}</small></figcaption>
-          </motion.figure>;
-        })}
+        {frames.map((frame) => <motion.figure layout key={frame.key} className="create-frame" data-format={frameFormat(frame.width, frame.height)} initial={{ opacity: 0, scale: 0.9 }} animate={{ opacity: 1, scale: 1 }} exit={{ opacity: 0, scale: 0.9 }} transition={{ type: 'spring', stiffness: 320, damping: 28 }}>
+          <div className="create-frame__shape" style={{ aspectRatio: `${frame.width} / ${frame.height}` }}>
+            <span className="create-frame__shine" />
+            <span className="create-frame__icons">{frame.channels.map((p) => <ChannelIcon key={p} channel={p} size={15} />)}</span>
+          </div>
+          <figcaption><b>{frame.main ? t('Main design', 'التصميم الأساسي') : t('Extra size', 'مقاس إضافي')}</b><span dir="ltr">{frame.width}×{frame.height}</span></figcaption>
+        </motion.figure>)}
       </AnimatePresence>
-      {!groups.length && <p className="u-sm u-muted">{t('Choose at least one platform.', 'اختر منصة واحدة على الأقل.')}</p>}
+      {!frames.length && <p className="u-sm u-muted">{t('Choose at least one platform.', 'اختر منصة واحدة على الأقل.')}</p>}
     </div>
-    {estimate && groups.length > 0 && <p className="create-preview__cost"><Coins size={15} /> {t('Expected AI cost', 'التكلفة المتوقعة')}: <b dir="ltr">≈ ${((2 + extra) * estimate.usd).toFixed(2)}</b> <small>{t(`2 designs${extra ? ` + ${extra} resize` : ''}`, `تصميمان${extra ? ` + ${extra} مقاس إضافي` : ''}`)}</small></p>}
+    {platforms.length > 0 && <div className="create-sizes">
+      <p className="u-xs u-muted">{t('Tick the sizes you need. Each new shape is designed again for that shape after you pick a design; sizes with the same pixels share one design.', 'علّم المقاسات اللي محتاجها. كل شكل جديد بيتصمم من جديد لشكله بعد ما تختار التصميم، والمقاسات اللي ليها نفس الأبعاد بتاخد تصميم واحد.')}</p>
+      {platforms.filter((p) => presetsFor([p]).length).map((platform) => {
+        const presets = presetsFor([platform]);
+        const picked = presets.filter((p) => chosen.includes(p.id) || covered.includes(p.id)).length;
+        return <details key={platform} className="create-sizes__platform" open={open === platform} onToggle={(event) => { const isOpen = (event.currentTarget as HTMLDetailsElement).open; setOpen((current) => isOpen ? platform : current === platform ? null : current); }}>
+          <summary><ChannelIcon channel={platform} size={14} /><b>{PLATFORM_FORMATS[platform].label}</b><small className="u-tnum">{t(`${picked} of ${presets.length} sizes`, `${picked} من ${presets.length} مقاس`)}</small></summary>
+          <ul>{presets.map((preset) => {
+            const inMain = covered.includes(preset.id);
+            return <li key={preset.id}><label data-main={inMain || undefined}>
+              <input type="checkbox" checked={inMain || chosen.includes(preset.id)} disabled={inMain} onChange={(event) => onToggle(preset.id, event.target.checked)} />
+              <span>{tx(preset.name)}</span>
+              <small dir="ltr" className="u-tnum">{preset.width}×{preset.height}</small>
+              {inMain && <em>{t('main design', 'التصميم الأساسي')}</em>}
+            </label></li>;
+          })}</ul>
+        </details>;
+      })}
+    </div>}
+    {estimate && frames.length > 0 && <p className="create-preview__cost"><Coins size={15} /> {t('Expected AI cost', 'التكلفة المتوقعة')}: <b dir="ltr">≈ ${((2 + targets.length) * estimate.usd).toFixed(2)}</b> <small>{t(`2 designs${targets.length ? ` + ${targets.length} more sizes` : ''}`, `تصميمان${targets.length ? ` + ${targets.length} مقاس إضافي` : ''}`)}</small></p>}
   </aside>;
 }
 

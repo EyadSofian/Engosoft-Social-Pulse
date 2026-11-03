@@ -1,4 +1,5 @@
 import type { PostSizeId } from '../post-design/templates';
+import { PUBLISHING_PRESETS, type PublishingPreset } from '../../domain/output-presets';
 
 /**
  * Every platform's delivered size. Feed platforms share the 4:5 master (the size Instagram, Facebook and LinkedIn
@@ -43,3 +44,47 @@ export function buildPlatformVariants(platforms: CreativePlatform[], master: { h
     return { platform, sizeId: format.sizeId, headline: master.headline.slice(0, format.headlineLimit), caption: master.supportingCopy.slice(0, format.copyLimit), templateId: master.templateId };
   });
 }
+
+/** The sizes ticked when a platform is chosen: what a post needs to go out there. More can be ticked on the Create page. */
+export const DEFAULT_SIZES: Record<CreativePlatform, string[]> = {
+  facebook: ['facebook-feed'], instagram: ['instagram-feed'], linkedin: ['linkedin-feed'], x: ['x-portrait'],
+  whatsapp: ['whatsapp-status'], tiktok: ['tiktok-photo'], snapchat: ['snapchat-story'], youtube: ['youtube-thumbnail-hd'], website: ['website-banner'],
+};
+export const defaultSizes = (platforms: readonly CreativePlatform[]) => platforms.flatMap((p) => DEFAULT_SIZES[p]);
+
+const MASTER_SIZE: Record<CreativeMaster, { width: number; height: number }> = { feed: { width: 1080, height: 1350 }, story: { width: 1080, height: 1920 }, landscape: { width: 1200, height: 630 }, video: { width: 1280, height: 720 } };
+/** The main design's pixels for these platforms. */
+export const masterSize = (platforms: readonly CreativePlatform[]) => MASTER_SIZE[masterFormat(platforms)];
+/** Which post slot a size fills when it is saved (the 9:16 story, the website banner, the YouTube thumbnail). */
+export const slotOf = (width: number, height: number): 'storyUrl' | 'landscapeUrl' | 'youtubeUrl' | null =>
+  width === 1080 && height === 1920 ? 'storyUrl' : width === 1200 && height === 630 ? 'landscapeUrl' : width === 1280 && height === 720 ? 'youtubeUrl' : null;
+
+/** One design to make after the main one: a distinct shape and every chosen size of that shape. */
+export interface SizeTarget { key: string; width: number; height: number; presets: PublishingPreset[] }
+
+/**
+ * The designs the chosen sizes need beyond the main design. Sizes with the same pixels share one design (a
+ * 1080×1080 for Facebook, Instagram and LinkedIn is made once), made for the strictest safe area among them; the
+ * main design already covers the sizes of its own pixels.
+ */
+export function sizeTargets(platforms: readonly CreativePlatform[], chosen: readonly string[]): SizeTarget[] {
+  const main = masterSize(platforms);
+  const groups = new Map<string, PublishingPreset[]>();
+  for (const preset of PUBLISHING_PRESETS) {
+    if (!chosen.includes(preset.id) || !(platforms as readonly string[]).includes(preset.channel)) continue;
+    if (preset.width === main.width && preset.height === main.height) continue;
+    const key = `${preset.width}x${preset.height}`;
+    groups.set(key, [...(groups.get(key) ?? []), preset]);
+  }
+  const strictness = (p: PublishingPreset) => p.safe.top + p.safe.bottom + p.safe.left + p.safe.right;
+  return [...groups.values()].map((presets) => {
+    const strictest = presets.reduce((a, b) => (strictness(b) > strictness(a) ? b : a));
+    return { key: strictest.id, width: strictest.width, height: strictest.height, presets };
+  });
+}
+
+/** Sizes the main design already is, among the chosen platforms: shown as included, not as extra designs. */
+export const coveredByMain = (platforms: readonly CreativePlatform[]) => {
+  const main = masterSize(platforms);
+  return PUBLISHING_PRESETS.filter((p) => (platforms as readonly string[]).includes(p.channel) && p.width === main.width && p.height === main.height).map((p) => p.id);
+};

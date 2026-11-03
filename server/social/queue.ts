@@ -10,6 +10,7 @@ import { getUser, userCan, type AuthUser } from '../auth.js';
 import { canSee, getContent, transition, WorkspaceError, type StoredContent } from '../workspace.js';
 import { capabilities } from './capabilities.js';
 import { contentMedia } from './media.js';
+import { imageForChannel } from '../../src/domain/output-presets.js';
 import { publish, recentJobs } from './publishing.js';
 import { contentQueue, getAccount, listAccounts, toQueued, type QueuedPublication } from './store.js';
 import type { PublishJob, SocialAccount, SocialProvider } from './types.js';
@@ -27,8 +28,10 @@ async function plan(item: StoredContent, account: SocialAccount): Promise<Omit<P
   if (!AUTO_PROVIDERS.includes(account.provider)) return no('advanced');
   if (account.status !== 'connected') return no('disconnected');
   const video = (await contentMedia(item.id)).find((m) => m.type === 'video');
+  // Each platform gets the size designed for it (a LinkedIn landscape, an Instagram 3:4…), else the main design.
+  const image = imageForChannel(account.provider, item.creative);
   const choice = video ? { kind: 'video' as const, media: [{ url: video.url }] }
-    : item.creative?.imageUrl ? { kind: 'image' as const, media: [{ url: item.creative.imageUrl }] }
+    : image ? { kind: 'image' as const, media: [{ url: image }] }
     : ['facebook','linkedin'].includes(account.provider) && item.captions[account.provider]?.trim() ? { kind: 'text' as const, media: [] }
     : null;
   if (!choice) return no('no_media');

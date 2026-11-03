@@ -579,7 +579,9 @@ test('placement geometry is valid and YouTube has a separate 16:9 master for mix
     const [w, h] = p.generation.split('x').map(Number);
     assert.equal(w % 16, 0);
     assert.equal(h % 16, 0);
-    assert.ok(Math.abs(w / h - p.width / p.height) < 0.015);
+    // Covers wider than the model's 3:1 are drawn at 3:1 and keep their central band (publishing-sizes.test.ts).
+    if (p.width / p.height > 3) assert.equal(w / h, 3);
+    else assert.ok(Math.abs(w / h - p.width / p.height) < 0.015);
   }
 });
 

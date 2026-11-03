@@ -2,7 +2,7 @@ import assert from 'node:assert/strict';
 import { test } from 'node:test';
 import sharp from 'sharp';
 import type { CreativeInspection } from '../server/creative-intelligence/criticism/inspect';
-import { candidateScore, candidatesFor, localRepairs, promptFor, type CreativeBriefPlan } from '../server/creative-intelligence/generation/full-creative';
+import { candidateScore, candidatesFor, canvasOf, localRepairs, promptFor, type CreativeBriefPlan } from '../server/creative-intelligence/generation/full-creative';
 import { looksUnfilled } from '../server/creative-intelligence/generation/patch';
 import { DESIGN_SKILLS } from '../server/creative-intelligence/skills/design';
 import { compileBriefPrompt, compileDesignPrompt, DEFAULT_SETTINGS, houseWorld, regionWords, type DesignDecision, type StrategyDecision } from '../server/creative-intelligence/skills/engine';
@@ -132,9 +132,12 @@ test('the brief prompt is short, picks one colour world and adds a person only w
   assert.ok(!named.includes('or the word "Engosoft" anywhere'));
   assert.match(named, /appears only where the text below has it/);
   assert.ok(!/\.\./.test(brief), 'no doubled full stops');
-  const adapted = compileBriefPrompt({ strategy, direction: strategy.themeDirector.directions[0], design, copy, format: { label: 'story', story: true }, adaptation: true });
+  const adapted = compileBriefPrompt({ strategy, direction: strategy.themeDirector.directions[0], design, copy, format: { label: canvasOf('story').label, story: true }, adaptation: true });
   assert.match(adapted, /Rebuild the layout for this canvas shape/);
-  assert.match(adapted, /top 12% and bottom 17%/);
+  // The interface zones come from the canvas itself, once, never a second hard-coded set.
+  assert.match(adapted, /CANVAS\nStory \/ status 9:16, 1080×1920 px\. Seen full-screen/);
+  assert.match(adapted, /top 12%, bottom 17% of the drawn canvas/);
+  assert.equal(adapted.match(/top \d+%/g)?.length, 1);
 });
 
 test('the repair router applies only local, non-text repairs automatically', () => {

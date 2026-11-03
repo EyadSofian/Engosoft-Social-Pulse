@@ -1,3 +1,4 @@
+import { creativeImageUrls } from '../../src/domain/output-presets.js';
 import { createHash, createHmac, randomUUID } from 'node:crypto';
 import { access, mkdir, readFile, writeFile, unlink } from 'node:fs/promises';
 import sharp from 'sharp';
@@ -74,7 +75,7 @@ export async function resolveMedia(item:StoredContent,urls:string[]):Promise<Pre
    if(!row)throw new Error('Media must be attached to this content before approval.');
    result.push({...JSON.parse(row.metadata_json),file:row.path,id:asset[1]});continue;
   }
-  const approved=[item.creative?.imageUrl,item.creative?.storyUrl,item.creative?.landscapeUrl].filter(Boolean);
+  const approved=creativeImageUrls(item.creative);
   const match=/^\/api\/creatives\/([\w-]+)\/([\w.-]+)$/.exec(url);
   const other=/^\/api\/(studio|uploads)\/([0-9a-f-]{36}\.png)$/.exec(url);
   if(!approved.includes(url)||(!match&&!other)||match?.[2].includes('..'))throw new Error('Choose approved media attached to this content.');

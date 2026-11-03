@@ -16,7 +16,7 @@ import { resolveOdooContext, type VerifiedCourseContext } from '../context/odoo-
 import { inspectCreative, zonesFromInspection, type CreativeInspection } from '../criticism/inspect.js';
 import { compositeLogo, verifyComposite } from '../logo-resolution/compositor.js';
 import { applyCampaignStamp, campaignBrief, stampRoom, textStamp, withHashtag, type CampaignIdentity } from '../logo-resolution/campaign-stamp.js';
-import { reservedZoneBox, resolveLogo, type Corner, type LogoDecision, type NoLogoDecision } from '../logo-resolution/resolver.js';
+import { resolveLogo, type Corner, type LogoDecision, type NoLogoDecision } from '../logo-resolution/resolver.js';
 import type { SafeArea } from '../logo-resolution/validator.js';
 import { checkCopy, copyPasses, type CanonicalCopy, type CopyCheck } from '../typography-validation/copy-check.js';
 import { compileBriefPrompt, compileDesignPrompt, DEFAULT_SETTINGS, ENGINE_SKILL_VERSIONS, ENGINE_VERSION, planCaptions, planDesign, planStrategy, type DesignDecision, type EngineSettings, type ReferenceInput, type StrategyDecision, type UserReference } from '../skills/engine.js';
@@ -25,7 +25,7 @@ import { pasteInside, patchRejected } from './patch.js';
 import { houseReferences, referencePrompt } from './house-references.js';
 import { TYPESET_VERSION, typesetCreative, type TypesetPlan, type TypesetResult } from '../typography/typeset.js';
 import { openAIJson, OpenAIImageProvider, type CreativeImageProvider, type ImageQuality } from './provider.js';
-import { canvasBrief, publishingPreset } from '../../../src/domain/output-presets.js';
+import { canvasBrief, copyDensityOf, coverWindow, describeCanvas, generationSizeFor, publishingPreset } from '../../../src/domain/output-presets.js';
 
 export const FULL_CREATIVE_VERSIONS = { director: 'creative-director:v2', compiler: 'full-creative-compiler:v4', pipeline: 'full-creative-pipeline:v2', designLanguage: DESIGN_LANGUAGE_VERSION, typeset: TYPESET_VERSION } as const;
 
@@ -42,11 +42,13 @@ export const textModeFor = (brief: CreativeBriefPlan, env: NodeJS.ProcessEnv = p
 
 export type CreativeFormat = 'feed' | 'story' | 'landscape' | 'video';
 /** Generation size (model) and output size (platform). Same aspect ratio, so nothing is cropped away. */
+const master = (key: CreativeFormat, width: number, height: number, title: string, seen: string, safeArea: SafeArea = { top: 0, right: 0, bottom: 0, left: 0 }) =>
+  ({ generation: generationSizeFor(width, height).size, output: { width, height }, label: describeCanvas({ id: key, title, seen, width, height, safe: safeArea }), safeArea, reservedCorner: 'top-left' as Corner });
 export const CREATIVE_FORMATS: Record<CreativeFormat, { generation: string; output: { width: number; height: number }; label: string; safeArea: SafeArea; reservedCorner: Corner }> = {
-  feed: { generation: '1088x1360', output: { width: 1080, height: 1350 }, label: 'Instagram/Facebook feed post, 4:5 portrait', safeArea: { top: 0, right: 0, bottom: 0, left: 0 }, reservedCorner: 'top-left' },
-  video: { generation: '1536x864', output: { width: 1280, height: 720 }, label: 'YouTube video thumbnail, 16:9 landscape. Keep the headline readable at thumbnail scale.', safeArea: { top: 0, right: 0, bottom: 0, left: 0 }, reservedCorner: 'top-left' },
-  landscape: { generation: '1520x800', output: { width: 1200, height: 630 }, label: 'Website article / news banner and link preview, 1.91:1 landscape. Keep the headline large and the composition wide.', safeArea: { top: 0, right: 0, bottom: 0, left: 0 }, reservedCorner: 'top-left' },
-  story: { generation: '1088x1936', output: { width: 1080, height: 1920 }, label: 'WhatsApp status / Instagram story, 9:16 vertical', safeArea: { top: 230, right: 0, bottom: 330, left: 0 }, reservedCorner: 'top-left' },
+  feed: master('feed', 1080, 1350, 'Feed post 4:5', 'Seen in the Facebook, Instagram, LinkedIn and X feeds, mostly on phones: the tallest image every one of them shows uncropped.'),
+  video: master('video', 1280, 720, 'YouTube video thumbnail 16:9', 'Seen on YouTube as a small thumbnail beside other videos: a big face or object and very few large words.'),
+  landscape: master('landscape', 1200, 630, 'Website article banner and link preview 1.91:1', 'Seen as the Engosoft website article banner and as the link preview when the page is shared.'),
+  story: master('story', 1080, 1920, 'Story / status 9:16', 'Seen full-screen on a phone in WhatsApp status and Instagram or Facebook stories, under the platform interface.', { top: 230, right: 0, bottom: 330, left: 0 }),
 };
 
 /**
@@ -340,6 +342,25 @@ function maskFor(width: number, height: number, ...boxes: { x: number; y: number
   return sharp({ create: { width, height, channels: 4, background: { r: 0, g: 0, b: 0, alpha: 1 } } }).composite([{ input: hole, blend: 'dest-out' }]).png().toBuffer();
 }
 
+/**
+ * A box given as fractions of the output, in pixels of the canvas the model drew. Fitting trims a few pixels
+ * evenly; for a band size (wider than 3:1) the output is the central band, so its boxes sit lower in the drawing.
+ */
+export function drawnBox(spec: Pick<Canvas, 'generation' | 'output'>, box: NormBox): NormBox {
+  const [width, height] = spec.generation.split('x').map(Number);
+  const kept = coverWindow({ width, height }, spec.output);
+  return { x: Math.round(kept.left + box.x * kept.width), y: Math.round(kept.top + box.y * kept.height), width: Math.round(box.width * kept.width), height: Math.round(box.height * kept.height) };
+}
+
+/** The reserved logo corner to repaint, inside the size's safe area (below a story's top bar, inside a cover's band). */
+export function logoRepairZone(spec: Pick<Canvas, 'generation' | 'output' | 'safeArea'>, plan: { mark: LogoMark; corner: Corner }): NormBox {
+  const { w, h } = LOGO_ZONE[plan.mark];
+  const s = spec.safeArea, out = spec.output;
+  const x = plan.corner.endsWith('left') ? s.left / out.width : 1 - s.right / out.width - w;
+  const y = plan.corner.startsWith('top') ? s.top / out.height : 1 - s.bottom / out.height - h;
+  return drawnBox(spec, { x: Math.max(0, x), y: Math.max(0, y), width: w, height: h });
+}
+
 async function toOutput(png: Buffer, format: CanvasTarget): Promise<Buffer> {
   const { width, height } = canvasOf(format).output;
   return sharp(png).resize(width, height, { fit: 'cover', position: 'centre', kernel: 'lanczos3' }).png().toBuffer();
@@ -373,6 +394,20 @@ export function candidateScore(inspection: Pick<CreativeInspection, 'verdict' | 
   return -100 * wrong - (logoFits ? 0 : 30) + 10 * verdict + (s.design + s.marketing + s.imageQuality + s.brandFit) / 4 - (inspection.logosOrWatermarks.length ? 5 : 0);
 }
 
+/**
+ * The approved copy a canvas carries (`copyDensityOf`): a thumbnail, a link-sized image or a long-lived cover drops
+ * whole lines (they stay in the caption), never words inside a line, and the copy check expects only what is left.
+ */
+export function copyForCanvas(copy: CanonicalCopy, format: CanvasTarget): CanonicalCopy {
+  const canvas = canvasOf(format);
+  const density = copyDensityOf({ id: canvas.key, ...canvas.output });
+  if (density === 'reduced') return { headline: copy.headline, ...(copy.facts?.length ? { facts: copy.facts } : {}), ...(copy.cta ? { cta: copy.cta } : {}) };
+  if (density === 'thumbnail') return { headline: copy.headline, ...(copy.facts?.length ? { facts: copy.facts.slice(0, 1) } : {}) };
+  if (density === 'brand') return { headline: copy.headline, ...(copy.subheadline ? { subheadline: copy.subheadline } : {}) };
+  return copy;
+}
+const withCanvasCopy = (brief: CreativeBriefPlan, format: CanvasTarget): CreativeBriefPlan => ({ ...brief, canonicalCopy: copyForCanvas(brief.canonicalCopy, format) });
+
 export type ProgressStage = 'context' | 'planning' | 'designing' | 'generating' | 'typesetting' | 'inspecting' | 'refining' | 'repairing' | 'logo' | 'done';
 export type ProgressFn = (event: { stage: ProgressStage; directionId?: string; message?: string; brief?: CreativeBriefPlan }) => void;
 
@@ -386,7 +421,8 @@ export async function produceDirection(input: {
   campaign?: CampaignIdentity;
 }): Promise<FullCreativeResult> {
   if ((input.mode ?? textModeFor(input.brief, input.env)) === 'typeset') return produceTypeset(input);
-  const { provider, brief, direction, format, quality, dir, env, sourceImage } = input;
+  const { provider, direction, format, quality, dir, env, sourceImage } = input;
+  const brief = withCanvasCopy(input.brief, format);
   const progress = (stage: ProgressStage) => input.onProgress?.({ stage, directionId: direction.id });
   const spec = canvasOf(format);
   const plan = logoPlanOf(direction, format);
@@ -407,7 +443,7 @@ export async function produceDirection(input: {
       ? await provider.edit({ prompt, size: spec.generation, quality, images: references.map(({ data, mime }) => ({ data, mime })), n })
       : await provider.generate({ prompt, size: spec.generation, quality, n });
   const planned = direction.engine?.design;
-  const context = `${direction.name}: ${direction.concept} Copy: ${JSON.stringify(brief.canonicalCopy)}. Arabic right-to-left layout: a left-pointing arrow on the CTA is intended. Line breaks within the headline are a design choice.${planned ? ` Planned design — theme ${direction.theme}; first focal point: ${planned.layoutDesigner.primaryFocalPoint}; then ${planned.layoutDesigner.secondaryFocalPoint}; reading path ${planned.layoutDesigner.visualFlow}; headline lines ${JSON.stringify(planned.typographyDirector.headlineLines)}; lighting ${planned.lightingDirector.setup}, key ${planned.lightingDirector.keyDirection}; colour ${planned.colorDirector.harmony}.` : ''}`;
+  const context = `Canvas: ${spec.label} ${direction.name}: ${direction.concept} Copy: ${JSON.stringify(brief.canonicalCopy)}. Arabic right-to-left layout: a left-pointing arrow on the CTA is intended. Line breaks within the headline are a design choice.${planned ? ` Planned design — theme ${direction.theme}; first focal point: ${planned.layoutDesigner.primaryFocalPoint}; then ${planned.layoutDesigner.secondaryFocalPoint}; reading path ${planned.layoutDesigner.visualFlow}; headline lines ${JSON.stringify(planned.typographyDirector.headlineLines)}; lighting ${planned.lightingDirector.setup}, key ${planned.lightingDirector.keyDirection}; colour ${planned.colorDirector.harmony}.` : ''}`;
   progress('inspecting');
   const approvedCopy = [brief.canonicalCopy.headline, brief.canonicalCopy.subheadline, ...(brief.canonicalCopy.facts ?? []), brief.canonicalCopy.cta].filter((s): s is string => Boolean(s));
   // Every candidate is read by the critic; the rest of the pipeline works on the best one only.
@@ -431,7 +467,7 @@ export async function produceDirection(input: {
   const local = brief.engine && inspection.verdict !== 'accept' ? localRepairs(inspection) : [];
   if (local.length) {
     progress('refining');
-    const boxes = local.map((r) => ({ x: Math.round(Math.max(0, r.region.x - 0.02) * gw), y: Math.round(Math.max(0, r.region.y - 0.02) * gh), width: Math.round(Math.min(1, r.region.width + 0.04) * gw), height: Math.round(Math.min(1, r.region.height + 0.04) * gh) }));
+    const boxes = local.map((r) => drawnBox(spec, { x: Math.max(0, r.region.x - 0.02), y: Math.max(0, r.region.y - 0.02), width: Math.min(1, r.region.width + 0.04), height: Math.min(1, r.region.height + 0.04) }));
     const [edited] = await provider.edit({
       prompt: `Keep the complete existing composition, every piece of text and all typography exactly as they are. Only inside the transparent masked areas: ${local.map((r, i) => `(${i + 1}) ${r.instruction}`).join(' ')} Keep the lighting world, perspective, grain and colour grade consistent with the rest of the image. Preserve every other pixel.`,
       size: spec.generation, quality, images: [{ data: raw, mime: 'image/png' }], mask: await maskFor(gw, gh, ...boxes),
@@ -451,7 +487,7 @@ export async function produceDirection(input: {
   const misspelt = copyChecks.filter((c) => c.verdict === 'incorrect').flatMap((check) => { const box = textBoxFor(inspection, check.expected); return box ? [{ check, box }] : []; });
   if (misspelt.length) {
     progress('repairing');
-    const boxes = misspelt.map(({ box }) => ({ x: Math.round(Math.max(0, box.x - 0.015) * gw), y: Math.round(Math.max(0, box.y - 0.012) * gh), width: Math.round(Math.min(1 - Math.max(0, box.x - 0.015), box.width + 0.03) * gw), height: Math.round(Math.min(1 - Math.max(0, box.y - 0.012), box.height + 0.024) * gh) }));
+    const boxes = misspelt.map(({ box }) => drawnBox(spec, { x: Math.max(0, box.x - 0.015), y: Math.max(0, box.y - 0.012), width: Math.min(1 - Math.max(0, box.x - 0.015), box.width + 0.03), height: Math.min(1 - Math.max(0, box.y - 0.012), box.height + 0.024) }));
     // The model sometimes repaints the hole as a black panel with the text on it: such a patch is refused and
     // tried once more; after that the original stays and the misspelling is shown for review.
     let refused = 0;
@@ -481,8 +517,7 @@ export async function produceDirection(input: {
   if (logo.requiresCreativeRepair) {
     // Logo-first repair: repaint only the reserved corner so the official logo has clean space.
     progress('repairing');
-    const zone = reservedZoneBox(plan.corner, gw, gh, LOGO_ZONE[plan.mark]);
-    if (spec.vertical) zone.y = plan.corner.startsWith('top') ? Math.round(gh * (spec.safeArea.top / spec.output.height)) : Math.round(gh * (1 - spec.safeArea.bottom / spec.output.height)) - zone.height;
+    const zone = logoRepairZone(spec, plan);
     const clean = 'Keep the complete existing composition exactly. Change only the transparent masked area: make it a calm, clean, uncluttered continuation of the surrounding background, with no text, faces, objects, logos or graphics. Preserve every other pixel, all typography, subject, lighting and colors.';
     // Only the corner is taken from the model: an edit may also shift colours elsewhere, and it sometimes
     // leaves the hole unpainted (flat black). Then retry once, and give up rather than ship a black block.
@@ -571,7 +606,8 @@ export function strayTexts(read: (string | { text: string; box?: { x: number; y:
  * local ones run automatically, to keep the wait short.
  */
 async function produceTypeset(input: Parameters<typeof produceDirection>[0]): Promise<FullCreativeResult> {
-  const { provider, brief, direction, format, quality, dir, env, sourceImage } = input;
+  const { provider, direction, format, quality, dir, env, sourceImage } = input;
+  const brief = withCanvasCopy(input.brief, format);
   const progress = (stage: ProgressStage) => input.onProgress?.({ stage, directionId: direction.id });
   const spec = canvasOf(format);
   const plan = logoPlanOf(direction, format);
@@ -608,8 +644,7 @@ async function produceTypeset(input: Parameters<typeof produceDirection>[0]): Pr
   if (composed.logo.requiresCreativeRepair) {
     // No corner fits: calm the reserved corner of the visual (it has no text, so nothing else can break) and set again.
     progress('repairing');
-    const zone = reservedZoneBox(plan.corner, gw, gh, LOGO_ZONE[plan.mark]);
-    if (spec.vertical) zone.y = plan.corner.startsWith('top') ? Math.round(gh * (spec.safeArea.top / spec.output.height)) : Math.round(gh * (1 - spec.safeArea.bottom / spec.output.height)) - zone.height;
+    const zone = logoRepairZone(spec, plan);
     const [edited] = await provider.edit({ prompt: 'Keep the complete existing image exactly. Change only the transparent masked area: make it a calm, clean, uncluttered continuation of the surrounding background, with no text, faces, objects, logos or graphics. Preserve every other pixel, lighting and colour.', size: spec.generation, quality, images: [{ data: raw, mime: 'image/png' }], mask: await maskFor(gw, gh, zone) });
     const candidate = await pasteInside(raw, edited.png, [zone]);
     if (!(await patchRejected(raw, candidate, zone))) {
@@ -631,7 +666,7 @@ async function produceTypeset(input: Parameters<typeof produceDirection>[0]): Pr
 
   progress('inspecting');
   const approvedCopy = [brief.canonicalCopy.headline, brief.canonicalCopy.subheadline, ...(brief.canonicalCopy.facts ?? []), brief.canonicalCopy.cta].filter((s): s is string => Boolean(s));
-  const context = `${direction.name}: ${direction.concept} The copy ${JSON.stringify(approvedCopy)} was typeset by the design system${direction.engine ? `; planned first focal point ${direction.engine.design.layoutDesigner.primaryFocalPoint}, reading path ${direction.engine.design.layoutDesigner.visualFlow}` : ''}.`;
+  const context = `Canvas: ${spec.label} ${direction.name}: ${direction.concept} The copy ${JSON.stringify(approvedCopy)} was typeset by the design system${direction.engine ? `; planned first focal point ${direction.engine.design.layoutDesigner.primaryFocalPoint}, reading path ${direction.engine.design.layoutDesigner.visualFlow}` : ''}.`;
   // Judged before the official logo is added: the critic treats any logo it sees as one the image model drew.
   let inspection = await inspectCreative(composed.ts.png, context, env, approvedCopy, { typeset: true });
   const refinements: string[] = [];
@@ -639,7 +674,7 @@ async function produceTypeset(input: Parameters<typeof produceDirection>[0]): Pr
   const local = inspection.verdict !== 'accept' ? localRepairs(inspection).filter((r) => r.severity === 'critical') : [];
   if (local.length) {
     progress('refining');
-    const boxes = local.map((r) => ({ x: Math.round(Math.max(0, r.region.x - 0.02) * gw), y: Math.round(Math.max(0, r.region.y - 0.02) * gh), width: Math.round(Math.min(1, r.region.width + 0.04) * gw), height: Math.round(Math.min(1, r.region.height + 0.04) * gh) }));
+    const boxes = local.map((r) => drawnBox(spec, { x: Math.max(0, r.region.x - 0.02), y: Math.max(0, r.region.y - 0.02), width: Math.min(1, r.region.width + 0.04), height: Math.min(1, r.region.height + 0.04) }));
     const [edited] = await provider.edit({
       prompt: `Keep the complete existing image exactly as it is. Only inside the transparent masked areas: ${local.map((r, i) => `(${i + 1}) ${r.instruction}`).join(' ')} Keep the lighting, perspective, grain and colour grade consistent with the rest. Add no text. Preserve every other pixel.`,
       size: spec.generation, quality, images: [{ data: raw, mime: 'image/png' }], mask: await maskFor(gw, gh, ...boxes),

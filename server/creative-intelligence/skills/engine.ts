@@ -49,6 +49,8 @@ export interface StrategyDecision {
   themeDirector: { directions: { name: string; theme: ThemeId; idea: string; whyThisTheme: string; subjectStrategy: string; references: string[] }[] };
 }
 export interface DesignDecision {
+  /** Absent on plans made before canvas-designer:v1. */
+  canvasDesigner?: { seenAs: string; layoutRecipe: string; headlineMinScale: number; keepClear: string[] };
   layoutDesigner: { gridType: string; balance: string; primaryFocalPoint: string; secondaryFocalPoint: string; visualFlow: string; heroSubject: Zone; headlineZone: Zone; supportingCopyZone: Zone; factsZone: Zone; ctaZone: Zone; negativeSpaceZones: Zone[]; depthPlan: string; rationale: string };
   visualWeightDesigner: { regions: { region: string; weight: number; source: string }[]; balanceCheck: string; toneDown: string[] };
   spacingDesigner: { baseUnit: number; edgeMarginUnits: number; groupGapUnits: number; elementGapUnits: number; opticalCorrections: string[]; negativeSpacePurpose: string };
@@ -172,7 +174,7 @@ export async function planDesign(input: { strategy: StrategyDecision; direction:
     name: 'design_plan', env: input.env, reasoning: planningEffort('design', input.env), skills: DESIGN_SKILLS,
     intro: 'You are the Engosoft design team turning one creative direction into a precise design plan before any image is generated. Decide every position in normalized coordinates of the final canvas.',
     content: [{ type: 'input_text', text: [
-      `Canvas: ${input.format.label}, ${input.format.width}×${input.format.height}.`,
+      `Canvas: ${input.format.label}`,
       `Objective: ${strategy.creativeDirector.objective}. Audience: ${strategy.creativeDirector.audience}. Message: ${strategy.creativeDirector.message}. Desired reaction: ${strategy.creativeDirector.desiredReaction}. Angle: ${strategy.contentStrategist.angle}.`,
       `Direction "${direction.name}": ${direction.idea} Subject strategy: ${direction.subjectStrategy}.`,
       `Theme ${theme.id}: ${JSON.stringify({ composition: theme.composition, photography: theme.photography, lighting: theme.lighting, typography: theme.typography, spacing: theme.spacing, graphics: theme.graphics, texture: theme.texture, imageTreatment: theme.imageTreatment, density: theme.density, mood: theme.mood, avoid: theme.avoid })}`,
@@ -217,7 +219,7 @@ export function compileDesignPrompt(input: {
       // or 3D letters, or a cramped poster with no room for the real type.
       ? `DELIVERABLE\nThe finished key visual of a premium social media post for Engosoft (engineering and professional training): one strong, art-directed photograph or render across the whole canvas, composed like a poster, with calm areas designed in where the type will be set afterwards. It contains no text of any kind.`
       : `DELIVERABLE\nA complete, finished, publish-ready social media creative for Engosoft (engineering and professional training). The image IS the final post — fully art-directed across the whole canvas with integrated typography; not a background and not a stock photo with empty space.`,
-    `FORMAT\n${input.format.label}.${input.format.story ? ' Keep the top 12% and bottom 17% free of essential content (platform interface).' : ''}`,
+    `FORMAT\n${input.format.label}`,
     `OBJECTIVE\n${strategy.creativeDirector.objective} — ${strategy.creativeDirector.message}. Audience: ${strategy.creativeDirector.audience}. The viewer should feel: ${strategy.creativeDirector.desiredReaction}.`,
     `VISUAL IDEA\n${direction.idea}`,
     `THEME — ${theme.label.en}\n${theme.mood}. Graphics: ${theme.graphics}. Texture: ${theme.texture}. Image treatment: ${theme.imageTreatment}. Density: ${theme.density}.${input.typeset ? '' : ' Where the theme and the Engosoft house style differ, the house style wins.'}`,
@@ -309,9 +311,10 @@ export function compileBriefPrompt(input: Omit<Parameters<typeof compileDesignPr
   const logoSpace = logoReservation(design.logoDirector.mark, design.logoDirector.corner).replace(', or the word "Engosoft" anywhere.', named ? '. The word "Engosoft" appears only where the text below has it.' : ', or the word "Engosoft" anywhere.');
   const layout = input.adaptation
     ? `Rebuild the layout for this canvas shape; keep the master's hierarchy (${clause(L.primaryFocalPoint)}, then ${clause(L.secondaryFocalPoint)}). ${platformDesigner.rules.join(' ')}`
-    : `Headline in the ${regionWords(L.headlineZone)}; main subject in the ${regionWords(L.heroSubject)}${hasArea(L.ctaZone) ? `; button in the ${regionWords(L.ctaZone)}` : ''}. The eye goes first to ${clause(L.primaryFocalPoint)}, then to ${clause(L.secondaryFocalPoint)}. Related text grouped tightly, calm space around the type, essential content inside the central area.`;
+    : `${design.canvasDesigner ? `${clause(design.canvasDesigner.layoutRecipe)}. ` : ''}Headline in the ${regionWords(L.headlineZone)}; main subject in the ${regionWords(L.heroSubject)}${hasArea(L.ctaZone) ? `; button in the ${regionWords(L.ctaZone)}` : ''}. The eye goes first to ${clause(L.primaryFocalPoint)}, then to ${clause(L.secondaryFocalPoint)}. Related text grouped tightly, calm space around the type, essential content clear of the areas the platform covers.`;
   return [
-    `A finished, publish-ready ${input.format.label} for Engosoft, an engineering and professional training company for engineers in Saudi Arabia and Egypt. The image is the final post — one art-directed composition with the Arabic typography designed into it, at the level of a top creative studio's launch campaign.${input.format.story ? ' Keep the top 12% and bottom 17% free of essential content (platform interface).' : ''}`,
+    `A finished, publish-ready social media design for Engosoft, an engineering and professional training company for engineers in Saudi Arabia and Egypt. The image is the final post — one art-directed composition with the Arabic typography designed into it, at the level of a top creative studio's launch campaign.`,
+    `CANVAS\n${input.format.label}`,
     `IDEA\n${clause(direction.idea)}.\nMessage: ${clause(D.message)}. Audience: ${clause(D.audience)}. The viewer should feel: ${clause(D.desiredReaction)}.`,
     `SCENE AND SUBJECT\n${clause(I.subject)}. ${clause(I.scene)}. ${clause(I.camera.shot)}, ${clause(I.camera.angle)}. Light: ${clause(Li.setup)}, key ${clause(Li.keyDirection)}.${people ? ' Real, believable people with natural faces and hands; no identifiable public figures.' : ''}`,
     `LOOK — it must clearly belong to the Engosoft feed\n${WORLD[houseWorld(design)]}\n${HOUSE_LOOK.join('\n')}\nMood: ${theme.mood}.`,

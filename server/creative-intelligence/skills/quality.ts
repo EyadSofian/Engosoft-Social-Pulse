@@ -16,13 +16,14 @@ export const COMPOSITING_FAILS = [
 ];
 
 export const visualCritic: DesignSkill<'visual-critic'> = {
-  id: 'visual-critic', version: 'visual-critic:v2',
+  id: 'visual-critic', version: 'visual-critic:v3',
   purpose: 'Judges the actual image like a strict creative director.',
   rules: [
     `Score each axis 0–10 (${RUBRIC_KEYS.join(', ')}). Strict: 8+ only for work a senior designer would publish unchanged; generic AI output scores 5–6.`,
     `Penalise AI tells: ${AI_TELLS.join('; ')}; and the cheap patterns: ${DESIGN_AVOID.join('; ')}.`,
     `Reject bad compositing: ${COMPOSITING_FAILS.join('; ')}.`,
     'Check the plan was delivered: one primary focal point, clear hierarchy, Arabic line breaks by meaning, light and shadows agree, subject belongs in the environment, theme recognisable.',
+    'Check it fits its canvas (described in the context): built for that shape rather than squeezed into it, nothing essential in the areas the platform covers, and the headline readable at the size the canvas is seen (a thumbnail or link image is seen small).',
     'Professional test: would a good graphic designer publish this? Would Engosoft marketing? Does it look designed, or AI-generated? If AI-generated, it needs repair.',
   ],
   schema: obj({
@@ -49,13 +50,14 @@ export const creativeRepair: DesignSkill<'creative-repair'> = {
 };
 
 export const platformDesigner: DesignSkill<'platform-designer'> = {
-  id: 'platform-designer', version: 'platform-designer:v1',
-  purpose: 'Recomposes the master creative for each platform as a new composition of the same campaign.',
+  id: 'platform-designer', version: 'platform-designer:v2',
+  purpose: 'Recomposes the master creative for each platform size as a new composition of the same campaign.',
   rules: [
     'Never crop blindly: reframe, reposition the subject, change headline line breaks and size, adjust information density, move the CTA, extend the background where needed, and let the logo be placed again for the new canvas.',
-    'Stories (9:16): keep the top 12% and bottom 17% free of essential content; stack the composition vertically with the subject and headline in the central band.',
-    'Landscape (1.91:1): widen the scene, put the headline and subject side by side with generous space; fewer lines of text.',
-    'Every variant must look like the same campaign: same idea, subject, palette, lighting, typography style and exact text.',
+    'Follow the canvas description for this size: how it is seen, its layout recipe and the areas the platform covers.',
+    'Rebuild for the shape: a vertical canvas stacks top to bottom; a landscape one splits into a text half and a subject half; a banner becomes one horizontal band; a square centres one strong composition; a portrait gives the subject the middle.',
+    'Scale the type to how the size is seen: thumbnails, link images and covers are seen small or from afar, so fewer lines, set larger; a full-screen story can carry the whole message.',
+    'Every variant must look like the same campaign: same idea, subject, palette, lighting, typography style and the exact text listed for it.',
   ],
   schema: obj({}),
 };

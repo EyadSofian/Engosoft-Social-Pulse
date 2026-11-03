@@ -46,7 +46,7 @@ test('recomposing for a size asks for a new layout of the same design, never a s
   const brief = { language: 'ar' as const, objective: 'Registration', audience: 'engineers', caption: '', captions: { facebook: '', instagram: '', whatsapp: '', linkedin: '', tiktok: '', snapchat: '', website: '' }, canonicalCopy: { headline: 'قُد مرافقك', cta: 'سجّل الآن' },
     directions: [{ id: 'd1', name: 'Authority', concept: 'c', subject: 's', composition: 'x', palette: 'p', typography: 't', mood: 'm' }] };
   const prompt = compileFullCreativePrompt(brief, brief.directions[0], 'linkedin-event');
-  assert.match(prompt, /linkedin Event cover, 1600×900 px\. Landscape canvas/);
+  assert.match(prompt, /linkedin Event cover 16:9, 1600×900 px\. The cover of a LinkedIn event page[^.]*\. Landscape canvas/);
   // A vertical size reserves its own interface zones (13% / 20% for the publishing story inset).
   assert.match(compileFullCreativePrompt(brief, brief.directions[0], 'tiktok-photo'), /top 13% and bottom 20%/);
   const template = { fields: [{ key: 'title', label: 'Headline', type: 'text' }] } as never;
@@ -94,4 +94,100 @@ test('on a wide banner the logo is sized from the height, not half the banner', 
   const square = await sharp({ create: { width: 1080, height: 1080, channels: 3, background: { r: 0, g: 70, b: 255 } } }).png().toBuffer();
   const feed = await resolveLogo({ creative: square, zones: [], preferredCorner: 'top-left', preferredMark: 'lockup' });
   if (!feed.requiresCreativeRepair) assert.ok(feed.placement.width >= 1080 * 0.23, 'non-banner sizes keep their logo size');
+});
+
+test('every size is drawn at a canvas the image API accepts, never upscaled, with the same shape', async () => {
+  const { IMAGE_API, generationSizeFor } = await import('../src/domain/output-presets');
+  for (const preset of PUBLISHING_PRESETS) {
+    const drawn = generationSizeFor(preset.width, preset.height);
+    assert.equal(preset.generation, drawn.size, preset.id);
+    assert.equal(drawn.width % IMAGE_API.step, 0, preset.id);
+    assert.equal(drawn.height % IMAGE_API.step, 0, preset.id);
+    assert.ok(Math.max(drawn.width, drawn.height) <= IMAGE_API.maxEdge, preset.id);
+    assert.ok(Math.max(drawn.width / drawn.height, drawn.height / drawn.width) <= IMAGE_API.maxRatio, preset.id);
+    assert.ok(drawn.width * drawn.height >= IMAGE_API.minPixels && drawn.width * drawn.height <= IMAGE_API.maxPixels, preset.id);
+    assert.ok(drawn.width >= preset.width && drawn.height >= preset.height, `${preset.id} would be upscaled`);
+    if (drawn.band) assert.ok(preset.width / preset.height > IMAGE_API.maxRatio, preset.id);
+    else assert.ok(Math.abs(drawn.width / drawn.height / (preset.width / preset.height) - 1) <= 0.005, `${preset.id} ${drawn.size}`);
+  }
+  // Only the 4K thumbnail needs the experimental range above 2560×1440.
+  assert.deepEqual(PUBLISHING_PRESETS.filter((p) => generationSizeFor(p.width, p.height).experimental).map((p) => p.id), ['youtube-thumbnail']);
+  assert.equal(generationSizeFor(1080, 1350).size, '1088x1360');
+  assert.equal(generationSizeFor(1920, 1080).size, '1936x1088', 'a 16:9 cover is drawn at full size, not 1536×864 blown up');
+});
+
+test('LinkedIn has every official size, and covers wider than 3:1 are designed for the band that is kept', async () => {
+  const { coverWindow, generationSizeFor } = await import('../src/domain/output-presets');
+  assert.deepEqual(presetsFor(['linkedin']).map((p) => `${p.id} ${p.width}x${p.height}`), [
+    'linkedin-feed 1080x1350', 'linkedin-square 1080x1080', 'linkedin-landscape 1200x627', 'linkedin-document 1080x1350', 'linkedin-article 1920x1080',
+    'linkedin-event 1600x900', 'linkedin-page-cover 1512x256', 'linkedin-profile-banner 1584x396', 'linkedin-life-main 1128x376', 'linkedin-company-photo 900x600', 'linkedin-custom-module 502x282',
+  ]);
+  const cover = publishingPreset('linkedin-page-cover')!;
+  const drawn = generationSizeFor(cover.width, cover.height);
+  assert.equal(drawn.band, true);
+  assert.equal(drawn.width / drawn.height, 3);
+  const kept = coverWindow(drawn, cover);
+  assert.ok(Math.abs(kept.width / kept.height - cover.width / cover.height) < 0.01);
+  assert.ok(kept.top > 0 && kept.top + kept.height < drawn.height);
+  const brief = canvasBrief(cover);
+  assert.match(brief, /drawn at 3:1 and only its central band, from 25% to 75% of the height, is kept/);
+  assert.match(brief, /behind the page logo and name/);
+  assert.match(brief, /only the headline and its supporting line, no dates and no button/);
+  // A feed size gets no band.
+  assert.doesNotMatch(canvasBrief(publishingPreset('linkedin-feed')!), /central band/);
+  assert.match(canvasBrief(publishingPreset('linkedin-feed')!), /working professionals/);
+});
+
+test('repairs and the logo corner are painted where the kept band is, not in the trimmed margin', async () => {
+  const { drawnBox, logoRepairZone } = await import('../server/creative-intelligence/generation/full-creative');
+  const cover = canvasOf('linkedin-page-cover');
+  assert.equal(cover.generation, '1776x592');
+  const top = drawnBox(cover, { x: 0, y: 0, width: 1, height: 1 });
+  assert.deepEqual([top.x, top.width], [0, 1776]);
+  assert.ok(top.y > 140 && top.y + top.height < 452, JSON.stringify(top));
+  const zone = logoRepairZone(cover, { mark: 'lockup', corner: 'top-left' });
+  assert.ok(zone.y >= top.y && zone.x > 0, 'inside the band and right of the page logo');
+  // A same-shape size maps almost one to one.
+  const feed = drawnBox(canvasOf('feed'), { x: 0.5, y: 0.5, width: 0.1, height: 0.1 });
+  assert.deepEqual([feed.x, feed.y], [544, 680]);
+  // A story's logo corner sits below the top bar.
+  const story = canvasOf('story');
+  assert.ok(logoRepairZone(story, { mark: 'lockup', corner: 'top-left' }).y >= Math.floor(230 * 1936 / 1920) - 1);
+});
+
+test('small and long-lived sizes carry fewer lines of the approved copy', async () => {
+  const { copyForCanvas } = await import('../server/creative-intelligence/generation/full-creative');
+  const copy = { headline: 'قُد المرافق', subheadline: 'دورة CFM', facts: ['يبدأ 15-11-2026', 'أونلاين'], cta: 'سجّل الآن' };
+  assert.deepEqual(copyForCanvas(copy, 'feed'), copy);
+  assert.deepEqual(copyForCanvas(copy, 'instagram-story'), copy);
+  assert.deepEqual(copyForCanvas(copy, 'linkedin-landscape'), { headline: copy.headline, facts: copy.facts, cta: copy.cta });
+  assert.deepEqual(copyForCanvas(copy, 'youtube-thumbnail-hd'), { headline: copy.headline, facts: ['يبدأ 15-11-2026'] });
+  assert.deepEqual(copyForCanvas(copy, 'linkedin-page-cover'), { headline: copy.headline, subheadline: copy.subheadline });
+});
+
+test('each platform publishes the size made for it, and every made size counts as approved media', async () => {
+  const { creativeImageUrls, imageForChannel } = await import('../src/domain/output-presets');
+  const post = { imageUrl: '/main.png', storyUrl: '/story.png', landscapeUrl: '/web.png', sizes: { 'linkedin-landscape': '/li.png', 'instagram-grid': '/grid.png' } };
+  assert.equal(imageForChannel('linkedin', post), '/li.png');
+  assert.equal(imageForChannel('instagram', post), '/grid.png');
+  assert.equal(imageForChannel('facebook', post), '/main.png');
+  assert.equal(imageForChannel('tiktok', post), '/story.png', 'TikTok gets the 9:16, not the 4:5 feed design');
+  assert.equal(imageForChannel('snapchat', post), '/story.png');
+  assert.equal(imageForChannel('website', post), '/web.png');
+  assert.equal(imageForChannel('tiktok', { imageUrl: '/main.png' }), '/main.png');
+  assert.equal(imageForChannel('linkedin', null), undefined);
+  assert.deepEqual(creativeImageUrls(post).sort(), ['/grid.png', '/li.png', '/main.png', '/story.png', '/web.png']);
+});
+
+test('chosen sizes become one design per distinct shape; the main design covers its own', async () => {
+  const { coveredByMain, defaultSizes, sizeTargets } = await import('../src/features/creative-studio/platforms');
+  // Defaults reproduce the old behaviour: 4:5 main, one 9:16, the website banner.
+  assert.deepEqual(sizeTargets(['facebook', 'tiktok', 'website'], defaultSizes(['facebook', 'tiktok', 'website'])).map((t) => `${t.width}x${t.height}`), ['1080x1920', '1200x630']);
+  const chosen = ['facebook-square', 'instagram-square', 'linkedin-square', 'linkedin-landscape', 'linkedin-page-cover', 'instagram-story', 'whatsapp-status', 'linkedin-feed'];
+  const targets = sizeTargets(['facebook', 'instagram', 'linkedin', 'whatsapp'], chosen);
+  assert.deepEqual(targets.map((t) => `${t.width}x${t.height}`), ['1080x1080', '1080x1920', '1200x627', '1512x256']);
+  assert.deepEqual(targets[0].presets.map((p) => p.id), ['facebook-square', 'instagram-square', 'linkedin-square']);
+  assert.ok(coveredByMain(['linkedin']).includes('linkedin-document'));
+  // A size of a platform that is not chosen is ignored.
+  assert.deepEqual(sizeTargets(['facebook'], ['x-header']), []);
 });

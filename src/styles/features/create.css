@@ -63,6 +63,28 @@
 
 .creative-job__variant[data-format='landscape'] > img { aspect-ratio: 1200 / 630; max-width: 100%; }
 
+/* Sizes to tick per platform on the Create page. */
+.create-sizes { display: grid; gap: 6px; }
+.create-sizes > p { margin: 0 0 2px; }
+.create-sizes__platform { border: 1px solid var(--border); border-radius: 12px; background: var(--surface); }
+.create-sizes__platform summary { display: flex; align-items: center; gap: 8px; padding: 9px 12px; cursor: pointer; list-style: none; font-size: 13px; }
+.create-sizes__platform summary::-webkit-details-marker { display: none; }
+.create-sizes__platform summary small { margin-inline-start: auto; color: var(--text-subtle); font-size: 11.5px; }
+.create-sizes__platform ul { display: grid; gap: 2px; margin: 0; padding: 0 8px 8px; list-style: none; }
+.create-sizes__platform label { display: grid; grid-template-columns: auto minmax(0, 1fr) auto; align-items: center; gap: 4px 8px; padding: 6px 4px; border-radius: 8px; font-size: 12.5px; cursor: pointer; }
+.create-sizes__platform label:hover { background: var(--surface-subtle); }
+.create-sizes__platform label[data-main] { cursor: default; }
+.create-sizes__platform label small { color: var(--text-subtle); font-size: 11.5px; }
+.create-sizes__platform label em { grid-column: 2 / -1; color: var(--brand); font-size: 10.5px; font-style: normal; }
+.create-sizes__platform input { accent-color: var(--brand); margin: 0; }
+
+/* Extra sizes offered under a finished AI design. */
+.creative-job__sizes { display: grid; gap: 8px; padding-top: 12px; border-top: 1px solid var(--border); }
+.creative-job__sizes > p { margin: 0; }
+.creative-job__sizes .ui-btn { justify-content: flex-start; gap: 8px; }
+.creative-job__size-icons { display: inline-flex; gap: 3px; }
+.creative-job__variant > img { max-height: 420px; width: auto; max-width: 100%; justify-self: start; }
+
 @media (max-width: 1100px) {
   .create-layout { grid-template-columns: minmax(0, 1fr); }
   .create-preview { position: static; }
