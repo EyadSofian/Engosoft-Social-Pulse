@@ -1,6 +1,6 @@
 import { useEffect, useRef, useState } from 'react';
 import { AnimatePresence, motion } from 'motion/react';
-import { AlertTriangle, BookmarkPlus, CheckCircle2, Download, FileText, Layers, Loader2, Send, XCircle } from 'lucide-react';
+import { AlertTriangle, BookmarkPlus, CheckCircle2, Download, FileText, Layers, Loader2, Send, Sparkles, XCircle } from 'lucide-react';
 import { ChannelIcon } from '../../components/data-display/ChannelIcon';
 import { useRouter } from '../../app/router/router';
 import { Button } from '../../components/ui/Button';
@@ -9,7 +9,7 @@ import { takePostPlan } from '../content/postPlan';
 import { api, errorMessage } from '../../lib/api';
 import type { CreativeJob, PublicResult, PublicRun } from '../../../server/creative-intelligence/generation/jobs';
 import { updateActiveCreative } from './activeCreative';
-import { defaultSizes, PLATFORM_FORMATS, sizeTargets, slotOf, type CreativePlatform, type SizeTarget } from './platforms';
+import { defaultSizes, MASTER_SIZE, masterFormat, PLATFORM_FORMATS, sizeTargets, slotOf, type CreativeMaster, type CreativePlatform, type SizeTarget } from './platforms';
 import { useAuth } from '../auth/AuthProvider';
 import { DesignPlanPanel } from './DesignPlanPanel';
 
@@ -48,7 +48,7 @@ const resultFor = (results: PublicResult[], directionId: string, target: SizeTar
 };
 const targetLabel = (target: SizeTarget) => [...new Set(target.presets.map((p) => PLATFORM_FORMATS[p.channel as CreativePlatform]?.label ?? p.channel))].join(' · ');
 
-export function FullCreativeJob({ jobId, requestId, platforms, sizes, prompt, onRestart }: { jobId: string; requestId?: string; platforms: CreativePlatform[]; /** Sizes ticked on the Create page; each platform's defaults when absent. */ sizes?: string[]; prompt: string; onRestart: () => void }) {
+export function FullCreativeJob({ jobId, requestId, platforms, sizes, format, prompt, onRestart }: { jobId: string; requestId?: string; platforms: CreativePlatform[]; /** Sizes ticked on the Create page; each platform's defaults when absent. */ sizes?: string[]; /** The size the designs are made at; the saved run knows it once loaded. */ format?: CreativeMaster; prompt: string; onRestart: () => void }) {
   const { t } = useI18n();
   const { can } = useAuth();
   const [job, setJob] = useState<CreativeJob | null>(null);
@@ -56,7 +56,6 @@ export function FullCreativeJob({ jobId, requestId, platforms, sizes, prompt, on
   // Keyed "d1:instagram-story", "d2:linkedin-landscape": one adaptation per direction and size.
   const [adapting, setAdapting] = useState<Record<string, string>>({});
   const [error, setError] = useState('');
-  const targets = sizeTargets(platforms, sizes ?? defaultSizes(platforms));
   // Adaptations keep polling only while this card is on screen.
   const alive = useRef({ stopped: false });
   useEffect(() => { const signal = { stopped: false }; alive.current = signal; return () => { signal.stopped = true; }; }, []);
@@ -92,6 +91,8 @@ export function FullCreativeJob({ jobId, requestId, platforms, sizes, prompt, on
   const adaptAll = async (directionId: string, missing: SizeTarget[]) => { for (const target of missing) { if (alive.current.stopped) return; await adapt(directionId, target.key); } };
 
   const brief: Brief | undefined = run?.brief ?? job?.brief;
+  const main: CreativeMaster = run?.request.format ?? format ?? masterFormat(platforms);
+  const targets = sizeTargets(platforms, sizes ?? defaultSizes(platforms), main);
   if (error && !brief) return <div className="creative-job"><p role="alert" className="creative-home__error">{error}</p><Button variant="secondary" onClick={onRestart}>{t('Edit request', 'عدّل الطلب')}</Button></div>;
   if (job?.status === 'failed' && !run) return <div className="creative-job"><p role="alert" className="creative-home__error">{job.error}</p><Button variant="secondary" onClick={onRestart}>{t('Try again', 'حاول مرة أخرى')}</Button></div>;
   if (!brief) {
@@ -122,7 +123,7 @@ export function FullCreativeJob({ jobId, requestId, platforms, sizes, prompt, on
         const missing = made.filter((m) => !m.result).map((m) => m.target);
         const stage = job?.directionStages[id] ?? (job?.status === 'running' ? 'generating' : 'done');
         return <motion.article key={id} className="creative-job__card glass" initial={{ opacity: 0, y: 16 }} animate={{ opacity: 1, y: 0 }} transition={{ delay: index * 0.08, type: 'spring', stiffness: 300, damping: 30 }}>
-          <div className="creative-job__frame">
+          <div className="creative-job__frame" data-format={main} style={{ aspectRatio: `${MASTER_SIZE[main].width} / ${MASTER_SIZE[main].height}` }}>
             <AnimatePresence mode="wait">
               {result?.imageUrl
                 ? <motion.img key="image" src={result.imageUrl} alt={direction.name} initial={{ opacity: 0, scale: 1.04, filter: 'blur(18px)' }} animate={{ opacity: 1, scale: 1, filter: 'blur(0px)' }} transition={{ duration: 0.9, ease: [0.16, 1, 0.3, 1] }} />
@@ -131,22 +132,30 @@ export function FullCreativeJob({ jobId, requestId, platforms, sizes, prompt, on
             </AnimatePresence>
           </div>
           <div className="creative-job__body">
+            {result?.imageUrl && missing.length > 0 && <div className="creative-job__sizes">
+              <div className="creative-job__sizes-head">
+                <b>{t('Your other sizes', 'باقي المقاسات اللي اخترتها')}</b>
+                <p className="u-xs u-muted">{t('Each is designed again for its own shape from this design: same idea, colours and exact words. One AI image each.', 'كل مقاس بيتصمم من جديد لشكله من التصميم ده: نفس الفكرة والألوان والكلام بالظبط. صورة ذكاء اصطناعي لكل مقاس.')}</p>
+              </div>
+              <div className="creative-job__slots">{missing.map((target) => {
+                const key = `${id}:${target.key}`;
+                const working = adapting[key];
+                return <button key={target.key} type="button" className="size-slot" disabled={Boolean(working)} onClick={() => void adapt(id, target.key)}>
+                  <span className="size-slot__frame" style={{ aspectRatio: `${target.width} / ${target.height}` }} data-wide={target.width > target.height ? '' : undefined}>
+                    {working ? <Loader2 className="creative-job__spin" size={18} /> : <Sparkles size={18} />}
+                  </span>
+                  <span className="size-slot__name"><span className="creative-job__size-icons">{[...new Set(target.presets.map((p) => p.channel))].map((c) => <ChannelIcon key={c} channel={c} size={12} />)}</span><span dir="ltr" className="u-tnum">{target.width}×{target.height}</span></span>
+                  <small>{working ? t(STAGES[working]?.[0] ?? 'Working', STAGES[working]?.[1] ?? 'قيد التنفيذ') : t(`Design ${targetLabel(target)}`, 'صمّمه')}</small>
+                </button>;
+              })}</div>
+              {missing.length > 1 && <Button variant="primary" disabled={Object.keys(adapting).some((k) => k.startsWith(`${id}:`))} onClick={() => void adaptAll(id, missing)}><Layers size={15} /> {t(`Design all ${missing.length} sizes`, `صمّم الـ${missing.length} مقاسات مرة واحدة`)}</Button>}
+            </div>}
             {result && <Status result={result} />}
             <h3 dir="auto">{direction.name}</h3>
             <p dir="auto" className="u-xs u-muted">{direction.concept}</p>
             {result && <Details result={result} />}
             {result && run && can('content.approve') && <DesignPlanPanel requestId={run.requestId} directionId={id} />}
-            {result?.imageUrl && run && <ResultActions run={run} result={result} extras={made.filter((m): m is { target: SizeTarget; result: PublicResult } => Boolean(m.result))} platforms={platforms} prompt={prompt} direction={direction} />}
-            {result?.imageUrl && missing.length > 0 && <div className="creative-job__sizes">
-              <p className="u-xs u-muted">{t('Each extra size is designed again for its own shape, with the same idea, colours and exact words.', 'كل مقاس إضافي بيتصمم من جديد لشكله، بنفس الفكرة والألوان والكلام بالظبط.')}</p>
-              {missing.length > 1 && <Button variant="primary" disabled={Object.keys(adapting).some((k) => k.startsWith(`${id}:`))} onClick={() => void adaptAll(id, missing)}><Layers size={15} /> {t(`Design the ${missing.length} other sizes`, `صمّم الـ${missing.length} مقاسات التانية`)}</Button>}
-              {missing.map((target) => {
-                const key = `${id}:${target.key}`;
-                return <Button key={target.key} variant="secondary" disabled={Boolean(adapting[key])} onClick={() => void adapt(id, target.key)}>
-                  {adapting[key] ? <><Loader2 className="creative-job__spin" size={15} /> {t(STAGES[adapting[key]]?.[0] ?? 'Working', STAGES[adapting[key]]?.[1] ?? 'قيد التنفيذ')}</> : <><span className="creative-job__size-icons">{[...new Set(target.presets.map((p) => p.channel))].map((c) => <ChannelIcon key={c} channel={c} size={13} />)}</span><span dir="ltr" className="u-tnum">{target.width}×{target.height}</span> {targetLabel(target)}</>}
-                </Button>;
-              })}
-            </div>}
+            {result?.imageUrl && run && <ResultActions run={run} result={result} main={main} extras={made.filter((m): m is { target: SizeTarget; result: PublicResult } => Boolean(m.result))} platforms={platforms} prompt={prompt} direction={direction} />}
             {made.map(({ target, result: variant }) => {
               if (!variant) return null;
               const size = `${target.width}×${target.height}`;
@@ -161,7 +170,7 @@ export function FullCreativeJob({ jobId, requestId, platforms, sizes, prompt, on
 }
 
 /** Save the design into the content pipeline, or keep its recipe as an AI template. */
-function ResultActions({ run, result, extras, platforms, prompt, direction }: { run: PublicRun; result: PublicResult; extras: { target: SizeTarget; result: PublicResult }[]; platforms: CreativePlatform[]; prompt: string; direction: Brief['directions'][number] }) {
+function ResultActions({ run, result, main, extras, platforms, prompt, direction }: { run: PublicRun; result: PublicResult; main: CreativeMaster; extras: { target: SizeTarget; result: PublicResult }[]; platforms: CreativePlatform[]; prompt: string; direction: Brief['directions'][number] }) {
   const { t } = useI18n();
   const { navigate } = useRouter();
   const [busy, setBusy] = useState('');
@@ -179,7 +188,9 @@ function ResultActions({ run, result, extras, platforms, prompt, direction }: { 
         // Every extra size is saved on the post under each publishing size it serves, and fills its slot.
         const made = extras.filter((e) => e.result.imageUrl);
         const sizes = Object.fromEntries(made.flatMap(({ target, result: r }) => target.presets.map((p) => [p.id, r.imageUrl!])));
-        const slots = Object.fromEntries(made.flatMap(({ target, result: r }) => { const slot = slotOf(target.width, target.height); return slot ? [[slot, r.imageUrl!]] : []; }));
+        // A main design made as a story (or banner) also fills that slot, so publishing finds it there.
+        const mainSlot = slotOf(MASTER_SIZE[main].width, MASTER_SIZE[main].height);
+        const slots = Object.fromEntries([...(mainSlot ? [[mainSlot, result.imageUrl!]] : []), ...made.flatMap(({ target, result: r }) => { const slot = slotOf(target.width, target.height); return slot ? [[slot, r.imageUrl!]] : []; })]);
         const item = await api<{ id: string }>('/api/content', { body: { ...takePostPlan(), title: run.brief.canonicalCopy.headline, channels: platforms, captions, creative: { requestId: run.requestId, directionId: result.directionId, imageUrl: result.imageUrl, ...slots, ...(made.length ? { sizes } : {}), model: result.model, directionName: direction.name } } });
         created.current = item.id;
       }

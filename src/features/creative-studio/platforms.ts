@@ -52,9 +52,23 @@ export const DEFAULT_SIZES: Record<CreativePlatform, string[]> = {
 };
 export const defaultSizes = (platforms: readonly CreativePlatform[]) => platforms.flatMap((p) => DEFAULT_SIZES[p]);
 
-const MASTER_SIZE: Record<CreativeMaster, { width: number; height: number }> = { feed: { width: 1080, height: 1350 }, story: { width: 1080, height: 1920 }, landscape: { width: 1200, height: 630 }, video: { width: 1280, height: 720 } };
+export const MASTER_SIZE: Record<CreativeMaster, { width: number; height: number }> = { feed: { width: 1080, height: 1350 }, story: { width: 1080, height: 1920 }, landscape: { width: 1200, height: 630 }, video: { width: 1280, height: 720 } };
+const MASTERS = ['feed', 'story', 'landscape', 'video'] as const;
+/** The master format a size is, when its pixels are one of the four master canvases. */
+export const masterOf = (width: number, height: number): CreativeMaster | null => MASTERS.find((m) => MASTER_SIZE[m].width === width && MASTER_SIZE[m].height === height) ?? null;
+/** Master formats the ticked sizes of these platforms can be designed at, feed first. */
+export const masterChoices = (platforms: readonly CreativePlatform[], chosen: readonly string[]): CreativeMaster[] =>
+  MASTERS.filter((m) => PUBLISHING_PRESETS.some((p) => chosen.includes(p.id) && (platforms as readonly string[]).includes(p.channel) && masterOf(p.width, p.height) === m));
+/**
+ * The size the two designs are made at: the one picked on the Create page, else the first master-shaped size
+ * ticked (so ticking only Story designs both options as stories), else the platforms' default.
+ */
+export function mainFormat(platforms: readonly CreativePlatform[], chosen: readonly string[], picked?: CreativeMaster | null): CreativeMaster {
+  const choices = masterChoices(platforms, chosen);
+  return picked && choices.includes(picked) ? picked : choices[0] ?? masterFormat(platforms);
+}
 /** The main design's pixels for these platforms. */
-export const masterSize = (platforms: readonly CreativePlatform[]) => MASTER_SIZE[masterFormat(platforms)];
+export const masterSize = (platforms: readonly CreativePlatform[], main: CreativeMaster = masterFormat(platforms)) => MASTER_SIZE[main];
 /** Which post slot a size fills when it is saved (the 9:16 story, the website banner, the YouTube thumbnail). */
 export const slotOf = (width: number, height: number): 'storyUrl' | 'landscapeUrl' | 'youtubeUrl' | null =>
   width === 1080 && height === 1920 ? 'storyUrl' : width === 1200 && height === 630 ? 'landscapeUrl' : width === 1280 && height === 720 ? 'youtubeUrl' : null;
@@ -67,8 +81,8 @@ export interface SizeTarget { key: string; width: number; height: number; preset
  * 1080×1080 for Facebook, Instagram and LinkedIn is made once), made for the strictest safe area among them; the
  * main design already covers the sizes of its own pixels.
  */
-export function sizeTargets(platforms: readonly CreativePlatform[], chosen: readonly string[]): SizeTarget[] {
-  const main = masterSize(platforms);
+export function sizeTargets(platforms: readonly CreativePlatform[], chosen: readonly string[], master: CreativeMaster = masterFormat(platforms)): SizeTarget[] {
+  const main = MASTER_SIZE[master];
   const groups = new Map<string, PublishingPreset[]>();
   for (const preset of PUBLISHING_PRESETS) {
     if (!chosen.includes(preset.id) || !(platforms as readonly string[]).includes(preset.channel)) continue;
@@ -84,7 +98,7 @@ export function sizeTargets(platforms: readonly CreativePlatform[], chosen: read
 }
 
 /** Sizes the main design already is, among the chosen platforms: shown as included, not as extra designs. */
-export const coveredByMain = (platforms: readonly CreativePlatform[]) => {
-  const main = masterSize(platforms);
+export const coveredByMain = (platforms: readonly CreativePlatform[], master: CreativeMaster = masterFormat(platforms)) => {
+  const main = MASTER_SIZE[master];
   return PUBLISHING_PRESETS.filter((p) => (platforms as readonly string[]).includes(p.channel) && p.width === main.width && p.height === main.height).map((p) => p.id);
 };

@@ -1,8 +1,7 @@
 import { CampaignPicker } from '../../features/campaigns/Campaigns';
 import { ScheduleComposer } from '../../features/schedule/ScheduleComposer';
 import { useEffect, useRef, useState } from 'react';
-import { AnimatePresence, motion } from 'motion/react';
-import { ArrowLeft, ArrowRight, CalendarDays, Coins, Film, GraduationCap, ImagePlus, LayoutTemplate, Sparkles, Upload, Wand2 } from 'lucide-react';
+import { ArrowLeft, ArrowRight, CalendarDays, Check, Coins, Film, GraduationCap, ImagePlus, Layers, LayoutTemplate, Sparkles, Upload, Wand2 } from 'lucide-react';
 import { ReelMode } from '../../features/reels/ReelMode';
 import { GoalPicker } from '../../features/content-pipeline/PostPlan';
 import { clearPostPlan, readPostPlan, takePostPlan, writePostPlan, type PostPlan } from '../../features/content/postPlan';
@@ -22,8 +21,9 @@ import { clearActiveCreative, getActiveCreative, setActiveCreative } from '../..
 import { TemplateComposer, TemplateGrid, KindPicker, useSvgTemplates } from '../../features/svg-templates/SvgTemplates';
 import { KIND_LABEL, type TemplateKind } from '../../features/svg-templates/render';
 import { ChannelIcon } from '../../components/data-display/ChannelIcon';
-import { coveredByMain, CREATIVE_PLATFORMS, DEFAULT_SIZES, masterFormat, masterSize, PLATFORM_FORMATS, sizeTargets, type CreativePlatform } from '../../features/creative-studio/platforms';
-import { presetsFor, shapeOf } from '../../domain/output-presets';
+import { coveredByMain, CREATIVE_PLATFORMS, DEFAULT_SIZES, mainFormat, masterChoices, masterOf, PLATFORM_FORMATS, sizeTargets, type CreativeMaster, type CreativePlatform } from '../../features/creative-studio/platforms';
+import { presetsFor, type PublishingPreset } from '../../domain/output-presets';
+import { channelName } from '../../i18n/labels';
 import { useWorkspace } from '../../features/workspace/WorkspaceProvider';
 import { useI18n } from '../../i18n/I18nProvider';
 
@@ -95,6 +95,8 @@ export function CreationHomePage() {
     return active?.sizes ? Object.fromEntries(presetsFor(active.platforms).map((p) => [p.id, active.sizes!.includes(p.id)])) : {};
   });
   const chosenSizes = presetsFor(platforms).filter((p) => sizeChoice[p.id] ?? DEFAULT_SIZES[p.channel as CreativePlatform]?.includes(p.id)).map((p) => p.id);
+  const [mainPick, setMainPick] = useState<CreativeMaster | null>(() => getActiveCreative()?.format ?? null);
+  const main = mainFormat(platforms, chosenSizes, mainPick);
   const [references, setReferences] = useState<CreativeReference[]>([]);
   const [message, setMessage] = useState('');
   const [creating, setCreating] = useState(false);
@@ -166,12 +168,12 @@ export function CreationHomePage() {
     if (!platforms.length) { setMessage(t('Choose at least one platform.', 'اختر منصة واحدة على الأقل.')); return; }
     setCreating(true); setMessage('');
     try {
-      // The master is a 4:5 feed post when any feed platform is selected; 9:16 and website versions are adapted from it.
-      const format = masterFormat(platforms);
+      // Both designs are made at the main size; the other ticked shapes are adapted from the one picked.
+      const format = main;
       const attachments = references.filter((file) => file.dataUrl).map(({ name, mime, dataUrl }) => ({ name, mime, dataUrl: dataUrl! }));
       const body = await api<{ jobId: string; requestId?: string }>('/api/ai/full-creative', { body: { prompt, ...(campaignId ? { campaignId } : {}), format, directions: 2, settings: designSettings, ...(objective !== 'auto' ? { objective } : {}), ...(attachments.length ? { attachments } : {}), ...(template ? { templateId: template.id } : {}) } });
       setJobId(body.jobId); setRequestId(body.requestId ?? ''); setStage('generating');
-      setActiveCreative({ jobId: body.jobId, requestId: body.requestId ?? '', prompt, platforms, sizes: chosenSizes, startedAt: new Date().toISOString(), status: 'running' });
+      setActiveCreative({ jobId: body.jobId, requestId: body.requestId ?? '', prompt, platforms, sizes: chosenSizes, format, startedAt: new Date().toISOString(), status: 'running' });
     } catch (error) { setMessage(error instanceof Error ? error.message : String(error)); }
     setCreating(false);
   };
@@ -262,67 +264,95 @@ export function CreationHomePage() {
         </details>
         <div className="creative-home__action"><p className="u-xs">{t('Attached images, PDFs and text files are read by the AI as context. Up to 6 files, 2 MB each.', 'يقرأ الذكاء الاصطناعي الصور وملفات PDF والنصوص المرفقة كسياق للتصميم. حتى ٦ ملفات، ٢ ميجابايت لكل ملف.')}</p><Button variant="primary" className="cta-create" disabled={creating} busy={creating} onClick={() => void startFullCreative()}>{!creating && <Sparkles size={17} className="cta-create__spark" />}{creating ? t('Starting…', 'جارٍ البدء…') : t('Design the post', 'صمّم المنشور')}</Button></div>
       </>}
-      {stage === 'generating' && (jobId || requestId) && <FullCreativeJob key={`${jobId}:${requestId}`} jobId={jobId} requestId={requestId} platforms={platforms} sizes={getActiveCreative()?.requestId === requestId && getActiveCreative()?.sizes ? getActiveCreative()!.sizes! : chosenSizes} prompt={prompt} onRestart={() => { setStage('compose'); setJobId(''); setRequestId(''); clearActiveCreative(); }} />}
+      {stage === 'generating' && (jobId || requestId) && <FullCreativeJob key={`${jobId}:${requestId}`} jobId={jobId} requestId={requestId} platforms={platforms} sizes={getActiveCreative()?.requestId === requestId && getActiveCreative()?.sizes ? getActiveCreative()!.sizes! : chosenSizes} format={getActiveCreative()?.requestId === requestId ? getActiveCreative()?.format : main} prompt={prompt} onRestart={() => { setStage('compose'); setJobId(''); setRequestId(''); clearActiveCreative(); }} />}
       {message && <p role="alert" className="creative-home__error">{message}</p>}
     </div>
-    {stage === 'compose' && <PlatformPreview platforms={platforms} chosen={chosenSizes} onToggle={(id, on) => setSizeChoice((current) => ({ ...current, [id]: on }))} />}
+    {stage === 'compose' && <SizePicker platforms={platforms} chosen={chosenSizes} main={main} onToggle={(ids, on) => setSizeChoice((current) => ({ ...current, ...Object.fromEntries(ids.map((id) => [id, on])) }))} onMain={setMainPick} />}
     </div>}
     <RecentContent />
   </div>;
 }
 
-/** Frame width class for a shape, so the frames stay comparable when drawn to scale. */
-const frameFormat = (width: number, height: number) => { const shape = shapeOf(width, height); return shape === 'vertical' ? 'story' : shape === 'landscape' || shape === 'banner' ? 'landscape' : 'feed'; };
+/** Familiar names for the shapes most posts use; rarer sizes are named after their placements. */
+const GROUP_NAME: Record<string, [string, string]> = {
+  '1080x1350': ['Portrait post', 'بوست طولي'], '1080x1080': ['Square post', 'بوست مربع'], '1080x1920': ['Story · Reel · Status', 'ستوري · ريل · حالة'],
+  '1080x1440': ['Instagram grid', 'طولي للجريد'], '1200x630': ['Link · banner', 'رابط · بانر'], '1200x627': ['Landscape post', 'بوست عرضي'],
+  '1280x720': ['YouTube thumbnail', 'صورة مصغرة'], '1600x900': ['Landscape post', 'بوست عرضي'],
+};
+const RATIO: Record<string, string> = { '1080x1350': '4:5', '1080x1080': '1:1', '1080x1920': '9:16', '1080x1440': '3:4', '1200x630': '1.91:1', '1200x627': '1.91:1', '1920x1005': '1.91:1', '900x600': '3:2', '1500x500': '3:1', '1128x376': '3:1', '1584x396': '4:1' };
+const ratioOf = (width: number, height: number) => RATIO[`${width}x${height}`] ?? (Math.abs(width / height - 16 / 9) < 0.01 ? '16:9' : `${(width / height).toFixed(1)}:1`);
+/** Sizes most posts need; covers, banners and long-lived placements sit under "More sizes". */
+const COMMON = new Set(['website-banner', 'facebook-link', 'linkedin-landscape', 'x-landscape', 'youtube-thumbnail-hd']);
+const MAIN_LABEL: Record<CreativeMaster, [string, string]> = { feed: ['Portrait 4:5', 'طولي 4:5'], story: ['Story 9:16', 'ستوري 9:16'], landscape: ['Banner 1.91:1', 'بانر 1.91:1'], video: ['Thumbnail 16:9', 'مصغرة 16:9'] };
+
+interface SizeGroup { key: string; width: number; height: number; presets: PublishingPreset[]; common: boolean }
+/** The chosen platforms' sizes, one entry per distinct pixel size (a 1080×1080 for three platforms is one design). */
+function sizeGroups(platforms: CreativePlatform[]): SizeGroup[] {
+  const groups = new Map<string, SizeGroup>();
+  for (const preset of presetsFor(platforms)) {
+    const key = `${preset.width}x${preset.height}`;
+    const group = groups.get(key) ?? { key, width: preset.width, height: preset.height, presets: [], common: false };
+    group.presets.push(preset);
+    group.common ||= preset.format !== 'landscape' || COMMON.has(preset.id);
+    groups.set(key, group);
+  }
+  return [...groups.values()];
+}
 
 /**
- * The sizes the post will be delivered in: the main design and one design for each other shape that was ticked,
- * drawn to scale, every platform's sizes to tick, and the expected AI cost.
+ * The sizes the post will be delivered in, as shapes to tick: the two designs are made at the main size, and every
+ * other ticked shape is designed again for its own shape from the design you pick.
  */
-function PlatformPreview({ platforms, chosen, onToggle }: { platforms: CreativePlatform[]; chosen: string[]; onToggle: (id: string, on: boolean) => void }) {
+function SizePicker({ platforms, chosen, main, onToggle, onMain }: { platforms: CreativePlatform[]; chosen: string[]; main: CreativeMaster; onToggle: (ids: string[], on: boolean) => void; onMain: (format: CreativeMaster) => void }) {
   const { t, tx } = useI18n();
   const [estimate, setEstimate] = useState<{ usd: number } | null>(null);
-  const [open, setOpen] = useState<CreativePlatform | null>(null);
   useEffect(() => {
     void api<{ averageImageUsd: number | null }>('/api/usage').then((report) => setEstimate({ usd: report.averageImageUsd ?? 0.2 })).catch(() => {});
   }, []);
-  const main = masterSize(platforms);
-  const covered = coveredByMain(platforms);
-  const targets = sizeTargets(platforms, chosen);
-  const frames = platforms.length ? [{ key: 'main', width: main.width, height: main.height, channels: [...new Set(covered.map((id) => presetsFor(platforms).find((p) => p.id === id)!.channel))], main: true }, ...targets.map((target) => ({ key: target.key, width: target.width, height: target.height, channels: [...new Set(target.presets.map((p) => p.channel))], main: false }))] : [];
+  const groups = sizeGroups(platforms);
+  const covered = coveredByMain(platforms, main);
+  const targets = sizeTargets(platforms, chosen, main);
+  const options = [...new Set([...masterChoices(platforms, chosen), main])];
+  const isOn = (group: SizeGroup) => group.presets.some((p) => chosen.includes(p.id) || covered.includes(p.id));
+  const isMain = (group: SizeGroup) => masterOf(group.width, group.height) === main;
+  const toggle = (group: SizeGroup) => onToggle(group.presets.map((p) => p.id), !isOn(group));
+  const common = groups.filter((g) => g.common);
+  const more = groups.filter((g) => !g.common);
+  const moreOn = more.filter(isOn).length;
+  const tile = (group: SizeGroup) => {
+    const on = isOn(group);
+    const channels = [...new Set(group.presets.map((p) => p.channel))];
+    const name = GROUP_NAME[group.key] ?? [group.presets.map((p) => p.name.en).join(' · '), group.presets.map((p) => p.name.ar).join(' · ')];
+    const ratio = group.width / group.height;
+    return <button key={group.key} type="button" className="size-tile" aria-pressed={on} data-main={on && isMain(group) ? '' : undefined} onClick={() => toggle(group)}
+      title={group.presets.map((p) => `${channelName[p.channel]}: ${tx(p.name)}`).join('\n')}>
+      <span className="size-tile__stage"><span className="size-tile__shape" style={ratio >= 1 ? { width: '100%', aspectRatio: `${group.width} / ${group.height}` } : { height: '100%', aspectRatio: `${group.width} / ${group.height}` }}><b dir="ltr">{ratioOf(group.width, group.height)}</b></span></span>
+      <span className="size-tile__name">{t(name[0], name[1])}</span>
+      <span className="size-tile__meta"><span className="size-tile__icons">{channels.map((c) => <ChannelIcon key={c} channel={c} size={12} />)}</span><small dir="ltr" className="u-tnum">{group.width}×{group.height}</small></span>
+      <span className="size-tile__check" aria-hidden>{on && <Check size={12} strokeWidth={3} />}</span>
+      {on && isMain(group) && <em className="size-tile__badge">{t('Both designs', 'التصميمين')}</em>}
+    </button>;
+  };
   return <aside className="create-preview glass" aria-label={t('Sizes', 'المقاسات')}>
-    <h2>{t('What you will get', 'ما ستحصل عليه')}</h2>
-    <div className="create-preview__frames">
-      <AnimatePresence initial={false}>
-        {frames.map((frame) => <motion.figure layout key={frame.key} className="create-frame" data-format={frameFormat(frame.width, frame.height)} initial={{ opacity: 0, scale: 0.9 }} animate={{ opacity: 1, scale: 1 }} exit={{ opacity: 0, scale: 0.9 }} transition={{ type: 'spring', stiffness: 320, damping: 28 }}>
-          <div className="create-frame__shape" style={{ aspectRatio: `${frame.width} / ${frame.height}` }}>
-            <span className="create-frame__shine" />
-            <span className="create-frame__icons">{frame.channels.map((p) => <ChannelIcon key={p} channel={p} size={15} />)}</span>
-          </div>
-          <figcaption><b>{frame.main ? t('Main design', 'التصميم الأساسي') : t('Extra size', 'مقاس إضافي')}</b><span dir="ltr">{frame.width}×{frame.height}</span></figcaption>
-        </motion.figure>)}
-      </AnimatePresence>
-      {!frames.length && <p className="u-sm u-muted">{t('Choose at least one platform.', 'اختر منصة واحدة على الأقل.')}</p>}
-    </div>
-    {platforms.length > 0 && <div className="create-sizes">
-      <p className="u-xs u-muted">{t('Tick the sizes you need. Each new shape is designed again for that shape after you pick a design; sizes with the same pixels share one design.', 'علّم المقاسات اللي محتاجها. كل شكل جديد بيتصمم من جديد لشكله بعد ما تختار التصميم، والمقاسات اللي ليها نفس الأبعاد بتاخد تصميم واحد.')}</p>
-      {platforms.filter((p) => presetsFor([p]).length).map((platform) => {
-        const presets = presetsFor([platform]);
-        const picked = presets.filter((p) => chosen.includes(p.id) || covered.includes(p.id)).length;
-        return <details key={platform} className="create-sizes__platform" open={open === platform} onToggle={(event) => { const isOpen = (event.currentTarget as HTMLDetailsElement).open; setOpen((current) => isOpen ? platform : current === platform ? null : current); }}>
-          <summary><ChannelIcon channel={platform} size={14} /><b>{PLATFORM_FORMATS[platform].label}</b><small className="u-tnum">{t(`${picked} of ${presets.length} sizes`, `${picked} من ${presets.length} مقاس`)}</small></summary>
-          <ul>{presets.map((preset) => {
-            const inMain = covered.includes(preset.id);
-            return <li key={preset.id}><label data-main={inMain || undefined}>
-              <input type="checkbox" checked={inMain || chosen.includes(preset.id)} disabled={inMain} onChange={(event) => onToggle(preset.id, event.target.checked)} />
-              <span>{tx(preset.name)}</span>
-              <small dir="ltr" className="u-tnum">{preset.width}×{preset.height}</small>
-              {inMain && <em>{t('main design', 'التصميم الأساسي')}</em>}
-            </label></li>;
-          })}</ul>
-        </details>;
-      })}
-    </div>}
-    {estimate && frames.length > 0 && <p className="create-preview__cost"><Coins size={15} /> {t('Expected AI cost', 'التكلفة المتوقعة')}: <b dir="ltr">≈ ${((2 + targets.length) * estimate.usd).toFixed(2)}</b> <small>{t(`2 designs${targets.length ? ` + ${targets.length} more sizes` : ''}`, `تصميمان${targets.length ? ` + ${targets.length} مقاس إضافي` : ''}`)}</small></p>}
+    <div className="create-preview__head"><h2>{t('Sizes', 'المقاسات')}</h2><p className="u-xs u-muted">{t('Tap every shape you need.', 'دوس على كل مقاس محتاجه.')}</p></div>
+    {!platforms.length && <p className="u-sm u-muted">{t('Choose at least one platform.', 'اختر منصة واحدة على الأقل.')}</p>}
+    {platforms.length > 0 && <>
+      <div className="size-tiles">{common.map(tile)}</div>
+      {more.length > 0 && <details className="size-more">
+        <summary>{t('Covers, banners and more', 'أغلفة وبانرات ومقاسات تانية')} {moreOn > 0 && <small className="u-tnum">{t(`${moreOn} ticked`, `${moreOn} متعلّم`)}</small>}</summary>
+        <div className="size-tiles">{more.map(tile)}</div>
+      </details>}
+      <div className="size-plan">
+        <div className="size-plan__row">
+          <span>{t('The 2 designs come out as', 'التصميمين هيطلعوا')}</span>
+          {options.length > 1
+            ? <div className="size-plan__switch" role="radiogroup" aria-label={t('Main size', 'المقاس الأساسي')}>{options.map((format) => <button key={format} type="button" role="radio" aria-checked={format === main} onClick={() => onMain(format)}>{t(...MAIN_LABEL[format])}</button>)}</div>
+            : <b>{t(...MAIN_LABEL[main])}</b>}
+        </div>
+        {targets.length > 0 && <p className="size-plan__extra"><Layers size={14} /> <span>{t(`Then ${targets.map((x) => ratioOf(x.width, x.height)).join(', ')}: designed again from the design you pick, with one tap under it.`, `وبعدها ${targets.map((x) => ratioOf(x.width, x.height)).join('، ')}: بيتصمم من جديد من التصميم اللي تختاره، بضغطة تحته.`)}</span></p>}
+        {estimate && <p className="create-preview__cost"><Coins size={15} /> {t('Expected AI cost', 'التكلفة المتوقعة')}: <b dir="ltr">≈ ${((2 + targets.length) * estimate.usd).toFixed(2)}</b> <small>{t(`2 designs${targets.length ? ` + ${targets.length} more sizes` : ''}`, `تصميمان${targets.length ? ` + ${targets.length} مقاس إضافي` : ''}`)}</small></p>}
+      </div>
+    </>}
   </aside>;
 }
 

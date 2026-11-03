@@ -1,11 +1,11 @@
 import { useSyncExternalStore } from 'react';
-import type { CreativePlatform } from './platforms';
+import type { CreativeMaster, CreativePlatform } from './platforms';
 
 /**
  * The design run in progress (or last finished) for this browser. Generation runs on the server, so leaving the
  * Create page must not lose it: the page restores it on return and the header shows it from anywhere.
  */
-export interface ActiveCreative { jobId: string; requestId: string; prompt: string; platforms: CreativePlatform[]; /** Publishing sizes ticked on the Create page; absent on runs started before sizes could be chosen. */ sizes?: string[]; startedAt: string; status: 'running' | 'done' | 'failed' }
+export interface ActiveCreative { jobId: string; requestId: string; prompt: string; platforms: CreativePlatform[]; /** Publishing sizes ticked on the Create page; absent on runs started before sizes could be chosen. */ sizes?: string[]; /** The size the designs were made at. */ format?: CreativeMaster; startedAt: string; status: 'running' | 'done' | 'failed' }
 
 const KEY = 'mobde3-active-creative';
 const listeners = new Set<() => void>();
