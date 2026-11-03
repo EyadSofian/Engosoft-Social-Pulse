@@ -5,7 +5,7 @@
  */
 import type { Corner } from '../logo-resolution/resolver.js';
 
-export const DESIGN_LANGUAGE_VERSION = 'design-language:v1';
+export const DESIGN_LANGUAGE_VERSION = 'design-language:v2';
 
 /** The feel to aim for: a premium product launch, not a template. */
 export const DESIGN_STANDARD = [
@@ -15,7 +15,7 @@ export const DESIGN_STANDARD = [
   'Controlled, layered construction: a considered background, one hero subject, intentional lighting, a clear graphic composition, a reserved headline space and restrained details. Nothing scattered.',
   'Light is soft and directional, with depth and gentle perspective, in the Engosoft colour world below.',
   'Engosoft house colours: a vivid royal-blue world (or a clean light-grey engineering-paper world), a bright green highlight bar behind a key phrase, and an orange call-to-action pill. Not a dark, moody, cinematic navy scene.',
-  'Keep the essential content (headline, subject, CTA) inside the central area so the design can be recomposed for 9:16 and 1.91:1 without losing meaning.',
+  'Built for its own canvas: the layout uses the shape it is made for and keeps the platform’s covered areas free; every other size is designed again for its shape, never cropped from this one.',
 ];
 
 /**

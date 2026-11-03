@@ -1,6 +1,7 @@
 import { useEffect, useRef, useState } from 'react';
 import { AnimatePresence, motion } from 'motion/react';
-import { AlertTriangle, BookmarkPlus, CheckCircle2, Download, FileText, Globe, Loader2, Send, Smartphone, XCircle } from 'lucide-react';
+import { AlertTriangle, BookmarkPlus, CheckCircle2, Download, FileText, Layers, Loader2, Send, XCircle } from 'lucide-react';
+import { ChannelIcon } from '../../components/data-display/ChannelIcon';
 import { useRouter } from '../../app/router/router';
 import { Button } from '../../components/ui/Button';
 import { useI18n } from '../../i18n/I18nProvider';
@@ -8,7 +9,7 @@ import { takePostPlan } from '../content/postPlan';
 import { api, errorMessage } from '../../lib/api';
 import type { CreativeJob, PublicResult, PublicRun } from '../../../server/creative-intelligence/generation/jobs';
 import { updateActiveCreative } from './activeCreative';
-import { extraFormats, type CreativeMaster, type CreativePlatform } from './platforms';
+import { defaultSizes, PLATFORM_FORMATS, sizeTargets, slotOf, type CreativePlatform, type SizeTarget } from './platforms';
 import { useAuth } from '../auth/AuthProvider';
 import { DesignPlanPanel } from './DesignPlanPanel';
 
@@ -38,15 +39,24 @@ async function poll(jobId: string, onUpdate: (job: CreativeJob) => void, signal:
 }
 
 /** Follows a full-creative job: direction cards appear as soon as the brief exists, each image is revealed when it is ready. */
-export function FullCreativeJob({ jobId, requestId, platforms, prompt, onRestart }: { jobId: string; requestId?: string; platforms: CreativePlatform[]; prompt: string; onRestart: () => void }) {
+/** Earlier runs made the 9:16, banner and thumbnail versions under the master format's name. */
+const LEGACY_KEY: Record<string, string> = { storyUrl: 'story', landscapeUrl: 'landscape', youtubeUrl: 'video' };
+/** The finished design of a direction for one extra size, if it was made. */
+const resultFor = (results: PublicResult[], directionId: string, target: SizeTarget) => {
+  const slot = slotOf(target.width, target.height);
+  return results.find((r) => r.directionId === `${directionId}-${target.key}`) ?? (slot ? results.find((r) => r.directionId === `${directionId}-${LEGACY_KEY[slot]}`) : undefined);
+};
+const targetLabel = (target: SizeTarget) => [...new Set(target.presets.map((p) => PLATFORM_FORMATS[p.channel as CreativePlatform]?.label ?? p.channel))].join(' · ');
+
+export function FullCreativeJob({ jobId, requestId, platforms, sizes, prompt, onRestart }: { jobId: string; requestId?: string; platforms: CreativePlatform[]; /** Sizes ticked on the Create page; each platform's defaults when absent. */ sizes?: string[]; prompt: string; onRestart: () => void }) {
   const { t } = useI18n();
   const { can } = useAuth();
   const [job, setJob] = useState<CreativeJob | null>(null);
   const [run, setRun] = useState<PublicRun | null>(null);
-  // Keyed "d1:story", "d2:landscape": one adaptation per direction and format.
+  // Keyed "d1:instagram-story", "d2:linkedin-landscape": one adaptation per direction and size.
   const [adapting, setAdapting] = useState<Record<string, string>>({});
   const [error, setError] = useState('');
-  const extras = extraFormats(platforms);
+  const targets = sizeTargets(platforms, sizes ?? defaultSizes(platforms));
   // Adaptations keep polling only while this card is on screen.
   const alive = useRef({ stopped: false });
   useEffect(() => { const signal = { stopped: false }; alive.current = signal; return () => { signal.stopped = true; }; }, []);
@@ -68,7 +78,7 @@ export function FullCreativeJob({ jobId, requestId, platforms, prompt, onRestart
     return () => { signal.stopped = true; };
   }, [jobId, requestId]);
 
-  const adapt = async (directionId: string, format: CreativeMaster) => {
+  const adapt = async (directionId: string, format: string) => {
     if (!run) return;
     const key = `${directionId}:${format}`;
     setAdapting((s) => ({ ...s, [key]: 'queued' }));
@@ -78,6 +88,8 @@ export function FullCreativeJob({ jobId, requestId, platforms, prompt, onRestart
     } catch (e) { setError(errorMessage(e, '')); }
     setAdapting((s) => { const { [key]: _done, ...rest } = s; return rest; });
   };
+  /** Every missing size of a direction, one after another (each is its own image-model call). */
+  const adaptAll = async (directionId: string, missing: SizeTarget[]) => { for (const target of missing) { if (alive.current.stopped) return; await adapt(directionId, target.key); } };
 
   const brief: Brief | undefined = run?.brief ?? job?.brief;
   if (error && !brief) return <div className="creative-job"><p role="alert" className="creative-home__error">{error}</p><Button variant="secondary" onClick={onRestart}>{t('Edit request', 'عدّل الطلب')}</Button></div>;
@@ -106,10 +118,8 @@ export function FullCreativeJob({ jobId, requestId, platforms, prompt, onRestart
       {masterIds.map((id, index) => {
         const direction = brief.directions.find((d) => d.id === id)!;
         const result = results.find((r) => r.directionId === id);
-        const story = results.find((r) => r.directionId === `${id}-story`);
-        const landscape = results.find((r) => r.directionId === `${id}-landscape`);
-        const video = results.find(r => r.directionId === `${id}-video`);
-        const variants = { story, landscape, video } as Record<CreativeMaster, PublicResult | undefined>;
+        const made = targets.map((target) => ({ target, result: resultFor(results, id, target) }));
+        const missing = made.filter((m) => !m.result).map((m) => m.target);
         const stage = job?.directionStages[id] ?? (job?.status === 'running' ? 'generating' : 'done');
         return <motion.article key={id} className="creative-job__card glass" initial={{ opacity: 0, y: 16 }} animate={{ opacity: 1, y: 0 }} transition={{ delay: index * 0.08, type: 'spring', stiffness: 300, damping: 30 }}>
           <div className="creative-job__frame">
@@ -126,18 +136,21 @@ export function FullCreativeJob({ jobId, requestId, platforms, prompt, onRestart
             <p dir="auto" className="u-xs u-muted">{direction.concept}</p>
             {result && <Details result={result} />}
             {result && run && can('content.approve') && <DesignPlanPanel requestId={run.requestId} directionId={id} />}
-            {result?.imageUrl && run && <ResultActions run={run} result={result} story={story} landscape={landscape} video={video} platforms={platforms} prompt={prompt} direction={direction} />}
-            {result?.imageUrl && extras.filter((format) => !variants[format]).map((format) => {
-              const key = `${id}:${format}`;
-              return <Button key={format} variant="secondary" disabled={Boolean(adapting[key])} onClick={() => void adapt(id, format)}>
-                {adapting[key] ? <><Loader2 className="creative-job__spin" size={15} /> {t(STAGES[adapting[key]]?.[0] ?? 'Working', STAGES[adapting[key]]?.[1] ?? 'قيد التنفيذ')}</> : format === 'story' ? <><Smartphone size={15} /> {t('Make the 9:16 version (WhatsApp, TikTok, Snapchat)', 'أنشئ نسخة 9:16 (واتساب، تيك توك، سناب شات)')}</> : format === 'video' ? <><Globe size={15} />{t('Make YouTube thumbnail 1280×720', 'أنشئ صورة يوتيوب 1280×720')}</> : <><Globe size={15} /> {t('Make the website banner 1200×630', 'أنشئ بانر الموقع 1200×630')}</>}
-              </Button>;
-            })}
-            {(['story', 'landscape', 'video'] as const).map((format) => {
-              const variant = variants[format];
+            {result?.imageUrl && run && <ResultActions run={run} result={result} extras={made.filter((m): m is { target: SizeTarget; result: PublicResult } => Boolean(m.result))} platforms={platforms} prompt={prompt} direction={direction} />}
+            {result?.imageUrl && missing.length > 0 && <div className="creative-job__sizes">
+              <p className="u-xs u-muted">{t('Each extra size is designed again for its own shape, with the same idea, colours and exact words.', 'كل مقاس إضافي بيتصمم من جديد لشكله، بنفس الفكرة والألوان والكلام بالظبط.')}</p>
+              {missing.length > 1 && <Button variant="primary" disabled={Object.keys(adapting).some((k) => k.startsWith(`${id}:`))} onClick={() => void adaptAll(id, missing)}><Layers size={15} /> {t(`Design the ${missing.length} other sizes`, `صمّم الـ${missing.length} مقاسات التانية`)}</Button>}
+              {missing.map((target) => {
+                const key = `${id}:${target.key}`;
+                return <Button key={target.key} variant="secondary" disabled={Boolean(adapting[key])} onClick={() => void adapt(id, target.key)}>
+                  {adapting[key] ? <><Loader2 className="creative-job__spin" size={15} /> {t(STAGES[adapting[key]]?.[0] ?? 'Working', STAGES[adapting[key]]?.[1] ?? 'قيد التنفيذ')}</> : <><span className="creative-job__size-icons">{[...new Set(target.presets.map((p) => p.channel))].map((c) => <ChannelIcon key={c} channel={c} size={13} />)}</span><span dir="ltr" className="u-tnum">{target.width}×{target.height}</span> {targetLabel(target)}</>}
+                </Button>;
+              })}
+            </div>}
+            {made.map(({ target, result: variant }) => {
               if (!variant) return null;
-              const size = format === 'story' ? '9:16' : format === 'video' ? '1280×720' : '1200×630';
-              return <div key={format} className="creative-job__variant" data-format={format}><motion.img src={variant.imageUrl} alt={size} initial={{ opacity: 0, filter: 'blur(14px)' }} animate={{ opacity: 1, filter: 'blur(0px)' }} transition={{ duration: 0.8 }} /><Status result={variant} />{variant.imageUrl && <a className="ui-btn ui-btn--secondary ui-btn--md" href={variant.imageUrl} download={`engosoft-${variant.directionId}.png`}><Download size={15} /> PNG {size}</a>}</div>;
+              const size = `${target.width}×${target.height}`;
+              return <div key={target.key} className="creative-job__variant" data-format={target.height > target.width ? 'story' : 'landscape'}><motion.img src={variant.imageUrl} alt={size} style={{ aspectRatio: `${target.width} / ${target.height}` }} initial={{ opacity: 0, filter: 'blur(14px)' }} animate={{ opacity: 1, filter: 'blur(0px)' }} transition={{ duration: 0.8 }} /><small className="u-xs u-muted" dir="auto">{size} · {targetLabel(target)}</small><Status result={variant} />{variant.imageUrl && <a className="ui-btn ui-btn--secondary ui-btn--md" href={variant.imageUrl} download={`engosoft-${variant.directionId}.png`}><Download size={15} /> PNG {size}</a>}</div>;
             })}
           </div>
         </motion.article>;
@@ -148,7 +161,7 @@ export function FullCreativeJob({ jobId, requestId, platforms, prompt, onRestart
 }
 
 /** Save the design into the content pipeline, or keep its recipe as an AI template. */
-function ResultActions({ run, result, story, landscape, video, platforms, prompt, direction }: { run: PublicRun; result: PublicResult; story?: PublicResult; landscape?: PublicResult; video?: PublicResult; platforms: CreativePlatform[]; prompt: string; direction: Brief['directions'][number] }) {
+function ResultActions({ run, result, extras, platforms, prompt, direction }: { run: PublicRun; result: PublicResult; extras: { target: SizeTarget; result: PublicResult }[]; platforms: CreativePlatform[]; prompt: string; direction: Brief['directions'][number] }) {
   const { t } = useI18n();
   const { navigate } = useRouter();
   const [busy, setBusy] = useState('');
@@ -163,7 +176,11 @@ function ResultActions({ run, result, story, landscape, video, platforms, prompt
         // The generator writes no X caption yet, so X starts from the main caption and is trimmed in the editor.
         const written: Partial<Record<string, string>> = run.brief.captions ?? {};
         const captions = Object.fromEntries(platforms.map((p) => [p, written[p] || run.brief.caption]));
-        const item = await api<{ id: string }>('/api/content', { body: { ...takePostPlan(), title: run.brief.canonicalCopy.headline, channels: platforms, captions, creative: { requestId: run.requestId, directionId: result.directionId, imageUrl: result.imageUrl, ...(story?.imageUrl ? { storyUrl: story.imageUrl } : {}), ...(landscape?.imageUrl ? { landscapeUrl: landscape.imageUrl } : {}), ...(video?.imageUrl ? { youtubeUrl: video.imageUrl } : {}), model: result.model, directionName: direction.name } } });
+        // Every extra size is saved on the post under each publishing size it serves, and fills its slot.
+        const made = extras.filter((e) => e.result.imageUrl);
+        const sizes = Object.fromEntries(made.flatMap(({ target, result: r }) => target.presets.map((p) => [p.id, r.imageUrl!])));
+        const slots = Object.fromEntries(made.flatMap(({ target, result: r }) => { const slot = slotOf(target.width, target.height); return slot ? [[slot, r.imageUrl!]] : []; }));
+        const item = await api<{ id: string }>('/api/content', { body: { ...takePostPlan(), title: run.brief.canonicalCopy.headline, channels: platforms, captions, creative: { requestId: run.requestId, directionId: result.directionId, imageUrl: result.imageUrl, ...slots, ...(made.length ? { sizes } : {}), model: result.model, directionName: direction.name } } });
         created.current = item.id;
       }
       if (send) await api(`/api/content/${created.current}/transition`, { body: { to: 'ready_for_review' } });

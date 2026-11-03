@@ -2,6 +2,7 @@ import { useEffect, useState } from 'react';
 import { useI18n } from '../../i18n/I18nProvider';
 import { useAuth } from '../auth/AuthProvider';
 import { tiktokPhotoTitle } from '../../domain/tiktok-publishing';
+import { creativeImageUrls } from '../../domain/output-presets';
 import { ChevronDown, Film, ImagePlus, Send } from 'lucide-react';
 import { Button } from '../../components/ui/Button';
 import { ChannelIcon } from '../../components/data-display/ChannelIcon';
@@ -28,7 +29,7 @@ export function PublishContent({item}:{item:PipelineDetail}) {
   if(account?.provider==='tiktok'&&(mode==='direct'||kind!=='video')&&(kind==='video'?account.capabilities.publish_video==='available':account.capabilities.publish_image==='available'))void call(`/api/social/accounts/${encodeURIComponent(account.id)}/creator?mediaType=${kind==='video'?'video':'photo'}`).then(value=>{if(active)setCreator(value);}).catch(e=>{if(active)setError(e.message);});
   return ()=>{active=false;};
  },[accountId,mode,kind]);
- const available=[...(item.creative?.imageUrl?[{url:item.creative.imageUrl,type:'image' as const}]:[]),...(item.creative?.storyUrl?[{url:item.creative.storyUrl,type:'image' as const}]:[]),...(item.creative?.landscapeUrl?[{url:item.creative.landscapeUrl,type:'image' as const}]:[]),...Object.values(item.creative?.pages??{}).flat().filter(url=>url!==item.creative?.imageUrl).map(url=>({url,type:'image' as const})),...assets];
+ const available=[...creativeImageUrls(item.creative).map(url=>({url,type:'image' as const})),...Object.values(item.creative?.pages??{}).flat().filter(url=>url!==item.creative?.imageUrl).map(url=>({url,type:'image' as const})),...assets];
  const photo=kind==='image'||kind==='carousel',tiktokPhoto=account?.provider==='tiktok'&&photo;
  const choices=[...new Map(available.filter(a=>a.type===(photo?'image':'video')).map(a=>[a.url,a])).values()];
  const photoTitle=tiktokPhotoTitle(item.title);

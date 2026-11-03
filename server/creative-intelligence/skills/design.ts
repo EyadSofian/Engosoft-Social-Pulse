@@ -1,9 +1,30 @@
 /** Design-stage skills: the plan a senior design team makes for one direction before any image is generated. */
 import { LOGO_CORNERS, LOGO_GUIDANCE, LOGO_MARKS } from '../brand/design-language.js';
+import { SHAPE_LAYOUT } from '../../../src/domain/output-presets.js';
 import { list, num, obj, oneOf, str, zone, type DesignSkill } from './types.js';
 
+export const canvasDesigner: DesignSkill<'canvas-designer'> = {
+  id: 'canvas-designer', version: 'canvas-designer:v1',
+  purpose: 'Reads the canvas before anything is placed: where and how this size is seen, what the platform covers, and the layout recipe and text size that work at this shape.',
+  rules: [
+    'Design for THIS canvas only. Every other size is designed again for its own shape afterwards, so never weaken this layout to keep it adaptable to 9:16 or 1.91:1.',
+    'Start from how it is seen: scrolled past in a phone feed (about a second to stop the thumb), a small thumbnail beside other videos, a full-screen story under the platform interface, a page cover behind a logo, a link preview. The headline must read at that viewing size.',
+    `Layout recipes by shape — ${Object.entries(SHAPE_LAYOUT).map(([shape, recipe]) => `${shape}: ${recipe}`).join(' ')}`,
+    'Text size follows the viewing size: on a feed post the headline cap height is about 6–9% of the width; landscape and link images need at least 9% of the height; thumbnails and covers carry very few words set very large. When it does not fit, use fewer lines, never smaller type.',
+    'Name every area the platform covers or crops (story bars, TikTok buttons on the right, profile photos, page logos, phone crops of covers) so the layout keeps them free of essential content.',
+    'Platform voice: LinkedIn speaks to working professionals — credible, structured and calm, the career outcome first, real workplaces, no hype or clutter; Instagram is visual-first with one striking image; Facebook is direct and warm with the offer clear; stories and TikTok feel native and immediate.',
+  ],
+  schema: obj({
+    seenAs: str('how and at what size this canvas is seen'),
+    layoutRecipe: str('the layout recipe for this exact canvas, in one or two sentences'),
+    headlineMinScale: num('minimum headline cap height as a fraction of the canvas width'),
+    keepClear: list(str('an area the platform covers or crops')),
+  }),
+};
+
+
 export const layoutDesigner: DesignSkill<'layout-designer'> = {
-  id: 'layout-designer', version: 'layout-designer:v1',
+  id: 'layout-designer', version: 'layout-designer:v2',
   purpose: 'Plans the composition in normalized coordinates (x, y, width, height from 0 to 1, origin top-left).',
   rules: [
     'Think like a poster designer, not a UI designer: grid, alignment, hierarchy, balance (symmetric or asymmetric), scale, proportion, negative space, grouping, rhythm, edge tension, direction of reading and optical balance.',
@@ -11,7 +32,7 @@ export const layoutDesigner: DesignSkill<'layout-designer'> = {
     'Arabic reads right to left: the eye usually enters top-right. Use the subject’s gaze, gesture and lines to lead to the headline, then to the CTA.',
     'One primary focal point, one or two secondary ones. Do not default to subject-right/text-left; choose the arrangement that serves the idea (centred monument, diagonal, layered depth, top-heavy type, framed panel, full-bleed with inset type…).',
     'Plan the negative space deliberately: for the headline, the logo, the CTA and breathing room. Never fill the canvas because space exists.',
-    'Keep headline, subject and CTA inside the central 80% so the design can be recomposed for 9:16 and 1.91:1.',
+    'Follow the canvas designer’s recipe and keep its covered areas free. Use the whole canvas boldly: other sizes are designed again for their own shape, so nothing has to stay timidly centred for them.',
     'Zones must not overlap unless that overlap is intended (e.g. type layered over a calm part of the image); the logo zone never overlaps faces, headline or CTA.',
   ],
   schema: obj({
@@ -139,4 +160,4 @@ export const photoshopCompositor: DesignSkill<'photoshop-compositor'> = {
   schema: obj({ layerStack: list(str()), integration: list(str('concrete integration decisions for this design')), risks: list(str()) }),
 };
 
-export const DESIGN_SKILLS = [layoutDesigner, visualWeightDesigner, spacingDesigner, typographyDirector, imageArtDirector, lightingDirector, colorDirector, brandDirector, logoDirector, photoshopCompositor];
+export const DESIGN_SKILLS = [canvasDesigner, layoutDesigner, visualWeightDesigner, spacingDesigner, typographyDirector, imageArtDirector, lightingDirector, colorDirector, brandDirector, logoDirector, photoshopCompositor];

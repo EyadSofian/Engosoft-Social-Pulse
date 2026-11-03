@@ -2,6 +2,7 @@ import { useState } from 'react';
 import { Bookmark, Heart, MessageCircle, Repeat2, Send, Share2, ThumbsUp } from 'lucide-react';
 import { ChannelIcon } from '../../components/data-display/ChannelIcon';
 import { useI18n } from '../../i18n/I18nProvider';
+import { imageForChannel } from '../../domain/output-presets';
 import type { Channel, PipelineItem } from '../content-pipeline/types';
 
 /** Caption length each platform accepts; the preview warns past it. */
@@ -20,9 +21,9 @@ export function PostPreview({ item, accountNames, video }: { item: PipelineItem;
   const [channel, setChannel] = useState<Channel>(item.channels[0] ?? 'facebook');
   const caption = item.captions[channel]?.trim() ?? '';
   const limit = CAPTION_LIMIT[channel];
-  // A story-shaped frame only when there is a story-sized design (or a video): the feed design is never cropped to 9:16.
-  const vertical = VERTICAL.includes(channel) && Boolean(item.creative?.storyUrl || video);
-  const image = (vertical && item.creative?.storyUrl) || item.creative?.imageUrl;
+  // The image this platform will get; a story-shaped frame only when it is a 9:16 design (or a video).
+  const image = imageForChannel(channel, item.creative);
+  const vertical = VERTICAL.includes(channel) && Boolean(video || (image && image !== item.creative?.imageUrl));
   const media = video
     ? <video className="post-preview__media" src={video} muted playsInline controls preload="metadata" data-vertical={vertical || undefined} />
     : image ? <img className="post-preview__media" src={image} alt="" data-vertical={vertical || undefined} /> : null;
