@@ -174,10 +174,11 @@ test('of several drawn candidates, correct copy wins before the critic\'s verdic
   const blocked = candidateScore({ verdict: 'accept', scores: scores(9), logosOrWatermarks: [] }, exact, false);
   assert.ok(candidateScore({ verdict: 'repair', scores: scores(7), logosOrWatermarks: [] }, exact, true) > blocked);
   assert.ok(blocked > polishedButMisspelt);
-  assert.equal(candidatesFor({}), 2);
-  assert.equal(candidatesFor({ CREATIVE_CANDIDATES: '1' }), 1);
+  // One image per design unless more candidates are switched on: the person sees one, extra ones only cost.
+  assert.equal(candidatesFor({}), 1);
+  assert.equal(candidatesFor({ CREATIVE_CANDIDATES: '2' }), 2);
   assert.equal(candidatesFor({ CREATIVE_CANDIDATES: '9' }), 3);
-  assert.equal(candidatesFor({ CREATIVE_CANDIDATES: 'many' }), 2);
+  assert.equal(candidatesFor({ CREATIVE_CANDIDATES: 'many' }), 1);
 });
 
 test('no rule tells the planner or the critic to avoid the Engosoft royal blue', () => {

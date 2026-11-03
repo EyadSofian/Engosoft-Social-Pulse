@@ -34,7 +34,7 @@ Run with `scripts/creative/ab-engine.ts` (the design-engine path the Create page
 
 - `compileBriefPrompt` (default; `CREATIVE_PROMPT=detailed` restores the old compiler): a short creative brief in the order OpenAI recommends — use and format, idea, scene and subject, the house look in one colour world, layout in words, logo space, exact text, constraints. About 4,500 characters. A person only when the plan's subject is one; the logo rule no longer forbids "Engosoft" when the approved copy contains it. Reference images are numbered with their role.
 - `color-director:v2` chooses the world first (`royal-blue` by default, `engineering-paper` for educational/technical posts) and fills the roles inside it. The critic, repair examples and theme avoid-lists no longer push against blue.
-- Best of N (`CREATIVE_CANDIDATES`, default 2): one API call draws two images; each is read by the critic and the best one goes on — correct copy first, then room for the official logo, then verdict and score.
+- Best of N (`CREATIVE_CANDIDATES`, default 1 since 2026-11-03: extra candidates cost a full image each and the person sees one): with 2–3, one API call draws them; each is read by the critic and the best one goes on — correct copy first, then room for the official logo, then verdict and score.
 - `OPENAI_IMAGE_QUALITY` (default `high`); `xhigh`/`max` accepted for 2.5 models (not evaluated: the account ran out of credits).
 
 **Results** (6 designs per row; "failed" = no room for the logo)

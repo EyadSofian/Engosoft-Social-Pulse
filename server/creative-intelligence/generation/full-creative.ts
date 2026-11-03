@@ -367,14 +367,27 @@ const logoCanvasOf = (format: CanvasTarget): LogoCanvas => { const c = canvasOf(
  */
 export function recomposePlan(format: CanvasTarget): string {
   const c = canvasOf(format);
-  const never = 'Never keep the master\'s arrangement and only add plain background around it, above and below or at the sides: that reads as the old post stretched, not a design for this shape.';
+  const never = 'Never take another size\'s arrangement and only add plain background around it, above and below or at the sides: that reads as the old post stretched, not a design for this shape.';
   if (!c.vertical) return never;
   const pct = (v: number) => Math.round(v * 100);
   const top = c.safeArea.top / c.output.height, bottom = 1 - c.safeArea.bottom / c.output.height;
   const band = bottom - top;
   const at = (f: number) => pct(top + band * f);
-  return `${never} This canvas is a full-screen phone story, much taller than the master: use its whole height. From the top — 0–${pct(top)}%: background only (the platform's top bar). ${pct(top)}–${at(0.3)}%: the headline block, right-aligned and larger than in the master, beside the logo space at the left. ${at(0.32)}–${at(0.8)}%: the hero subject, scaled up to fill the width, with the facts on or just below it. ${at(0.82)}–${at(0.95)}%: the button, centred. Below ${pct(bottom)}%: background only (the reply bar and buttons cover it) — the button never goes there.`;
+  return `${never} This canvas is a full-screen phone story, much taller than a feed post: use its whole height. From the top — 0–${pct(top)}%: background only (the platform's top bar). ${pct(top)}–${at(0.3)}%: the headline block, right-aligned and set large, beside the logo space at the left. ${at(0.32)}–${at(0.8)}%: the hero subject, scaled up to fill the width, with the facts on or just below it. ${at(0.82)}–${at(0.95)}%: the button, centred. Below ${pct(bottom)}%: background only (the reply bar and buttons cover it) — the button never goes there.`;
 }
+
+/** The brief for another size of a design: a new design at this canvas, not an edit of the other one. */
+export function freshSizeBrief(format: CanvasTarget): string {
+  return `NEW SIZE — DESIGNED FROM SCRATCH\nThis is a new design of the same post, made from the beginning at this canvas size: not an edit, extension, crop or re-framing of another image. Compose it for this shape the way a designer would if this were the only size. ${recomposePlan(format)}`;
+}
+
+/** The prompt line for the finished design of another size when it is attached as a reference. */
+export function masterReference(index: number): string {
+  return `\nImage ${index} is the approved design of this same post in another shape. Take from it only its main subject and objects, its colour world, its typography style and its highlight and button treatment, so both sizes read as one campaign. Do not copy, trace, extend or re-frame its layout, proportions or empty space.`;
+}
+
+/** A finished design attached as a reference: flattened and at most 1024 px, like the house references. */
+const asReference = (png: Buffer) => sharp(png).flatten({ background: '#ffffff' }).resize({ width: 1024, height: 1024, fit: 'inside', withoutEnlargement: true }).jpeg({ quality: 88 }).toBuffer();
 
 async function toOutput(png: Buffer, format: CanvasTarget): Promise<Buffer> {
   const { width, height } = canvasOf(format).output;
@@ -389,12 +402,12 @@ export const imageQualityFor = (env: NodeJS.ProcessEnv = process.env): ImageQual
 
 /**
  * How many images the model draws for a new direction before the critic keeps the best (CREATIVE_CANDIDATES,
- * 1–3, default 2). One API call returns them all; each costs a full image and a critic read. Recompositions of a
- * master draw one.
+ * 1–3, default 1). One API call returns them all; each costs a full image and a critic read, and the person sees
+ * only one, so extra candidates are opt-in. Other sizes of a design draw one.
  */
 export const candidatesFor = (env: NodeJS.ProcessEnv = process.env): number => {
-  const n = Number(env.CREATIVE_CANDIDATES?.trim() || 2);
-  return Number.isFinite(n) ? Math.min(3, Math.max(1, Math.round(n))) : 2;
+  const n = Number(env.CREATIVE_CANDIDATES?.trim() || 1);
+  return Number.isFinite(n) ? Math.min(3, Math.max(1, Math.round(n))) : 1;
 };
 
 /**
@@ -428,35 +441,39 @@ export type ProgressFn = (event: { stage: ProgressStage; directionId?: string; m
 
 export async function produceDirection(input: {
   provider: CreativeImageProvider; brief: CreativeBriefPlan; direction: CreativeDirectionPlan; format: CanvasTarget; quality: ImageQuality; dir: string; env: NodeJS.ProcessEnv;
-  /** Recompose an existing creative for this format instead of generating from nothing. */
-  sourceImage?: Buffer;
+  /**
+   * Another size of a finished design: drawn from scratch at this canvas from the same plan, with that design
+   * attached as a reference for its subject, colours and type only. It is never the image being edited, which
+   * made the model keep its layout and pad the new shape with background.
+   */
+  master?: Buffer;
   onProgress?: ProgressFn;
   /** Defaults to the run's mode (`textModeFor`). Adaptations pass their master's mode. */
   mode?: TextMode;
   campaign?: CampaignIdentity;
 }): Promise<FullCreativeResult> {
   if ((input.mode ?? textModeFor(input.brief, input.env)) === 'typeset') return produceTypeset(input);
-  const { provider, direction, format, quality, dir, env, sourceImage } = input;
+  const { provider, direction, format, quality, dir, env, master } = input;
   const brief = withCanvasCopy(input.brief, format);
   const progress = (stage: ProgressStage) => input.onProgress?.({ stage, directionId: direction.id });
   const spec = canvasOf(format);
   const plan = logoPlanOf(direction, format);
   const started = Date.now();
   const style = promptStyleFor(env);
-  const basePrompt = sourceImage
-    ? `${promptFor(brief, direction, format, true, 'model', style)}\n\nMASTER\nThe attached image is the approved master of this campaign. Design it again for this canvas: same concept, subject, palette, typography style and exact text, with the layout rebuilt from scratch for this shape. Never stretch, squash or crop it, never put it inside a frame or card, and never fill the space with blurred or repeated copies of it. ${recomposePlan(format)}`
+  const basePrompt = master
+    ? `${promptFor(brief, direction, format, true, 'model', style)}\n\n${freshSizeBrief(format)}`
     : promptFor(brief, direction, format, false, 'model', style);
-  // A new post is drawn with approved Engosoft posts attached as references; a recomposition follows its master.
-  const references = sourceImage ? [] : await houseReferences(`${brief.objective} ${brief.audience} ${brief.canonicalCopy.headline} ${direction.concept}`, input.campaign?.keyVisualPath);
-  const prompt = `${basePrompt}${stampRoom(input.campaign)}${referencePrompt(references)}`;
+  // Every design, every size, is drawn with the same approved Engosoft posts attached as style references (the
+  // same text picks the same set); another size also gets its design as the last, labelled reference.
+  const references = await houseReferences(`${brief.objective} ${brief.audience} ${brief.canonicalCopy.headline} ${direction.concept}`, input.campaign?.keyVisualPath);
+  const images = [...references.map(({ data, mime }) => ({ data, mime })), ...(master ? [{ data: await asReference(master), mime: 'image/jpeg' as const }] : [])];
+  const prompt = `${basePrompt}${stampRoom(input.campaign)}${referencePrompt(references)}${master ? masterReference(references.length + 1) : ''}`;
   const problems: string[] = [];
   progress('generating');
-  const n = sourceImage ? 1 : candidatesFor(env);
-  const drawn = sourceImage
-    ? await provider.edit({ prompt, size: spec.generation, quality, images: [{ data: sourceImage, mime: 'image/png' }] })
-    : references.length
-      ? await provider.edit({ prompt, size: spec.generation, quality, images: references.map(({ data, mime }) => ({ data, mime })), n })
-      : await provider.generate({ prompt, size: spec.generation, quality, n });
+  const n = master ? 1 : candidatesFor(env);
+  const drawn = images.length
+    ? await provider.edit({ prompt, size: spec.generation, quality, images, n })
+    : await provider.generate({ prompt, size: spec.generation, quality, n });
   const planned = direction.engine?.design;
   const context = `Canvas: ${spec.label} ${direction.name}: ${direction.concept} Copy: ${JSON.stringify(brief.canonicalCopy)}. Arabic right-to-left layout: a left-pointing arrow on the CTA is intended. Line breaks within the headline are a design choice.${planned ? ` Planned design — theme ${direction.theme}; first focal point: ${planned.layoutDesigner.primaryFocalPoint}; then ${planned.layoutDesigner.secondaryFocalPoint}; reading path ${planned.layoutDesigner.visualFlow}; headline lines ${JSON.stringify(planned.typographyDirector.headlineLines)}; lighting ${planned.lightingDirector.setup}, key ${planned.lightingDirector.keyDirection}; colour ${planned.colorDirector.harmony}.` : ''}`;
   progress('inspecting');
@@ -621,21 +638,21 @@ export function strayTexts(read: (string | { text: string; box?: { x: number; y:
  * local ones run automatically, to keep the wait short.
  */
 async function produceTypeset(input: Parameters<typeof produceDirection>[0]): Promise<FullCreativeResult> {
-  const { provider, direction, format, quality, dir, env, sourceImage } = input;
+  const { provider, direction, format, quality, dir, env, master } = input;
   const brief = withCanvasCopy(input.brief, format);
   const progress = (stage: ProgressStage) => input.onProgress?.({ stage, directionId: direction.id });
   const spec = canvasOf(format);
   const plan = logoPlanOf(direction, format);
   const started = Date.now();
-  const adaptation = Boolean(sourceImage);
-  const basePrompt = sourceImage
-    ? `${promptFor(brief, direction, format, true, 'typeset')}\n\nMASTER\nThe attached image is the approved master visual of this campaign (it has no text; the type is added afterwards). Design it again for this canvas: same concept, subject, palette, lighting and finish, with the layout rebuilt from scratch for this shape and the text areas above left calm. Never stretch, squash or crop it, never put it inside a frame or card, and never fill the space with blurred or repeated copies of it. ${recomposePlan(format)} Keep it free of any text.`
+  const adaptation = Boolean(master);
+  const basePrompt = master
+    ? `${promptFor(brief, direction, format, true, 'typeset')}\n\n${freshSizeBrief(format)} The text areas above stay calm; keep the image free of any text.`
     : promptFor(brief, direction, format, false, 'typeset');
-  const prompt = `${basePrompt}${stampRoom(input.campaign)}`;
+  const prompt = `${basePrompt}${stampRoom(input.campaign)}${master ? masterReference(1) : ''}`;
   const problems: string[] = [];
   progress('generating');
-  const [generated] = sourceImage
-    ? await provider.edit({ prompt, size: spec.generation, quality, images: [{ data: sourceImage, mime: 'image/png' }] })
+  const [generated] = master
+    ? await provider.edit({ prompt, size: spec.generation, quality, images: [{ data: await asReference(master), mime: 'image/jpeg' }] })
     : await provider.generate({ prompt, size: spec.generation, quality });
   let raw = generated.png;
   const rawPath = resolve(dir, `${direction.id}-raw.png`);
@@ -771,14 +788,14 @@ export async function generateFullCreative(request: FullCreativeRequest, env = p
   return run;
 }
 
-/** Recompose one finished direction of a saved run for another format or publishing size (e.g. feed → WhatsApp status, feed → X header). */
+/** Another size of one finished direction (feed → WhatsApp status, feed → X header): a new design drawn from the run's plan at that size. */
 export async function adaptFullCreative(run: FullCreativeRun, directionId: string, format: CanvasTarget, env = process.env, onProgress?: ProgressFn): Promise<FullCreativeResult> {
   const direction = run.brief.directions.find((d) => d.id === directionId);
   const source = run.results.find((r) => r.directionId === directionId);
   if (!direction || !source?.rawImagePath) throw new Error('That direction has no generated image to adapt');
   const provider = new OpenAIImageProvider(env.OPENAI_API_KEY ?? '', source.model);
   const raw = readFileSync(source.rawImagePath);
-  const result = await produceDirection({ provider, brief: run.brief, direction: { ...direction, id: `${direction.id}-${format}` }, format, quality: run.request.quality ?? imageQualityFor(env), dir: run.outputDir, env, sourceImage: raw, onProgress, mode: source.textMode ?? 'model', campaign: run.request.campaign });
+  const result = await produceDirection({ provider, brief: run.brief, direction: { ...direction, id: `${direction.id}-${format}` }, format, quality: run.request.quality ?? imageQualityFor(env), dir: run.outputDir, env, master: raw, onProgress, mode: source.textMode ?? 'model', campaign: run.request.campaign });
   run.results.push(result);
   writeFileSync(resolve(run.outputDir, 'trace.json'), JSON.stringify(run, null, 2));
   onProgress?.({ stage: 'done' });

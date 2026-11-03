@@ -98,7 +98,7 @@ app.post('/api/ai/post-image',requirePermission('design.free'),requireAiBudget,a
  catch(error){res.status(502).json({error:error instanceof Error?error.message:'تعذّر توليد الصورة.'});}
 });
 const fullCreativeCalls=new Map<string,number[]>();
-const fullCreativeRequest=z.object({prompt:z.string().trim().min(5).max(2000),format:z.enum(['feed','story','landscape','video']).default('feed'),directions:z.literal(2).default(2),templateId:z.string().uuid().optional(),
+const fullCreativeRequest=z.object({prompt:z.string().trim().min(5).max(2000),format:z.enum(['feed','story','landscape','video']).default('feed'),directions:z.number().int().min(1).max(2).default(1),templateId:z.string().uuid().optional(),
  settings:z.object({theme:z.enum(['auto',...THEME_IDS]).optional(),creativity:z.enum(['safe','balanced','experimental']).optional(),imageStyle:z.enum(['auto','photo','graphic']).optional(),detail:z.enum(['auto','minimal','detailed']).optional(),referenceStrength:z.enum(['loose','balanced','strong']).optional()}).optional(),
  engine:z.enum(['skills','legacy']).optional(),
  objective:z.enum(['course_launch','course_schedule','certificate','education','event','general']).optional(),

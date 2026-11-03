@@ -100,7 +100,7 @@ export function FullCreativeJob({ jobId, requestId, platforms, sizes, format, pr
     return <div className="creative-job creative-job--progress glass" aria-live="polite">
       <div className="creative-orbit" aria-hidden><span /><span /><span /></div>
       <AnimatePresence mode="wait"><motion.h2 key={stage[0]} initial={{ opacity: 0, y: 6 }} animate={{ opacity: 1, y: 0 }} exit={{ opacity: 0, y: -6 }}>{t(stage[0], stage[1])}…</motion.h2></AnimatePresence>
-      <p className="u-muted">{t('Odoo facts, two different ideas, a full AI design for each, then quality checks and the exact Engosoft logo. You can leave this page; you will be notified when it is ready.', 'بيانات Odoo، وفكرتان مختلفتان، وتصميم كامل بالذكاء الاصطناعي لكل فكرة، ثم مراجعة الجودة ووضع الشعار الأصلي. يمكنك الانتقال لصفحة أخرى، وسيصلك إشعار عند الانتهاء.')}</p>
+      <p className="u-muted">{t('Odoo facts, the idea and copy, a full AI design, then quality checks and the exact Engosoft logo. You can leave this page; you will be notified when it is ready.', 'بيانات Odoo، والفكرة والنص، وتصميم كامل بالذكاء الاصطناعي، ثم مراجعة الجودة ووضع الشعار الأصلي. يمكنك الانتقال لصفحة أخرى، وسيصلك إشعار عند الانتهاء.')}</p>
     </div>;
   }
 
@@ -135,7 +135,7 @@ export function FullCreativeJob({ jobId, requestId, platforms, sizes, format, pr
             {result?.imageUrl && missing.length > 0 && <div className="creative-job__sizes">
               <div className="creative-job__sizes-head">
                 <b>{t('Your other sizes', 'باقي المقاسات اللي اخترتها')}</b>
-                <p className="u-xs u-muted">{t('Each is designed again for its own shape from this design: same idea, colours and exact words. One AI image each.', 'كل مقاس بيتصمم من جديد لشكله من التصميم ده: نفس الفكرة والألوان والكلام بالظبط. صورة ذكاء اصطناعي لكل مقاس.')}</p>
+                <p className="u-xs u-muted">{t('Each size is a new design drawn from scratch for its own shape, with this design’s idea, words, subject and colours; nothing is stretched. One AI image each.', 'كل مقاس تصميم جديد بيترسم من الأول لشكله، بنفس فكرة وكلام وعناصر وألوان التصميم ده؛ مفيش مط. صورة ذكاء اصطناعي لكل مقاس.')}</p>
               </div>
               <div className="creative-job__slots">{missing.map((target) => {
                 const key = `${id}:${target.key}`;

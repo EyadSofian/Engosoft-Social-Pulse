@@ -258,3 +258,6 @@
 .size-slot:disabled { cursor: progress; }
 .size-slot__name { display: inline-flex; align-items: center; gap: 4px; font-size: 11px; color: var(--text-subtle); }
 .size-slot small { font-size: 11.5px; font-weight: 800; color: var(--brand); text-align: center; }
+
+/* One design: a readable card instead of a third of the row. */
+.creative-job__grid:has(> :only-child) { grid-template-columns: minmax(0, 520px); }

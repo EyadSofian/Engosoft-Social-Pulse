@@ -133,3 +133,29 @@ test('typeset mode (CREATIVE_TEXT_MODE=typeset) sets the copy, places the logo a
     globalThis.fetch = realFetch;
   }
 });
+
+test('another size is a new design at that canvas: the finished design is the last, labelled reference, never the image edited', async () => {
+  const brief = { language: 'ar', objective: 'o', audience: 'a', caption: '', captions: strategy.captionWriter.captions, canonicalCopy: copy, directions: [], engine: { version: 'design-engine:v1', skills: {}, settings: DEFAULT_SETTINGS, strategy, references: [] } } as never;
+  const master = await canvas(1088, 1360, '#ff6600', '#0046ff');
+  const drawn = await canvas(1088, 1936, '#0b1530', '#14203d');
+  const calls: { prompt: string; images: { data: Buffer; mime: string }[]; n?: number }[] = [];
+  const provider = { name: 'fake', model: 'fake-image', generate: async () => { throw new Error('another size is drawn with references'); }, edit: async (r: { prompt: string; images: { data: Buffer; mime: string }[]; n?: number }) => { calls.push(r); return [{ png: drawn, model: 'fake-image', size: '1088x1936', quality: 'high' as const, latencyMs: 1 }]; } };
+  const inspection = { texts: [], faces: [], subjects: [], logosOrWatermarks: [], copyAudit: [], defects: [], scores: { design: 8, marketing: 8, imageQuality: 8, brandFit: 8 }, verdict: 'accept', summary: 'ok', critique: { rubric: {}, aiTells: [], compositingIssues: [], professionalTest: { designerWouldPublish: true, marketingWouldPublish: true, looksDesigned: true }, firstSeen: '' }, repairs: [] };
+  const realFetch = globalThis.fetch;
+  globalThis.fetch = (async () => new Response(JSON.stringify({ output: [{ content: [{ type: 'output_text', text: JSON.stringify(inspection) }] }], usage: { input_tokens: 1, output_tokens: 1 } }), { status: 200 })) as typeof fetch;
+  try {
+    const dir = mkdtempSync(join(tmpdir(), 'engosoft-size-'));
+    await produceDirection({ provider, brief, direction: { id: 'd1-instagram-story', name: 'القائد', concept: 'c', subject: 's', composition: 'x', palette: 'p', typography: 't', mood: 'm', engine: { strategy: direction0, design } } as never, format: 'instagram-story', quality: 'high', dir, env: { OPENAI_API_KEY: 'test' }, master, mode: 'model' });
+    const [first] = calls;
+    assert.equal(first.n, 1, 'one image for another size');
+    assert.ok(first.images.length >= 2, 'house references plus the finished design');
+    const last = await sharp(first.images.at(-1)!.data).metadata();
+    assert.ok(Math.abs(last.width! / last.height! - 0.8) < 0.01, 'the finished design (4:5) is attached last');
+    assert.match(first.prompt, /DESIGNED FROM SCRATCH/);
+    assert.match(first.prompt, new RegExp(`Image ${first.images.length} is the approved design of this same post in another shape`));
+    assert.match(first.prompt, /Do not copy, trace, extend or re-frame its layout/);
+    assert.doesNotMatch(first.prompt, /The attached image is the approved master/);
+  } finally {
+    globalThis.fetch = realFetch;
+  }
+});

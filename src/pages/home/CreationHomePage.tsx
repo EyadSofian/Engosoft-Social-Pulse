@@ -97,6 +97,8 @@ export function CreationHomePage() {
   const chosenSizes = presetsFor(platforms).filter((p) => sizeChoice[p.id] ?? DEFAULT_SIZES[p.channel as CreativePlatform]?.includes(p.id)).map((p) => p.id);
   const [mainPick, setMainPick] = useState<CreativeMaster | null>(() => getActiveCreative()?.format ?? null);
   const main = mainFormat(platforms, chosenSizes, mainPick);
+  // One design by default: each one is a full AI image and the person usually wants one. Two to compare.
+  const [designs, setDesigns] = useState<1 | 2>(1);
   const [references, setReferences] = useState<CreativeReference[]>([]);
   const [message, setMessage] = useState('');
   const [creating, setCreating] = useState(false);
@@ -171,7 +173,7 @@ export function CreationHomePage() {
       // Both designs are made at the main size; the other ticked shapes are adapted from the one picked.
       const format = main;
       const attachments = references.filter((file) => file.dataUrl).map(({ name, mime, dataUrl }) => ({ name, mime, dataUrl: dataUrl! }));
-      const body = await api<{ jobId: string; requestId?: string }>('/api/ai/full-creative', { body: { prompt, ...(campaignId ? { campaignId } : {}), format, directions: 2, settings: designSettings, ...(objective !== 'auto' ? { objective } : {}), ...(attachments.length ? { attachments } : {}), ...(template ? { templateId: template.id } : {}) } });
+      const body = await api<{ jobId: string; requestId?: string }>('/api/ai/full-creative', { body: { prompt, ...(campaignId ? { campaignId } : {}), format, directions: designs, settings: designSettings, ...(objective !== 'auto' ? { objective } : {}), ...(attachments.length ? { attachments } : {}), ...(template ? { templateId: template.id } : {}) } });
       setJobId(body.jobId); setRequestId(body.requestId ?? ''); setStage('generating');
       setActiveCreative({ jobId: body.jobId, requestId: body.requestId ?? '', prompt, platforms, sizes: chosenSizes, format, startedAt: new Date().toISOString(), status: 'running' });
     } catch (error) { setMessage(error instanceof Error ? error.message : String(error)); }
@@ -186,7 +188,7 @@ export function CreationHomePage() {
   };
   const lead: Record<Mode, [string, string]> = {
     choose: ['Pick one way. You can come back and change it any time.', 'اختر طريقة واحدة، ويمكنك الرجوع وتغييرها في أي وقت.'],
-    ai: ['Write the idea in your own words. We check Odoo, write the copy, design two options and place the official logo.', 'اكتب الفكرة بكلماتك. نراجع بيانات Odoo ونكتب النص ونصمّم خيارين ونضع الشعار الرسمي.'],
+    ai: ['Write the idea in your own words. We check Odoo, write the copy, design the post and place the official logo.', 'اكتب الفكرة بكلماتك. نراجع بيانات Odoo ونكتب النص ونصمّم المنشور ونضع الشعار الرسمي.'],
     template: ['Pick a template, change its text and photos, then send it for approval. No AI cost.', 'اختر قالبًا، غيّر نصوصه وصوره، ثم أرسله للاعتماد. بدون تكلفة ذكاء اصطناعي.'],
     upload: ['Already designed it? Upload the image, choose the platforms and send it for approval.', 'صمّمته بالفعل؟ ارفع الصورة واختر المنصات وأرسله للاعتماد.'],
     reel: ['Upload the finished video, check it fits each platform, pick a cover, and write the caption yourself or with AI from the idea or the script.', 'ارفع الفيديو الجاهز، اتأكد إنه مناسب لكل منصة، اختار غلاف، واكتب الكلام بإيدك أو بالذكاء الاصطناعي من الفكرة أو السكريبت.'],
@@ -209,7 +211,7 @@ export function CreationHomePage() {
       {free && <button type="button" className="create-method glass" onClick={() => setMode('ai')}>
         <span className="create-method__icon" data-tone="brand"><Wand2 size={22} /></span>
         <b>{t('Describe it, AI designs it', 'اكتب الفكرة والذكاء الاصطناعي يصمّم')}</b>
-        <small>{t('For a new idea. You write a sentence; you get two finished designs with copy for each platform.', 'لفكرة جديدة. تكتب جملة وتحصل على تصميمين جاهزين مع النص لكل منصة.')}</small>
+        <small>{t('For a new idea. You write a sentence; you get a finished design with copy for each platform.', 'لفكرة جديدة. تكتب جملة وتحصل على تصميم جاهز مع النص لكل منصة.')}</small>
         <em>{t('e.g. “CFM course starts next week, for Facebook and Instagram”', 'مثال: «دورة CFM تبدأ الأسبوع القادم، لفيسبوك وإنستجرام»')}</em>
       </button>}
       {ways.includes('template') && <button type="button" className="create-method glass" onClick={() => setMode('template')}>
@@ -267,7 +269,7 @@ export function CreationHomePage() {
       {stage === 'generating' && (jobId || requestId) && <FullCreativeJob key={`${jobId}:${requestId}`} jobId={jobId} requestId={requestId} platforms={platforms} sizes={getActiveCreative()?.requestId === requestId && getActiveCreative()?.sizes ? getActiveCreative()!.sizes! : chosenSizes} format={getActiveCreative()?.requestId === requestId ? getActiveCreative()?.format : main} prompt={prompt} onRestart={() => { setStage('compose'); setJobId(''); setRequestId(''); clearActiveCreative(); }} />}
       {message && <p role="alert" className="creative-home__error">{message}</p>}
     </div>
-    {stage === 'compose' && <SizePicker platforms={platforms} chosen={chosenSizes} main={main} onToggle={(ids, on) => setSizeChoice((current) => ({ ...current, ...Object.fromEntries(ids.map((id) => [id, on])) }))} onMain={setMainPick} />}
+    {stage === 'compose' && <SizePicker platforms={platforms} chosen={chosenSizes} main={main} designs={designs} onDesigns={setDesigns} onToggle={(ids, on) => setSizeChoice((current) => ({ ...current, ...Object.fromEntries(ids.map((id) => [id, on])) }))} onMain={setMainPick} />}
     </div>}
     <RecentContent />
   </div>;
@@ -300,14 +302,14 @@ function sizeGroups(platforms: CreativePlatform[]): SizeGroup[] {
 }
 
 /**
- * The sizes the post will be delivered in, as shapes to tick: the two designs are made at the main size, and every
- * other ticked shape is designed again for its own shape from the design you pick.
+ * The sizes the post will be delivered in, as shapes to tick: the designs are made at the main size, and every
+ * other ticked shape is a new design drawn for its own shape from the design you pick.
  */
-function SizePicker({ platforms, chosen, main, onToggle, onMain }: { platforms: CreativePlatform[]; chosen: string[]; main: CreativeMaster; onToggle: (ids: string[], on: boolean) => void; onMain: (format: CreativeMaster) => void }) {
+function SizePicker({ platforms, chosen, main, designs, onDesigns, onToggle, onMain }: { platforms: CreativePlatform[]; chosen: string[]; main: CreativeMaster; designs: 1 | 2; onDesigns: (count: 1 | 2) => void; onToggle: (ids: string[], on: boolean) => void; onMain: (format: CreativeMaster) => void }) {
   const { t, tx } = useI18n();
-  const [estimate, setEstimate] = useState<{ usd: number } | null>(null);
+  const [estimate, setEstimate] = useState<{ usd: number; perDesign: number } | null>(null);
   useEffect(() => {
-    void api<{ averageImageUsd: number | null }>('/api/usage').then((report) => setEstimate({ usd: report.averageImageUsd ?? 0.2 })).catch(() => {});
+    void api<{ averageImageUsd: number | null; imagesPerDesign?: number }>('/api/usage').then((report) => setEstimate({ usd: report.averageImageUsd ?? 0.2, perDesign: report.imagesPerDesign ?? 1 })).catch(() => {});
   }, []);
   const groups = sizeGroups(platforms);
   const covered = coveredByMain(platforms, main);
@@ -330,7 +332,7 @@ function SizePicker({ platforms, chosen, main, onToggle, onMain }: { platforms: 
       <span className="size-tile__name">{t(name[0], name[1])}</span>
       <span className="size-tile__meta"><span className="size-tile__icons">{channels.map((c) => <ChannelIcon key={c} channel={c} size={12} />)}</span><small dir="ltr" className="u-tnum">{group.width}×{group.height}</small></span>
       <span className="size-tile__check" aria-hidden>{on && <Check size={12} strokeWidth={3} />}</span>
-      {on && isMain(group) && <em className="size-tile__badge">{t('Both designs', 'التصميمين')}</em>}
+      {on && isMain(group) && <em className="size-tile__badge">{t('Main', 'الأساسي')}</em>}
     </button>;
   };
   return <aside className="create-preview glass" aria-label={t('Sizes', 'المقاسات')}>
@@ -344,13 +346,23 @@ function SizePicker({ platforms, chosen, main, onToggle, onMain }: { platforms: 
       </details>}
       <div className="size-plan">
         <div className="size-plan__row">
-          <span>{t('The 2 designs come out as', 'التصميمين هيطلعوا')}</span>
+          <span>{t('How many designs', 'عدد التصاميم')}</span>
+          <div className="size-plan__switch" role="radiogroup" aria-label={t('How many designs', 'عدد التصاميم')}>
+            <button type="button" role="radio" aria-checked={designs === 1} onClick={() => onDesigns(1)}>{t('One design', 'تصميم واحد')}</button>
+            <button type="button" role="radio" aria-checked={designs === 2} onClick={() => onDesigns(2)}>{t('Two to compare', 'اتنين للمقارنة')}</button>
+          </div>
+        </div>
+        <div className="size-plan__row">
+          <span>{designs === 1 ? t('The design comes out as', 'التصميم هيطلع') : t('Both designs come out as', 'التصميمين هيطلعوا')}</span>
           {options.length > 1
             ? <div className="size-plan__switch" role="radiogroup" aria-label={t('Main size', 'المقاس الأساسي')}>{options.map((format) => <button key={format} type="button" role="radio" aria-checked={format === main} onClick={() => onMain(format)}>{t(...MAIN_LABEL[format])}</button>)}</div>
             : <b>{t(...MAIN_LABEL[main])}</b>}
         </div>
-        {targets.length > 0 && <p className="size-plan__extra"><Layers size={14} /> <span>{t(`Then ${targets.map((x) => ratioOf(x.width, x.height)).join(', ')}: designed again from the design you pick, with one tap under it.`, `وبعدها ${targets.map((x) => ratioOf(x.width, x.height)).join('، ')}: بيتصمم من جديد من التصميم اللي تختاره، بضغطة تحته.`)}</span></p>}
-        {estimate && <p className="create-preview__cost"><Coins size={15} /> {t('Expected AI cost', 'التكلفة المتوقعة')}: <b dir="ltr">≈ ${((2 + targets.length) * estimate.usd).toFixed(2)}</b> <small>{t(`2 designs${targets.length ? ` + ${targets.length} more sizes` : ''}`, `تصميمان${targets.length ? ` + ${targets.length} مقاس إضافي` : ''}`)}</small></p>}
+        {targets.length > 0 && <p className="size-plan__extra"><Layers size={14} /> <span>{t(`Then ${targets.map((x) => ratioOf(x.width, x.height)).join(', ')}: each drawn from scratch for its own shape, with the same idea and words, with one tap under the design you pick.`, `وبعدها ${targets.map((x) => ratioOf(x.width, x.height)).join('، ')}: كل مقاس بيتصمم من الأول لشكله، بنفس الفكرة والكلام، بضغطة تحت التصميم اللي تختاره.`)}</span></p>}
+        {estimate && (() => {
+          const images = designs * estimate.perDesign + targets.length;
+          return <p className="create-preview__cost"><Coins size={15} /> {t('Expected AI cost', 'التكلفة المتوقعة')}: <b dir="ltr">≈ ${(images * estimate.usd).toFixed(2)}</b> <small>{t(`${images} AI images`, `${images} صورة ذكاء اصطناعي`)}</small></p>;
+        })()}
       </div>
     </>}
   </aside>;
