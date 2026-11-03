@@ -1,4 +1,4 @@
-export type SocialProvider = 'facebook' | 'instagram' | 'tiktok' | 'snapchat' | 'youtube';
+export type SocialProvider = 'facebook' | 'instagram' | 'tiktok' | 'snapchat' | 'youtube' | 'linkedin';
 export type Capability = 'read_posts' | 'read_metrics' | 'read_analytics' | 'publish_text' | 'publish_image' | 'publish_video' | 'publish_carousel' | 'upload_draft';
 export type Availability = 'available' | 'authorization_required' | 'approval_required' | 'unconfigured' | 'unsupported';
 export interface SocialAccount {

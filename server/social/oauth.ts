@@ -7,7 +7,7 @@ import { discover } from './accounts.js';
 import { request } from './http.js';
 import { saveSecret } from './store.js';
 import type { Credential, SocialProvider } from './types.js';
-export const socialProviders:SocialProvider[]=['facebook','instagram','tiktok','snapchat','youtube'];
+export const socialProviders:SocialProvider[]=['facebook','instagram','tiktok','snapchat','youtube','linkedin'];
 const hash=(s:string)=>createHash('sha256').update(s).digest('hex');
 export const equalState=(a:string,b:string)=>Boolean(a&&b&&Buffer.byteLength(a)===Buffer.byteLength(b)&&timingSafeEqual(Buffer.from(a),Buffer.from(b)));
 export function metaTokenExpiry(info:{expires_at?:number;data_access_expires_at?:number}):number {
@@ -15,6 +15,7 @@ export function metaTokenExpiry(info:{expires_at?:number;data_access_expires_at?
  return limits.length?Math.min(...limits)*1000:0;
 }
 export function oauthScopes(p:SocialProvider,mode:string):string[] {
+ if(p==='linkedin')throw new Error('LinkedIn OAuth is managed by Zernio.');
  const publishing=mode==='publishing'||mode==='publishing-and-draft';
  if(p==='facebook')return ['pages_show_list','pages_read_engagement','read_insights',...(publishing?['pages_manage_posts','publish_video']:[])];
  if(p==='instagram')return ['pages_show_list','pages_read_engagement','instagram_basic','instagram_manage_insights',...(publishing?['instagram_content_publish']:[])];
@@ -23,6 +24,7 @@ export function oauthScopes(p:SocialProvider,mode:string):string[] {
  return ['https://www.googleapis.com/auth/youtube.readonly','https://www.googleapis.com/auth/yt-analytics.readonly',...(publishing?['https://www.googleapis.com/auth/youtube.upload']:[])];
 }
 export function configuredCallback(provider:SocialProvider) {
+ if(provider==='linkedin')throw new Error('LinkedIn connects through Zernio.');
  const c=oauthConfig(provider);
  if(!c.client||!c.secret||!c.redirect)throw new Error('OAuth client, secret and exact redirect URI must be configured on the server.');
  const url=new URL(c.redirect), app=new URL(process.env.APP_URL||'http://127.0.0.1:4100');
@@ -36,7 +38,7 @@ export async function consumeState(state:string,provider:SocialProvider) {
  return r;
 }
 export function registerSocialOAuth(app:express.Express) {
- for(const provider of socialProviders) {
+ for(const provider of socialProviders.filter(p=>p!=='linkedin')) {
   app.get(`/api/oauth/${provider}/start`,requirePermission('connections.manage'),async(req,res)=>{
    try {
     const c=configuredCallback(provider),state=randomBytes(32).toString('base64url');

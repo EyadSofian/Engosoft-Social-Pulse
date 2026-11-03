@@ -59,5 +59,6 @@ export const PROVIDER: Record<Platform, string> = {
   tiktok: 'TikTok Display API',
   snapchat: 'Snapchat Public Profile API',
   youtube: 'YouTube Data API v3',
+  linkedin: 'LinkedIn via Zernio',
   website: 'Google Analytics 4 Data API',
 };

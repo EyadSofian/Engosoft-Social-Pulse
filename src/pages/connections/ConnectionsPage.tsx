@@ -26,6 +26,7 @@ const GUIDE: Record<Platform, { reads: [string, string]; env: string[] }> = {
   tiktok: { reads: ['Account videos with views, likes, comments and shares (Display API, OAuth).', 'فيديوهات الحساب مع المشاهدات والإعجابات والتعليقات والمشاركات (Display API عبر OAuth).'], env: ['TIKTOK_CLIENT_KEY', 'TIKTOK_CLIENT_SECRET', 'TIKTOK_REDIRECT_URI', 'TOKEN_ENCRYPTION_KEY'] },
   snapchat: { reads: ['Public Profile stories and Spotlight with views, reach, favourites and shares.', 'القصص والـSpotlight للملف العام مع المشاهدات والوصول والمفضلة والمشاركات.'], env: ['SNAP_PROFILE_ID', 'SNAP_PROFILE_ACCESS_TOKEN', 'SNAP_PROFILE_REFRESH_TOKEN', 'SNAP_CLIENT_ID', 'SNAP_CLIENT_SECRET'] },
   youtube: { reads: ['Channel videos, statistics and authorized Analytics reports.', 'فيديوهات القناة وإحصاءاتها وتقارير التحليلات المصرح بها.'], env: ['YOUTUBE_CLIENT_ID','YOUTUBE_CLIENT_SECRET','YOUTUBE_REDIRECT_URI'] },
+  linkedin: { reads: ['Organization posts and available performance metrics through Zernio.', 'منشورات صفحة الشركة وإحصاءات الأداء المتاحة عبر Zernio.'], env: [] },
   website: { reads: ['Daily website views and per-page performance for the last 90 days (GA4).', 'مشاهدات الموقع اليومية وأداء كل صفحة لآخر 90 يومًا (GA4).'], env: ['GA4_PROPERTY_ID', 'GOOGLE_ANALYTICS_CLIENT_ID', 'GOOGLE_ANALYTICS_CLIENT_SECRET', 'GOOGLE_ANALYTICS_REFRESH_TOKEN'] },
 };
 
@@ -201,14 +202,14 @@ function FutureCard() {
       <CardHeader
         title={
           <span className="u-row">
-            <ChannelIcon channel="linkedin" size={18} /> LinkedIn · <ChannelIcon channel="x" size={16} /> X
+            <ChannelIcon channel="x" size={16} /> X
           </span>
         }
         description={t('Future integration', 'ربط مستقبلي')}
         actions={<Badge>{t('Not available yet', 'غير متاح بعد')}</Badge>}
       />
       <CardBody>
-        <p className="u-sm u-muted">{t('LinkedIn and X posts can be made, approved and put on the calendar today, and someone publishes them by hand. There is no connector yet, so they are not measured.', 'منشورات LinkedIn و X بتتعمل وتتعتمد وتتحط في التقويم من النهارده، وحد من الفريق بينشرها يدوي. لسه مفيش ربط، فأرقامها مش بتتقاس.')}</p>
+        <p className="u-sm u-muted">{t('X posts can be made, approved and put on the calendar, then published by hand. X performance is not measured.', 'منشورات X بتتعمل وتتعتمد وتتحط في التقويم، وحد من الفريق بينشرها يدوي. أرقام X مش بتتقاس.')}</p>
       </CardBody>
     </Card>
   );

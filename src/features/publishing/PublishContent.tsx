@@ -41,7 +41,7 @@ export function PublishContent({item}:{item:PipelineDetail}) {
  const attach=(path:string,files:File[])=>void act(async()=>{for(const file of files){const r=await fetch(path,{method:'POST',headers:{'Content-Type':file.type},body:file});const d=await r.json();if(!r.ok)throw new Error(d.error);}});
  const STATE:Record<string,[string,string,string]>={published:['Published','تم النشر','success'],processing:['Processing','قيد المعالجة','brand'],awaiting_user:['Finish in the app','أكمله داخل التطبيق','warning'],unknown:['Not confirmed','غير مؤكد','warning'],failed:['Failed','فشل','danger']};
  const publishable=item.canPublish&&['approved','scheduled'].includes(item.status);
- const PLATFORM:Record<string,string>={facebook:'Facebook',instagram:'Instagram',tiktok:'TikTok',snapchat:'Snapchat',youtube:'YouTube'};
+ const PLATFORM:Record<string,string>={facebook:'Facebook',instagram:'Instagram',tiktok:'TikTok',snapchat:'Snapchat',youtube:'YouTube',linkedin:'LinkedIn'};
  return <>
   {expiredFiles>0&&<p className="u-sm u-muted">{t('Some publishing attachments expired under the retention policy. Platform posts and their statistics remain. An administrator can restore files still in the recovery bin.','انتهت مدة الاحتفاظ ببعض مرفقات النشر. المنشورات على المنصات وإحصاءاتها باقية. يمكن للمسؤول استرجاع الملفات التي ما زالت في سلة الاسترجاع.')}</p>}
   {(item.editable||assets.length>0)&&<section className="content-drawer__section post-files">
