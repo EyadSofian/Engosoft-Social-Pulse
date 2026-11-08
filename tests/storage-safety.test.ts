@@ -148,3 +148,37 @@ test('storage policy is admin-only, needs explicit deletion consent, and rejects
   const report = await (await fetch(base + '/api/storage')).json();
   assert.equal(report.policy.enabled, false); assert.ok(report.inventory.freeBytes > 0); assert.ok(!JSON.stringify(report).includes(root));
 });
+test('a video uploaded in pieces is saved whole, and retried, out-of-order or oversized pieces are handled', async () => {
+  acting = admin;
+  const id = await content(), bytes = mp4(), path = base + `/api/social/content/${id}/video/uploads`;
+  const json = { 'Content-Type': 'application/json' }, raw = { 'Content-Type': 'application/octet-stream' };
+  const start = await fetch(path, { method: 'POST', headers: json, body: JSON.stringify({ bytes: bytes.length }) });
+  assert.equal(start.status, 201); const { uploadId } = await start.json();
+  // Only one video at a time, even across posts.
+  assert.equal((await fetch(base + `/api/social/content/${await content()}/video/uploads`, { method: 'POST', headers: json, body: JSON.stringify({ bytes: 10 }) })).status, 429);
+  const put = (offset: number, part: Buffer) => fetch(`${path}/${uploadId}?offset=${offset}`, { method: 'PUT', headers: raw, body: new Uint8Array(part) });
+  const half = 60;
+  assert.equal((await put(half, bytes.subarray(half))).status, 409, 'a piece past what was received is refused');
+  assert.equal((await (await put(0, bytes.subarray(0, half))).json()).received, half);
+  assert.equal((await (await put(0, bytes.subarray(0, half))).json()).received, half, 'a retried piece is accepted');
+  assert.equal((await fetch(`${path}/${uploadId}/finish`, { method: 'POST' })).status, 409, 'cannot finish before every piece arrived');
+  assert.equal((await put(half, Buffer.concat([bytes.subarray(half), Buffer.alloc(5)]))).status, 413, 'a piece past the declared size is refused');
+  assert.equal((await (await put(half, bytes.subarray(half))).json()).received, bytes.length);
+  const saved = await (await fetch(`${path}/${uploadId}/finish`, { method: 'POST' })).json();
+  assert.equal(saved.width, 1080); assert.equal(saved.duration, 10);
+  assert.deepEqual(await readFile(join(root, 'social', `${saved.id}.mp4`)), bytes);
+  assert.deepEqual(await readdir(join(root, 'social', '.incoming')), []);
+  assert.equal((await media.contentMedia(id)).length, 1);
+  assert.equal((await fetch(`${path}/${uploadId}/finish`, { method: 'POST' })).status, 404, 'a finished upload is closed');
+});
+test('a piece-by-piece upload that is not an MP4 is refused and frees the slot', async () => {
+  acting = admin;
+  const id = await content(), path = base + `/api/social/content/${id}/video/uploads`, junk = Buffer.from('definitely not an mp4 file');
+  const { uploadId } = await (await fetch(path, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ bytes: junk.length }) })).json();
+  await fetch(`${path}/${uploadId}?offset=0`, { method: 'PUT', headers: { 'Content-Type': 'application/octet-stream' }, body: new Uint8Array(junk) });
+  assert.equal((await fetch(`${path}/${uploadId}/finish`, { method: 'POST' })).status, 400);
+  assert.deepEqual(await readdir(join(root, 'social', '.incoming')), []);
+  const again = await fetch(path, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ bytes: 10 }) });
+  assert.equal(again.status, 201); await fetch(`${path}/${(await again.json()).uploadId}`, { method: 'DELETE' });
+  assert.equal((await fetch(path, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ bytes: 300 * 1024 * 1024 }) })).status, 413);
+});

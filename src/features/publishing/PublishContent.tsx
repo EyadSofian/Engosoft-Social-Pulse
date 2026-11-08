@@ -9,6 +9,7 @@ import { ChannelIcon } from '../../components/data-display/ChannelIcon';
 import type { PipelineDetail } from '../content-pipeline/types';
 import type { PublishJob, Media } from '../../../server/social/types';
 import type { ProviderConnection, PublicAccount } from './SocialConnections';
+import { uploadVideo } from '../reels/upload';
 const call=async(path:string,body?:unknown)=>{const r=await fetch(path,{...(body?{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify(body)}:{})});const d=await r.json();if(!r.ok)throw new Error(d.error||'Request failed.');return d;};
 export function PublishContent({item}:{item:PipelineDetail}) {
  const {t}=useI18n();const canVideo=useAuth().can('design.video');const [providers,setProviders]=useState<ProviderConnection[]>([]),[assets,setAssets]=useState<(Media&{id:string})[]>([]),[jobs,setJobs]=useState<PublishJob[]>([]);
@@ -49,7 +50,7 @@ export function PublishContent({item}:{item:PipelineDetail}) {
    <h3>{t('Post files','ملفات المنشور')}</h3>
    <p className="u-xs u-muted">{t('Add the video or extra photos that go out with this post. They are reviewed with it and locked once approved.','أضف الفيديو أو الصور الإضافية اللي هتنزل مع المنشور. بتتراجع معاه وبتتقفل بعد الاعتماد.')}</p>
    {item.editable&&<div className="post-files__add">
-    {canVideo&&<label className="post-files__drop"><Film size={18} /><b>{t('Add a video','أضف فيديو')}</b><small>MP4 · {t('up to 200 MB','حتى 200 ميجابايت')}</small><input type="file" accept="video/mp4" hidden disabled={busy} onChange={e=>{const files=Array.from(e.target.files||[]);e.target.value='';if(files.length)attach(`/api/social/content/${item.id}/video`,files.map(f=>new File([f],f.name,{type:'video/mp4'})));}} /></label>}
+    {canVideo&&<label className="post-files__drop"><Film size={18} /><b>{t('Add a video','أضف فيديو')}</b><small>MP4 · {t('up to 200 MB','حتى 200 ميجابايت')}</small><input type="file" accept="video/mp4" hidden disabled={busy} onChange={e=>{const files=Array.from(e.target.files||[]);e.target.value='';if(files.length)void act(async()=>{for(const f of files)await uploadVideo(item.id,f);});}} /></label>}
     <label className="post-files__drop"><ImagePlus size={18} /><b>{t('Add photos','أضف صورًا')}</b><small>JPEG · PNG · WebP · {t('up to 8 MB each','حتى 8 ميجابايت للصورة')}</small><input type="file" accept="image/jpeg,image/png,image/webp" multiple hidden disabled={busy} onChange={e=>{const files=Array.from(e.target.files||[]);e.target.value='';if(files.length)attach(`/api/social/content/${item.id}/image`,files);}} /></label>
    </div>}
    {assets.length>0&&<div className="post-files__grid">{assets.map(a=>a.type==='image'?<img key={a.id} src={a.url} alt={t('Attached photo','صورة مرفقة')} />:<video key={a.id} src={a.url} controls preload="metadata" />)}</div>}

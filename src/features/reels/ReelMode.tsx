@@ -10,6 +10,7 @@ import { DialectPicker, usePreferredDialect } from '../content/ContentCopilot';
 import { readPostPlan, takePostPlan } from '../content/postPlan';
 import { CREATIVE_PLATFORMS, PLATFORM_FORMATS, type CreativePlatform } from '../creative-studio/platforms';
 import { readVideo } from './video';
+import { uploadVideo } from './upload';
 import { ReelCoverPicker, saveReelCovers } from './ReelCovers';
 import type { ReelCover, ReelCovers } from '../../domain/reel-covers';
 
@@ -43,6 +44,7 @@ export function ReelMode() {
   const [manual, setManual] = useState('');
   const [dialect, setDialect] = usePreferredDialect();
   const [busy, setBusy] = useState('');
+  const [progress, setProgress] = useState(0);
   const [message, setMessage] = useState('');
   const [created, setCreated] = useState('');
   useEffect(() => () => { if (video) URL.revokeObjectURL(video.url); }, [video]);
@@ -103,8 +105,8 @@ export function ReelMode() {
         await api(`/api/content/${id}`, { method: 'PATCH', body: { title: title.trim(), channels: platforms, captions: text } });
         await api(`/api/content/${id}/reel-covers`, { method: 'PUT', body: savedCovers });
       }
-      const response = await fetch(`/api/social/content/${id}/video`, { method: 'POST', headers: { 'Content-Type': 'video/mp4' }, body: file });
-      if (!response.ok) throw new Error((await response.json().catch(() => ({}))).error || t('The video did not upload.', 'الفيديو ما اترفعش.'));
+      setProgress(0);
+      await uploadVideo(id, file, setProgress);
       navigate(`/content/${id}`);
     } catch (error) { setMessage(errorMessage(error, '')); }
     setBusy('');
@@ -166,7 +168,7 @@ export function ReelMode() {
       {message && <p role="alert" className="creative-home__error">{message}</p>}
       <div className="reel__submit">
         <Button variant="primary" busy={busy === 'submit'} disabled={Boolean(busy)} onClick={() => void submit()}>{created ? t('Upload the video again', 'ارفع الفيديو تاني') : t('Create the Reel post', 'أنشئ منشور الريل')}</Button>
-        <small className="u-muted">{busy === 'submit' ? <><Loader2 size={13} className="creative-job__spin" /> {t('Uploading the video…', 'بيترفع الفيديو…')}</> : t('Saved with the video and its covers. Open it to review, publish or schedule.', 'بيتحفظ بالفيديو وأغلفته. افتحه للمراجعة والنشر أو الجدولة.')}</small>
+        <small className="u-muted">{busy === 'submit' ? <><Loader2 size={13} className="creative-job__spin" /> {t(`Uploading the video… ${Math.round(progress * 100)}%`, `بيترفع الفيديو… ${Math.round(progress * 100)}%`)}</> : t('Saved with the video and its covers. Open it to review, publish or schedule.', 'بيتحفظ بالفيديو وأغلفته. افتحه للمراجعة والنشر أو الجدولة.')}</small>
       </div>
     </div>
   </section>;

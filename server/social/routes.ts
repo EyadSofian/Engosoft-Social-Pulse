@@ -10,7 +10,7 @@ import { disconnect, getAccount, listAccounts } from './store.js';
 import { capabilities, requiredCapability } from './capabilities.js';
 import { configuredCallback } from './oauth.js';
 import { attachImage, contentMedia, expiredContentMedia, validMediaSignature } from './media.js';
-import { attachVideoStream } from './video-upload.js';
+import { attachVideoStream, cancelVideoUpload, finishVideoUpload, startVideoUpload, writeVideoChunk } from './video-upload.js';
 import { StorageError } from '../storage.js';
 import { contentJobs, getJob, publish, checkJob, reconcileJob } from './publishing.js';
 import { creatorInfo } from './publish-providers.js';
@@ -140,6 +140,22 @@ export function registerSocialRoutes(app:express.Express) {
   try {res.json(await attachVideoStream(item.id,req,req.header('content-length')?Number(req.header('content-length')):undefined));}
   catch(e){if(!res.destroyed)res.status(e instanceof StorageError?e.status:400).json({error:e instanceof StorageError?e.message:'Use a standard MP4 export with duration and resolution metadata, up to 200 MB.',code:e instanceof StorageError?e.code:'invalid_video'});}
  });
+ // Large videos go up in pieces: start, send each piece, then finish. See video-upload.ts.
+ const videoError=(res:express.Response,e:unknown)=>{if(!res.destroyed)res.status(e instanceof StorageError?e.status:400).json({error:e instanceof StorageError?e.message:'Use a standard MP4 export with duration and resolution metadata, up to 200 MB.',code:e instanceof StorageError?e.code:'invalid_video'});};
+ app.post('/api/social/content/:id/video/uploads',async(req,res)=>{
+  const item=await getContent(String(req.params.id));if(!item||!canEdit(req.user!,item))return res.status(403).end();
+  if(!userCan(req.user!,'design.video'))return res.status(403).json({error:'رفع الريلز والفيديو ليس ضمن صلاحياتك.',code:'forbidden'});
+  if(!contentIsMutable(item))return res.status(409).json({error:'Return content for review before changing approved media.'});
+  try{res.status(201).json(await startVideoUpload(item.id,req.user!.id,Number(req.body?.bytes)));}catch(e){videoError(res,e);}
+ });
+ app.put('/api/social/content/:id/video/uploads/:upload',async(req,res)=>{
+  req.setTimeout(120_000,()=>req.destroy());
+  try{res.json(await writeVideoChunk(String(req.params.upload),req.user!.id,Number(req.query.offset),req));}catch(e){videoError(res,e);}
+ });
+ app.post('/api/social/content/:id/video/uploads/:upload/finish',async(req,res)=>{
+  try{res.json(await finishVideoUpload(String(req.params.upload),req.user!.id));}catch(e){videoError(res,e);}
+ });
+ app.delete('/api/social/content/:id/video/uploads/:upload',async(req,res)=>{await cancelVideoUpload(String(req.params.upload),req.user!.id);res.status(204).end();});
  app.post('/api/social/content/:id/image',express.raw({type:['image/jpeg','image/png','image/webp'],limit:'8mb'}),async(req,res)=>{
   const item=await getContent(String(req.params.id));if(!item||!canEdit(req.user!,item))return res.status(403).end();
   if(!contentIsMutable(item))return res.status(409).json({error:'Return content for review before changing approved media.'});
