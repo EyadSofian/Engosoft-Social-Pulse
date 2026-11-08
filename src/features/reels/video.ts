@@ -16,20 +16,23 @@ export async function readVideo(file: File): Promise<{ facts: VideoFacts; url: s
 }
 
 /** Evenly spaced stills from the video, at most 1080 px wide, to pick the cover from. */
-export async function videoFrames(url: string, count = 6): Promise<string[]> {
+export interface VideoFrame { url: string; timestampMs: number }
+export async function timedVideoFrames(url: string, count = 6): Promise<VideoFrame[]> {
   const video = Object.assign(document.createElement('video'), { preload: 'auto', muted: true, playsInline: true, src: url });
   await once(video, 'loadeddata');
   const scale = Math.min(1, 1080 / video.videoWidth);
   const canvas = Object.assign(document.createElement('canvas'), { width: Math.round(video.videoWidth * scale), height: Math.round(video.videoHeight * scale) });
   const context = canvas.getContext('2d');
   if (!context) return [];
-  const frames: string[] = [];
+  const frames: VideoFrame[] = [];
   for (let i = 0; i < count; i++) {
     // Skip the very first and last moments, which are often black or a fade.
     video.currentTime = Math.min(video.duration - 0.1, (video.duration * (i + 0.5)) / count);
     await once(video, 'seeked');
     context.drawImage(video, 0, 0, canvas.width, canvas.height);
-    frames.push(canvas.toDataURL('image/jpeg', 0.9));
+    frames.push({ url: canvas.toDataURL('image/jpeg', 0.9), timestampMs: Math.round(video.currentTime * 1000) });
   }
   return frames;
 }
+
+export const videoFrames = async (url: string, count = 6) => (await timedVideoFrames(url, count)).map((frame) => frame.url);

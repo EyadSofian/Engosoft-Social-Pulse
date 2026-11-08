@@ -13,7 +13,7 @@ import {
   readCookie, recordFailedLogin, requirePermission, requireUser, SESSION_COOKIE, updateUser, userCan, getUser, type AuthUser,
 } from './auth.js';
 import {
-  addComment, addVersion, allowedMoves, reopenContent, canEdit, canSee, contentIsMutable, createContent, getContent, listContent, listEvents, listVersions, setContentSize, transition, updateContent, WorkspaceError, type StoredContent,
+  addComment, addVersion, allowedMoves, reopenContent, canEdit, canSee, contentIsMutable, createContent, getContent, listContent, listEvents, listVersions, setContentSize, setReelCovers, transition, updateContent, WorkspaceError, type StoredContent,
 } from './workspace.js';
 import { db, defineSchema } from './db.js';
 import { notifyContent } from './notify.js';
@@ -23,7 +23,9 @@ const CHANNELS = ['facebook', 'instagram', 'whatsapp', 'linkedin', 'x', 'tiktok'
 const creativeUrl = z.string().regex(/^\/api\/creatives\/[0-9a-f-]{36}\/[a-z0-9.-]+\.png$|^\/api\/studio\/[0-9a-f-]{36}\.png$|^\/api\/uploads\/[0-9a-f-]{36}\.png$/);
 const svgTemplateRef = z.object({ id: z.string().uuid(), values: z.record(z.string().max(40), z.string().max(2000)), format: z.enum(['feed', 'square', 'story', 'landscape']).optional(), context: z.string().max(800).optional(), outputPreset: z.string().max(80).optional() });
 const scheduleRef = z.object({ title: z.string().max(60), highlight: z.string().max(40), defaultCity: z.string().max(40), rows: z.array(z.object({ course: z.string().max(120), date: z.string().max(10), time: z.string().max(5), mode: z.enum(['online', 'offline']), city: z.string().max(40) })).max(80) });
-const creativeRef = z.object({ requestId: z.string().max(60), directionId: z.string().max(40), imageUrl: creativeUrl, storyUrl: creativeUrl.optional(), landscapeUrl: creativeUrl.optional(), youtubeUrl: creativeUrl.optional(), sizes: z.record(z.string().max(40).refine((id) => Boolean(publishingPreset(id))), creativeUrl).optional(), model: z.string().max(60).optional(), directionName: z.string().max(200).optional(), svgTemplate: svgTemplateRef.optional(),
+const reelCover = z.object({ url: creativeUrl, timestampMs: z.number().int().min(0).max(3_600_000).optional() });
+const reelCovers = z.partialRecord(z.enum(CHANNELS), reelCover);
+const creativeRef = z.object({ reelCover: reelCover.optional(), reelCovers: reelCovers.optional(), requestId: z.string().max(60), directionId: z.string().max(40), imageUrl: creativeUrl, storyUrl: creativeUrl.optional(), landscapeUrl: creativeUrl.optional(), youtubeUrl: creativeUrl.optional(), sizes: z.record(z.string().max(40).refine((id) => Boolean(publishingPreset(id))), creativeUrl).optional(), model: z.string().max(60).optional(), directionName: z.string().max(200).optional(), svgTemplate: svgTemplateRef.optional(),
   // A course schedule: every page per format (a carousel), and the rows so it can be drawn again.
   pages: z.object({ feed: z.array(creativeUrl).max(12), square: z.array(creativeUrl).max(12), story: z.array(creativeUrl).max(12) }).partial().optional(),
   schedule: scheduleRef.optional() });
@@ -171,6 +173,13 @@ export function registerWorkspaceRoutes(app: express.Express) {
     try {
       const patch = z.object({ title: z.string().trim().min(2).max(300).optional(), channels: z.array(z.enum(CHANNELS)).min(1).max(8).optional(), captions: captions.optional(), goal: postPlan.goal, plannedFor: postPlan.plannedFor }).parse(req.body);
       res.json(withMoves(req.user!)(await updateContent(req.user!, String(req.params.id), patch)));
+    } catch (error) { fail(res, error); }
+  });
+  app.put('/api/content/:id/reel-covers', requireUser, requirePermission('design.video'), async (req, res) => {
+    try {
+      const input = z.object({ cover: reelCover, covers: reelCovers }).parse(req.body);
+      const saved = await setReelCovers(req.user!, String(req.params.id), input.cover, input.covers);
+      res.json(withMoves(req.user!)(saved));
     } catch (error) { fail(res, error); }
   });
   app.post('/api/content/:id/transition', requireUser, async (req, res) => {

@@ -15,6 +15,8 @@ export interface PublishInput {
  disableComment?: boolean; disableDuet?: boolean; disableStitch?: boolean; brandContent?: boolean; brandOrganic?: boolean;
  retry?: boolean; snapTarget?: 'story' | 'spotlight'; locale?: string; consent: true;
  bufferDefaultsConsent?: boolean; isAiGenerated?: boolean;
+ /** Resolved on the server from the saved Reel cover, never trusted from the publish request. */
+ videoCoverTimestampMs?: number;
  photoCoverIndex?: number; autoAddMusic?: boolean;
 }
 export interface PublishResult { state: 'processing' | 'awaiting_user' | 'published' | 'failed' | 'unknown'; remoteId?: string; externalId?: string; url?: string; error?: string; errorCode?: string; retryable?: boolean; retryAfter?: number; phase?: string }

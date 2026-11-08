@@ -63,6 +63,16 @@ function mock(overrides:(service:'buffer'|'zernio'|'direct',write:boolean,body:a
 }
 const run=(a:SocialAccount,i=input,j=job(),persist=async(_r:PublishResult)=>{})=>hybrid.submitHybrid(a,i,'Approved caption',media,j,persist);
 
+test('custom video images use Zernio while video frame covers use Buffer thumbnailOffset',async()=>{
+ const a=await fixture();const writes:any[]=[];let bufferWrites=0;let bufferPayload:any;
+ mock((s,w,body)=>{if(w){if(s==='buffer'){bufferWrites++;bufferPayload=body;}else writes.push(body);}});
+ const cover={...media[0],id:randomUUID(),type:'image' as const,mimeType:'image/jpeg'};
+ assert.equal((await hybrid.submitHybrid(a,input,'Caption',media,job(),async()=>{},'Title',cover)).state,'published');
+ assert.equal(bufferWrites,0);assert.match(writes[0].tiktokSettings.videoCoverImageUrl,new RegExp(`/api/social/media/${cover.id}`));
+ assert.equal((await hybrid.submitHybrid(a,{...input,videoCoverTimestampMs:1500},'Caption',media,job(),async()=>{},'Title',cover)).state,'published');
+ assert.equal(bufferWrites,1);assert.equal(bufferPayload.variables.input.assets[0].video.metadata.thumbnailOffset,1500);assert.equal(writes.length,1);
+});
+
 test('Buffer is primary and successful public publication needs account-matching evidence',async()=>{
  const a=await fixture();let buffer=0,zernio=0;mock((s,w)=>{if(w){if(s==='buffer')buffer++;else zernio++;}});
  const result=await run(a);assert.equal(result.state,'published');assert.equal(result.externalId,'1234567890');assert.equal(buffer,1);assert.equal(zernio,0);

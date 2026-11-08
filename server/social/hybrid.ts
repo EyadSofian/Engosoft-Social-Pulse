@@ -182,13 +182,13 @@ export function validateHybrid(input:PublishInput,caption:string,media:PreparedM
   if(input.mode==='direct'&&input.isAiGenerated)throw new Error('Send AI-generated photos to the TikTok inbox and enable the AI disclosure in TikTok before publishing.');
  }
 }
-export async function submitHybrid(account:SocialAccount,input:PublishInput,caption:string,media:PreparedMedia[],job:PublishJob,persist:(r:PublishResult)=>Promise<void>,title=caption):Promise<PublishResult> {
+export async function submitHybrid(account:SocialAccount,input:PublishInput,caption:string,media:PreparedMedia[],job:PublishJob,persist:(r:PublishResult)=>Promise<void>,title=caption,cover?:PreparedMedia):Promise<PublishResult> {
  validateHybrid(input,caption,media,title);
  const photo=input.kind==='image'||input.kind==='carousel',photoTitle=tiktokPhotoTitle(title);
  const routes=await hybridRoutes(account.id);let last='no_eligible_service';
  for(const service of publishingServices) {
   const route=routes.find(r=>r.service===service&&r.enabled);
-  if(!route||route.cooldown_until>Date.now()||service==='buffer'&&!bufferEligible(input))continue;
+  if(!route||route.cooldown_until>Date.now()||service==='buffer'&&(!bufferEligible(input)||Boolean(cover)&&input.videoCoverTimestampMs===undefined))continue;
   let key:string;
   try{
    key=await keyFor(route);await checkTarget(service,key,route.target_id,route.service_username||route.username);
@@ -204,7 +204,7 @@ export async function submitHybrid(account:SocialAccount,input:PublishInput,capt
   try {
    let result:PublishResult;
    if(service==='buffer') {
-    const r=await graphql(key,`mutation($input: CreatePostInput!) { createPost(input:$input) { __typename ... on PostActionSuccess { post { ${postFields} } } ... on MutationError { message } } }`,{input:{channelId:route.target_id,text:caption,schedulingType:'automatic',mode:'shareNow',assets:[{video:{url:publicMediaUrl(media[0].id)}}],metadata:{tiktok:{isAiGenerated:input.isAiGenerated===true}}}},true,job.id);
+    const r=await graphql(key,`mutation($input: CreatePostInput!) { createPost(input:$input) { __typename ... on PostActionSuccess { post { ${postFields} } } ... on MutationError { message } } }`,{input:{channelId:route.target_id,text:caption,schedulingType:'automatic',mode:'shareNow',assets:[{video:{url:publicMediaUrl(media[0].id),...(input.videoCoverTimestampMs!==undefined?{metadata:{thumbnailOffset:input.videoCoverTimestampMs}}:{})}}],metadata:{tiktok:{isAiGenerated:input.isAiGenerated===true}}}},true,job.id);
     const value=r.data?.createPost;
     if(value?.__typename!=='PostActionSuccess')throw new ServiceError(['LimitReachedError','PostLimitReachedError','UnauthorizedError'].includes(value?.__typename)?'service_rejected':'service_unconfirmed',['LimitReachedError','PostLimitReachedError','UnauthorizedError'].includes(value?.__typename)?'fallback':'unknown');
     if(!value.post?.id)throw new ServiceError('missing_remote_id','unknown');
@@ -212,7 +212,7 @@ export async function submitHybrid(account:SocialAccount,input:PublishInput,capt
     await persist({state:'processing',remoteId:value.post.id,phase:phase(service)});
     result=resultFrom(service,value.post,route);
    } else {
-    const r=await api(service,key,'/posts',{content:photo?photoTitle:caption,mediaItems:media.map(m=>({type:m.type,url:publicMediaUrl(m.id)})),platforms:[{platform:'tiktok',accountId:route.target_id}],publishNow:true,tiktokSettings:{privacyLevel:input.privacy,allowComment:input.disableComment===false,...(photo?{mediaType:'photo',description:caption,photoCoverIndex:input.photoCoverIndex??0,autoAddMusic:input.autoAddMusic===true,draft:input.mode==='draft'}:{allowDuet:input.disableDuet===false,allowStitch:input.disableStitch===false,videoMadeWithAi:input.isAiGenerated===true}),commercialContentType:input.brandOrganic?'brand_organic':input.brandContent?'brand_content':'none',brandPartnerPromote:input.brandContent===true,isBrandOrganicPost:input.brandOrganic===true,contentPreviewConfirmed:true,expressConsentGiven:true}},true,job.id);
+    const r=await api(service,key,'/posts',{content:photo?photoTitle:caption,mediaItems:media.map(m=>({type:m.type,url:publicMediaUrl(m.id)})),platforms:[{platform:'tiktok',accountId:route.target_id}],publishNow:true,tiktokSettings:{privacyLevel:input.privacy,allowComment:input.disableComment===false,...(photo?{mediaType:'photo',description:caption,photoCoverIndex:input.photoCoverIndex??0,autoAddMusic:input.autoAddMusic===true,draft:input.mode==='draft'}:{allowDuet:input.disableDuet===false,allowStitch:input.disableStitch===false,videoMadeWithAi:input.isAiGenerated===true,...(cover&&input.videoCoverTimestampMs===undefined?{videoCoverImageUrl:publicMediaUrl(cover.id)}:{}),...(input.videoCoverTimestampMs!==undefined?{videoCoverTimestampMs:input.videoCoverTimestampMs}:{})}),commercialContentType:input.brandOrganic?'brand_organic':input.brandContent?'brand_content':'none',brandPartnerPromote:input.brandContent===true,isBrandOrganicPost:input.brandOrganic===true,contentPreviewConfirmed:true,expressConsentGiven:true}},true,job.id);
     if(!r.post?._id)throw new ServiceError('missing_remote_id','unknown');
     await saveAttempt(job.id,service,{state:'processing',remoteId:r.post._id});
     await persist({state:'processing',remoteId:r.post._id,phase:phase(service)});

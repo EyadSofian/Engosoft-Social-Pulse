@@ -28,8 +28,9 @@ async function transfer(url:string,token:string,data:Buffer|{file:string;start:n
  if(!r.ok)throw new ProviderError(r.status,'transfer_failed',r.status>=500);
  return r;
 }
-export async function submit(account:SocialAccount,input:PublishInput,caption:string,title:string,media:PreparedMedia[],job:PublishJob,persist:Persist):Promise<PublishResult> {
+export async function submit(account:SocialAccount,input:PublishInput,caption:string,title:string,media:PreparedMedia[],job:PublishJob,persist:Persist,cover?:PreparedMedia):Promise<PublishResult> {
  const token=await accessToken(account),id=encodeURIComponent(account.externalId);
+ if (cover && input.kind === 'video' && ['facebook', 'youtube'].includes(account.provider)) await saveSecret(`video-cover:${job.id}`, { file: cover.file, mimeType: cover.mimeType, applied: false });
  if(account.provider==='facebook') {
   // Resolve the selected Page token, rather than posting with a user token.
   let pageToken=token;
@@ -50,7 +51,7 @@ export async function submit(account:SocialAccount,input:PublishInput,caption:st
   if(input.kind==='carousel') for(const m of media) {
    const c=await graphPost(`${id}/media`,token,{...(m.type==='video'?{video_url:publicMediaUrl(m.id),media_type:'VIDEO'}:{image_url:publicMediaUrl(m.id)}),is_carousel_item:true});children.push(remoteId(c.id));
   }
-  const m=media[0];const r=await graphPost(`${id}/media`,token,{caption,...(children.length?{media_type:'CAROUSEL',children:children.join(',')}:m.type==='video'?{media_type:'REELS',video_url:publicMediaUrl(m.id)}:{image_url:publicMediaUrl(m.id)})});
+  const m=media[0];const r=await graphPost(`${id}/media`,token,{caption,...(children.length?{media_type:'CAROUSEL',children:children.join(',')}:m.type==='video'?{media_type:'REELS',video_url:publicMediaUrl(m.id),...(cover?{cover_url:publicMediaUrl(cover.id)}:input.videoCoverTimestampMs!==undefined?{thumb_offset:input.videoCoverTimestampMs}:{})}:{image_url:publicMediaUrl(m.id)})});
   const container=remoteId(r.id);await persist({state:'processing',remoteId:container,phase:'instagram_container'});return {state:'processing',remoteId:container,phase:'instagram_container'};
  }
  if(account.provider==='tiktok') {
@@ -62,7 +63,7 @@ export async function submit(account:SocialAccount,input:PublishInput,caption:st
    if(media.some(m=>m.type==='video'&&(m.duration||0)>info.max_video_post_duration_sec))throw new PublicationValidationError('Video exceeds the creator’s maximum duration.');
   }
   if(input.brandContent&&input.privacy==='SELF_ONLY')throw new PublicationValidationError('Paid partnerships cannot use SELF_ONLY privacy.');
-  const post_info={title:caption,privacy_level:input.privacy,disable_comment:info.comment_disabled||input.disableComment!==false,disable_duet:info.duet_disabled||input.disableDuet!==false,disable_stitch:info.stitch_disabled||input.disableStitch!==false,brand_content_toggle:input.brandContent===true,brand_organic_toggle:input.brandOrganic===true,is_aigc:input.isAiGenerated===true};
+  const post_info={...(input.videoCoverTimestampMs!==undefined?{video_cover_timestamp_ms:input.videoCoverTimestampMs}:{}),title:caption,privacy_level:input.privacy,disable_comment:info.comment_disabled||input.disableComment!==false,disable_duet:info.duet_disabled||input.disableDuet!==false,disable_stitch:info.stitch_disabled||input.disableStitch!==false,brand_content_toggle:input.brandContent===true,brand_organic_toggle:input.brandOrganic===true,is_aigc:input.isAiGenerated===true};
   let r:Record<string,any>;
   if(media[0].type==='image') {
    const origin=new URL(process.env.APP_URL!);const verified=(process.env.TIKTOK_VERIFIED_MEDIA_ORIGINS||'').split(',').map(x=>x.trim());
@@ -128,7 +129,7 @@ export async function poll(account:SocialAccount,job:PublishJob):Promise<Publish
  if(account.provider==='facebook'&&id) {
   if(job.phase==='facebook_video') {
    const v=await graphRead(id,token,{fields:'id,status,permalink_url'});
-   if(v.status?.video_status==='ready')return {state:'published',externalId:id,url:v.permalink_url||''};
+   if(v.status?.video_status==='ready')return {state:'published',externalId:id,url:v.permalink_url||'',error:await applySavedVideoCover(account, job, id, token)};
    if(v.status?.video_status==='error')return {state:'failed',error:'Facebook video processing failed.'};return {state:'processing'};
   }
   const p=await graphRead(id,token,{fields:'id,is_published,permalink_url'});return p.is_published===true?{state:'published',externalId:p.id,url:p.permalink_url||''}:{state:'processing'};
@@ -155,7 +156,7 @@ export async function poll(account:SocialAccount,job:PublishJob):Promise<Publish
   }
   if(!external)return {state:'unknown'};
   const r=await request(`https://www.googleapis.com/youtube/v3/videos?${new URLSearchParams({part:'id,status,processingDetails',id:external})}`,{headers:headers(token)},true),v=r.items?.[0];
-  if(v?.status?.uploadStatus==='processed'&&v?.processingDetails?.processingStatus==='succeeded')return {state:'published',externalId:external,url:`https://www.youtube.com/watch?v=${external}`};
+  if(v?.status?.uploadStatus==='processed'&&v?.processingDetails?.processingStatus==='succeeded')return {state:'published',externalId:external,url:`https://www.youtube.com/watch?v=${external}`,error:await applySavedVideoCover(account, job, external, token)};
   if(['failed','rejected','deleted'].includes(v?.status?.uploadStatus))return {state:'failed',error:'YouTube rejected or failed to process the upload.'};return {state:'processing',externalId:external,remoteId:external};
  }
  return {state:'unknown',error:'The outcome needs manual verification before any retry.'};
@@ -186,4 +187,31 @@ export async function verifyEvidence(account:SocialAccount,externalId:string,job
   const r=await poll(account,{...job,remoteId:externalId,phase:'snapchat_spotlight'});if(r.state==='published')return r;
  }
  throw new PublicationValidationError('This exact published ID could not be verified on the selected account.');
+}
+
+/** A thumbnail is a second write after the video exists and has finished processing. Never upload the video again if this fails. */
+async function applySavedVideoCover(account: SocialAccount, job: PublishJob, externalId: string, token: string): Promise<string | undefined> {
+ const key = `video-cover:${job.id}`;
+ const cover = await loadSecret<{file:string;mimeType:string;applied:boolean;warning?:string}>(key);
+ if (!cover || cover.applied) return cover?.warning;
+ try {
+  const bytes = await readFile(cover.file);
+  if (account.provider === 'youtube') {
+   await request(`https://www.googleapis.com/upload/youtube/v3/thumbnails/set?videoId=${encodeURIComponent(externalId)}&uploadType=media`, {method:'POST', headers:{...headers(token),'Content-Type':cover.mimeType}, body:bytes as unknown as BodyInit});
+  } else {
+   // env:meta uses a user token for reads, but Page writes require the selected Page token.
+   let pageToken = token;
+   if (account.credentialSource === 'env:meta') {
+    const pages = await graphRead('me/accounts', token, {fields:'id,access_token',limit:'100'});
+    pageToken = pages.data?.find((p:any) => p.id === account.externalId)?.access_token;
+    if (!pageToken) throw new Error('page_token_required');
+   }
+   const form = new FormData(); form.set('is_preferred','true'); form.set('source',new Blob([new Uint8Array(bytes)],{type:cover.mimeType}),'cover.jpg');
+   await request(`${graphBase()}/${encodeURIComponent(externalId)}/thumbnails`, {method:'POST',headers:headers(pageToken),body:form});
+  }
+  await saveSecret(key, {...cover,applied:true});
+ } catch {
+  const warning = 'الفيديو اتنشر، لكن المنصة لم تؤكد إضافة الغلاف المخصص. راجع الغلاف من المنصة؛ لا تعيد نشر الفيديو.';
+  await saveSecret(key, {...cover,applied:true,warning}); return warning;
+ }
 }

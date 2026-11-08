@@ -1,3 +1,4 @@
+import type { ReelCover, ReelCovers } from '../src/domain/reel-covers.js';
 import { contentMedia } from './social/media.js';
 import { cancelQueued, hasPendingPublication, moveQueued } from './social/store.js';
 /**
@@ -43,7 +44,7 @@ export type Channel = 'facebook' | 'instagram' | 'whatsapp' | 'linkedin' | 'x' |
 /** Channels the sync can prove published; the others are tracked by status only. */
 const TRACKED: Partial<Record<Channel, Platform>> = { facebook: 'facebook', instagram: 'instagram', tiktok: 'tiktok', snapchat: 'snapchat', youtube: 'youtube', linkedin: 'linkedin' };
 
-export interface CreativeRef { requestId: string; directionId: string; imageUrl: string; storyUrl?: string; landscapeUrl?: string; youtubeUrl?: string; sizes?: Record<string, string>; model?: string; directionName?: string; svgTemplate?: { id: string; values: Record<string, string>; format?: 'feed' | 'square' | 'story' | 'landscape'; context?: string; outputPreset?: string }; pages?: Partial<Record<'feed' | 'square' | 'story', string[]>>; schedule?: { title: string; highlight: string; defaultCity: string; rows: { course: string; date: string; time: string; mode: 'online' | 'offline'; city: string }[] } }
+export interface CreativeRef { reelCover?: ReelCover; reelCovers?: ReelCovers; requestId: string; directionId: string; imageUrl: string; storyUrl?: string; landscapeUrl?: string; youtubeUrl?: string; sizes?: Record<string, string>; model?: string; directionName?: string; svgTemplate?: { id: string; values: Record<string, string>; format?: 'feed' | 'square' | 'story' | 'landscape'; context?: string; outputPreset?: string }; pages?: Partial<Record<'feed' | 'square' | 'story', string[]>>; schedule?: { title: string; highlight: string; defaultCity: string; rows: { course: string; date: string; time: string; mode: 'online' | 'offline'; city: string }[] } }
 export interface StoredContent {
   id: string; title: string; status: ContentStatus; departmentId: string | null; ownerId: string;
   channels: Channel[]; captions: Partial<Record<Channel, string>>; creative: CreativeRef | null;
@@ -164,6 +165,25 @@ export async function updateContent(user: AuthUser, id: string, patch: { title?:
     JSON.stringify(patch.creative ?? item.creative), new Date().toISOString(), id]);
   if (patch.captions) await log(id, user.id, 'caption', 'Caption updated');
   return (await getContent(id))!;
+}
+
+/** Covers are part of the approved artwork. Lock the post while checking approval and saving them. */
+export async function setReelCovers(user: AuthUser, contentId: string, cover: ReelCover, covers: ReelCovers): Promise<StoredContent> {
+  if (!userCan(user, 'design.video')) throw new WorkspaceError(403, 'رفع الريلز والفيديو ليس ضمن صلاحياتك.');
+  await db.tx(async (tx) => {
+    await tx.run('UPDATE content_items SET updated_at=updated_at WHERE id=?', [contentId]);
+    const row = await tx.get('SELECT * FROM content_items WHERE id=?', [contentId]);
+    if (!row) throw new WorkspaceError(404, 'المحتوى غير موجود.');
+    const item = toContent(row);
+    if (!canEdit(user, item)) throw new WorkspaceError(403, 'لا تملك صلاحية تعديل هذا المحتوى.');
+    requireMutable(item);
+    if (item.creative?.requestId !== 'reel') throw new WorkspaceError(400, 'اختار منشور ريل.');
+    if (await tx.get("SELECT id FROM social_publish_jobs WHERE content_id=? AND state IN ('processing','awaiting_user','unknown') LIMIT 1", [contentId])) throw new WorkspaceError(409, 'استنى نتيجة طلب النشر الحالي قبل تعديل الغلاف.');
+    const now = new Date().toISOString();
+    await tx.run('UPDATE content_items SET creative_json=?,updated_at=? WHERE id=?', [JSON.stringify({ ...item.creative, imageUrl: cover.url, reelCover: cover, reelCovers: covers }), now, contentId]);
+    await tx.run('INSERT INTO content_events(id,content_id,actor_id,kind,body,created_at) VALUES(?,?,?,?,?,?)', [randomUUID(), contentId, user.id, 'version', 'تم تحديث أغلفة الريل', now]);
+  });
+  return (await getContent(contentId))!;
 }
 
 export async function addVersion(user: AuthUser, contentId: string, input: { imageUrl: string; storyUrl: string | null; studio: unknown; note: string }): Promise<ContentVersion> {

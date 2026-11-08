@@ -118,7 +118,7 @@ export function linkedInResult(data: any, targetId: string, caption?: string): P
   if (['failed', 'cancelled'].includes(entry.status) || ['draft', 'pending_approval', 'cancelled', 'failed'].includes(post.status)) return { state: 'unknown', remoteId, errorCode: 'publication_unconfirmed', error: 'Review the existing LinkedIn post in Zernio before retrying.', phase };
   return { state: 'processing', remoteId, phase };
 }
-export async function submitLinkedIn(a: SocialAccount, input: PublishInput, caption: string, media: PreparedMedia[], job: PublishJob, persist: (result: PublishResult) => Promise<void>): Promise<PublishResult> {
+export async function submitLinkedIn(a: SocialAccount, input: PublishInput, caption: string, media: PreparedMedia[], job: PublishJob, persist: (result: PublishResult) => Promise<void>, cover?: PreparedMedia): Promise<PublishResult> {
   const key = await keyFor(a.credentialSource), targetId = String(a.metadata.zernioAccountId || '');
   try {
     const { health, scopes } = await verifyTarget(key, targetId, a.externalId);
@@ -126,7 +126,7 @@ export async function submitLinkedIn(a: SocialAccount, input: PublishInput, capt
   } catch { throw new PublicationValidationError('LinkedIn organization identity or publishing permission could not be verified. Reconnect this exact page.'); }
   if (input.mode !== 'direct') throw new PublicationValidationError('LinkedIn supports direct publishing here.');
   try {
-    const data = await api(key, '/posts', { content: caption, mediaItems: media.map(m => ({ type: m.type, url: publicMediaUrl(m.id) })), platforms: [{ platform: 'linkedin', accountId: targetId }], publishNow: true }, job.id);
+    const data = await api(key, '/posts', { content: caption, mediaItems: media.map(m => ({ type: m.type, url: publicMediaUrl(m.id), ...(m.type === 'video' && cover ? { thumbnail: publicMediaUrl(cover.id) } : {}) })), platforms: [{ platform: 'linkedin', accountId: targetId }], publishNow: true }, job.id);
     const result = linkedInResult(data, targetId, caption);
     // Save the handle before any further reads, even if the provider is still processing.
     await persist(result);

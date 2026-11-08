@@ -143,7 +143,8 @@
 .reel__drop { aspect-ratio: 9 / 16; min-height: 0; }
 .reel__player { width: 100%; aspect-ratio: 9 / 16; border-radius: 14px; background: #000; object-fit: contain; }
 .reel__swap { border: 0; background: none; padding: 0; font: inherit; cursor: pointer; }
-.reel__step { display: grid; gap: 10px; padding-block-end: 16px; border-block-end: 1px solid var(--border); }
+.reel__form, .reel__step { min-width: 0; }
+.reel__step { display: grid; grid-template-columns: minmax(0, 1fr); gap: 10px; padding-block-end: 16px; border-block-end: 1px solid var(--border); }
 .reel__step h3 { display: flex; align-items: center; gap: 8px; margin: 0; font-size: 15px; }
 .reel__step h3 span { display: grid; place-items: center; width: 22px; height: 22px; border-radius: 50%; background: var(--brand); color: var(--on-brand); font-size: 12px; }
 .reel__checks { display: grid; gap: 4px; margin: 0; padding: 0; list-style: none; font-size: 12.5px; }
@@ -153,10 +154,10 @@
 .reel__checks li[data-state='warn'] > svg:first-child { color: var(--warning); }
 .reel__checks li[data-state='error'] { background: var(--danger-soft); }
 .reel__checks li[data-state='error'] > svg:first-child, .reel__checks li[data-state='error'] span { color: var(--danger-ink); }
-.reel__frames { display: flex; gap: 6px; overflow-x: auto; padding-block-end: 4px; }
-.reel__frames button { flex: none; width: 64px; aspect-ratio: 9 / 16; padding: 0; overflow: hidden; border: 2px solid transparent; border-radius: 8px; background: var(--surface-active); cursor: pointer; }
+.reel__frames { display: flex; align-items: flex-start; gap: 6px; min-width: 0; overflow-x: auto; padding-block-end: 4px; }
+.reel__frames button { position: relative; flex: 0 0 64px; width: 64px; height: 114px; min-height: 0; padding: 0; overflow: hidden; border: 2px solid transparent; border-radius: 8px; background: var(--surface-active); cursor: pointer; }
 .reel__frames button[aria-checked='true'] { border-color: var(--brand); }
-.reel__frames img { width: 100%; height: 100%; object-fit: cover; }
+.reel__frames img { position: absolute; inset: 0; display: block; width: 100%; height: 100%; object-fit: cover; }
 .reel__cover { display: flex; gap: 14px; align-items: flex-start; }
 .reel__cover > img { width: 108px; aspect-ratio: 9 / 16; object-fit: cover; border-radius: 10px; box-shadow: var(--shadow-sm); }
 .reel__words { display: inline-flex; flex-wrap: wrap; gap: 4px; padding: 4px; border-radius: 12px; background: var(--surface-active); justify-self: start; }
@@ -164,6 +165,19 @@
 .reel__words button[aria-checked='true'] { background: var(--surface); color: var(--text); box-shadow: var(--shadow-xs); }
 .reel__ai { display: flex; flex-wrap: wrap; align-items: center; justify-content: space-between; gap: 8px; }
 .reel__submit { display: grid; gap: 6px; justify-items: start; }
+.reel-covers { display: grid; gap: 14px; min-width: 0; }
+.reel-covers__tabs { display: flex; gap: 5px; overflow-x: auto; padding-block-end: 5px; }
+.reel-covers__tabs button { display: inline-flex; align-items: center; gap: 5px; flex: none; border: 1px solid var(--border); border-radius: 8px; padding: 7px 9px; background: transparent; color: var(--text-muted); font: inherit; font-size: 12px; cursor: pointer; }
+.reel-covers__tabs button[aria-selected='true'] { color: var(--text); background: var(--surface-active); border-color: var(--brand); }
+.reel-covers__tabs button:focus-visible { outline: 2px solid var(--brand); outline-offset: 2px; }
+.reel-covers__dot { width: 5px; height: 5px; background: var(--brand); border-radius: 50%; }
+.reel-covers__body { display: grid; grid-template-columns: 100px minmax(0, 1fr); gap: 14px; align-items: start; }
+.reel-covers__image { display: block; width: 100%; height: 178px; border-radius: 9px; object-fit: contain; background: var(--surface-active); }
+.reel-covers__empty { display: grid; place-items: center; color: var(--text-muted); border: 1px dashed var(--border); }
+.reel-covers__body .u-stack { align-items: start; }
+.reel-covers__body small { line-height: 1.7; }
+.reel-covers__body .ui-link { display: inline-flex; align-items: center; gap: 5px; font-size: 12px; }
+@media (max-width: 420px) { .reel-covers__body { grid-template-columns: 78px minmax(0, 1fr); gap: 10px; } .reel-covers__image { height: 139px; } }
 @media (max-width: 860px) { .reel { grid-template-columns: minmax(0, 1fr); } .reel__media { position: static; max-width: 280px; } }
 
 /* ── Size tiles on the Create page ─────────────────────────────────── */

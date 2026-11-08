@@ -28,7 +28,7 @@ async function plan(item: StoredContent, account: SocialAccount): Promise<Omit<P
   const no = (reason: string) => ({ ready: false, reason, kind: null, media: [] });
   if (!AUTO_PROVIDERS.includes(account.provider)) return no('advanced');
   if (account.status !== 'connected') return no('disconnected');
-  const video = (await contentMedia(item.id)).find((m) => m.type === 'video');
+  const video = [...(await contentMedia(item.id))].reverse().find((m) => m.type === 'video');
   // Each platform gets the size designed for it (a LinkedIn landscape, an Instagram 3:4…), else the main design.
   const image = imageForChannel(account.provider, item.creative);
   const choice = video ? { kind: 'video' as const, media: [{ url: video.url }] }

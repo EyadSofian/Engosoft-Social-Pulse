@@ -15,6 +15,7 @@ import { useI18n } from '../../i18n/I18nProvider';
 import { useAuth } from '../auth/AuthProvider';
 import type { Channel, PipelineItem } from '../content-pipeline/types';
 import { PostPreview } from './PostPreview';
+import { ReelCoverPicker } from '../reels/ReelCovers';
 import type { ProviderConnection } from './SocialConnections';
 import { platformOf, suggestedTime, type JobRow, type ManualPublication, type PublishTarget, type QueueRow } from './publishing';
 
@@ -87,7 +88,7 @@ export function PublishComposer({ item, open, onClose, onDone, day }: { item: Pi
     }).catch((reason: unknown) => setError(errorMessage(reason, t('Could not load the accounts.', 'تعذّر تحميل الحسابات.'))));
   }, [open, item.id]);
 
-  const video = media.find((m) => m.type === 'video');
+  const video = [...media].reverse().find((m) => m.type === 'video');
   const destinations = useMemo<Destination[]>(() => {
     const auto = (targets ?? []).filter((target) => !OPTION_PROVIDERS.includes(target.provider)).map((target): Destination => ({
       accountId: target.accountId, provider: target.provider, name: target.name, options: false, kind: null, media: [], reconnect: !target.ready && target.reason !== 'no_media',
@@ -261,6 +262,11 @@ export function PublishComposer({ item, open, onClose, onDone, day }: { item: Pi
                 </li>)}
               </ul>
             </section>
+            {video && item.creative?.requestId === 'reel' && <section className="composer__section">
+              <h3>{t('Reel covers', 'غلاف الريل لكل منصة')}</h3>
+              <ReelCoverPicker cover={item.creative.reelCover ?? { url: item.creative.imageUrl }} covers={item.creative.reelCovers ?? {}} channels={item.channels} disabled onChange={() => {}} />
+              <Link to={`/content/${item.id}`} onClick={onClose}>{t('Edit covers on the post page', 'عدّل الأغلفة من صفحة المنشور')}</Link>
+            </section>}
             <section className="composer__section">
               <h3>{t('When', 'إمتى')}</h3>
               <div className="composer-when" role="radiogroup" aria-label={t('When', 'إمتى')}>

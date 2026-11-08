@@ -1,5 +1,5 @@
 import { useEffect, useRef, useState } from 'react';
-import { AlertTriangle, Check, Film, ImagePlus, Loader2, Sparkles, XCircle } from 'lucide-react';
+import { AlertTriangle, Check, Film, Loader2, Sparkles, XCircle } from 'lucide-react';
 import { useRouter } from '../../app/router/router';
 import { ChannelIcon } from '../../components/data-display/ChannelIcon';
 import { Button } from '../../components/ui/Button';
@@ -9,17 +9,12 @@ import { api, errorMessage } from '../../lib/api';
 import { DialectPicker, usePreferredDialect } from '../content/ContentCopilot';
 import { readPostPlan, takePostPlan } from '../content/postPlan';
 import { CREATIVE_PLATFORMS, PLATFORM_FORMATS, type CreativePlatform } from '../creative-studio/platforms';
-import { readVideo, videoFrames } from './video';
+import { readVideo } from './video';
+import { ReelCoverPicker, saveReelCovers } from './ReelCovers';
+import type { ReelCover, ReelCovers } from '../../domain/reel-covers';
 
 type Words = 'idea' | 'script' | 'manual';
 type ReferenceJob = { status: string; error?: string; result?: { imageUrl: string } };
-
-const asDataUrl = (file: File) => new Promise<string>((resolve, reject) => {
-  const reader = new FileReader();
-  reader.onload = () => resolve(String(reader.result));
-  reader.onerror = () => reject(reader.error);
-  reader.readAsDataURL(file);
-});
 
 /**
  * A finished Reel made outside the app: upload the MP4, see whether each platform accepts it, pick or design a cover,
@@ -30,10 +25,11 @@ export function ReelMode() {
   const { t, tx } = useI18n();
   const { navigate } = useRouter();
   const videoInput = useRef<HTMLInputElement>(null);
-  const coverInput = useRef<HTMLInputElement>(null);
+
   const [file, setFile] = useState<File | null>(null);
   const [video, setVideo] = useState<{ facts: VideoFacts; url: string } | null>(null);
-  const [frames, setFrames] = useState<string[]>([]);
+  const [covers, setCovers] = useState<ReelCovers>({});
+  const [coverTimestamp, setCoverTimestamp] = useState<number>();
   // The cover is a data URL (frame or upload) until it is uploaded, or an /api/uploads URL once AI designed it.
   const [cover, setCover] = useState<string>('');
   const [title, setTitle] = useState(() => readPostPlan().slotTitle ?? '');
@@ -57,17 +53,9 @@ export function ReelMode() {
     if (next.type !== 'video/mp4') { setMessage(t('Use an MP4 video.', 'استخدم فيديو MP4.')); return; }
     try {
       const read = await readVideo(next);
-      setFile(next); setVideo(read); setCover(''); setFrames([]);
+      setFile(next); setVideo(read); setCover(''); setCovers({}); setCoverTimestamp(undefined); setCreated('');
       if (!title.trim()) setTitle(next.name.replace(/\.[a-z0-9]+$/i, '').replace(/[-_]+/g, ' '));
-      const stills = await videoFrames(read.url).catch(() => []);
-      setFrames(stills);
-      if (stills[0]) setCover((current) => current || stills[Math.min(1, stills.length - 1)]);
     } catch (error) { setMessage(errorMessage(error, '')); }
-  };
-  const pickCover = async (next: File | undefined) => {
-    if (!next) return;
-    if (!/^image\/(png|jpeg|webp)$/.test(next.type) || next.size > 12_000_000) { setMessage(t('Use a PNG, JPEG or WebP image under 12 MB.', 'استخدم صورة PNG أو JPEG أو WebP أقل من 12 ميجابايت.')); return; }
-    setCover(await asDataUrl(next));
   };
   const uploadCover = async () => (cover.startsWith('/api/') ? cover : (await api<{ url: string }>('/api/uploads', { body: { dataUrl: cover } })).url);
 
@@ -79,7 +67,7 @@ export function ReelMode() {
       const { jobId } = await api<{ jobId: string }>('/api/reels/cover', { body: { frameUrl, title: title.trim() } });
       for (;;) {
         const job = await api<ReferenceJob>(`/api/reference-design/jobs/${jobId}`);
-        if (job.status === 'done' && job.result) { setCover(job.result.imageUrl); break; }
+        if (job.status === 'done' && job.result) { setCover(job.result.imageUrl); setCoverTimestamp(undefined); break; }
         if (job.status === 'failed') throw new Error(job.error ?? t('Could not design the cover.', 'تعذّر تصميم الغلاف.'));
         await new Promise((resolve) => setTimeout(resolve, 2500));
       }
@@ -106,10 +94,15 @@ export function ReelMode() {
     if (blocked.length) { setMessage(t(`The video does not fit ${blocked.map((p) => PLATFORM_FORMATS[p].label).join(', ')}. Remove those platforms or export a new video.`, `الفيديو مش مناسب لـ ${blocked.map((p) => PLATFORM_FORMATS[p].label).join('، ')}. شيل المنصات دي أو صدّر فيديو جديد.`)); return; }
     setBusy('submit'); setMessage('');
     try {
-      const imageUrl = await uploadCover();
+      const savedCovers = await saveReelCovers({ url: cover, ...(coverTimestamp !== undefined ? { timestampMs: coverTimestamp } : {}) }, covers);
+      const imageUrl = savedCovers.cover.url;
       const text = words === 'manual' ? Object.fromEntries(platforms.map((p) => [p, manual.trim()])) : Object.fromEntries(platforms.map((p) => [p, captions[p] ?? '']));
-      const id = created || (await api<{ id: string }>('/api/content', { body: { ...takePostPlan(), title: title.trim(), channels: platforms, captions: Object.fromEntries(Object.entries(text).filter(([, v]) => v)), creative: { requestId: 'reel', directionId: 'reel', imageUrl, directionName: 'Reel' } } })).id;
+      const id = created || (await api<{ id: string }>('/api/content', { body: { ...takePostPlan(), title: title.trim(), channels: platforms, captions: Object.fromEntries(Object.entries(text).filter(([, v]) => v)), creative: { requestId: 'reel', directionId: 'reel', imageUrl, reelCover: savedCovers.cover, reelCovers: savedCovers.covers, directionName: 'Reel' } } })).id;
       setCreated(id);
+      if (created) {
+        await api(`/api/content/${id}`, { method: 'PATCH', body: { title: title.trim(), channels: platforms, captions: text } });
+        await api(`/api/content/${id}/reel-covers`, { method: 'PUT', body: savedCovers });
+      }
       const response = await fetch(`/api/social/content/${id}/video`, { method: 'POST', headers: { 'Content-Type': 'video/mp4' }, body: file });
       if (!response.ok) throw new Error((await response.json().catch(() => ({}))).error || t('The video did not upload.', 'الفيديو ما اترفعش.'));
       navigate(`/content/${id}`);
@@ -121,7 +114,6 @@ export function ReelMode() {
   const minutes = (s: number) => `${Math.floor(s / 60)}:${String(Math.round(s % 60)).padStart(2, '0')}`;
   return <section className="reel glass">
     <input ref={videoInput} hidden type="file" accept="video/mp4" onChange={(event) => void pickVideo(event.target.files?.[0])} />
-    <input ref={coverInput} hidden type="file" accept="image/png,image/jpeg,image/webp" onChange={(event) => void pickCover(event.target.files?.[0])} />
     <div className="reel__media">
       {video
         ? <video className="reel__player" src={video.url} controls playsInline poster={cover || undefined} />
@@ -149,15 +141,9 @@ export function ReelMode() {
       <section className="reel__step">
         <h3><span className="u-tnum">2</span> {t('Title and cover', 'العنوان والغلاف')}</h3>
         <label className="ui-field"><span className="ui-field__label">{t('Title', 'العنوان')}</span><input className="ui-input" value={title} maxLength={120} onChange={(event) => setTitle(event.target.value)} dir="auto" placeholder={t('e.g. 3 PMP exam mistakes', 'مثال: 3 أخطاء في امتحان PMP')} /></label>
-        {frames.length > 0 && <div className="reel__frames" role="radiogroup" aria-label={t('Cover from the video', 'غلاف من الفيديو')}>{frames.map((frame, i) => <button key={i} type="button" role="radio" aria-checked={cover === frame} onClick={() => setCover(frame)}><img src={frame} alt="" /></button>)}</div>}
-        <div className="reel__cover">
-          {cover && <img src={cover} alt={t('Cover', 'الغلاف')} />}
-          <div className="u-stack">
-            <Button size="sm" variant="secondary" icon={<ImagePlus size={14} />} onClick={() => coverInput.current?.click()}>{t('Upload a cover', 'ارفع غلاف')}</Button>
-            <Button size="sm" variant="secondary" icon={<Sparkles size={14} />} busy={busy === 'cover'} disabled={Boolean(busy) || !cover} onClick={() => void designCover()}>{t('Design the cover with AI (1 image)', 'صمّم الغلاف بالذكاء الاصطناعي (صورة واحدة)')}</Button>
-            <small className="u-muted">{t('AI turns the chosen frame into a 1080×1920 cover with the title and the official logo.', 'الذكاء الاصطناعي بيحوّل اللقطة اللي اخترتها لغلاف 1080×1920 بالعنوان والشعار الرسمي.')}</small>
-          </div>
-        </div>
+        <ReelCoverPicker cover={{ url: cover, ...(coverTimestamp !== undefined ? { timestampMs: coverTimestamp } : {}) }} covers={covers} channels={platforms} videoUrl={video?.url} disabled={Boolean(busy)} onChange={(common: ReelCover, next: ReelCovers) => { setCover(common.url); setCoverTimestamp(common.timestampMs); setCovers(next); }} />
+        <Button size="sm" variant="secondary" icon={<Sparkles size={14} />} busy={busy === 'cover'} disabled={Boolean(busy) || !cover} onClick={() => void designCover()}>{t('Design the common cover with AI (1 image)', 'صمّم الغلاف الموحّد بالذكاء الاصطناعي (صورة واحدة)')}</Button>
+
       </section>
 
       <section className="reel__step">
@@ -180,7 +166,7 @@ export function ReelMode() {
       {message && <p role="alert" className="creative-home__error">{message}</p>}
       <div className="reel__submit">
         <Button variant="primary" busy={busy === 'submit'} disabled={Boolean(busy)} onClick={() => void submit()}>{created ? t('Upload the video again', 'ارفع الفيديو تاني') : t('Create the Reel post', 'أنشئ منشور الريل')}</Button>
-        <small className="u-muted">{busy === 'submit' ? <><Loader2 size={13} className="creative-job__spin" /> {t('Uploading the video…', 'بيترفع الفيديو…')}</> : t('Saved as a draft with the video attached. Open it to check, then send it for approval.', 'بيتحفظ كمسودة والفيديو معاه. افتحه راجعه وابعته للاعتماد.')}</small>
+        <small className="u-muted">{busy === 'submit' ? <><Loader2 size={13} className="creative-job__spin" /> {t('Uploading the video…', 'بيترفع الفيديو…')}</> : t('Saved with the video and its covers. Open it to review, publish or schedule.', 'بيتحفظ بالفيديو وأغلفته. افتحه للمراجعة والنشر أو الجدولة.')}</small>
       </div>
     </div>
   </section>;

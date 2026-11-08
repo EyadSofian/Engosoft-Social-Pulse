@@ -107,6 +107,16 @@ test('a switch to personal posting is rejected before any publication write', as
   } finally { switched = false; }
 });
 
+test('LinkedIn video media carries the selected custom thumbnail without adding it as another post image', async () => {
+  const a=(await store.getAccount(`linkedin:${org}`))!;
+  const job={id:'linkedin-cover-test',contentId:'content',accountId:a.id,provider:'linkedin' as const,actorId:admin.id,state:'processing' as const,createdAt:new Date().toISOString(),updatedAt:new Date().toISOString()};
+  const video={id:'video-asset',file:'/unused.mp4',url:'/video',type:'video' as const,mimeType:'video/mp4',bytes:100,width:1080,height:1920,duration:10};
+  const cover={...video,id:'cover-asset',type:'image' as const,mimeType:'image/jpeg'};
+  await li.submitLinkedIn(a,{...input('content'),kind:'video'},'Caption',[video],job,async()=>{},cover);
+  const body=JSON.parse(String(writes.at(-1)?.body));
+  assert.equal(body.mediaItems.length,1);assert.equal(body.mediaItems[0].type,'video');assert.match(body.mediaItems[0].thumbnail,/\/api\/social\/media\/cover-asset\?/);
+});
+
 test('ambiguous network and upstream failures are retained and never resubmitted', async () => {
   for (const mode of ['network', 'upstream'] as const) {
     const item = await approved(`Uncertain ${mode}`), before = writes.length;

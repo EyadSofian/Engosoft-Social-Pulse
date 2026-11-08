@@ -25,7 +25,7 @@ export function PostPreview({ item, accountNames, video }: { item: PipelineItem;
   const image = imageForChannel(channel, item.creative);
   const vertical = VERTICAL.includes(channel) && Boolean(video || (image && image !== item.creative?.imageUrl));
   const media = video
-    ? <video className="post-preview__media" src={video} muted playsInline controls preload="metadata" data-vertical={vertical || undefined} />
+    ? <video className="post-preview__media" src={video} poster={image} muted playsInline controls preload="metadata" data-vertical={vertical || undefined} />
     : image ? <img className="post-preview__media" src={image} alt="" data-vertical={vertical || undefined} /> : null;
   const words = caption
     ? <p className="post-preview__caption" dir="auto">{caption}</p>

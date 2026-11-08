@@ -1,3 +1,4 @@
+import { reelCoverFor } from '../../src/domain/reel-covers.js';
 import { submitLinkedIn, pollLinkedIn, verifyLinkedInEvidence } from './linkedin.js';
 import { randomUUID } from 'node:crypto';
 import { db } from '../db.js';
@@ -10,7 +11,7 @@ import { capabilities, requiredCapability } from './capabilities.js';
 import { resolveMedia, validateMedia } from './media.js';
 import { poll, publishInstagramContainer, submit, PublicationValidationError } from './publish-providers.js';
 import { ProviderError } from './http.js';
-import { hybridConfigured, pollHybrid, submitHybrid, validateHybrid } from './hybrid.js';
+import { hybridConfigured, hybridRoutes, pollHybrid, submitHybrid, validateHybrid } from './hybrid.js';
 import type { PublishInput, PublishJob, PublishResult } from './types.js';
 const toJob=(r:Record<string,any>):PublishJob=>({id:r.id,attempt:Number(r.attempt||1),contentId:r.content_id,accountId:r.account_id,provider:r.provider,actorId:r.actor_id,state:r.state,remoteId:r.remote_id||undefined,externalId:r.external_id||undefined,url:r.url||undefined,error:r.error||undefined,errorCode:r.error_code||undefined,retryable:Boolean(r.retryable),retryAfter:r.retry_after||undefined,phase:r.phase||undefined,createdAt:r.created_at,updatedAt:r.updated_at});
 export const getJob=async(id:string)=>{const r=await db.get('SELECT * FROM social_publish_jobs WHERE id=?',[id]);return r?toJob(r):undefined;};
@@ -34,6 +35,13 @@ export async function publish(user:AuthUser,input:PublishInput):Promise<PublishJ
  const caption=item.captions[account.provider]||'';
  if(account.provider==='tiktok'&&new Set(input.media.map(m=>m.url)).size!==input.media.length)throw new Error('Select each TikTok media item only once.');
  const media=await resolveMedia(item,input.media.map(m=>m.url));validateMedia(account.provider,input,media,caption);
+ const cover = input.kind === 'video' ? reelCoverFor(account.provider, item.creative) : undefined;
+ if (cover?.timestampMs !== undefined && (!Number.isInteger(cover.timestampMs) || cover.timestampMs < 0 || cover.timestampMs >= (media[0]?.duration ?? 0) * 1000)) throw new Error('اختار لقطة غلاف من داخل مدة الفيديو.');
+ input = { ...input, videoCoverTimestampMs: cover?.timestampMs };
+ if (account.provider === 'tiktok' && input.kind === 'video' && input.mode === 'direct' && !hybrid && cover && cover.timestampMs === undefined && (item.creative?.reelCover || item.creative?.reelCovers?.tiktok)) throw new Error('ربط تيك توك الحالي يقبل لقطة من الفيديو كغلاف. اختار لقطة بدل الصورة المرفوعة.');
+ if (hybrid && cover && cover.timestampMs === undefined && !(await hybridRoutes(account.id)).some(route => route.enabled && route.service === 'zernio')) throw new Error('ربط تيك توك الحالي يقبل لقطة من الفيديو كغلاف. اختار لقطة من الفيديو أو اربط خدمة تدعم صورة الغلاف المخصصة.');
+ const preparedCover = cover && !['snapchat'].includes(account.provider) ? (await resolveMedia(item, [cover.url]))[0] : undefined;
+ if (preparedCover && preparedCover.type !== 'image') throw new Error('غلاف الريل لازم يكون صورة.');
  if(hybrid)validateHybrid(input,caption,media,item.title);
  const latest=await getContent(item.id);if(!latest||latest.updatedAt!==item.updatedAt||!['approved','scheduled','published'].includes(latest.status))throw new Error('Approval changed. Review this content again before publishing.');
  const now=new Date().toISOString(),id=randomUUID(),attempt=Number(existing?.attempt||0)+1;
@@ -41,7 +49,7 @@ export async function publish(user:AuthUser,input:PublishInput):Promise<PublishJ
  const inserted=await db.run('INSERT INTO social_publish_jobs(id,content_id,account_id,provider,actor_id,state,phase,created_at,updated_at,attempt) VALUES(?,?,?,?,?,?,?,?,?,?) ON CONFLICT(content_id,account_id,attempt) DO NOTHING',[id,item.id,account.id,account.provider,user.id,'processing',hybrid?'hybrid:starting':'submitting',now,now,attempt]);
  if(!inserted.changes)return toJob((await db.get('SELECT * FROM social_publish_jobs WHERE content_id=? AND account_id=? ORDER BY attempt DESC LIMIT 1',[item.id,account.id]))!);
  const job=(await getJob(id))!;
- try {await updateJob(id,account.provider==='linkedin'?await submitLinkedIn(account,input,caption,media,job,r=>updateJob(id,r)):hybrid?await submitHybrid(account,input,caption,media,job,r=>updateJob(id,r),item.title):await submit(account,input,caption,item.title,media,job,r=>updateJob(id,r)));}
+ try {await updateJob(id,account.provider==='linkedin'?await submitLinkedIn(account,input,caption,media,job,r=>updateJob(id,r),preparedCover):hybrid?await submitHybrid(account,input,caption,media,job,r=>updateJob(id,r),item.title,preparedCover):await submit(account,input,caption,item.title,media,job,r=>updateJob(id,r),preparedCover));}
  catch(e) {
   const latest=(await getJob(id))!;
   // Transport/server errors can hide a successful write; keep the job and remote handle for reconciliation.

@@ -1,3 +1,4 @@
+import { reelCoverFor, type ReelCover, type ReelCovers } from './reel-covers';
 import type { Channel } from './shared';
 export type OutputFormat = 'feed' | 'square' | 'story' | 'landscape';
 export interface PublishingPreset {
@@ -262,7 +263,7 @@ export const canvasBrief = (preset: PublishingPreset): string =>
   describeCanvas({ id: preset.id, title: `${preset.channel} ${preset.name.en}`, seen: seenOn(preset), width: preset.width, height: preset.height, safe: preset.safe });
 
 /** A post's finished images: the main design, the three slots and the sizes designed for single presets. */
-export interface CreativeImages { imageUrl?: string; storyUrl?: string; landscapeUrl?: string; youtubeUrl?: string; sizes?: Record<string, string> }
+export interface CreativeImages { requestId?: string; reelCover?: ReelCover; reelCovers?: ReelCovers; imageUrl?: string; storyUrl?: string; landscapeUrl?: string; youtubeUrl?: string; sizes?: Record<string, string> }
 
 /** The post sizes a platform publishes in its feed, preferred first (covers and banners are never posted). */
 const POST_SIZES: Partial<Record<Channel, string[]>> = {
@@ -284,6 +285,8 @@ const SLOT: Partial<Record<Channel, keyof CreativeImages>> = { tiktok: 'storyUrl
  */
 export function imageForChannel(channel: Channel, creative?: CreativeImages | null): string | undefined {
   if (!creative) return undefined;
+  const cover = reelCoverFor(channel, creative);
+  if (cover) return cover.url;
   const own = (POST_SIZES[channel] ?? []).map((id) => creative.sizes?.[id]).find(Boolean);
   const slot = SLOT[channel];
   return own || (slot ? (creative[slot] as string | undefined) : undefined) || creative.imageUrl;
@@ -291,4 +294,4 @@ export function imageForChannel(channel: Channel, creative?: CreativeImages | nu
 
 /** Every finished image on a post, once each: what may be published or picked for a carousel. */
 export const creativeImageUrls = (creative?: CreativeImages | null): string[] =>
-  creative ? [...new Set([creative.imageUrl, creative.storyUrl, creative.landscapeUrl, creative.youtubeUrl, ...Object.values(creative.sizes ?? {})].filter((url): url is string => Boolean(url)))] : [];
+  creative ? [...new Set([creative.imageUrl, creative.storyUrl, creative.landscapeUrl, creative.youtubeUrl, creative.reelCover?.url, ...Object.values(creative.reelCovers ?? {}).map((cover) => cover.url), ...Object.values(creative.sizes ?? {})].filter((url): url is string => Boolean(url)))] : [];
