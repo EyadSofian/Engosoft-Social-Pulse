@@ -6,7 +6,7 @@ import { COVER_HELP, type ReelCover, type ReelCovers } from '../../domain/reel-c
 import { useI18n } from '../../i18n/I18nProvider';
 import { api, errorMessage } from '../../lib/api';
 import { CHANNEL_LABEL, type Channel, type PipelineDetail } from '../content-pipeline/types';
-import { timedVideoFrames, type VideoFrame } from './video';
+import { COVER_MAX_BYTES, coverImage, timedVideoFrames, type VideoFrame } from './video';
 import { useAuth } from '../auth/AuthProvider';
 
 /** Upload each new image once, even when the same cover is used on several platforms. */
@@ -51,10 +51,10 @@ export function ReelCoverPicker({ cover, covers, channels, videoUrl, disabled = 
   };
   const pick = async (file?: File) => {
     if (!file) return;
-    if (!/^image\/(png|jpeg|webp)$/.test(file.type) || file.size > 8 * 1024 * 1024) { setError(t('Choose a PNG, JPEG or WebP image up to 8 MB.', 'اختار صورة PNG أو JPEG أو WebP لحد 8 ميجابايت.')); return; }
+    if (!/^image\/(png|jpeg|webp)$/.test(file.type) || file.size > COVER_MAX_BYTES) { setError(t('Choose a PNG, JPEG or WebP image up to 50 MB.', 'اختار صورة PNG أو JPEG أو WebP لحد 50 ميجابايت.')); return; }
     const selectedTarget = active;
     try {
-      const url = await new Promise<string>((resolve, reject) => { const reader = new FileReader(); reader.onload = () => resolve(String(reader.result)); reader.onerror = () => reject(reader.error); reader.readAsDataURL(file); });
+      const url = await coverImage(file);
       if (selectedTarget === 'all') onChange({ url }, covers); else onChange(cover, { ...covers, [selectedTarget]: { url } });
       setError('');
     } catch { setError(t('Could not read the image.', 'تعذّرت قراءة الصورة.')); }

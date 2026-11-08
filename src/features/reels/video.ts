@@ -36,3 +36,26 @@ export async function timedVideoFrames(url: string, count = 6): Promise<VideoFra
 }
 
 export const videoFrames = async (url: string, count = 6) => (await timedVideoFrames(url, count)).map((frame) => frame.url);
+
+/** The largest cover a person may pick; it is shrunk in the browser before upload. */
+export const COVER_MAX_BYTES = 50 * 1024 * 1024;
+
+/**
+ * A picked cover image as a JPEG data URL, at most 1920 px on its long side (a full 1080×1920 Reel).
+ * Large camera or design exports stay sharp, and the result fits every platform's thumbnail limit.
+ */
+export async function coverImage(file: File, longSide = 1920): Promise<string> {
+  const bitmap = await createImageBitmap(file, { imageOrientation: 'from-image' });
+  try {
+    const scale = Math.min(1, longSide / Math.max(bitmap.width, bitmap.height));
+    const canvas = Object.assign(document.createElement('canvas'), { width: Math.round(bitmap.width * scale), height: Math.round(bitmap.height * scale) });
+    const context = canvas.getContext('2d');
+    if (!context) throw new Error('Canvas unavailable.');
+    // Transparent PNG areas become white, not black, once saved as JPEG.
+    context.fillStyle = '#ffffff';
+    context.fillRect(0, 0, canvas.width, canvas.height);
+    context.imageSmoothingQuality = 'high';
+    context.drawImage(bitmap, 0, 0, canvas.width, canvas.height);
+    return canvas.toDataURL('image/jpeg', 0.92);
+  } finally { bitmap.close(); }
+}
