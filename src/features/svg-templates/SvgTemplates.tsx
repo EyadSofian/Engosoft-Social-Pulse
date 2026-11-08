@@ -16,6 +16,7 @@ import { courseCopy, courseTemplateCopy } from '../../domain/course-copy';
 import { publishingPreset } from '../../domain/output-presets';
 import { PublishingPresetPicker } from '../publishing/PublishingPresetPicker';
 import { useAuth } from '../auth/AuthProvider';
+import { PublishHere } from '../publishing/PublishHere';
 
 /** The platforms of the plan row a post is being made for, when there is one. */
 const plannedChannels = (): CreativePlatform[] | undefined => {
@@ -298,6 +299,7 @@ export function TemplateComposer(props: ComposerProps) {
 function ReferenceComposer({ template, initialValues, contentId, initialChannels, initialImageUrl, initialFormat, initialContext, initialPreset, onClose }: ComposerProps) {
   const { t } = useI18n();
   const publisher = useAuth().can('content.publish');
+  const [publishing, setPublishing] = useState<string | null>(null);
   const { user } = useAuth();
   const { navigate } = useRouter();
   const draftKey = `engosoft-reference-draft:${user.id}:${template.id}:${contentId ?? 'new'}`;
@@ -381,8 +383,9 @@ function ReferenceComposer({ template, initialValues, contentId, initialChannels
       try { sessionStorage.setItem(draftKey, JSON.stringify({ values, format, context, presetId, channels, caption, imageUrl, renderedFor, createdId: id, savedSignature: signature })); } catch { /* Continue saving without browser storage. */ }
       if (send && !publisher) await api(`/api/content/${id}/transition`, { body: { to: 'ready_for_review' } });
       try { sessionStorage.removeItem(draftKey); } catch { /* Storage may be disabled. */ }
-      // The publisher goes straight to publishing; their publish is the approval.
-      navigate(`/content/${id}${send && publisher ? '?publish=1' : ''}`);
+      // The publisher publishes right here (their publish is the approval); the publish window opens on this page.
+      if (send && publisher) { setPublishing(id ?? null); setBusy(''); return; }
+      navigate(`/content/${id}`);
     } catch (e) { setError(errorMessage(e, '')); }
     setBusy('');
   };
@@ -422,6 +425,7 @@ function ReferenceComposer({ template, initialValues, contentId, initialChannels
       {imageUrl && !current && <p className="u-sm u-muted">{t('The content changed. Generate the updated design before saving.', 'تغيّرت البيانات؛ ولّد التصميم بالتحديثات قبل الحفظ.')}</p>}
       <div className="tpl-composer__actions"><Button variant="primary" disabled={!current || Boolean(busy || jobId) || !channels.length} busy={busy === 'send'} onClick={() => void save(!contentId)}><Send size={15} />{contentId ? t('Save a new version', 'احفظ نسخة جديدة') : publisher ? t('Save and publish', 'احفظ وانشر') : t('Send to the publisher', 'ابعته للمسؤول عن النشر')}</Button>{!contentId && <Button variant="secondary" disabled={!current || Boolean(busy || jobId) || !channels.length} onClick={() => void save(false)}>{t('Save draft', 'احفظ مسودة')}</Button>}{current && <a href={imageUrl} download className="ui-link">PNG</a>}</div>
       {error && <p role="alert" className="creative-home__error">{error}</p>}
+      <PublishHere contentId={publishing} onClose={() => setPublishing(null)} />
     </div>
   </div>;
 }
@@ -429,6 +433,7 @@ function ReferenceComposer({ template, initialValues, contentId, initialChannels
 function SvgTemplateComposer({ template, initialValues, contentId, initialChannels, onClose }: ComposerProps) {
   const { t } = useI18n();
   const publisher = useAuth().can('content.publish');
+  const [publishing, setPublishing] = useState<string | null>(null);
   const { navigate } = useRouter();
   const [values, setValues] = useState<Record<string, string>>(() => ({ ...sampleValues(template.fields), ...initialValues }));
   const [channels, setChannels] = useState<CreativePlatform[]>(initialChannels ?? plannedChannels() ?? ['instagram', 'facebook']);
@@ -473,7 +478,8 @@ function SvgTemplateComposer({ template, initialValues, contentId, initialChanne
         });
         void api(`/api/svg-templates/${template.id}/used`, { body: {} }).catch(() => {});
         if (send && !publisher) await api(`/api/content/${item.id}/transition`, { body: { to: 'ready_for_review' } });
-        navigate(`/content/${item.id}${send && publisher ? '?publish=1' : ''}`);
+        if (send && publisher) { setPublishing(item.id); setBusy(''); return; }
+        navigate(`/content/${item.id}`);
       }
     } catch (e) {
       setError(errorMessage(e, ''));
@@ -542,6 +548,7 @@ function SvgTemplateComposer({ template, initialValues, contentId, initialChanne
           <Button variant="ghost" busy={busy === 'png'} disabled={Boolean(busy)} onClick={() => void download()}>PNG</Button>
         </div>
         {error && <p role="alert" className="creative-home__error">{error}</p>}
+        <PublishHere contentId={publishing} onClose={() => setPublishing(null)} />
       </div>
     </div>
   );

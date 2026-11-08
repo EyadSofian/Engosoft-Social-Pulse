@@ -13,7 +13,7 @@ import {
   readCookie, recordFailedLogin, requirePermission, requireUser, SESSION_COOKIE, updateUser, userCan, getUser, type AuthUser,
 } from './auth.js';
 import {
-  addComment, addVersion, allowedMoves, reopenContent, canEdit, canSee, contentIsMutable, createContent, getContent, listContent, listEvents, listVersions, setContentSize, setReelCovers, transition, updateContent, WorkspaceError, type StoredContent,
+  addComment, addVersion, allowedMoves, reopenContent, canEdit, canEditCaptions, canSee, contentIsMutable, createContent, getContent, listContent, listEvents, listVersions, setContentSize, setReelCovers, transition, updateContent, WorkspaceError, type StoredContent,
 } from './workspace.js';
 import { db, defineSchema } from './db.js';
 import { notifyContent } from './notify.js';
@@ -40,7 +40,7 @@ const WAY_PERMISSION: Record<DesignWay, Permission> = { template: 'design.templa
 const WAY_REFUSAL: Record<DesignWay, string> = { template: 'استخدام القوالب ليس ضمن صلاحياتك.', upload: 'رفع التصميمات الجاهزة ليس ضمن صلاحياتك.', ai: 'التصميم بالذكاء الاصطناعي ليس ضمن صلاحياتك؛ استخدم قالبًا جاهزًا.', reel: 'رفع الريلز والفيديو ليس ضمن صلاحياتك.' };
 
 const publicUser = (user: AuthUser) => ({ id: user.id, name: user.name, email: user.email, role: user.role, departmentId: user.departmentId, title: user.title, status: user.status, lastActiveAt: user.lastActiveAt, permissionOverrides: user.permissionOverrides });
-const withMoves = (user: AuthUser) => (item: StoredContent) => ({ ...item, moves: allowedMoves(user, item), editable: canEdit(user, item) && contentIsMutable(item), canSchedule: userCan(user, 'content.schedule'), canPublish: userCan(user, 'content.publish'),
+const withMoves = (user: AuthUser) => (item: StoredContent) => ({ ...item, moves: allowedMoves(user, item), editable: canEdit(user, item) && contentIsMutable(item), captionsEditable: canEditCaptions(user, item), canSchedule: userCan(user, 'content.schedule'), canPublish: userCan(user, 'content.publish'),
   /** An approved or scheduled post this person may send back for changes. */
   canReopen: ['approved', 'scheduled'].includes(item.status) && (canEdit(user, item) || item.ownerId === user.id || userCan(user, 'content.approve')) });
 

@@ -515,3 +515,6 @@ li[data-blocked] .composer-account {
     flex-basis: 100%;
   }
 }
+
+/* The caption is written in the publish window itself: a full-height box, not a one-liner. */
+.composer__captions .caps__text { min-height: 220px; }

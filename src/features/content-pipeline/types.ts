@@ -14,6 +14,8 @@ export interface PipelineItem {
   published?: { platform: string; permalink: string; publishedAt: string; metrics: Record<string, number | null> }[];
   moves: { to: ContentStatus; needsNote: boolean }[];
   editable: boolean;
+  /** This person may still write or change the captions (the publisher can, until it is scheduled or out). */
+  captionsEditable?: boolean;
   /** This person may put posts on the calendar (offered when approving). */
   canSchedule?: boolean;
   canPublish?: boolean;

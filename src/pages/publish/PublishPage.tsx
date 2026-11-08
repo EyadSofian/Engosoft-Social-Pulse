@@ -11,6 +11,7 @@ import { useAuth } from '../../features/auth/AuthProvider';
 import type { PipelineItem } from '../../features/content-pipeline/types';
 import { usePipeline } from '../../features/content-pipeline/usePipeline';
 import { PLATFORMS, platformOf, PublishDialog, usePublishingBoard, type JobRow, type PublishAccount, type PublishWay, type QueueRow } from '../../features/publishing/PublishDialog';
+import { stillFailing } from '../../features/publishing/publishing';
 import { useClock } from '../../features/workspace/hooks';
 import { useI18n } from '../../i18n/I18nProvider';
 import { api } from '../../lib/api';
@@ -43,7 +44,7 @@ export function PublishPage() {
   const inReview = live.filter((item) => item.status === 'ready_for_review' && !decides(item)).length;
   const scheduled = live.filter((item) => item.status === 'scheduled').sort((a, b) => parseTimestamp(a.scheduledAt ?? a.updatedAt) - parseTimestamp(b.scheduledAt ?? b.updatedAt));
   const queueOf = (id: string) => (board?.queue ?? []).filter((row) => row.contentId === id);
-  const problems = (board?.queue ?? []).filter((row) => row.state === 'failed').length + (board?.jobs ?? []).filter((job) => job.state === 'failed' || job.state === 'unknown').length;
+  const problems = stillFailing(board, new Set(live.filter((item) => item.status === 'published').map((item) => item.id))).length;
   const requested = query.get('view') as View | null;
   const view: View = requested && ['ready', 'scheduled', 'results', 'accounts'].includes(requested) ? requested : ready.length || !scheduled.length ? 'ready' : 'scheduled';
   const autoCount = (board?.accounts ?? []).filter((account) => account.auto).length;

@@ -14,6 +14,7 @@ import { GOAL_ICON } from '../../features/content-pipeline/PostPlan';
 import type { Channel, PipelineItem } from '../../features/content-pipeline/types';
 import { usePipeline } from '../../features/content-pipeline/usePipeline';
 import { PLATFORMS, usePublishingBoard } from '../../features/publishing/PublishDialog';
+import { stillFailing } from '../../features/publishing/publishing';
 import { useClock } from '../../features/workspace/hooks';
 import { useI18n } from '../../i18n/I18nProvider';
 import { businessZone, compact, greeting, parseTimestamp } from '../../lib/format';
@@ -30,7 +31,7 @@ type Stage = 'published' | 'scheduled' | 'approved' | 'work' | 'missing';
 const STAGES: { id: Stage; en: string; ar: string; to: string }[] = [
   { id: 'published', en: 'Published', ar: 'تم النشر', to: '/analytics?section=posts' },
   { id: 'scheduled', en: 'Scheduled', ar: 'مجدول', to: '/publish?view=scheduled' },
-  { id: 'approved', en: 'Approved, needs a time', ar: 'معتمد ينتظر موعدًا', to: '/publish' },
+  { id: 'approved', en: 'Ready to publish', ar: 'جاهز للنشر', to: '/publish' },
   { id: 'work', en: 'Being made or reviewed', ar: 'قيد التنفيذ والمراجعة', to: '/content' },
   { id: 'missing', en: 'Not made yet', ar: 'لم يُصمَّم بعد', to: '/calendar' },
 ];
@@ -70,7 +71,7 @@ export function OverviewPage() {
   const inReview = live.filter((item) => item.status === 'ready_for_review').sort((a, b) => a.updatedAt.localeCompare(b.updatedAt));
   const changes = live.filter((item) => item.status === 'changes_requested');
   const toSchedule = live.filter((item) => item.status === 'approved');
-  const failed = [...(board?.queue ?? []).filter((row) => row.state === 'failed'), ...(board?.jobs ?? []).filter((job) => job.state === 'failed' || job.state === 'unknown')];
+  const failed = useMemo(() => stillFailing(board, new Set(live.filter((item) => item.status === 'published').map((item) => item.id))), [board, live]);
 
   const loading = !items;
   if (error && !items) return <EmptyState title={t('The content service is not reachable.', 'خدمة المحتوى غير متاحة.')} text={error} />;
@@ -115,10 +116,11 @@ export function OverviewPage() {
 
       <section aria-labelledby="ov-actions-title">
         <h2 className="ov-title" id="ov-actions-title">{t('Needs action now', 'مطلوب الآن')}</h2>
+        {!loading && !inReview.length && !changes.length && !toSchedule.length && !late.length && !failed.length && <p className="u-sm u-muted">{t('Nothing is waiting on anyone right now.', 'مفيش حاجة مستنية حد دلوقتي.')}</p>}
         <div className="ov-actions">
           <ActionTile tone="brand" icon={<FilePen size={16} />} count={n(inReview.length)} label={t('Waiting for the publisher', 'مستني المسؤول عن النشر')} who={t('Person responsible for publishing', 'المسؤول عن النشر')} rows={inReview.map((item) => ({ id: item.id, title: item.title, to: `/content/${item.id}` }))} to="/content" />
           <ActionTile tone="warning" icon={<AlarmClock size={16} />} count={n(changes.length)} label={t('Needs changes', 'مطلوب تعديل')} who={t('Post owner', 'صاحب المنشور')} rows={changes.map((item) => ({ id: item.id, title: item.title, to: `/content/${item.id}` }))} to="/content" />
-          <ActionTile tone="success" icon={<CalendarClock size={16} />} count={n(toSchedule.length)} label={t('Approved, needs a time', 'معتمد ينتظر موعدًا')} who={t('Content supervisor', 'مسؤول المحتوى')} rows={toSchedule.map((item) => ({ id: item.id, title: item.title, to: `/content/${item.id}` }))} to={can('content.schedule') ? '/publish' : '/content'} />
+          <ActionTile tone="success" icon={<CalendarClock size={16} />} count={n(toSchedule.length)} label={t('Ready to publish', 'جاهز للنشر')} who={t('Publish it now or give it a time', 'انشره دلوقتي أو حدد ميعاد')} rows={toSchedule.map((item) => ({ id: item.id, title: item.title, to: `/content/${item.id}` }))} to={can('content.schedule') ? '/publish' : '/content'} />
           <ActionTile tone="danger" icon={<CircleAlert size={16} />} count={n(late.length)} label={t('Late', 'متأخر')} who={t('Its day passed, not published', 'فات يومه ولم يُنشر')} rows={late} to="/calendar" />
           {board && <ActionTile tone="danger" icon={<Send size={16} />} count={failed.length} label={t('Publishing failed', 'فشل النشر')} who={t('Check, then retry', 'راجع ثم أعد المحاولة')} rows={failed.slice(0, 3).map((row) => ({ id: row.id, title: live.find((item) => item.id === row.contentId)?.title ?? t('Post', 'منشور'), to: `/content/${row.contentId}` }))} to="/publish?view=results" />}
         </div>
@@ -126,21 +128,24 @@ export function OverviewPage() {
 
       {isThisMonth && <NextDays now={now} items={live} slots={slots} />}
 
-      <div className="ov-grid">
-        <GoalBreakdown items={monthItems} slots={monthSlots} />
+      {/* Month analysis only when the month has something in it: empty tables and 0/0 rows were noise. */}
+      {(planned > 0 || livePosts.length > 0) && <div className="ov-grid">
+        {planned > 0 && <GoalBreakdown items={monthItems} slots={monthSlots} />}
         <PlatformBreakdown items={monthItems} slots={monthSlots} posts={livePosts} analytics={can('analytics.view')} />
-      </div>
+      </div>}
 
-      <div className="ov-grid">
-        <TeamTable items={monthItems} late={live.filter(isLate)} team={team} me={user} />
-        {can('analytics.view') && <TopPosts posts={livePosts} />}
-      </div>
+      {(monthItems.length > 0 || livePosts.length > 0) && <div className="ov-grid">
+        {monthItems.length > 0 && <TeamTable items={monthItems} late={live.filter(isLate)} team={team} me={user} />}
+        {can('analytics.view') && livePosts.length > 0 && <TopPosts posts={livePosts} />}
+      </div>}
     </div>
   );
 }
 
 function ActionTile({ tone, icon, count, label, who, rows, to }: { tone: 'brand' | 'warning' | 'success' | 'danger'; icon: ReactNode; count: number | string; label: string; who: string; rows: { id: string; title: string; to: string }[]; to: string }) {
   const { t } = useI18n();
+  // A tile with nothing in it is not an action: it stays out of the way.
+  if (count === 0) return null;
   return <article className="ov-action" data-tone={tone} data-zero={count === 0 || undefined}>
     <Link to={to} className="ov-action__head"><span className="ov-action__icon">{icon}</span><span className="ov-action__text"><strong>{label}</strong><small>{who}</small></span><b className="u-tnum">{count}</b></Link>
     {rows.length > 0 ? <ul>{rows.slice(0, 3).map((row) => <li key={row.id}><Link to={row.to} dir="auto">{row.title}</Link></li>)}</ul> : <p className="ov-action__clear">{t('Nothing here.', 'لا شيء هنا.')}</p>}
@@ -160,6 +165,8 @@ function NextDays({ now, items, slots }: { now: number; items: PipelineItem[]; s
   }
   for (const slot of slots) planned.set(dayOf(slot.scheduledAt), (planned.get(dayOf(slot.scheduledAt)) ?? 0) + 1);
   const empty = days.filter((day) => !posts.get(day.toISODate()!) && !planned.get(day.toISODate()!)).length;
+  // Fourteen boxes that all say "empty" tell less than one line.
+  if (empty === days.length) return <p className="ov-note"><CalendarX2 size={14} /> {t('Nothing is planned or scheduled in the next 14 days.', 'مفيش أي منشور مخطط أو مجدول في الـ14 يوم الجايين.')} <Link to="/calendar">{t('Open the calendar', 'افتح التقويم')}</Link></p>;
   return <section className="ov-card">
     <header className="ov-card__head"><div><h2>{t('Next 14 days', 'الأيام الـ14 القادمة')}</h2><p>{empty ? t(`${empty} days have nothing at all. Fill them from the calendar.`, `${empty} يومًا بلا أي شيء. املأها من التقويم.`) : t('Every day has something planned.', 'كل يوم فيه شيء مخطط.')}</p></div><Link to="/calendar" className="ov-link">{t('Open the calendar', 'افتح التقويم')}</Link></header>
     <ol className="ov-days">{days.map((day) => {

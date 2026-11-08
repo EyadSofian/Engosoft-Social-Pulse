@@ -11,7 +11,7 @@ import { openAIJson } from './creative-intelligence/generation/provider.js';
 import { requireAiBudget } from './usage.js';
 import { dialectRules } from './creative-intelligence/skills/content.js';
 import { DIALECTS, type Dialect } from '../src/domain/content-voice.js';
-import { canEdit, contentIsMutable, getContent, type StoredContent } from './workspace.js';
+import { canEditCaptions, canSee, getContent, type StoredContent } from './workspace.js';
 import { PLATFORM_SPECS, analyzeCaption, linksOf, unverifiedNumbers } from '../src/domain/platform-content.js';
 import type { Channel } from '../src/domain/shared.js';
 
@@ -157,8 +157,9 @@ export function registerCaptionRoutes(app: express.Express) {
   /** The same, for a saved post: the facts come from the post itself, so nothing the page sends can be trusted as fact. */
   app.post('/api/content/:id/captions/ai', requireUser, requireAiBudget, async (req, res) => {
     const item = await getContent(String(req.params.id));
-    if (!item || !canEdit(req.user!, item)) return res.status(404).json({ error: 'المحتوى غير موجود أو غير متاح للتعديل.' });
-    if (!contentIsMutable(item)) return res.status(409).json({ error: 'أعد المنشور للتعديل قبل تغيير النص المعتمد.' });
+    // The same rule as saving captions: the editor of a draft, or the publisher up to publishing.
+    if (!item || !canSee(req.user!, item)) return res.status(404).json({ error: 'المحتوى غير موجود أو غير متاح للتعديل.' });
+    if (!canEditCaptions(req.user!, item)) return res.status(409).json({ error: 'أعد المنشور للتعديل قبل تغيير النص المعتمد.' });
     const parsed = z.object({ dialect: dialectField, channels: z.array(channelEnum).min(1).max(8).optional(), refine: z.object({ channel: channelEnum, text: z.string().max(5000).optional(), intent: z.enum(REFINE_INTENTS).optional(), custom: z.string().trim().max(400).optional() }).refine((v) => v.intent || v.custom).optional() }).refine((v) => v.channels || v.refine).safeParse(req.body);
     if (!parsed.success) return res.status(400).json({ error: 'اختر المنصات أو نوع التحسين.' });
     if (unavailable(res)) return;

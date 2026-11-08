@@ -15,6 +15,7 @@ import { useI18n } from '../../i18n/I18nProvider';
 import { useAuth } from '../auth/AuthProvider';
 import type { Channel, PipelineItem } from '../content-pipeline/types';
 import { PostPreview } from './PostPreview';
+import { CaptionsEditor, type Captions } from '../content/CaptionsEditor';
 import { ReelCoverPicker } from '../reels/ReelCovers';
 import type { ProviderConnection } from './SocialConnections';
 import { platformOf, suggestedTime, type JobRow, type ManualPublication, type PublishTarget, type QueueRow } from './publishing';
@@ -66,6 +67,17 @@ export function PublishComposer({ item, open, onClose, onDone, day }: { item: Pi
   const [phase, setPhase] = useState<'compose' | 'sending' | 'done'>('compose');
   const [outcomes, setOutcomes] = useState<Record<string, Outcome>>({});
   const [error, setError] = useState('');
+  // The caption is written and refined here, next to the accounts and the time: one window from text to published.
+  const [captions, setCaptions] = useState<Captions>(item.captions);
+  const [captionBusy, setCaptionBusy] = useState(false);
+  const captionsChanged = JSON.stringify(captions) !== JSON.stringify(item.captions);
+  /** The post as it will go out, with the captions on screen. */
+  const live = useMemo(() => ({ ...item, captions: captions as PipelineItem['captions'] }), [item, captions]);
+  /** Saves edited captions before anything is sent, so the platforms get exactly what is on screen. */
+  const saveCaptions = async () => {
+    if (!captionsChanged || !item.captionsEditable) return;
+    await api(`/api/content/${item.id}`, { method: 'PATCH', body: { captions } });
+  };
 
   const load = async () => {
     const [board, social, connections] = await Promise.all([
@@ -78,7 +90,7 @@ export function PublishComposer({ item, open, onClose, onDone, day }: { item: Pi
   };
   useEffect(() => {
     if (!open) return;
-    setTargets(null); setPhase('compose'); setOutcomes({}); setError(''); setCreators({}); setChoices({});
+    setTargets(null); setPhase('compose'); setOutcomes({}); setError(''); setCreators({}); setChoices({}); setCaptions(item.captions);
     void load().then((board) => {
       const queued = board.queue.filter((row) => row.state === 'queued').map((row) => row.accountId);
       setWaiting(queued);
@@ -147,7 +159,7 @@ export function PublishComposer({ item, open, onClose, onDone, day }: { item: Pi
   const nowBlocked = when === 'now' && (!mayPublish || !sendable.length);
   const later = fromInputValue(at);
   const laterBlocked = when === 'later' && (!maySchedule || !later || Date.parse(later) < Date.now() || (sendable.length > 0 && !mayPublish));
-  const blocked = !targets || phase !== 'compose' || nowBlocked || laterBlocked || incomplete.length > 0;
+  const blocked = !targets || phase !== 'compose' || nowBlocked || laterBlocked || incomplete.length > 0 || captionBusy;
   const tiktokChosen = sendable.some((d) => d.provider === 'tiktok');
 
   const payload = (d: Destination, retry = false) => {
@@ -180,6 +192,7 @@ export function PublishComposer({ item, open, onClose, onDone, day }: { item: Pi
     if (when === 'later') {
       setPhase('sending');
       try {
+        await saveCaptions();
         if (!later || Date.parse(later) < Date.now()) throw new Error(t('Choose a time in the future.', 'اختر موعدًا في المستقبل.'));
         if (sendable.length) await api(`/api/publishing/${item.id}`, { body: { accountIds: sendable.map((d) => d.accountId), at: later, consent: true } });
         else {
@@ -193,6 +206,8 @@ export function PublishComposer({ item, open, onClose, onDone, day }: { item: Pi
       return;
     }
     setPhase('sending');
+    try { await saveCaptions(); }
+    catch (reason) { setError(errorMessage(reason, t('Could not save the caption.', 'تعذّر حفظ النص.'))); setPhase('compose'); return; }
     await send(sendable);
     setPhase('done');
     onDone();
@@ -241,6 +256,11 @@ export function PublishComposer({ item, open, onClose, onDone, day }: { item: Pi
       {targets && <div className="composer">
         <div className="composer__main">
           {phase === 'compose' ? <>
+            <section className="composer__section composer__captions">
+              <h3>{t('The caption', 'النص')}</h3>
+              <CaptionsEditor channels={item.channels} value={captions} onChange={setCaptions} readOnly={!item.captionsEditable} ai={item.captionsEditable ? { contentId: item.id } : undefined} onBusy={setCaptionBusy} />
+              {!item.captionsEditable && <p className="u-xs u-muted">{t('This caption is locked: the post is scheduled or you cannot edit it.', 'النص ده مقفول: المنشور متجدول أو مش من صلاحياتك تعدّله.')}</p>}
+            </section>
             <section className="composer__section">
               <h3>{t('Where', 'فين')}</h3>
               <ul className="composer-accounts">
@@ -286,10 +306,10 @@ export function PublishComposer({ item, open, onClose, onDone, day }: { item: Pi
           {manualChannels.length > 0 && <section className="composer__section">
             <h3><Hand size={15} /> {t('By hand', 'يدوي')}</h3>
             <p className="u-xs u-muted">{t('These platforms have no publishing connection. Copy, post, then record it so the team knows.', 'المنصات دي مفيهاش ربط للنشر. انسخ وانشر، وبعدين سجّل إنه اتنشر علشان الفريق يعرف.')}</p>
-            <ul className="composer-manual">{manualChannels.map((c) => <ManualKit key={c} item={item} channel={c} record={manual.find((m) => m.channel === c)} canRecord={mayPublish} onRecorded={setManual} />)}</ul>
+            <ul className="composer-manual">{manualChannels.map((c) => <ManualKit key={c} item={live} channel={c} record={manual.find((m) => m.channel === c)} canRecord={mayPublish} onRecorded={setManual} beforeRecord={saveCaptions} />)}</ul>
           </section>}
         </div>
-        <aside className="composer__preview"><PostPreview item={item} accountNames={accountNames} video={video?.url} /></aside>
+        <aside className="composer__preview"><PostPreview item={live} accountNames={accountNames} video={video?.url} /></aside>
       </div>}
       {jobs.length > 0 && phase === 'compose' && <p className="u-xs u-muted composer-history">{t(`Published from here before: ${jobs.length} time(s). See the post page for the history.`, `اتنشر من هنا قبل كده ${jobs.length} مرة. السجل في صفحة المنشور.`)}</p>}
     </Dialog>
@@ -361,7 +381,7 @@ function Results({ destinations, outcomes, sending, onRetry }: { destinations: D
 }
 
 /** Copy the caption, download the design, open the platform; then record that it was published by hand. */
-function ManualKit({ item, channel, record, canRecord, onRecorded }: { item: PipelineItem; channel: Channel; record?: ManualPublication; canRecord: boolean; onRecorded: (manual: ManualPublication[]) => void }) {
+function ManualKit({ item, channel, record, canRecord, onRecorded, beforeRecord }: { item: PipelineItem; channel: Channel; record?: ManualPublication; canRecord: boolean; onRecorded: (manual: ManualPublication[]) => void; beforeRecord: () => Promise<void> }) {
   const { t, date } = useI18n();
   const caption = item.captions[channel]?.trim() ?? '';
   const [copied, setCopied] = useState(false);
@@ -374,7 +394,7 @@ function ManualKit({ item, channel, record, canRecord, onRecorded }: { item: Pip
   const copy = async () => { try { await navigator.clipboard.writeText(caption); setCopied(true); setTimeout(() => setCopied(false), 2000); } catch { setError(t('Could not copy: select the caption in the preview and copy it.', 'تعذّر النسخ: حدد النص من المعاينة وانسخه.')); } };
   const save = async () => {
     setBusy(true); setError('');
-    try { onRecorded((await api<{ manual: ManualPublication[] }>(`/api/publishing/${item.id}/manual`, { body: { channel, url: url.trim() || undefined } })).manual); setRecording(false); }
+    try { await beforeRecord(); onRecorded((await api<{ manual: ManualPublication[] }>(`/api/publishing/${item.id}/manual`, { body: { channel, url: url.trim() || undefined } })).manual); setRecording(false); }
     catch (reason) { setError(errorMessage(reason, t('Could not record it.', 'تعذّر التسجيل.'))); }
     setBusy(false);
   };

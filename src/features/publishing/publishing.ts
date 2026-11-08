@@ -54,3 +54,19 @@ export function suggestedTime(day?: string): string {
 
 /** A post published by hand on a platform with no publishing API (server/workspace.ts `recordManualPublication`). */
 export interface ManualPublication { channel: 'linkedin' | 'x' | 'whatsapp' | 'website'; url: string | null; by: string; at: string }
+
+/**
+ * Publications that are still failing: the latest attempt per post and account. A failure later retried,
+ * sent another way, or on a post that went out is not counted (it used to inflate the "failed" badges).
+ */
+export function stillFailing(board: { jobs: JobRow[]; queue: QueueRow[] } | null | undefined, publishedIds: Set<string>): { id: string; contentId: string; accountId: string }[] {
+  const latest = new Map<string, { id: string; contentId: string; accountId: string; state: string; at: string }>();
+  const consider = (entry: { id: string; contentId: string; accountId: string; state: string; at: string }) => {
+    const key = `${entry.contentId}|${entry.accountId}`;
+    const seen = latest.get(key);
+    if (!seen || entry.at > seen.at) latest.set(key, entry);
+  };
+  for (const job of board?.jobs ?? []) consider({ id: job.id, contentId: job.contentId, accountId: job.accountId, state: job.state, at: job.updatedAt });
+  for (const row of board?.queue ?? []) consider({ id: row.id, contentId: row.contentId, accountId: row.accountId, state: row.state === 'failed' ? 'failed' : 'waiting', at: row.updatedAt });
+  return [...latest.values()].filter((entry) => (entry.state === 'failed' || entry.state === 'unknown') && !publishedIds.has(entry.contentId));
+}

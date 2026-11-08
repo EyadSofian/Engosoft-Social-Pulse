@@ -35,7 +35,7 @@ const dayTime = (item: PipelineItem) => item.scheduledAt ?? item.plannedFor;
 
 const STATUS_FILTERS: { value: string; statuses: ContentStatus[]; en: string; ar: string }[] = [
   { value: 'all', statuses: [], en: 'All statuses', ar: 'كل الحالات' },
-  { value: 'review', statuses: ['ready_for_review'], en: 'Needs approval', ar: 'بانتظار الاعتماد' },
+  { value: 'review', statuses: ['ready_for_review'], en: 'With the publisher', ar: 'عند المسؤول عن النشر' },
   { value: 'approved', statuses: ['approved'], en: 'Approved', ar: 'معتمد' },
   { value: 'scheduled', statuses: ['scheduled'], en: 'Scheduled', ar: 'مجدول' },
   { value: 'published', statuses: ['published'], en: 'Published', ar: 'منشور' },

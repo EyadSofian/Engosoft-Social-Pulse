@@ -275,3 +275,7 @@
 
 /* One design: a readable card instead of a third of the row. */
 .creative-job__grid:has(> :only-child) { grid-template-columns: minmax(0, 520px); }
+
+/* Upload and publish on one screen: a caption box with room to write, and the actions side by side. */
+.create-upload__captions .caps__text { min-height: 240px; }
+.create-upload__actions { display: flex; flex-wrap: wrap; gap: 10px; align-items: center; }

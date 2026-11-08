@@ -52,7 +52,7 @@ export function PostPreview({ item, accountNames, video }: { item: PipelineItem;
       </article>
       <p className="post-preview__meta">
         {limit ? <span data-over={caption.length > limit || undefined} className="u-tnum">{num(caption.length)} / {num(limit)} {t('characters', 'حرف')}</span> : <span className="u-tnum">{num(caption.length)} {t('characters', 'حرف')}</span>}
-        <span>{t('Approved caption: edit the post to change it.', 'النص المعتمد: لتغييره عدّل المنشور.')}</span>
+        <span>{item.captionsEditable ? t('Updates as you edit the caption.', 'بتتحدث وإنت بتعدّل النص.') : t('Locked caption: the post is scheduled or out.', 'النص مقفول: المنشور متجدول أو اتنشر.')}</span>
       </p>
     </div>
   );

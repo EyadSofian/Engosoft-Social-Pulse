@@ -79,3 +79,15 @@ test('a post is published once every platform is, including the ones posted by h
   await ws.recordManualPublication(manager, item.id, 'whatsapp');
   assert.equal((await ws.getContent(item.id))!.status, 'published');
 });
+
+test('the publisher edits the caption in the publish window until the post is scheduled; a creator cannot after approval', async () => {
+  const item = await ws.createContent(creator, { title: 'Caption rule', channels: ['facebook'], captions: { facebook: 'قديم' }, creative });
+  await ws.transition(creator, item.id, 'ready_for_review', {});
+  await ws.transition(manager, item.id, 'approved', {});
+  await assert.rejects(() => ws.updateContent(creator, item.id, { captions: { facebook: 'من المنشئ' } }), /أعد المنشور|صلاحية/);
+  const edited = await ws.updateContent(manager, item.id, { captions: { facebook: 'من المسؤول عن النشر' } });
+  assert.equal(edited.captions.facebook, 'من المسؤول عن النشر');
+  assert.equal(edited.status, 'approved', 'editing the caption keeps the publisher’s approval');
+  await ws.transition(manager, item.id, 'scheduled', { scheduledAt: new Date(Date.now() + 3600_000).toISOString() });
+  assert.equal(ws.canEditCaptions(manager, (await ws.getContent(item.id))!), false);
+});

@@ -13,6 +13,8 @@ import { readVideo } from './video';
 import { uploadVideo } from './upload';
 import { ReelCoverPicker, saveReelCovers } from './ReelCovers';
 import type { ReelCover, ReelCovers } from '../../domain/reel-covers';
+import { useAuth } from '../auth/AuthProvider';
+import { PublishHere } from '../publishing/PublishHere';
 
 type Words = 'idea' | 'script' | 'manual';
 type ReferenceJob = { status: string; error?: string; result?: { imageUrl: string } };
@@ -24,6 +26,10 @@ type ReferenceJob = { status: string; error?: string; result?: { imageUrl: strin
  */
 export function ReelMode() {
   const { t, tx } = useI18n();
+  const { can } = useAuth();
+  const publisher = can('content.publish') || can('content.schedule');
+  /** After the upload the publisher publishes here, in the publish window over this page. */
+  const [publishing, setPublishing] = useState<string | null>(null);
   const { navigate } = useRouter();
   const videoInput = useRef<HTMLInputElement>(null);
 
@@ -107,7 +113,7 @@ export function ReelMode() {
       }
       setProgress(0);
       await uploadVideo(id, file, setProgress);
-      navigate(`/content/${id}`);
+      if (publisher) setPublishing(id); else navigate(`/content/${id}`);
     } catch (error) { setMessage(errorMessage(error, '')); }
     setBusy('');
   };
@@ -154,7 +160,7 @@ export function ReelMode() {
           {([['idea', 'From the idea', 'من الفكرة'], ['script', 'From the script', 'من السكريبت'], ['manual', 'I will write it', 'هكتبه بإيدي']] as const).map(([value, en, ar]) => <button key={value} type="button" role="radio" aria-checked={words === value} onClick={() => setWords(value)}>{t(en, ar)}</button>)}
         </div>
         {words === 'manual'
-          ? <textarea className="ui-input" rows={5} dir="auto" value={manual} onChange={(event) => setManual(event.target.value)} placeholder={t('The caption for every platform. You can tailor each one on the post page.', 'الكلام لكل المنصات. تقدر تظبط كل منصة لوحدها من صفحة المنشور.')} />
+          ? <textarea className="ui-input" rows={5} dir="auto" value={manual} onChange={(event) => setManual(event.target.value)} placeholder={t('The caption for every platform. You can tailor each one in the publish window.', 'الكلام لكل المنصات. تقدر تظبط كل منصة لوحدها في شاشة النشر.')} />
           : <>
             <textarea className="ui-input" rows={words === 'script' ? 8 : 3} dir="auto" maxLength={2600} value={source} onChange={(event) => setSource(event.target.value)}
               placeholder={words === 'script' ? t('Paste the video script', 'الزق سكريبت الفيديو') : t('What is the Reel about? e.g. the instructor explains 3 mistakes people make in the PMP exam and how to avoid them', 'الريل عن إيه؟ مثلًا: المحاضر بيشرح 3 أخطاء بيقع فيها الناس في امتحان PMP وإزاي يتجنبوها')} />
@@ -167,9 +173,10 @@ export function ReelMode() {
 
       {message && <p role="alert" className="creative-home__error">{message}</p>}
       <div className="reel__submit">
-        <Button variant="primary" busy={busy === 'submit'} disabled={Boolean(busy)} onClick={() => void submit()}>{created ? t('Upload the video again', 'ارفع الفيديو تاني') : t('Create the Reel post', 'أنشئ منشور الريل')}</Button>
+        <Button variant="primary" busy={busy === 'submit'} disabled={Boolean(busy)} onClick={() => void submit()}>{created ? t('Upload the video again', 'ارفع الفيديو تاني') : publisher ? t('Upload and publish', 'ارفع وانشر') : t('Create the Reel post', 'أنشئ منشور الريل')}</Button>
         <small className="u-muted">{busy === 'submit' ? <><Loader2 size={13} className="creative-job__spin" /> {t(`Uploading the video… ${Math.round(progress * 100)}%`, `بيترفع الفيديو… ${Math.round(progress * 100)}%`)}</> : t('Saved with the video and its covers. Open it to review, publish or schedule.', 'بيتحفظ بالفيديو وأغلفته. افتحه للمراجعة والنشر أو الجدولة.')}</small>
       </div>
+      <PublishHere contentId={publishing} onClose={() => setPublishing(null)} />
     </div>
   </section>;
 }

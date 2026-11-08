@@ -148,6 +148,15 @@ export async function createContent(user: AuthUser, input: { title: string; chan
   return (await getContent(id))!;
 }
 
+/**
+ * The person responsible for publishing writes and refines the caption right up to publishing, in the publish
+ * window, on any post they can see that is not scheduled or out yet: their publish is the approval.
+ */
+export function canEditCaptions(user: AuthUser, item: StoredContent): boolean {
+  if (canEdit(user, item) && contentIsMutable(item)) return true;
+  return userCan(user, 'content.publish') && canSee(user, item) && [...PRE_APPROVAL, 'approved'].includes(item.status);
+}
+
 export async function updateContent(user: AuthUser, id: string, patch: { title?: string; channels?: Channel[]; captions?: Partial<Record<Channel, string>>; creative?: CreativeRef; goal?: Goal | null; plannedFor?: string | null }): Promise<StoredContent> {
   const item = await getContent(id);
   if (!item) throw new WorkspaceError(404, 'المحتوى غير موجود.');
@@ -157,6 +166,12 @@ export async function updateContent(user: AuthUser, id: string, patch: { title?:
     if (['scheduled', 'published', 'archived', 'cancelled'].includes(item.status)) throw new WorkspaceError(409, 'المنشور مجدول بالفعل؛ غيّر موعده من النشر.');
     await db.run('UPDATE content_items SET goal=?, planned_for=?, updated_at=? WHERE id=?', [patch.goal === undefined ? item.goal ?? '' : patch.goal ?? '', patch.plannedFor === undefined ? item.plannedFor : patch.plannedFor, new Date().toISOString(), id]);
     if (patch.title === undefined && patch.channels === undefined && patch.captions === undefined && patch.creative === undefined) return (await getContent(id))!;
+  }
+  const captionsOnly = patch.captions !== undefined && patch.title === undefined && patch.channels === undefined && patch.creative === undefined;
+  if (captionsOnly && canEditCaptions(user, item)) {
+    await db.run('UPDATE content_items SET captions_json=?, updated_at=? WHERE id=?', [JSON.stringify(patch.captions), new Date().toISOString(), id]);
+    await log(id, user.id, 'caption', 'Caption updated');
+    return (await getContent(id))!;
   }
   if (!canEdit(user, item)) throw new WorkspaceError(403, 'لا تملك صلاحية تعديل هذا المحتوى.');
   requireMutable(item);

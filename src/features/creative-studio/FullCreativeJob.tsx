@@ -11,6 +11,7 @@ import type { CreativeJob, PublicResult, PublicRun } from '../../../server/creat
 import { updateActiveCreative } from './activeCreative';
 import { defaultSizes, MASTER_SIZE, masterFormat, PLATFORM_FORMATS, sizeTargets, slotOf, type CreativeMaster, type CreativePlatform, type SizeTarget } from './platforms';
 import { useAuth } from '../auth/AuthProvider';
+import { PublishHere } from '../publishing/PublishHere';
 import { DesignPlanPanel } from './DesignPlanPanel';
 
 const STAGES: Record<string, [string, string]> = {
@@ -179,6 +180,8 @@ function ResultActions({ run, result, main, extras, platforms, prompt, direction
   const [error, setError] = useState('');
   // Once the post exists, a retry (after a failed "send") reuses it instead of creating a second copy.
   const created = useRef('');
+  /** The post being published from this page: the publish window opens here, no redirect. */
+  const [publishing, setPublishing] = useState<string | null>(null);
   const save = async (send: boolean) => {
     setBusy(send ? 'send' : 'draft'); setError('');
     try {
@@ -196,7 +199,7 @@ function ResultActions({ run, result, main, extras, platforms, prompt, direction
         created.current = item.id;
       }
       // The publisher goes straight to publishing (that is the approval); everyone else sends it to them.
-      if (send && can('content.publish')) { navigate(`/content/${created.current}?publish=1`); return; }
+      if (send && can('content.publish')) { setPublishing(created.current); setBusy(''); return; }
       if (send) await api(`/api/content/${created.current}/transition`, { body: { to: 'ready_for_review' } });
       navigate(`/content/${created.current}`);
     } catch (e) { setError(errorMessage(e, '')); }
@@ -217,6 +220,7 @@ function ResultActions({ run, result, main, extras, platforms, prompt, direction
     <Button variant="secondary" disabled={Boolean(busy)} onClick={() => void save(false)}><FileText size={15} /> {t('Save as draft', 'احفظه مسودة')}</Button>
     <Button variant="secondary" disabled={Boolean(busy)} onClick={() => void saveTemplate()}><BookmarkPlus size={15} /> {t('Save as AI template', 'احفظه قالب ذكاء اصطناعي')}</Button>
     <a className="ui-btn ui-btn--secondary ui-btn--md" href={result.imageUrl} download={`engosoft-${result.directionId}.png`}><Download size={15} /> PNG</a>
+    <PublishHere contentId={publishing} onClose={() => setPublishing(null)} />
     {saved && <small className="settings-notice">{saved}</small>}
     {error && <small role="alert" className="creative-home__error">{error}</small>}
   </div>;

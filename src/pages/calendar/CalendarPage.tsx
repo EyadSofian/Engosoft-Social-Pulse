@@ -45,7 +45,7 @@ export function CalendarPage() {
         title={plans ? t('Spreadsheet plans', 'خطط الجداول') : t('Calendar', 'التقويم')}
         description={plans
           ? t('Import the XLSX template, export to CSV or ICS, and drag plans to a new time. Alerts fire before and after each post time. This view is Arabic-only.', 'ارفع قالب XLSX، صدّر CSV أو ICS، واسحب الخطة لموعد جديد. التنبيهات قبل وبعد موعد كل منشور. هذا العرض بالعربية فقط.')
-          : t('The month’s plan and every post on its day. Upload the plan, turn each planned row into a post, then schedule approved posts with + on any day.', 'خطة الشهر وكل منشور في يومه. ارفع الخطة، حوّل كل سطر مخطط لمنشور، ثم جدول المنشورات المعتمدة بزر + على أي يوم.')}
+          : t('The month’s plan and every post on its day. Upload the plan, turn each planned row into a post, then publish or schedule them with + on any day.', 'خطة الشهر وكل منشور في يومه. ارفع الخطة، حوّل كل سطر مخطط لمنشور، وبعدين انشره أو جدوله بزر + على أي يوم.')}
         actions={plans
           ? <Button icon={<ArrowRight size={15} className="u-flip" />} onClick={() => setQuery({ view: null })}>{t('Back to the calendar', 'العودة للتقويم')}</Button>
           : <>

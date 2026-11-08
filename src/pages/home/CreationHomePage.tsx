@@ -1,7 +1,9 @@
 import { CampaignPicker } from '../../features/campaigns/Campaigns';
 import { ScheduleComposer } from '../../features/schedule/ScheduleComposer';
 import { useEffect, useRef, useState } from 'react';
-import { ArrowLeft, ArrowRight, CalendarDays, Check, Coins, Film, GraduationCap, ImagePlus, Layers, LayoutTemplate, Sparkles, Upload, Wand2 } from 'lucide-react';
+import { ArrowLeft, ArrowRight, CalendarDays, Check, Coins, Film, GraduationCap, ImagePlus, Layers, LayoutTemplate, Send, Sparkles, Upload, Wand2 } from 'lucide-react';
+import { CaptionsEditor, type Captions } from '../../features/content/CaptionsEditor';
+import { PublishHere, SavedHere } from '../../features/publishing/PublishHere';
 import { ReelMode } from '../../features/reels/ReelMode';
 import { GoalPicker } from '../../features/content-pipeline/PostPlan';
 import { clearPostPlan, readPostPlan, takePostPlan, writePostPlan, type PostPlan } from '../../features/content/postPlan';
@@ -190,7 +192,7 @@ export function CreationHomePage() {
     choose: ['Pick one way. You can come back and change it any time.', 'اختر طريقة واحدة، ويمكنك الرجوع وتغييرها في أي وقت.'],
     ai: ['Write the idea in your own words. We check Odoo, write the copy, design the post and place the official logo.', 'اكتب الفكرة بكلماتك. نراجع بيانات Odoo ونكتب النص ونصمّم المنشور ونضع الشعار الرسمي.'],
     template: ['Pick a template, change its text and photos, then send it for approval. No AI cost.', 'اختر قالبًا، غيّر نصوصه وصوره، ثم أرسله للاعتماد. بدون تكلفة ذكاء اصطناعي.'],
-    upload: ['Already designed it? Upload the image, choose the platforms and send it for approval.', 'صمّمته بالفعل؟ ارفع الصورة واختر المنصات وأرسله للاعتماد.'],
+    upload: ['Already designed it? Upload the image, pick the platforms, write the caption and publish, all on this screen.', 'صمّمته بالفعل؟ ارفع الصورة، اختار المنصات، اكتب النص وانشر، كله من الشاشة دي.'],
     reel: ['Upload the finished video, check it fits each platform, pick a cover, and write the caption yourself or with AI from the idea or the script.', 'ارفع الفيديو الجاهز، اتأكد إنه مناسب لكل منصة، اختار غلاف، واكتب الكلام بإيدك أو بالذكاء الاصطناعي من الفكرة أو السكريبت.'],
   };
   return <div className="u-stack u-stack--lg creative-home">
@@ -223,7 +225,7 @@ export function CreationHomePage() {
       {ways.includes('upload') && <button type="button" className="create-method glass" onClick={() => setMode('upload')}>
         <span className="create-method__icon" data-tone="accent"><Upload size={22} /></span>
         <b>{t('Upload a finished design', 'ارفع تصميمًا جاهزًا')}</b>
-        <small>{t('Designed it elsewhere? Upload the image and send it for approval.', 'صمّمته في برنامج آخر؟ ارفع الصورة وأرسلها للاعتماد.')}</small>
+        <small>{t('Designed it elsewhere? Upload it, write the caption and publish from one screen.', 'صمّمته في برنامج تاني؟ ارفعه واكتب النص وانشره من شاشة واحدة.')}</small>
         <em>{t('PNG, JPEG or WebP, up to 12 MB', 'PNG أو JPEG أو WebP حتى 12 ميجابايت')}</em>
       </button>}
       {ways.includes('reel') && <button type="button" className="create-method glass" onClick={() => setMode('reel')}>
@@ -404,56 +406,88 @@ function TemplateMode({ initialId, initialSchedule }: { initialId: string | null
   </section>;
 }
 
-/** A design made outside the app: upload the image, name it, pick platforms; it becomes a draft ready for review. */
+/**
+ * A design made outside the app, published from this one screen: upload the image, pick platforms, write or
+ * refine the caption per platform (with AI if wanted), then publish or schedule here. Nothing moves to another page.
+ */
 function UploadMode() {
   const { t } = useI18n();
-  const { navigate } = useRouter();
+  const { can } = useAuth();
+  const publisher = can('content.publish') || can('content.schedule');
   const input = useRef<HTMLInputElement>(null);
   const [image, setImage] = useState<string | null>(null);
   // A post made for a plan row starts with the row's title.
   const [title, setTitle] = useState(() => readPostPlan().slotTitle ?? '');
-  const [caption, setCaption] = useState('');
+  const [captions, setCaptions] = useState<Captions>({});
+  const [captionBusy, setCaptionBusy] = useState(false);
   const [platforms, setPlatforms] = useState<CreativePlatform[]>(() => {
     const planned = (readPostPlan().channels ?? []).filter((c): c is CreativePlatform => (CREATIVE_PLATFORMS as string[]).includes(c));
     return planned.length ? planned : ['facebook', 'instagram'];
   });
-  const [busy, setBusy] = useState(false);
+  const [busy, setBusy] = useState('');
   const [message, setMessage] = useState('');
+  /** The saved post: saving again updates it instead of making a second one. */
+  const [created, setCreated] = useState<string | null>(null);
+  const [uploaded, setUploaded] = useState<string | null>(null);
+  const [publishing, setPublishing] = useState<string | null>(null);
+  const [saved, setSaved] = useState<'' | 'draft' | 'sent'>('');
   const pick = async (file: File | undefined) => {
     if (!file) return;
     if (!/^image\/(png|jpeg|webp)$/.test(file.type)) { setMessage(t('Use a PNG, JPEG or WebP image.', 'استخدم صورة PNG أو JPEG أو WebP.')); return; }
     if (file.size > 12_000_000) { setMessage(t('The image is larger than 12 MB.', 'الصورة أكبر من 12 ميجابايت.')); return; }
-    setMessage(''); setImage(await asDataUrl(file));
+    setMessage(''); setImage(await asDataUrl(file)); setUploaded(null); setCreated(null); setSaved('');
     if (!title.trim()) setTitle(file.name.replace(/\.[a-z]+$/i, '').replace(/[-_]+/g, ' '));
   };
   const toggle = (platform: CreativePlatform) => setPlatforms((current) => current.includes(platform) ? current.filter((value) => value !== platform) : [...current, platform]);
-  const submit = async () => {
-    if (!image) { setMessage(t('Choose the image first.', 'اختر الصورة أولًا.')); return; }
-    if (title.trim().length < 2) { setMessage(t('Give the post a short title.', 'اكتب عنوانًا قصيرًا للمنشور.')); return; }
-    if (!platforms.length) { setMessage(t('Choose at least one platform.', 'اختر منصة واحدة على الأقل.')); return; }
-    setBusy(true); setMessage('');
-    try {
-      const { url } = await api<{ url: string }>('/api/uploads', { body: { dataUrl: image } });
-      const captions = caption.trim() ? Object.fromEntries(platforms.map((platform) => [platform, caption.trim()])) : {};
-      const item = await api<{ id: string }>('/api/content', { body: { ...takePostPlan(), title: title.trim(), channels: platforms, captions, creative: { requestId: 'upload', directionId: 'upload', imageUrl: url, directionName: 'Uploaded design' } } });
-      navigate(`/content/${item.id}`);
-    } catch (error) { setMessage(error instanceof Error ? error.message : String(error)); }
-    setBusy(false);
+  /** Saves the post (once) with what is on screen and returns its id. */
+  const save = async (): Promise<string | null> => {
+    if (!image) { setMessage(t('Choose the image first.', 'اختر الصورة أولًا.')); return null; }
+    if (title.trim().length < 2) { setMessage(t('Give the post a short title.', 'اكتب عنوانًا قصيرًا للمنشور.')); return null; }
+    if (!platforms.length) { setMessage(t('Choose at least one platform.', 'اختر منصة واحدة على الأقل.')); return null; }
+    setMessage('');
+    const text = Object.fromEntries(platforms.map((platform) => [platform, captions[platform]?.trim() ?? '']).filter(([, value]) => value));
+    if (created) { await api(`/api/content/${created}`, { method: 'PATCH', body: { title: title.trim(), channels: platforms, captions: text } }); return created; }
+    const url = uploaded ?? (await api<{ url: string }>('/api/uploads', { body: { dataUrl: image } })).url;
+    setUploaded(url);
+    const item = await api<{ id: string }>('/api/content', { body: { ...takePostPlan(), title: title.trim(), channels: platforms, captions: text, creative: { requestId: 'upload', directionId: 'upload', imageUrl: url, directionName: 'Uploaded design' } } });
+    setCreated(item.id);
+    return item.id;
   };
+  const run = async (action: 'publish' | 'draft' | 'send') => {
+    setBusy(action); setSaved('');
+    try {
+      const id = await save();
+      if (id && action === 'publish') setPublishing(id);
+      if (id && action === 'send') { await api(`/api/content/${id}/transition`, { body: { to: 'ready_for_review' } }); setSaved('sent'); }
+      if (id && action === 'draft') setSaved('draft');
+    } catch (error) { setMessage(error instanceof Error ? error.message : String(error)); }
+    setBusy('');
+  };
+  const locked = saved === 'sent';
   return <section className="create-upload glass">
     <input ref={input} hidden type="file" accept="image/png,image/jpeg,image/webp" onChange={(event) => void pick(event.target.files?.[0])} />
     <button type="button" className="create-upload__drop" onClick={() => input.current?.click()} onDragOver={(event) => event.preventDefault()} onDrop={(event) => { event.preventDefault(); void pick(event.dataTransfer.files[0]); }}>
       {image ? <img src={image} alt="" /> : <><ImagePlus size={28} /><b>{t('Choose or drop the image', 'اختر الصورة أو اسحبها هنا')}</b><small>PNG · JPEG · WebP</small></>}
     </button>
     <div className="create-upload__form u-stack">
-      <label className="ui-field"><span className="ui-field__label">{t('Title', 'العنوان')}</span><input className="ui-input" value={title} onChange={(event) => setTitle(event.target.value)} dir="auto" placeholder={t('e.g. CFM course — November cohort', 'مثال: دورة CFM — دفعة نوفمبر')} /></label>
+      <label className="ui-field"><span className="ui-field__label">{t('Title', 'العنوان')}</span><input className="ui-input" value={title} disabled={locked} onChange={(event) => setTitle(event.target.value)} dir="auto" placeholder={t('e.g. CFM course — November cohort', 'مثال: دورة CFM — دفعة نوفمبر')} /></label>
       <div className="ui-field"><span className="ui-field__label">{t('Platforms', 'المنصات')}</span>
-        <div className="creative-home__platforms" role="group" aria-label={t('Platforms', 'المنصات')}>{CREATIVE_PLATFORMS.map((platform) => <button key={platform} type="button" aria-pressed={platforms.includes(platform)} onClick={() => toggle(platform)}><span className="creative-home__platform-icon"><ChannelIcon channel={platform} size={15} /></span>{PLATFORM_FORMATS[platform].label}</button>)}</div>
+        <div className="creative-home__platforms" role="group" aria-label={t('Platforms', 'المنصات')}>{CREATIVE_PLATFORMS.map((platform) => <button key={platform} type="button" disabled={locked} aria-pressed={platforms.includes(platform)} onClick={() => toggle(platform)}><span className="creative-home__platform-icon"><ChannelIcon channel={platform} size={15} /></span>{PLATFORM_FORMATS[platform].label}</button>)}</div>
       </div>
-      <label className="ui-field"><span className="ui-field__label">{t('Caption (optional)', 'النص المرافق (اختياري)')}</span><textarea className="ui-input" rows={4} value={caption} onChange={(event) => setCaption(event.target.value)} dir="auto" placeholder={t('You can also write or improve it with AI on the post page.', 'يمكنك أيضًا كتابته أو تحسينه بالذكاء الاصطناعي من صفحة المنشور.')} /></label>
+      <div className="ui-field create-upload__captions"><span className="ui-field__label">{t('Caption for each platform', 'النص لكل منصة')}</span>
+        {platforms.length
+          ? <CaptionsEditor channels={platforms} value={captions} onChange={setCaptions} readOnly={locked} onBusy={setCaptionBusy} ai={{ facts: `عنوان المنشور: ${title.trim() || 'منشور من Engosoft'}` }} />
+          : <p className="u-sm u-muted">{t('Choose a platform to write its caption.', 'اختار منصة علشان تكتب نصها.')}</p>}
+      </div>
       {message && <p role="alert" className="creative-home__error">{message}</p>}
-      <div><Button variant="primary" busy={busy} disabled={busy} onClick={() => void submit()}>{t('Create the post', 'أنشئ المنشور')}</Button></div>
-      <p className="u-xs u-muted">{t('It is saved as a draft. Open it to check the caption, then send it for approval.', 'يُحفظ كمسودة. افتحه لمراجعة النص ثم أرسله للاعتماد.')}</p>
+      <div className="create-upload__actions">
+        {publisher
+          ? <Button variant="primary" icon={<Send size={15} />} busy={busy === 'publish'} disabled={Boolean(busy) || captionBusy} onClick={() => void run('publish')}>{t('Publish or schedule', 'انشر أو جدول')}</Button>
+          : <Button variant="primary" icon={<Send size={15} />} busy={busy === 'send'} disabled={Boolean(busy) || captionBusy || locked} onClick={() => void run('send')}>{t('Send to the publisher', 'ابعته للمسؤول عن النشر')}</Button>}
+        <Button variant="secondary" busy={busy === 'draft'} disabled={Boolean(busy) || captionBusy || locked} onClick={() => void run('draft')}>{t('Save as draft', 'احفظه مسودة')}</Button>
+      </div>
+      {saved && <SavedHere contentId={created} sent={saved === 'sent'} />}
+      <PublishHere contentId={publishing} onClose={() => setPublishing(null)} />
     </div>
   </section>;
 }
