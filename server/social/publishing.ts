@@ -94,9 +94,11 @@ async function recordEvidence(id:string) {
  await markPublishedWhenComplete(item.id,job.actorId);
  await db.run('INSERT INTO content_events(id,content_id,actor_id,kind,body,created_at) VALUES(?,?,?,?,?,?) ON CONFLICT(id) DO NOTHING',[`publication:${job.id}`,item.id,job.actorId,'comment',`Verified ${job.provider} publication: ${job.externalId}${job.url?' '+job.url:''}`,job.updatedAt]);
 }
-export async function pollPendingJobs() {
- const rows=await db.all<{id:string}>("SELECT id FROM social_publish_jobs WHERE state IN ('processing','awaiting_user','unknown') AND updated_at<? ORDER BY updated_at LIMIT 10",[new Date(Date.now()-60_000).toISOString()]);
- for(const row of rows)await checkJob(row.id);
+/** Every pending job, or only those still moving (`active`): an Instagram Reel is published by this check once its container is ready. */
+export async function pollPendingJobs(active=false) {
+ const states=active?"('processing')":"('processing','awaiting_user','unknown')";
+ const rows=await db.all<{id:string}>(`SELECT id FROM social_publish_jobs WHERE state IN ${states} AND updated_at<? ORDER BY updated_at LIMIT 10`,[new Date(Date.now()-60_000).toISOString()]);
+ for(const row of rows)await checkJob(row.id).catch(()=>{});
 }
 
 export async function reconcileJob(user:AuthUser,id:string,externalId:string) {

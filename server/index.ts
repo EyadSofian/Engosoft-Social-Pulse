@@ -8,6 +8,7 @@ import { parseCalendar } from './calendar.js';
 import { applyPlanPatch, newPlan, isPlanPlatform, missingPublishProof, planState, engagementRate } from './domain.js';
 import { deletePlan, dismissAlert, getAlerts, getConnectorStatuses, getObserved, getPlan, getPlans, getWebsiteDaily, getWebsitePages, saveImportedPlan, savePlan } from './store.js';
 import { runSync } from './sync.js';
+import { pollPendingJobs } from './social/publishing.js';
 import { registerSocialRoutes } from './social/routes.js';
 import { runDuePublications } from './social/queue.js';
 import { randomUUID } from 'node:crypto';
@@ -217,6 +218,10 @@ setTimeout(()=>{void runSync().catch(()=>{});},1500);
 setInterval(()=>{void checkAlerts().catch(()=>{});},60_000).unref();
 // Scheduled Facebook and Instagram publications go out within a minute of their time.
 setInterval(()=>{void runDuePublications().catch(()=>{});},60_000).unref();
+// Publications still processing are checked every minute, not only with the 30-minute sync: an Instagram Reel goes live
+// only when this check sends media_publish after its container is ready.
+let polling=false;
+setInterval(()=>{if(polling)return;polling=true;void pollPendingJobs(true).catch(()=>{}).finally(()=>{polling=false;});},60_000).unref();
 setInterval(()=>{void runSync().catch(()=>{});},30*60_000).unref();
 setTimeout(()=>{void runStorageMaintenance().catch(()=>console.error('Storage maintenance stopped; review storage status.'));},10_000).unref();
 setInterval(()=>{void runStorageMaintenance().catch(()=>console.error('Storage maintenance stopped; review storage status.'));},60*60_000).unref();

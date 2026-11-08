@@ -341,3 +341,17 @@ test('TikTok regional upload hosts from the official transfer guide are supporte
  mock((url)=>url.includes('inbox/video/init')?Response.json({data:{publish_id:'regional',upload_url:'https://upload.us.tiktokapis.com/video/?upload_id=opaque'},error:{code:'ok'}}):(transferred=true,new Response('',{status:201})));
  await providers.submit(a,{kind:'video',mode:'draft',consent:true} as any,'Caption','Title',[{id:'a',file,url:'x',type:'video',bytes:12,width:1080,height:1920,mimeType:'video/mp4',duration:10}],fixtureJob(),async()=>{});assert.equal(transferred,true);
 });
+test('the one-minute check publishes a ready Instagram Reel and leaves unconfirmed jobs alone',async()=>{
+ const ig=await accounts.registerAccount('instagram','ig-reels','Reels',admin.id,'fixture-yt',['instagram_basic','instagram_content_publish']);
+ const old=new Date(Date.now()-5*60_000).toISOString(),insert=(id:string,state:string,phase:string)=>db.run('INSERT INTO social_publish_jobs(id,content_id,account_id,provider,actor_id,state,phase,remote_id,created_at,updated_at,attempt) VALUES(?,?,?,?,?,?,?,?,?,?,?)',[id,'reel-'+id,ig.id,'instagram',admin.id,state,phase,'container-'+id,old,old,1]);
+ await insert('reel-ready','processing','instagram_container');await insert('reel-unknown','unknown','instagram_publishing');
+ const calls:string[]=[];mock((url)=>{calls.push(url);
+  if(url.includes('media_publish'))return Response.json({id:'ig-media'});
+  if(url.includes('/ig-media'))return Response.json({id:'ig-media',permalink:'https://www.instagram.com/reel/abc/'});
+  return Response.json({status_code:'FINISHED'});
+ });
+ await publishing.pollPendingJobs(true);
+ const ready=(await publishing.getJob('reel-ready'))!;assert.equal(ready.state,'published');assert.equal(ready.url,'https://www.instagram.com/reel/abc/');
+ assert.equal(calls.filter(u=>u.includes('media_publish')).length,1);assert.ok(!calls.some(u=>u.includes('container-reel-unknown')));
+ assert.equal((await publishing.getJob('reel-unknown'))?.state,'unknown');
+});

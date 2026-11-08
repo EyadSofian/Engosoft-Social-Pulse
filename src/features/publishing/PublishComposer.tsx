@@ -199,12 +199,13 @@ export function PublishComposer({ item, open, onClose, onDone, day }: { item: Pi
   };
 
   // Platforms that take a moment (video processing, Instagram containers) are checked until they settle.
+  // A Reel can take several minutes; the server checks each one every minute and publishes it when ready.
   const pending = Object.values(outcomes).some((o) => !o.sending && o.job && ['processing', 'unknown'].includes(o.job.state));
   useEffect(() => {
     if (phase !== 'done' || !pending) return;
     let tries = 0;
     const timer = setInterval(() => {
-      if (++tries > 24) { clearInterval(timer); return; }
+      if (++tries > 120) { clearInterval(timer); return; }
       void api<{ jobs: JobRow[] }>(`/api/publishing/${item.id}`).then((board) => setOutcomes((current) => Object.fromEntries(Object.entries(current).map(([id, o]) => {
         const fresh = !o.sending && o.job ? board.jobs.find((job) => job.id === o.job!.id) : undefined;
         return [id, fresh ? { ...o, job: fresh } : o];
