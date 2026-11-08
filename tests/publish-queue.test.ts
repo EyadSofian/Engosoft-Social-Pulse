@@ -83,12 +83,16 @@ test('scheduling puts the post on the calendar and publishes it once when its ti
   assert.equal((await ws.getContent(id))?.status, 'published');
 });
 
-test('creators cannot publish, and drafts cannot be scheduled', async () => {
+test('creators cannot publish; a publisher schedules a draft directly, which approves it', async () => {
   const id = await approved('Permissions');
   await assert.rejects(() => queue.schedulePublication(creator, id, [page.id], inMinutes(30)), /صلاحيت/);
   await assert.rejects(() => queue.publishNow(creator, id, [page.id]), /صلاحية/);
   const draft = await ws.createContent(creator, { title: 'Draft', channels: ['facebook'], captions: {}, creative });
-  await assert.rejects(() => queue.schedulePublication(admin, draft.id, [page.id], inMinutes(30)), /المعتمدة/);
+  await assert.rejects(() => queue.schedulePublication(creator, draft.id, [page.id], inMinutes(30)), /صلاحيت/);
+  await queue.schedulePublication(admin, draft.id, [page.id], inMinutes(30));
+  assert.equal((await ws.getContent(draft.id))!.status, 'scheduled');
+  assert.ok((await ws.listEvents(draft.id)).some((event) => event.to === 'approved' && event.actorId === admin.id));
+  await queue.cancelPublication(admin, draft.id);
   await assert.rejects(() => queue.schedulePublication(admin, id, [tiktok.id], inMinutes(30)), /منصات هذا المنشور/);
   const both = await approved('Both platforms', ['facebook', 'tiktok']);
   await assert.rejects(() => queue.schedulePublication(admin, both, [tiktok.id], inMinutes(30)), /من هنا/, 'TikTok keeps its own options on the post page');
@@ -151,4 +155,27 @@ test('the publishing board lists accounts and only the posts the person can see'
   assert.ok(board.accounts.some((a) => a.id === tiktok.id && !a.auto));
   assert.ok(board.queue.length > 0);
   assert.ok(board.jobs.every((job) => !('remoteId' in job)));
+});
+
+test('the publisher publishes a draft straight away; that publish is the approval', async () => {
+  const draft = await ws.createContent(supervisor, { title: 'Straight out', channels: ['facebook'], captions: { facebook: 'Straight out caption' }, creative });
+  const writes = facebook();
+  const [result] = await queue.publishNow(supervisor, draft.id, [page.id]);
+  assert.equal(result.error, undefined);
+  assert.equal(writes.length, 1);
+  const events = await ws.listEvents(draft.id);
+  assert.ok(events.some((event) => event.from === 'draft' && event.to === 'approved' && event.actorId === supervisor.id));
+  assert.equal((await ws.getContent(draft.id))!.status, 'published');
+});
+
+test('two pages of the same platform both go out: the first going live does not cancel the second', async () => {
+  const second = await accounts.registerAccount('facebook', 'page-2', 'Engosoft KSA', admin.id, 'fb-queue-2', ['pages_manage_posts']);
+  await store.saveSecret('fb-queue-2', { accessToken: 'page-token-2', expiresAt: Date.now() + 3600_000, scopes: ['pages_manage_posts'] });
+  const id = await approved('Two pages');
+  const writes = facebook();
+  const at = inMinutes(30);
+  await queue.schedulePublication(supervisor, id, [page.id, second.id], at);
+  assert.equal(await queue.runDuePublications(new Date(Date.parse(at) + 30_000)), 2);
+  assert.equal(writes.length, 2);
+  assert.deepEqual((await store.contentQueue(id)).map((row) => row.state).sort(), ['sent', 'sent']);
 });

@@ -172,6 +172,7 @@ export function FullCreativeJob({ jobId, requestId, platforms, sizes, format, pr
 /** Save the design into the content pipeline, or keep its recipe as an AI template. */
 function ResultActions({ run, result, main, extras, platforms, prompt, direction }: { run: PublicRun; result: PublicResult; main: CreativeMaster; extras: { target: SizeTarget; result: PublicResult }[]; platforms: CreativePlatform[]; prompt: string; direction: Brief['directions'][number] }) {
   const { t } = useI18n();
+  const { can } = useAuth();
   const { navigate } = useRouter();
   const [busy, setBusy] = useState('');
   const [saved, setSaved] = useState('');
@@ -194,6 +195,8 @@ function ResultActions({ run, result, main, extras, platforms, prompt, direction
         const item = await api<{ id: string }>('/api/content', { body: { ...takePostPlan(), title: run.brief.canonicalCopy.headline, channels: platforms, captions, creative: { requestId: run.requestId, directionId: result.directionId, imageUrl: result.imageUrl, ...slots, ...(made.length ? { sizes } : {}), model: result.model, directionName: direction.name } } });
         created.current = item.id;
       }
+      // The publisher goes straight to publishing (that is the approval); everyone else sends it to them.
+      if (send && can('content.publish')) { navigate(`/content/${created.current}?publish=1`); return; }
       if (send) await api(`/api/content/${created.current}/transition`, { body: { to: 'ready_for_review' } });
       navigate(`/content/${created.current}`);
     } catch (e) { setError(errorMessage(e, '')); }
@@ -210,7 +213,7 @@ function ResultActions({ run, result, main, extras, platforms, prompt, direction
     setBusy('');
   };
   return <div className="creative-job__actions">
-    <Button variant="primary" disabled={Boolean(busy)} onClick={() => void save(true)}>{busy === 'send' ? <Loader2 className="creative-job__spin" size={15} /> : <Send size={15} />} {t('Send to marketing', 'أرسله إلى التسويق')}</Button>
+    <Button variant="primary" disabled={Boolean(busy)} onClick={() => void save(true)}>{busy === 'send' ? <Loader2 className="creative-job__spin" size={15} /> : <Send size={15} />} {can('content.publish') ? t('Save and publish', 'احفظ وانشر') : t('Send to the publisher', 'ابعته للمسؤول عن النشر')}</Button>
     <Button variant="secondary" disabled={Boolean(busy)} onClick={() => void save(false)}><FileText size={15} /> {t('Save as draft', 'احفظه مسودة')}</Button>
     <Button variant="secondary" disabled={Boolean(busy)} onClick={() => void saveTemplate()}><BookmarkPlus size={15} /> {t('Save as AI template', 'احفظه قالب ذكاء اصطناعي')}</Button>
     <a className="ui-btn ui-btn--secondary ui-btn--md" href={result.imageUrl} download={`engosoft-${result.directionId}.png`}><Download size={15} /> PNG</a>

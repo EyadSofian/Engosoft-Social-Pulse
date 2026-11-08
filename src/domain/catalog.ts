@@ -20,13 +20,13 @@ export const ROLES: Record<RoleId, Role> = {
   supervisor: {
     id: 'supervisor',
     name: { en: 'Content Supervisor', ar: 'مسؤول المحتوى' },
-    description: { en: 'Follows the team’s work, schedules and publishes approved posts.', ar: 'يتابع شغل الفريق، ويجدول المنشورات المعتمدة وينشرها.' },
+    description: { en: 'Responsible for publishing: reviews what the team sends and publishes or schedules it. Publishing is the approval.', ar: 'المسؤول عن النشر: يراجع اللي الفريق يبعته وينشره أو يجدوله. نشره هو الاعتماد.' },
     permissions: SUPERVISOR,
   },
   marketing_manager: {
     id: 'marketing_manager',
     name: { en: 'Marketing Manager', ar: 'مدير التسويق' },
-    description: { en: 'Approves every post, manages templates and connected accounts.', ar: 'يعتمد كل المنشورات ويدير القوالب والحسابات المربوطة.' },
+    description: { en: 'Everything the publisher can do, plus templates, connected accounts and all analytics.', ar: 'كل صلاحيات المسؤول عن النشر، ومعها القوالب والحسابات المربوطة وكل التحليلات.' },
     permissions: MARKETING_MANAGER,
   },
   manager: {

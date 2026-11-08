@@ -6,6 +6,7 @@ import { after, test } from 'node:test';
 import express from 'express';
 import { PUBLISHING_PRESETS } from '../src/domain/output-presets';
 import { courseTemplateCopy } from '../src/domain/course-copy';
+import { courseFromInfo as websiteCourseFromInfo } from '../server/website-courses';
 import { ALL_PERMISSIONS } from '../src/domain/users';
 
 process.env.DATA_FILE = join(
@@ -111,44 +112,70 @@ test('catalog and access endpoints reject anonymous users and restrict administr
   );
 });
 
-test('website catalog seeds every discovered entry once and preserves editorial edits on sync', async () => {
-  const source = JSON.parse(
-    readFileSync('server/data/engosoft-website-courses.json', 'utf8'),
-  );
-  assert.ok(source.courses.length >= 100);
-  assert.equal(
-    new Set(source.courses.map((c: { courseId: string }) => c.courseId)).size,
-    source.courses.length,
-  );
+test('the library is the website catalog: real goals, edits kept, courses off the website hidden', async () => {
+  const source = catalog.courseImportSource();
+  assert.ok(source.courses.length >= 60);
+  assert.equal(new Set(source.courses.map((c) => c.courseId)).size, source.courses.length);
+  for (const course of source.courses) {
+    assert.match(course.sourceUrl, /^https:\/\/engosoft\.com\/shop\//);
+    assert.doesNotMatch(course.sourceUrl, /-event-?\d*$/, 'per-run event registrations are not courses');
+  }
   assert.equal(await catalog.seedCourseCatalog(), source.courses.length);
-  const [profile] = await catalog.allCourseProfiles();
-  assert.equal(profile.reviewStatus, 'suggested');
-  assert.ok(
-    profile.objectives.length &&
-      profile.audience &&
-      profile.sourceUrl.startsWith('https://engosoft.com/shop/'),
-  );
-  assert.equal(
-    (
-      await request(
-        `/api/course-profiles/${encodeURIComponent(profile.courseId)}`,
-        'PUT',
-        { ...profile, audience: 'جمهور محرر خصيصًا', reviewStatus: 'approved' },
-      )
-    ).status,
-    200,
-  );
-  assert.equal(await catalog.seedCourseCatalog(), 0);
-  const synced = await (
-    await request('/api/course-profiles/sync', 'POST', {})
-  ).json();
-  assert.equal(synced.added, 0);
-  assert.equal(
-    (await catalog.allCourseProfiles()).find(
-      (p) => p.courseId === profile.courseId,
-    )?.audience,
-    'جمهور محرر خصيصًا',
-  );
+  assert.equal(await catalog.seedCourseCatalog(), 0, 'the same snapshot is not applied twice');
+  const library = await catalog.allCourseProfiles();
+  assert.equal(library.length, source.courses.length);
+  const first = source.courses.find((c) => c.objectives.length && c.audience)!;
+  const seeded = library.find((p) => p.courseId === first.courseId)!;
+  assert.deepEqual(seeded.objectives, first.objectives, 'goals are the website’s own');
+  assert.equal(seeded.reviewStatus, 'approved');
+
+  // A person edits one course; another course drops off the website; the website updates a third.
+  assert.equal((await request(`/api/course-profiles/${encodeURIComponent(seeded.courseId)}`, 'PUT', { ...seeded, audience: 'جمهور محرر خصيصًا', reviewStatus: 'approved' })).status, 200);
+  assert.equal((await request('/api/course-profiles/manual:own-course', 'PUT', { courseName: 'دورة مضافة يدويًا', objectives: ['هدف'], outcomes: [], audience: '', notes: '' })).status, 200);
+  const [dropped, updated] = source.courses.filter((c) => c.courseId !== seeded.courseId);
+  const next = {
+    retrievedAt: new Date(Date.now() + 60_000).toISOString(),
+    courses: source.courses.filter((c) => c.courseId !== dropped.courseId).map((c) => c.courseId === updated.courseId ? { ...c, objectives: ['هدف جديد من الموقع'] } : c.courseId === seeded.courseId ? { ...c, audience: 'جمهور الموقع' } : c),
+  };
+  const applied = await catalog.applyWebsiteCatalog(next);
+  assert.equal(applied.hidden, 1);
+  assert.equal(applied.kept, 1);
+  const after = await catalog.allCourseProfiles();
+  assert.equal(after.find((p) => p.courseId === seeded.courseId)?.audience, 'جمهور محرر خصيصًا', 'a person’s edit survives the sync');
+  assert.deepEqual(after.find((p) => p.courseId === updated.courseId)?.objectives, ['هدف جديد من الموقع']);
+  assert.ok(!after.some((p) => p.courseId === dropped.courseId), 'a course off the website leaves the library');
+  assert.ok(after.some((p) => p.courseId === 'manual:own-course'), 'hand-added courses stay');
+  // A broken website response changes nothing.
+  await assert.rejects(() => catalog.applyWebsiteCatalog({ retrievedAt: new Date().toISOString(), courses: next.courses.slice(0, 3) }), /only 3/);
+  assert.equal((await catalog.allCourseProfiles()).length, after.length);
+  const search = await (await request(`/api/odoo/courses?q=${encodeURIComponent(dropped.courseName)}`, 'GET', undefined, 'ops')).json();
+  assert.ok(!search.courses.some((c: { id: string }) => c.id === dropped.courseId), 'the course picker shows website courses only');
+});
+
+test('a course page becomes a profile from its own sections, never from guesses', () => {
+  const product = { product_template_id: 1093, product_variant_id: 1100, name: 'الرسم ثلاثي الأبعاد ثري دي اس ماكس (3ds Max & Vray) ', website_url: '/shop/3ds-max-vray-for-interior-design-1093', category_id: 9, course_type: 'attendance_recorded' };
+  const profile = websiteCourseFromInfo(product, {
+    display_name: 'الرسم ثلاثي الأبعاد ثري دي اس ماكس (3ds Max & Vray)',
+    course_description_html: '<p>تساعدك دورة ثري دي ماكس من <a href="https://engosoft.com/">إنجوسوفت</a> على تحويل الأفكار إلى نماذج واقعية.</p><h2>قدراتك</h2><ul><li>بند</li></ul>',
+    tab1_items: [{ title: 'التعرّف على أنواع الخامات.', description: '' }, { title: '‎', description: ' ' }],
+    learn_items: ['كيفية إنشاء تصاميم داخلية من البداية.'],
+    tab6_items: [{ title: 'مهندسين الديكور.' }, { title: 'المصممين المعماريين.' }],
+    tab5_items: [{ title: 'المؤهل الأكاديمي:', description: 'لا تُشترط خبرة سابقة.' }],
+    tab2_item1_title: 'الدراسة المسجلة', tab2_item2_title: '‎',
+    course_duration_text: '17 ساعة تدريبية معتمدة', attendance_duration_text: '36 ساعة تدريبية معتمدة',
+    instructors: [{ name: 'م.محمد ابراهيم ' }],
+  }, 'التصميم الداخلي والديكور');
+  assert.equal(profile.courseId, 'product.template:1093');
+  assert.equal(profile.sourceUrl, 'https://engosoft.com/shop/3ds-max-vray-for-interior-design-1093');
+  assert.deepEqual(profile.objectives, ['التعرّف على أنواع الخامات.']);
+  assert.deepEqual(profile.outcomes, ['كيفية إنشاء تصاميم داخلية من البداية.']);
+  assert.equal(profile.audience, 'مهندسين الديكور، المصممين المعماريين');
+  assert.equal(profile.description, 'تساعدك دورة ثري دي ماكس من إنجوسوفت على تحويل الأفكار إلى نماذج واقعية.');
+  assert.match(profile.notes, /مسجلة: 17 ساعة/);
+  assert.match(profile.notes, /حضوري\/مباشر: 36 ساعة/);
+  assert.match(profile.notes, /المؤهل الأكاديمي: لا تُشترط خبرة سابقة/);
+  assert.match(profile.notes, /م\.محمد ابراهيم/);
+  assert.equal(profile.category, 'التصميم الداخلي والديكور');
 });
 
 test('course validation and automatic copy preserve saved facts and template limits', async () => {
@@ -222,7 +249,7 @@ test('course search remains available without Odoo, searches all imported course
     await request('/api/odoo/courses', 'GET', undefined, 'ops')
   ).json();
   assert.equal(all.status, 'connected');
-  assert.ok(all.courses.length >= 100);
+  assert.ok(all.courses.length >= 60);
   for (const query of ['Revit', 'التصميم']) {
     const found = await (
       await request(
@@ -428,7 +455,7 @@ test('YouTube metadata survives creation and versions; invalid or mismatched pre
     );
 });
 
-test('explicit deny overrides an approver role and approval succeeds again after reset', async () => {
+test('explicit deny of approving and publishing overrides an approver role; approval succeeds again after reset', async () => {
   const created = await request(
     '/api/content',
     'POST',
@@ -443,7 +470,8 @@ test('explicit deny overrides an approver role and approval succeeds again after
     'ops',
   );
   try {
-    await patchPermissions('manager', { 'content.approve': false });
+    // Publishing is also an approval now, so both have to be denied.
+    await patchPermissions('manager', { 'content.approve': false, 'content.publish': false });
     assert.equal(
       (
         await request(
@@ -585,35 +613,11 @@ test('placement geometry is valid and YouTube has a separate 16:9 master for mix
   }
 });
 
-test('import provenance accounts for every discovered link and marks unverified names for review', async () => {
-  const source = catalog.courseImportSource();
-  assert.equal(source.courses.length, source.discovered);
-  const coverage = await (
-    await request('/api/course-profiles/import-status')
-  ).json();
-  assert.equal(
-    coverage.pageCount + coverage.catalogCount + coverage.unverified.length,
-    source.discovered,
-  );
-  assert.equal(
-    (
-      await request(
-        '/api/course-profiles/import-status',
-        'GET',
-        undefined,
-        'ops',
-      )
-    ).status,
-    403,
-  );
-  for (const course of source.courses) {
-    assert.ok(
-      course.courseName.trim().length >= 2 && course.courseName.length <= 300,
-    );
-    assert.match(course.sourceUrl, /^https:\/\/engosoft\.com\/shop\//);
-    if (course.sourceQuality === 'sitemap')
-      assert.ok(course.sourceNote?.includes('اسم مؤقت'));
-  }
+test('sync status reports where the library comes from, to editors only', async () => {
+  const status = await (await request('/api/course-profiles/import-status')).json();
+  assert.equal(status.source, 'https://engosoft.com/shop');
+  assert.ok(status.retrievedAt && status.total >= 60);
+  assert.equal((await request('/api/course-profiles/import-status', 'GET', undefined, 'ops')).status, 403);
 });
 
 test('AI recipes preserve YouTube channel and 16:9 format when saved and reopened', async () => {

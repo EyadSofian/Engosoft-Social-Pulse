@@ -27,7 +27,7 @@ type View = 'ready' | 'scheduled' | 'results' | 'accounts';
  */
 export function PublishPage() {
   const { t } = useI18n();
-  const { can } = useAuth();
+  const { can, user } = useAuth();
   const now = useClock();
   const [query, setQuery] = useQueryState();
   const { items, error, reload: reloadItems } = usePipeline();
@@ -36,8 +36,11 @@ export function PublishPage() {
   usePageMeta(t('Publishing', 'النشر'), [{ label: t('Publishing', 'النشر') }]);
 
   const live = items ?? [];
-  const ready = live.filter((item) => item.status === 'approved');
-  const inReview = live.filter((item) => item.status === 'ready_for_review').length;
+  // The publisher's call is the approval: posts sent to them and their own finished drafts are ready too.
+  const decides = (item: PipelineItem) => item.moves.some((move) => move.to === 'approved')
+    && (item.status === 'ready_for_review' || (item.ownerId === user.id && Boolean(item.creative)));
+  const ready = live.filter((item) => item.status === 'approved' || decides(item));
+  const inReview = live.filter((item) => item.status === 'ready_for_review' && !decides(item)).length;
   const scheduled = live.filter((item) => item.status === 'scheduled').sort((a, b) => parseTimestamp(a.scheduledAt ?? a.updatedAt) - parseTimestamp(b.scheduledAt ?? b.updatedAt));
   const queueOf = (id: string) => (board?.queue ?? []).filter((row) => row.contentId === id);
   const problems = (board?.queue ?? []).filter((row) => row.state === 'failed').length + (board?.jobs ?? []).filter((job) => job.state === 'failed' || job.state === 'unknown').length;
@@ -53,7 +56,7 @@ export function PublishPage() {
     <div className="u-stack u-stack--lg publish-page">
       <PageHeader
         title={t('Publishing', 'النشر')}
-        description={t('Every approved post goes out from one window: a preview per platform, every account, now or at a time.', 'كل منشور معتمد بيتنشر من شاشة واحدة: معاينة لكل منصة، وكل الحسابات، دلوقتي أو في ميعاد.')}
+        description={t('Every post goes out from one window: a preview per platform, every account, now or at a time.', 'كل منشور بيتنشر من شاشة واحدة: معاينة لكل منصة، وكل الحسابات، دلوقتي أو في ميعاد.')}
         actions={<ButtonLink to="/calendar" icon={<CalendarClock size={15} />}>{t('Calendar', 'التقويم')}</ButtonLink>}
       />
 
@@ -84,11 +87,11 @@ export function PublishPage() {
         <Thumb item={item} />
         <div className="publish-card__body">
           <Link to={`/content/${item.id}`} className="publish-card__title" dir="auto">{item.title}</Link>
-          <span className="publish-card__meta"><Badge tone="success">{t('Approved', 'معتمد')}</Badge></span>
+          <span className="publish-card__meta">{item.status === 'approved' ? <Badge tone="success">{t('Approved', 'معتمد')}</Badge> : item.status === 'ready_for_review' ? <Badge tone="brand">{t('Sent to you', 'مبعوت ليك')}</Badge> : <Badge tone="neutral">{t('Your draft', 'مسودتك')}</Badge>}</span>
           <ul className="publish-card__ways">{item.channels.map((channel) => <li key={channel}><ChannelIcon channel={channel} size={13} /> <WayLabel channel={channel} /></li>)}</ul>
           <Button variant="primary" size="sm" icon={<Send size={14} />} onClick={() => setOpen(item)}>{t('Publish', 'انشر')}</Button>
         </div>
-      </article>)}</div> : <EmptyState icon={<CheckCircle2 size={22} />} title={t('Nothing is waiting to be published.', 'لا شيء ينتظر النشر.')} text={t('Posts appear here once Marketing approves them.', 'تظهر المنشورات هنا بعد اعتمادها من التسويق.')}
+      </article>)}</div> : <EmptyState icon={<CheckCircle2 size={22} />} title={t('Nothing is waiting to be published.', 'لا شيء ينتظر النشر.')} text={can('content.publish') ? t('Posts sent to you and your finished drafts appear here. Publishing them is the approval.', 'المنشورات المبعوتة ليك ومسوداتك الجاهزة بتظهر هنا. نشرك ليها هو الاعتماد.') : t('Posts appear here once the person responsible for publishing approves them.', 'المنشورات بتظهر هنا بعد ما المسؤول عن النشر يعتمدها.')}
         action={inReview > 0 ? <ButtonLink to="/content?tab=review" variant="secondary">{t(`${inReview} waiting for approval`, `${inReview} مستني الاعتماد`)}</ButtonLink> : undefined} />)}
 
       {items && view === 'scheduled' && (scheduled.length ? <ul className="publish-schedule">{scheduled.map((item) => {

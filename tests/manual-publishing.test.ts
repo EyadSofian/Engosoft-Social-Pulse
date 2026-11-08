@@ -42,7 +42,7 @@ test('a post published by hand is recorded per platform, with a link on the plat
   assert.equal((await ws.recordManualPublication(manager, item.id, 'whatsapp')).find((m) => m.channel === 'whatsapp')?.url, null);
 });
 
-test('links off the platform, platforms with an API or outside the post, and drafts are refused', async () => {
+test('links off the platform and platforms with an API or outside the post are refused; a publisher recording a draft approves it', async () => {
   const item = await approvedPost();
   await assert.rejects(() => ws.recordManualPublication(manager, item.id, 'x', 'https://example.com/x.com/post'), /المنصة نفسها/);
   await assert.rejects(() => ws.recordManualPublication(manager, item.id, 'x', 'http://x.com/engosoft/status/1'), /https/);
@@ -51,9 +51,15 @@ test('links off the platform, platforms with an API or outside the post, and dra
   await assert.rejects(() => ws.recordManualPublication(manager, item.id, 'website'), /ليست من منصات/);
   await assert.rejects(() => ws.recordManualPublication(manager, item.id, 'facebook' as never), /ليست من منصات/);
   await assert.rejects(() => ws.recordManualPublication(creator, item.id, 'x'), /صلاحية النشر/);
-  const draft = await ws.createContent(creator, { title: 'Draft', channels: ['x'], captions: {}, creative });
-  await assert.rejects(() => ws.recordManualPublication(manager, draft.id, 'x'), /المعتمد فقط/);
   assert.deepEqual(await ws.manualPublications(item.id), []);
+  const draft = await ws.createContent(creator, { title: 'Draft', channels: ['x'], captions: {}, creative });
+  await assert.rejects(() => ws.recordManualPublication(creator, draft.id, 'x'), /صلاحية النشر/);
+  assert.equal((await ws.manualPublications(draft.id)).length, 0);
+  await ws.recordManualPublication(manager, draft.id, 'x');
+  // X was its only platform: recording it approves the draft and completes it.
+  assert.equal((await ws.getContent(draft.id))!.status, 'published');
+  assert.ok((await ws.listEvents(draft.id)).some((event) => event.to === 'approved' && event.actorId === manager.id));
+  assert.equal((await ws.manualPublications(draft.id)).length, 1);
 });
 
 test('platform refusals are explained in words the team can act on', () => {
@@ -62,4 +68,14 @@ test('platform refusals are explained in words the team can act on', () => {
   assert.match(plainError('Rate limit reached (HTTP 429)', t)!, /نستنى/);
   assert.match(plainError('Provider request failed (HTTP 503)', t)!, /قبل ما تحاول/);
   assert.equal(plainError('Video exceeds the maximum length', t), null);
+});
+
+test('a post is published once every platform is, including the ones posted by hand', async () => {
+  const item = await ws.createContent(creator, { title: 'WhatsApp and X', channels: ['x', 'whatsapp'], captions: { x: 'نص', whatsapp: 'نص' }, creative });
+  await ws.transition(creator, item.id, 'ready_for_review', {});
+  await ws.transition(manager, item.id, 'approved', {});
+  await ws.recordManualPublication(manager, item.id, 'x', 'https://x.com/engosoft/status/9');
+  assert.equal((await ws.getContent(item.id))!.status, 'approved', 'WhatsApp is still to go');
+  await ws.recordManualPublication(manager, item.id, 'whatsapp');
+  assert.equal((await ws.getContent(item.id))!.status, 'published');
 });

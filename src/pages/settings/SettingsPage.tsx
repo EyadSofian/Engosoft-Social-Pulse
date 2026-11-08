@@ -187,7 +187,7 @@ function NotificationSettings() {
     <section className="settings-add glass notify-settings">
       <h2><BellRing size={17} /> {t('When to notify', 'متى يُرسل الإشعار')}</h2>
       <label className="notify-toggle"><input type="checkbox" checked={settings.onCreate} onChange={() => toggle('onCreate')} /> {t('Someone from any team creates a post', 'عندما ينشئ أي شخص من أي فريق منشورًا جديدًا')}</label>
-      <label className="notify-toggle"><input type="checkbox" checked={settings.onReview} onChange={() => toggle('onReview')} /> {t('A post is sent to marketing for review', 'عندما يُرسل منشور إلى التسويق للمراجعة')}</label>
+      <label className="notify-toggle"><input type="checkbox" checked={settings.onReview} onChange={() => toggle('onReview')} /> {t('A post is sent to the publisher', 'عندما يُبعت منشور للمسؤول عن النشر')}</label>
       <label className="notify-toggle"><input type="checkbox" checked={settings.ownerUpdates} onChange={() => toggle('ownerUpdates')} /> {t('Tell the author when their post is approved, needs changes or is scheduled', 'إبلاغ صاحب المنشور عند اعتماده أو طلب تعديله أو جدولته')}</label>
     </section>
     <section className="settings-add glass notify-settings">

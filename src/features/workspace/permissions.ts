@@ -1,6 +1,6 @@
 import { can } from '../../domain/catalog';
 import type { ContentItem, ContentStatus, Transition } from '../../domain/content';
-import { TRANSITIONS } from '../../domain/content';
+import { permits, TRANSITIONS } from '../../domain/content';
 import type { Permission, User } from '../../domain/users';
 
 export const hasPermission = (user: User, permission: Permission) => user.permissions ? user.permissions.includes(permission) : can(user.role, permission);
@@ -18,7 +18,7 @@ export function transitionBlock(user: User, item: ContentItem, to: ContentStatus
   if (item.provenance === 'live') return 'live';
   const move = TRANSITIONS[item.status].find((entry) => entry.to === to);
   if (!move) return 'invalid';
-  if (move.permission) return hasPermission(user, move.permission) ? null : 'permission';
+  if (move.permission) return permits(move.permission, (p) => hasPermission(user, p)) ? null : 'permission';
   return canEditContent(user, item) ? null : 'ownership';
 }
 

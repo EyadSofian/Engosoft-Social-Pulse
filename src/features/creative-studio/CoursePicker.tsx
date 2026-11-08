@@ -10,7 +10,7 @@ export type CoursePick = { type: 'course'; course: OdooCourse } | { type: 'event
 const fmtDate = (iso: string) => new Date(iso).toLocaleDateString('ar-EG-u-nu-latn', { weekday: 'short', day: 'numeric', month: 'short', year: 'numeric', timeZone: 'Africa/Cairo' });
 
 /**
- * Searches every Odoo course (sales catalog and eLearning) and every upcoming run in one box. Arabic or English,
+ * Searches every course on engosoft.com (with its upcoming runs from Odoo) and every upcoming run in one box. Arabic or English,
  * typos tolerated; with an empty box it lists courses and the soonest runs.
  */
 export function CoursePicker({ onPick, autoFocus }: { onPick: (pick: CoursePick) => void; autoFocus?: boolean }) {

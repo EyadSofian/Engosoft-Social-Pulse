@@ -205,10 +205,11 @@ test('media rejects unapproved arbitrary URLs and platform-specific invalid form
 test('signed provider media access expires and cannot authorize a different media item',()=>{
  process.env.APP_URL='https://app.test';const u=new URL(media.publicMediaUrl('asset'));assert.equal(media.validMediaSignature('asset',u.searchParams.get('expires')!,u.searchParams.get('signature')!),true);assert.equal(media.validMediaSignature('other',u.searchParams.get('expires')!,u.searchParams.get('signature')!),false);assert.equal(media.validMediaSignature('asset','1','bad'),false);process.env.APP_URL='http://127.0.0.1:4100';
 });
-test('publishing refuses drafts and unauthorized users before any provider write',async()=>{
+test('publishing refuses empty drafts and unauthorized users before any provider write',async()=>{
  const item=await ws.createContent(admin,{title:'Draft',channels:['youtube'],captions:{},creative:null});let calls=0;mock(()=>{calls++;return Response.json({});});
  const input={contentId:item.id,accountId:account.id,kind:'video',media:[],mode:'direct',consent:true} as any;
- await assert.rejects(()=>publishing.publish(admin,input),/approve/);await assert.rejects(()=>publishing.publish(employee,input),/permission/);assert.equal(calls,0);
+ // The publisher's publish approves a draft, but a post with no design, file or text has nothing to approve.
+ await assert.rejects(()=>publishing.publish(admin,input),/التصميم أو النص/);await assert.rejects(()=>publishing.publish(employee,input),/permission/);assert.equal(calls,0);
 });
 test('Facebook duplicate submissions make a single write and require read-after-write evidence',async()=>{
  const a=await accounts.registerAccount('facebook','page','Page',admin.id,'fb-token',['pages_manage_posts']);await store.saveSecret('fb-token',{...credential,scopes:['pages_manage_posts']});

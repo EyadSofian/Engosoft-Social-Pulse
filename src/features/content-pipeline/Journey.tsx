@@ -14,8 +14,8 @@ import type { PipelineItem } from './types';
 export type JourneyStage = 'making' | 'review' | 'ready' | 'scheduled' | 'published';
 
 export const JOURNEY: { id: JourneyStage; statuses: ContentStatus[]; en: string; ar: string; whoEn: string; whoAr: string; href: string; icon: ReactNode }[] = [
-  { id: 'making', statuses: ['idea', 'draft', 'in_production', 'changes_requested'], en: 'Being made', ar: 'بيتعمل', whoEn: 'Creator sends it for approval', whoAr: 'منشئ المحتوى يبعته للاعتماد', href: '/content?tab=making', icon: <PenLine size={15} /> },
-  { id: 'review', statuses: ['ready_for_review'], en: 'Waiting for approval', ar: 'بانتظار الاعتماد', whoEn: 'Marketing approves or returns it', whoAr: 'التسويق يعتمد أو يرجّعه', href: '/content?tab=review', icon: <Clock3 size={15} /> },
+  { id: 'making', statuses: ['idea', 'draft', 'in_production', 'changes_requested'], en: 'Being made', ar: 'بيتعمل', whoEn: 'The publisher publishes it, or the creator sends it to them', whoAr: 'المسؤول عن النشر ينشره، أو منشئ المحتوى يبعته له', href: '/content?tab=making', icon: <PenLine size={15} /> },
+  { id: 'review', statuses: ['ready_for_review'], en: 'With the publisher', ar: 'عند المسؤول عن النشر', whoEn: 'The publisher publishes it or returns it', whoAr: 'المسؤول عن النشر ينشره أو يرجّعه', href: '/content?tab=review', icon: <Clock3 size={15} /> },
   { id: 'ready', statuses: ['approved'], en: 'Ready to publish', ar: 'جاهز للنشر', whoEn: 'Publish now or pick a time', whoAr: 'انشره دلوقتي أو حدد ميعاد', href: '/publish?view=ready', icon: <Send size={15} /> },
   { id: 'scheduled', statuses: ['scheduled'], en: 'Scheduled', ar: 'مجدول', whoEn: 'Goes out at its time', whoAr: 'بيتنشر في ميعاده', href: '/publish?view=scheduled', icon: <CalendarClock size={15} /> },
   { id: 'published', statuses: ['published'], en: 'Published', ar: 'منشور', whoEn: 'Results in Analytics', whoAr: 'النتائج في التحليلات', href: '/analytics?section=posts', icon: <CheckCircle2 size={15} /> },
@@ -30,7 +30,7 @@ function useTurns(items: PipelineItem[]) {
     && (stage !== 'making' || (item.ownerId === user.id && item.moves.some((move) => move.to === 'ready_for_review')))).length;
   const turns: Partial<Record<JourneyStage, number>> = {};
   if (can('content.create')) turns.making = mine('making');
-  if (can('content.approve')) turns.review = mine('review');
+  if (can('content.approve') || can('content.publish')) turns.review = mine('review');
   if (can('content.publish') || can('content.schedule')) turns.ready = mine('ready');
   return turns;
 }

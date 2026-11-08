@@ -201,7 +201,7 @@ export function CreationHomePage() {
         <p>{t(...lead[mode])}</p>
       </div>
       <ol className="create-steps" aria-label={t('Steps', 'الخطوات')}>
-        {[[ 'Choose how', 'اختر الطريقة'], ['Make the post', 'جهّز المنشور'], ['Send for approval', 'أرسله للاعتماد']].map(([en, ar], index) => {
+        {[[ 'Choose how', 'اختر الطريقة'], ['Make the post', 'جهّز المنشور'], ['Publish, or send it to the publisher', 'انشره، أو ابعته للمسؤول عن النشر']].map(([en, ar], index) => {
           const current = mode === 'choose' ? 0 : 1;
           return <li key={en} data-state={index < current ? 'done' : index === current ? 'current' : undefined}><span className="u-tnum">{index + 1}</span>{t(en, ar)}</li>;
         })}
@@ -246,10 +246,10 @@ export function CreationHomePage() {
           <input ref={upload} hidden type="file" multiple accept="image/png,image/jpeg,image/webp,application/pdf,.pdf,.txt,.md,text/plain,text/markdown" onChange={(event) => void addFiles(event.target.files)} />
           <button type="button" disabled={references.length >= 6} onClick={() => upload.current?.click()}><ImagePlus size={16} />{t('Attach an image or file', 'أرفق صورة أو ملفًا')}</button>
           <button type="button" onClick={() => setSourcePanel(sourcePanel === 'post' ? null : 'post')}>{t('Use existing post', 'استخدم منشورًا سابقًا')}</button>
-          <button type="button" onClick={() => setSourcePanel(sourcePanel === 'course' ? null : 'course')}><GraduationCap size={16} />{t('Choose a course from Odoo', 'اختر دورة من Odoo')}</button>
+          <button type="button" onClick={() => setSourcePanel(sourcePanel === 'course' ? null : 'course')}><GraduationCap size={16} />{t('Choose a course from the website', 'اختر دورة من الموقع')}</button>
         </div>
         {sourcePanel === 'post' && <div className="creative-home__source"><strong>{t('Existing posts', 'منشورات سابقة')}</strong><p className="u-xs u-muted">{t('Existing workspace posts are references only.', 'المنشورات السابقة مراجع فقط.')}</p><div>{(pipeline ?? []).slice(0, 8).map((item) => <button key={item.id} type="button" onClick={() => { setPrompt((current) => `${current}${current ? ' — ' : ''}${item.title}`); setSourcePanel(null); }}>{item.title}</button>)}</div></div>}
-        {sourcePanel === 'course' && <div className="creative-home__source"><strong>{t('Odoo courses and upcoming runs', 'دورات Odoo ومواعيدها القادمة')}</strong><p className="u-xs u-muted">{t('Dates and links come from Odoo; the design uses them exactly.', 'التواريخ والروابط من Odoo، ويستخدمها التصميم كما هي.')}</p><CoursePicker autoFocus onPick={(pick) => {
+        {sourcePanel === 'course' && <div className="creative-home__source"><strong>{t('Website courses and their upcoming runs', 'دورات الموقع ومواعيدها القادمة')}</strong><p className="u-xs u-muted">{t('Dates and links come from Odoo; the design uses them exactly.', 'التواريخ والروابط من Odoo، ويستخدمها التصميم كما هي.')}</p><CoursePicker autoFocus onPick={(pick) => {
           const run = runOf(pick);
           const name = pick.type === 'course' ? pick.course.name : pick.event.title;
           const when = run ? ` — ${new Date(run.startsAt).toLocaleDateString('ar-EG-u-nu-latn', { day: 'numeric', month: 'long', year: 'numeric', timeZone: 'Africa/Cairo' })}` : '';

@@ -116,7 +116,7 @@ export function OverviewPage() {
       <section aria-labelledby="ov-actions-title">
         <h2 className="ov-title" id="ov-actions-title">{t('Needs action now', 'مطلوب الآن')}</h2>
         <div className="ov-actions">
-          <ActionTile tone="brand" icon={<FilePen size={16} />} count={n(inReview.length)} label={t('Waiting for approval', 'بانتظار الاعتماد')} who={t('Marketing manager', 'مدير التسويق')} rows={inReview.map((item) => ({ id: item.id, title: item.title, to: `/content/${item.id}` }))} to="/content" />
+          <ActionTile tone="brand" icon={<FilePen size={16} />} count={n(inReview.length)} label={t('Waiting for the publisher', 'مستني المسؤول عن النشر')} who={t('Person responsible for publishing', 'المسؤول عن النشر')} rows={inReview.map((item) => ({ id: item.id, title: item.title, to: `/content/${item.id}` }))} to="/content" />
           <ActionTile tone="warning" icon={<AlarmClock size={16} />} count={n(changes.length)} label={t('Needs changes', 'مطلوب تعديل')} who={t('Post owner', 'صاحب المنشور')} rows={changes.map((item) => ({ id: item.id, title: item.title, to: `/content/${item.id}` }))} to="/content" />
           <ActionTile tone="success" icon={<CalendarClock size={16} />} count={n(toSchedule.length)} label={t('Approved, needs a time', 'معتمد ينتظر موعدًا')} who={t('Content supervisor', 'مسؤول المحتوى')} rows={toSchedule.map((item) => ({ id: item.id, title: item.title, to: `/content/${item.id}` }))} to={can('content.schedule') ? '/publish' : '/content'} />
           <ActionTile tone="danger" icon={<CircleAlert size={16} />} count={n(late.length)} label={t('Late', 'متأخر')} who={t('Its day passed, not published', 'فات يومه ولم يُنشر')} rows={late} to="/calendar" />

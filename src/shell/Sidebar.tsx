@@ -26,7 +26,7 @@ function useNavCounts(): Partial<Record<NavId, number>> {
   useEffect(() => {
     let alive = true;
     const load = () => void api<{ status: string; ownerId: string }[]>('/api/content').then((items) => {
-      if (alive) setCount(items.filter((item) => (can('content.approve') && item.status === 'ready_for_review') || (item.ownerId === user.id && item.status === 'changes_requested')).length);
+      if (alive) setCount(items.filter((item) => ((can('content.approve') || can('content.publish')) && item.status === 'ready_for_review') || (item.ownerId === user.id && item.status === 'changes_requested')).length);
     }).catch(() => {});
     load();
     const timer = setInterval(load, 60_000);

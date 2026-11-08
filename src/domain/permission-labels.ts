@@ -35,8 +35,8 @@ export const PERMISSION_LABELS: Record<
   },
   'content.publish': {
     group: 'workflow',
-    en: 'Manage publication workflow',
-    ar: 'إدارة مراحل النشر والأرشفة',
+    en: 'Publish posts (publishing is the approval)',
+    ar: 'النشر (النشر نفسه اعتماد)',
   },
   'design.free': {
     group: 'design',
@@ -113,8 +113,8 @@ export const PERMISSION_HINTS: Record<Permission, { en: string; ar: string }> = 
   'content.edit_department': { en: 'Change posts from their whole department.', ar: 'يعدّل منشورات قسمه كله.' },
   'content.edit_any': { en: 'See and change posts from every department.', ar: 'يرى ويعدّل منشورات كل الأقسام.' },
   'content.approve': { en: 'Approve posts or send them back with a note.', ar: 'يعتمد المنشورات أو يرجعها بملاحظة.' },
-  'content.schedule': { en: 'Upload the plan, give approved posts a time, move or remove it.', ar: 'يرفع الخطة، ويحدد موعد المعتمد، ويغيّره أو يلغيه.' },
-  'content.publish': { en: 'Send approved posts to the connected accounts, now or at a time.', ar: 'ينشر المعتمد على الحسابات المربوطة، الآن أو في موعد.' },
+  'content.schedule': { en: 'Upload the plan, give posts a publishing time, move or remove it.', ar: 'يرفع الخطة، ويحدد ميعاد نشر المنشورات، ويغيّره أو يلغيه.' },
+  'content.publish': { en: 'Publishes posts to the connected accounts, now or at a time. Their publishing approves the post; no one else has to sign off.', ar: 'ينشر المنشورات على الحسابات المربوطة، دلوقتي أو في ميعاد. نشره هو الاعتماد، ومش محتاج موافقة من حد تاني.' },
   'design.free': { en: 'Generate designs with AI and edit freely in the Studio.', ar: 'يولّد تصميمات بالذكاء الاصطناعي ويعدّل بحرية في الاستوديو.' },
   'design.templates': { en: 'Make posts from the approved ready templates.', ar: 'يعمل منشورات من القوالب الجاهزة المعتمدة.' },
   'design.upload': { en: 'Upload a design finished in another program.', ar: 'يرفع تصميمًا جاهزًا معمولًا في برنامج آخر.' },

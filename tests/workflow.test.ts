@@ -43,11 +43,11 @@ test('seeded published records never sit in the future', () => {
   }
 });
 
-test('only Marketing can approve; the department that wrote the item cannot', () => {
+test('only approvers or the publisher can approve; a creator in the department that wrote it cannot', () => {
   const state = createSeed(monday);
   const content = item(state, 'ci-cfm-starts');
   assert.equal(content.status, 'ready_for_review');
-  const ahmed = user(state, 'u-ahmed');
+  const ahmed = user(state, 'u-nour');
   const mariam = user(state, 'u-mariam');
   assert.ok(!allowedTransitions(ahmed, content).some((move) => move.to === 'approved'));
   assert.deepEqual(transitionContent(state, ahmed, content.id, { to: 'approved' }, nowIso), { ok: false, error: 'permission' });
@@ -58,6 +58,8 @@ test('only Marketing can approve; the department that wrote the item cannot', ()
   assert.equal(decision.status, 'approved');
   assert.equal(decision.decidedById, 'u-mariam');
   assert.ok(approved.state.notifications.some((entry) => entry.userId === 'u-ahmed' && entry.category === 'approved'));
+  // Whoever holds publishing decides too: the supervisor role publishes, so it may approve.
+  assert.ok(allowedTransitions(user(state, 'u-omar'), content).some((move) => move.to === 'approved'));
 });
 
 test('requesting changes needs a note and opens a revision task for the designer', () => {

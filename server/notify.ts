@@ -75,8 +75,8 @@ export async function notifyContent(actor: AuthUser, item: { id: string; title: 
       if (event === 'created' && !settings.onCreate) return;
       if (event === 'ready_for_review' && !settings.onReview) return;
       const title = event === 'created' ? `منشور جديد من ${who}` : `${who} أرسل منشورًا للمراجعة`;
-      // Without chosen recipients, the people who can approve hear about it.
-      const chosen = settings.userIds.length ? settings.userIds : (await listUsers()).filter((u) => u.status === 'active' && userCan(u, 'content.approve')).map((u) => u.id);
+      // Without chosen recipients, the people who decide hear about it: approvers and whoever publishes.
+      const chosen = settings.userIds.length ? settings.userIds : (await listUsers()).filter((u) => u.status === 'active' && (userCan(u, 'content.approve') || userCan(u, 'content.publish'))).map((u) => u.id);
       await notifyUsers(chosen.filter((id) => id !== actor.id), event === 'created' ? 'content_created' : 'content_review', title, item.title, link);
       if (settings.emails.length) void sendEmail(settings.emails, title, `«${item.title}»`, link).catch((error) => console.error('Notification email failed:', error instanceof Error ? error.message : error));
       return;

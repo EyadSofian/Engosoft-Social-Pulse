@@ -55,7 +55,7 @@ export function ContentBoardPage({ openId }: { openId?: string }) {
     (scope === 'all' || (scope === 'mine' ? item.ownerId === user.id : item.departmentId === user.departmentId))
     && (!query.trim() || item.title.toLowerCase().includes(query.trim().toLowerCase()))), [items, scope, query, user]);
   // Approvers land on what waits for them; everyone else on the full list.
-  const active: Tab = tab ?? (can('content.approve') ? 'review' : 'all');
+  const active: Tab = tab ?? (can('content.approve') || can('content.publish') ? 'review' : 'all');
   const current = JOURNEY.find((stage) => stage.id === active);
   const shown = scoped.filter((item) => active === 'all' ? item.status !== 'archived' : stageOf(item.status) === active);
   const allCount = scoped.filter((item) => item.status !== 'archived').length;
@@ -115,7 +115,8 @@ function ContentDrawer({ id, team, onClose, onChanged }: { id: string; team: Tea
   const [comment, setComment] = useState('');
   const [captions, setCaptions] = useState<Partial<Record<Channel, string>>>({});
   const [preview, setPreview] = useState<string | null>(null);
-  const [publishing, setPublishing] = useState(false);
+  // "Save and publish" on the Create page lands here with ?publish=1: the publish window opens with the post.
+  const [publishing, setPublishing] = useState(() => new URLSearchParams(window.location.search).get('publish') === '1');
   const [reopening, setReopening] = useState(false);
   const [reason, setReason] = useState('');
   const load = useCallback(() => api<PipelineDetail>(`/api/content/${id}`).then((d) => { setItem(d); setCaptions(d.captions); }).catch((e) => setError(errorMessage(e, 'Not found'))), [id]);
@@ -155,8 +156,8 @@ function ContentDrawer({ id, team, onClose, onChanged }: { id: string; team: Tea
       </header>
       {item && <Dialog open={reopening} onClose={() => setReopening(false)} title={t('Edit this post', 'تعديل هذا المنشور')}
         description={item.status === 'scheduled'
-          ? t('Editing an approved post takes it off the calendar and stops its automatic publishing. It goes back for changes and must be approved again.', 'تعديل منشور معتمد يشيله من التقويم ويوقف نشره التلقائي، ويرجعه للتعديل، ولازم يتعتمد تاني قبل النشر.')
-          : t('Editing an approved post sends it back for changes. It must be approved again before publishing.', 'تعديل منشور معتمد يرجعه للتعديل، ولازم يتعتمد تاني قبل النشر.')}
+          ? t('Editing takes it off the calendar and stops its automatic publishing. After the edit, publish or schedule it again.', 'التعديل بيشيله من التقويم ويوقف نشره التلقائي. بعد ما تعدّله، انشره أو جدوله تاني.')
+          : t('Editing opens it for changes. After the edit, publish or schedule it again.', 'التعديل بيفتحه للتغيير. بعد ما تعدّله، انشره أو جدوله تاني.')}
         footer={<><Button variant="ghost" onClick={() => setReopening(false)}>{t('Cancel', 'إلغاء')}</Button>
           <Button variant="primary" icon={<Pencil size={15} />} busy={busy} disabled={!reason.trim()} onClick={() => void act(() => api(`/api/content/${id}/reopen`, { body: { note: reason } })).then((ok) => { if (ok) { setReopening(false); setReason(''); } })}>{t('Open for editing', 'افتح للتعديل')}</Button></>}>
         <label className="ui-field"><span className="ui-field__label">{t('What needs to change?', 'إيه اللي محتاج يتغيّر؟')}</span><textarea className="ui-input" rows={3} dir="auto" value={reason} onChange={(event) => setReason(event.target.value)} placeholder={t('e.g. the course date is wrong', 'مثال: تاريخ الدورة غلط')} /></label>

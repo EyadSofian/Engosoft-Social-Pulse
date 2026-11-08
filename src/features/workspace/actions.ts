@@ -4,7 +4,7 @@
  * the future API endpoints must do (see MIGRATION_PLAN.md).
  */
 import type { ActivityLog, ContentItem, ContentStatus, ContentType } from '../../domain/content';
-import { TRANSITIONS } from '../../domain/content';
+import { mayApprove, TRANSITIONS } from '../../domain/content';
 import type { AppNotification } from '../../domain/management';
 import type { StudentAchievement } from '../../domain/planning';
 import type { Channel, Priority } from '../../domain/shared';
@@ -29,7 +29,7 @@ function notified(state: WorkspaceState, entries: Omit<AppNotification, 'id' | '
   return { ...state, notifications: [...entries.map((entry) => ({ ...entry, id: newId('nt'), read: false, provenance: 'demo' as const })), ...state.notifications] };
 }
 
-const reviewers = (state: WorkspaceState) => state.users.filter((user) => user.status === 'active' && hasPermission(user, 'content.approve') && user.role !== 'admin');
+const reviewers = (state: WorkspaceState) => state.users.filter((user) => user.status === 'active' && mayApprove((p) => hasPermission(user, p)) && user.role !== 'admin');
 
 export interface TransitionInput {
   to: ContentStatus;

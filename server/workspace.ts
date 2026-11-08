@@ -6,7 +6,7 @@ import { cancelQueued, hasPendingPublication, moveQueued } from './social/store.
  * publish alerts and sync-based publish proof keep working unchanged.
  */
 import { randomUUID } from 'node:crypto';
-import { TRANSITIONS, type ContentStatus } from '../src/domain/content.js';
+import { PRE_APPROVAL, permits, TRANSITIONS, type ContentStatus } from '../src/domain/content.js';
 import type { Permission } from '../src/domain/users.js';
 import { userCan, type AuthUser } from './auth.js';
 import { matchingPost, newPlan } from './domain.js';
@@ -216,7 +216,7 @@ export class WorkspaceError extends Error { constructor(public status: number, m
 
 /** Which moves this user may make now. A scheduled post can also be moved to a new time (scheduled → scheduled). */
 export function allowedMoves(user: AuthUser, item: StoredContent): { to: ContentStatus; needsNote: boolean }[] {
-  const moves = TRANSITIONS[item.status].filter((move) => move.permission ? userCan(user, move.permission as Permission) : canEdit(user, item))
+  const moves = TRANSITIONS[item.status].filter((move) => move.permission ? permits(move.permission, (p: Permission) => userCan(user, p)) : canEdit(user, item))
     .filter((move) => move.to !== 'published') // publish is proven by sync, never clicked
     .map((move) => ({ to: move.to, needsNote: move.needs === 'note' }));
   if (item.status === 'scheduled' && userCan(user, 'content.schedule')) moves.unshift({ to: 'scheduled', needsNote: false });
@@ -280,7 +280,7 @@ export async function recordManualPublication(user: AuthUser, contentId: string,
   if (!userCan(user, 'content.publish')) throw new WorkspaceError(403, 'لا تملك صلاحية النشر.');
   const item = await getContent(contentId);
   if (!item || !canSee(user, item)) throw new WorkspaceError(404, 'المحتوى غير موجود.');
-  if (!['approved', 'scheduled', 'published'].includes(item.status)) throw new WorkspaceError(409, 'يُنشر المحتوى المعتمد فقط.');
+  if (!['approved', 'scheduled', 'published', ...PRE_APPROVAL].includes(item.status)) throw new WorkspaceError(409, 'المنشور ده ملغي أو مؤرشف؛ رجّعه الأول.');
   if (!MANUAL_CHANNELS.includes(channel) || !item.channels.includes(channel)) throw new WorkspaceError(400, 'هذه المنصة ليست من منصات النشر اليدوي لهذا المنشور.');
   let link: string | null = null;
   if (url?.trim()) {
@@ -291,8 +291,52 @@ export async function recordManualPublication(user: AuthUser, contentId: string,
     if (parsed.protocol !== 'https:' || !onPlatform) throw new WorkspaceError(400, channel === 'whatsapp' ? 'واتساب ليس له رابط منشور؛ سجّل النشر من غير رابط.' : 'الرابط لازم يكون رابط المنشور على المنصة نفسها ويبدأ بـ https.');
     link = parsed.toString();
   }
+  await approveForPublishing(user, item);
   await log(contentId, user.id, 'manual_publish', JSON.stringify({ channel, url: link }));
+  await markPublishedWhenComplete(contentId, user.id);
   return manualPublications(contentId);
+}
+
+/**
+ * A post is published once every one of its platforms is: through a verified API publication, or recorded by hand
+ * (WhatsApp, X, the website, LinkedIn without its API). Before, a post that also went to WhatsApp stayed
+ * "approved" forever and kept showing as ready to publish.
+ */
+export async function markPublishedWhenComplete(contentId: string, actorId: string): Promise<boolean> {
+  const row = await db.get('SELECT * FROM content_items WHERE id=?', [contentId]);
+  if (!row) return false;
+  const item = toContent(row);
+  if (!['approved', 'scheduled'].includes(item.status)) return item.status === 'published';
+  const viaApi = await db.all("SELECT provider FROM social_publish_jobs WHERE content_id=? AND state='published' AND external_id IS NOT NULL", [contentId]);
+  const done = new Set<string>([...viaApi.map((job) => String(job.provider)), ...(await manualPublications(contentId)).map((m) => m.channel)]);
+  if (!item.channels.length || !item.channels.every((channel) => done.has(channel))) return false;
+  await db.run("UPDATE content_items SET status='published', updated_at=? WHERE id=?", [new Date().toISOString(), contentId]);
+  await log(contentId, actorId, 'transition', 'اتنشر على كل منصاته', item.status, 'published');
+  return true;
+}
+
+/** A design, an uploaded image or video, or (for text posts) a caption on one of its platforms. */
+async function hasSomethingToPublish(item: StoredContent): Promise<boolean> {
+  if (item.creative) return true;
+  if (item.channels.some((channel) => item.captions[channel]?.trim())) return true;
+  return (await contentMedia(item.id)).length > 0;
+}
+
+/**
+ * The person responsible for publishing does not need anyone else's approval: publishing or scheduling a post
+ * that is still a draft, in review or returned approves it in their name first, with a note in its history.
+ * Anyone without the publish permission still gets "only approved content is published".
+ */
+export async function approveForPublishing(user: AuthUser, item: StoredContent): Promise<StoredContent> {
+  if (!PRE_APPROVAL.includes(item.status) || !userCan(user, 'content.publish')) return item;
+  try {
+    return await transition(user, item.id, 'approved', { note: 'اعتمده المسؤول عن النشر عند النشر' });
+  } catch (error) {
+    // Two accounts sent at once both approve it; the second finds it already approved.
+    const fresh = await getContent(item.id);
+    if (fresh && !PRE_APPROVAL.includes(fresh.status)) return fresh;
+    throw error;
+  }
 }
 
 /**
@@ -304,11 +348,16 @@ export async function transition(user: AuthUser, id: string, to: ContentStatus, 
   const item = await getContent(id);
   if (!item || !canSee(user, item)) throw new WorkspaceError(404, 'المحتوى غير موجود.');
   if(await hasPendingPublication(item.id))throw new WorkspaceError(409, 'يوجد طلب نشر قيد المعالجة؛ تحقق من نتيجته قبل تغيير المحتوى أو سحب اعتماده.');
+  // Scheduling a post that was never approved: the publisher's scheduling is the approval.
+  if (to === 'scheduled' && PRE_APPROVAL.includes(item.status) && userCan(user, 'content.publish') && userCan(user, 'content.schedule')) {
+    publishTime(input.scheduledAt);
+    return transition(user, (await approveForPublishing(user, item)).id, 'scheduled', input);
+  }
   const move = allowedMoves(user, item).find((entry) => entry.to === to);
   if (!move) throw new WorkspaceError(403, 'هذه الخطوة غير متاحة لك الآن.');
   if (move.needsNote && !input.note?.trim()) throw new WorkspaceError(400, 'اكتب سبب أو ملاحظة.');
-  if (to === 'ready_for_review' && !item.creative && !(await contentMedia(item.id)).length) throw new WorkspaceError(400, 'أضف التصميم أولًا قبل إرساله للمراجعة.');
-  const andSchedule = to === 'approved' && item.status === 'ready_for_review' && Boolean(input.scheduledAt);
+  if ((to === 'ready_for_review' || to === 'approved') && !(await hasSomethingToPublish(item))) throw new WorkspaceError(400, 'أضف التصميم أو النص أولًا.');
+  const andSchedule = to === 'approved' && PRE_APPROVAL.includes(item.status) && Boolean(input.scheduledAt);
   if (andSchedule && !userCan(user, 'content.schedule')) throw new WorkspaceError(403, 'لا تملك صلاحية جدولة النشر؛ اعتمد المنشور فقط.');
   // Nothing changes when the time is wrong.
   if (to === 'scheduled' || andSchedule) publishTime(input.scheduledAt);

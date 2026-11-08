@@ -88,7 +88,7 @@ export function draftProblems(d: CourseProfileDraft, t: T): Partial<Record<keyof
 export const approveBlocker = (d: CourseProfileDraft, t: T) =>
   Object.keys(draftProblems(d, t)).length ? t('Fix the highlighted fields first.', 'صحّح الحقول المحددة أولًا.') : !lines(d.objectives).length ? t('Add at least one learning goal to approve.', 'أضف هدفًا واحدًا على الأقل لاعتماد الدورة.') : null;
 
-interface ImportStatus { retrievedAt: string; total: number; pageCount: number; catalogCount: number; unverified: { courseId: string; name: string; url: string }[] }
+interface ImportStatus { source: string; retrievedAt: string; total: number; hidden: number }
 type StatusFilter = 'all' | 'suggested' | 'approved' | 'incomplete';
 type Sort = 'name' | 'updated' | 'missing';
 /** The draft being edited survives a reload, a closed tab or an expired session. */
@@ -100,7 +100,7 @@ function readStored(userId: string): StoredDraft | null {
 const writeStored = (userId: string, value: StoredDraft | null) => { try { if (value) localStorage.setItem(storeKey(userId), JSON.stringify(value)); else localStorage.removeItem(storeKey(userId)); } catch { /* storage blocked: the draft is a convenience */ } };
 
 export function CourseProfilesPanel() {
-  const { t } = useI18n();
+  const { t, date } = useI18n();
   const { can, user } = useAuth();
   const editor = can('templates.manage');
   const { profiles, reload, error: loadError } = useCourseProfiles();
@@ -111,7 +111,7 @@ export function CourseProfilesPanel() {
   const [query, setQuery] = useState('');
   const [category, setCategory] = useState('all');
   // Reviewers start on their queue; readers see everything (suggested profiles are labelled as such).
-  const [status, setStatus] = useState<StatusFilter>(editor ? 'suggested' : 'all');
+  const [status, setStatus] = useState<StatusFilter>('all');
   const [sort, setSort] = useState<Sort>('name');
   const [limit, setLimit] = useState(60);
   const [busy, setBusy] = useState('');
@@ -241,9 +241,10 @@ export function CourseProfilesPanel() {
   const sync = async () => {
     setBusy('sync'); setError('');
     try {
-      const result = await api<{ added: number; total: number; odooStatus: string }>('/api/course-profiles/sync', { body: {} });
+      const result = await api<{ added: number; updated: number; kept: number; hidden: number; total: number; retrievedAt: string }>('/api/course-profiles/sync', { body: {} });
       await reload().catch(() => {});
-      setNotice(t(`${result.added} new courses added; ${result.total} in total. Existing edits were kept.`, `أُضيفت ${result.added} دورة جديدة؛ الإجمالي ${result.total}. التعديلات الحالية لم تتغير.`));
+      void api<ImportStatus>('/api/course-profiles/import-status').then(setSource).catch(() => {});
+      setNotice(t(`Synced with engosoft.com: ${result.added} new, ${result.updated} updated, ${result.hidden} no longer on the website; ${result.total} courses. Your own edits were kept.`, `اتزامنت مع engosoft.com: ${result.added} جديدة، ${result.updated} اتحدّثت، ${result.hidden} مبقتش على الموقع؛ الإجمالي ${result.total} دورة. تعديلاتك محفوظة.`));
     } catch (e) { setError(errorMessage(e, '')); }
     setBusy('');
   };
@@ -269,13 +270,13 @@ export function CourseProfilesPanel() {
           </div>
           <div className="course-lib__bar" role="progressbar" aria-valuemin={0} aria-valuemax={100} aria-valuenow={pct} aria-label={t('Approved', 'معتمد')}><span style={{ width: `${Math.max(pct, stats.approved ? 2 : 0)}%` }} /></div>
           <small>{editor
-            ? t('Profiles were drafted from course names. Check each against its course page, then approve.', 'الملفات اتكتبت تلقائيًا من أسماء الدورات. راجع كل ملف مع صفحة الدورة واعتمده.')
+            ? t('Every course here is on engosoft.com, with the goals, outcomes and audience written on its page. Sync pulls the latest; your own edits are kept.', 'كل الدورات هنا من engosoft.com، بالأهداف والمخرجات والفئة المستهدفة المكتوبة في صفحة كل دورة. «مزامنة» بتجيب آخر تحديث، وتعديلاتك بتفضل زي ما هي.')
             : t('Approved course details fill the course fields when you create a post.', 'بيانات الدورات المعتمدة تملأ حقول الدورة تلقائيًا عند إنشاء منشور.')}</small>
         </div>
         {editor && <div className="course-lib__overview-actions">
           {stats.suggested > 0 && <Button variant="primary" icon={<ListChecks size={15} />} onClick={() => { setStatus('suggested'); setCategory('all'); setQuery(''); const first = profiles.filter((p) => p.reviewStatus === 'suggested').sort((a, b) => a.courseName.localeCompare(b.courseName, 'ar'))[0]; if (first) open(first); }}>{t(`Review next · ${stats.suggested} left`, `راجع التالية · متبقٍ ${stats.suggested}`)}</Button>}
           <Button variant="secondary" icon={<Plus size={15} />} onClick={() => open(null)}>{t('Add a course', 'أضف دورة')}</Button>
-          <Button variant="ghost" icon={<RefreshCw size={14} />} busy={busy === 'sync'} disabled={Boolean(busy)} onClick={() => void sync()} title={t('Add courses newly found on the website or in Odoo. Existing edits are kept.', 'أضف الدورات الجديدة من الموقع أو Odoo. التعديلات الحالية لا تتغير.')}>{t('Sync', 'مزامنة')}</Button>
+          <Button variant="ghost" icon={<RefreshCw size={14} />} busy={busy === 'sync'} disabled={Boolean(busy)} onClick={() => void sync()} title={t('Read the courses on engosoft.com now. Courses removed from the website leave the library; your edits are kept.', 'اقرأ الدورات من engosoft.com دلوقتي. الدورات اللي اتشالت من الموقع بتختفي من المكتبة، وتعديلاتك محفوظة.')}>{t('Sync with the website', 'مزامنة مع الموقع')}</Button>
         </div>}
       </section>
 
@@ -331,11 +332,9 @@ export function CourseProfilesPanel() {
             )}
             {filtered.length > limit && <Button variant="secondary" onClick={() => setLimit(limit + 60)}>{t(`Show more (${filtered.length - limit})`, `اعرض المزيد (${filtered.length - limit})`)}</Button>}
           </div>
-          {editor && source && <details className="course-lib__source">
-            <summary>{t('Import coverage', 'تغطية الاستيراد')} · {source.total} · {source.retrievedAt}</summary>
-            <p>{t(`${source.pageCount} course pages read; ${source.catalogCount} names verified from website cards; ${source.unverified.length} links still need their names checked.`, `قُرئت ${source.pageCount} صفحة دورة، ووُثّق ${source.catalogCount} اسمًا من بطاقات الموقع، و${source.unverified.length} روابط تحتاج مراجعة أسمائها.`)}</p>
-            {source.unverified.map((c) => <div key={c.courseId}><button className="ui-link" type="button" onClick={() => { const p = profiles.find((x) => x.courseId === c.courseId); if (p) open(p); }}>{c.name}</button> · <a href={c.url} target="_blank" rel="noreferrer">{t('Source', 'المصدر')}</a></div>)}
-          </details>}
+          {editor && source && <p className="u-xs u-muted course-lib__source">
+            {t('Source', 'المصدر')}: <a href={source.source} target="_blank" rel="noreferrer">engosoft.com</a> · {t('last synced', 'آخر مزامنة')} <span className="u-tnum">{date(source.retrievedAt, 'dateTime')}</span>{source.hidden > 0 && <> · {t(`${source.hidden} courses no longer on the website are hidden`, `${source.hidden} دورة مبقتش على الموقع ومخفية`)}</>}
+          </p>}
         </section>
 
         <section ref={editorRef} className="course-lib__detail" aria-label={t('Course profile', 'ملف الدورة')}>
@@ -358,9 +357,9 @@ export function CourseProfilesPanel() {
           ) : (
             <div className="course-lib__empty glass">
               <GraduationCap size={34} />
-              <h3>{editor ? t('Pick a course to review', 'اختر دورة لمراجعتها') : t('Pick a course to see its details', 'اختر دورة لعرض تفاصيلها')}</h3>
-              <p>{editor ? t('Check the overview, audience, goals and outcomes against the course page, then approve. The post preview shows how the copy will read.', 'راجع النبذة والجمهور والأهداف والمخرجات مع صفحة الدورة ثم اعتمدها. معاينة المنشور توضح كيف سيظهر النص.') : t('These details fill the course fields on the Create page.', 'هذه البيانات تملأ حقول الدورة في صفحة الإنشاء.')}</p>
-              {editor && stats.suggested > 0 && <ol className="course-lib__steps"><li>{t('Open the source page', 'افتح صفحة المصدر')}</li><li>{t('Correct the goals and audience', 'صحّح الأهداف والجمهور')}</li><li>{t('Approve and go to the next one', 'اعتمد وانتقل للتالية')}</li></ol>}
+              <h3>{t('Pick a course to see its details', 'اختر دورة لعرض تفاصيلها')}</h3>
+              <p>{t('The overview, goals, outcomes and audience come from the course page on engosoft.com and fill the course fields on the Create page.', 'النبذة والأهداف والمخرجات والفئة المستهدفة جاية من صفحة الدورة على engosoft.com، وبتملأ حقول الدورة في صفحة الإنشاء.')}</p>
+
             </div>
           )}
         </section>

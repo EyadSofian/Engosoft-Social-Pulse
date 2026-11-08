@@ -228,7 +228,7 @@ export function PublishComposer({ item, open, onClose, onDone, day }: { item: Pi
             : when === 'later' && heldForLater.length ? <><Clock size={15} /> {t(`${heldForLater.map((d) => platformOf(d.provider).name).join(', ')}: publish them from here at the time; they need their own choices then.`, `${heldForLater.map((d) => platformOf(d.provider).name).join(' و')}: تنشرها من هنا في الموعد لأنها محتاجة اختياراتها وقتها.`)}</>
               : when === 'now' && !count ? <><CircleAlert size={15} /> {t('Choose at least one account.', 'اختار حساب واحد على الأقل.')}</>
                 : tiktokChosen ? <span>{t('By posting to TikTok you agree to its', 'بالنشر على تيك توك أنت موافق على')} <a href="https://www.tiktok.com/legal/page/global/music-usage-confirmation/en" target="_blank" rel="noreferrer">Music Usage Confirmation</a>.</span>
-                  : <span>{t('The approved design and captions go out exactly as approved.', 'التصميم والنص المعتمدين هيتنشروا زي ما اتعتمدوا بالظبط.')}</span>}
+                  : <span>{t('The design and captions go out exactly as shown. Publishing is the approval.', 'التصميم والنص هيتنشروا زي ما هما بالظبط، ونشرك هو الاعتماد.')}</span>}
         </p>
         <Button variant="ghost" onClick={onClose}>{t('Cancel', 'إلغاء')}</Button>
         <Button variant="primary" icon={when === 'now' ? <Send size={15} /> : <CalendarClock size={15} />} disabled={blocked} onClick={() => void submit()}>{action}</Button>

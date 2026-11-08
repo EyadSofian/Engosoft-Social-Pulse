@@ -297,6 +297,7 @@ export function TemplateComposer(props: ComposerProps) {
 
 function ReferenceComposer({ template, initialValues, contentId, initialChannels, initialImageUrl, initialFormat, initialContext, initialPreset, onClose }: ComposerProps) {
   const { t } = useI18n();
+  const publisher = useAuth().can('content.publish');
   const { user } = useAuth();
   const { navigate } = useRouter();
   const draftKey = `engosoft-reference-draft:${user.id}:${template.id}:${contentId ?? 'new'}`;
@@ -378,9 +379,10 @@ function ReferenceComposer({ template, initialValues, contentId, initialChannels
       }
       savedSignature.current = signature;
       try { sessionStorage.setItem(draftKey, JSON.stringify({ values, format, context, presetId, channels, caption, imageUrl, renderedFor, createdId: id, savedSignature: signature })); } catch { /* Continue saving without browser storage. */ }
-      if (send) await api(`/api/content/${id}/transition`, { body: { to: 'ready_for_review' } });
+      if (send && !publisher) await api(`/api/content/${id}/transition`, { body: { to: 'ready_for_review' } });
       try { sessionStorage.removeItem(draftKey); } catch { /* Storage may be disabled. */ }
-      navigate(`/content/${id}`);
+      // The publisher goes straight to publishing; their publish is the approval.
+      navigate(`/content/${id}${send && publisher ? '?publish=1' : ''}`);
     } catch (e) { setError(errorMessage(e, '')); }
     setBusy('');
   };
@@ -418,7 +420,7 @@ function ReferenceComposer({ template, initialValues, contentId, initialChannels
         <small className="u-muted">{t('Keeps the layout, your copy and the logo; changes only what you ask. Each change uses one image. Earlier versions stay above to pick from.', 'يحافظ على التوزيع ونصك والشعار، ويغيّر ما تطلبه فقط. كل تعديل يستهلك صورة واحدة، والنسخ السابقة تبقى فوق للاختيار.')}</small>
       </div>}
       {imageUrl && !current && <p className="u-sm u-muted">{t('The content changed. Generate the updated design before saving.', 'تغيّرت البيانات؛ ولّد التصميم بالتحديثات قبل الحفظ.')}</p>}
-      <div className="tpl-composer__actions"><Button variant="primary" disabled={!current || Boolean(busy || jobId) || !channels.length} busy={busy === 'send'} onClick={() => void save(!contentId)}><Send size={15} />{contentId ? t('Save a new version', 'احفظ نسخة جديدة') : t('Send for approval', 'أرسل للاعتماد')}</Button>{!contentId && <Button variant="secondary" disabled={!current || Boolean(busy || jobId) || !channels.length} onClick={() => void save(false)}>{t('Save draft', 'احفظ مسودة')}</Button>}{current && <a href={imageUrl} download className="ui-link">PNG</a>}</div>
+      <div className="tpl-composer__actions"><Button variant="primary" disabled={!current || Boolean(busy || jobId) || !channels.length} busy={busy === 'send'} onClick={() => void save(!contentId)}><Send size={15} />{contentId ? t('Save a new version', 'احفظ نسخة جديدة') : publisher ? t('Save and publish', 'احفظ وانشر') : t('Send to the publisher', 'ابعته للمسؤول عن النشر')}</Button>{!contentId && <Button variant="secondary" disabled={!current || Boolean(busy || jobId) || !channels.length} onClick={() => void save(false)}>{t('Save draft', 'احفظ مسودة')}</Button>}{current && <a href={imageUrl} download className="ui-link">PNG</a>}</div>
       {error && <p role="alert" className="creative-home__error">{error}</p>}
     </div>
   </div>;
@@ -426,6 +428,7 @@ function ReferenceComposer({ template, initialValues, contentId, initialChannels
 
 function SvgTemplateComposer({ template, initialValues, contentId, initialChannels, onClose }: ComposerProps) {
   const { t } = useI18n();
+  const publisher = useAuth().can('content.publish');
   const { navigate } = useRouter();
   const [values, setValues] = useState<Record<string, string>>(() => ({ ...sampleValues(template.fields), ...initialValues }));
   const [channels, setChannels] = useState<CreativePlatform[]>(initialChannels ?? plannedChannels() ?? ['instagram', 'facebook']);
@@ -469,8 +472,8 @@ function SvgTemplateComposer({ template, initialValues, contentId, initialChanne
           body: { ...takePostPlan(), title: title.slice(0, 300), channels, captions: Object.fromEntries(channels.map((c) => [c, captions[c] ?? ''])), creative: { requestId: 'svg-template', directionId: 'svg', imageUrl: url, model: 'svg-template', directionName: template.name.slice(0, 200), svgTemplate } },
         });
         void api(`/api/svg-templates/${template.id}/used`, { body: {} }).catch(() => {});
-        if (send) await api(`/api/content/${item.id}/transition`, { body: { to: 'ready_for_review' } });
-        navigate(`/content/${item.id}`);
+        if (send && !publisher) await api(`/api/content/${item.id}/transition`, { body: { to: 'ready_for_review' } });
+        navigate(`/content/${item.id}${send && publisher ? '?publish=1' : ''}`);
       }
     } catch (e) {
       setError(errorMessage(e, ''));
@@ -532,7 +535,7 @@ function SvgTemplateComposer({ template, initialValues, contentId, initialChanne
             <Button variant="primary" busy={busy === 'draft'} disabled={Boolean(busy)} onClick={() => void save(false)}><Save size={15} /> {t('Save as new version', 'احفظ نسخة جديدة')}</Button>
           ) : (
             <>
-              <Button variant="primary" busy={busy === 'send'} disabled={Boolean(busy) || !channels.length} onClick={() => void save(true)}><Send size={15} /> {t('Send to marketing', 'أرسله إلى التسويق')}</Button>
+              <Button variant="primary" busy={busy === 'send'} disabled={Boolean(busy) || !channels.length} onClick={() => void save(true)}><Send size={15} /> {publisher ? t('Save and publish', 'احفظ وانشر') : t('Send to the publisher', 'ابعته للمسؤول عن النشر')}</Button>
               <Button variant="secondary" busy={busy === 'draft'} disabled={Boolean(busy) || !channels.length} onClick={() => void save(false)}><FileText size={15} /> {t('Save as draft', 'احفظه مسودة')}</Button>
             </>
           )}

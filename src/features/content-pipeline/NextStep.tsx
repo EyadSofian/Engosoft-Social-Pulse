@@ -11,7 +11,7 @@ import type { PipelineDetail } from './types';
 type Stage = 'draft' | 'review' | 'approved' | 'scheduled' | 'published';
 const STAGES: { id: Stage; en: string; ar: string }[] = [
   { id: 'draft', en: 'Being made', ar: 'بيتعمل' },
-  { id: 'review', en: 'Approval', ar: 'الاعتماد' },
+  { id: 'review', en: 'With the publisher', ar: 'عند المسؤول عن النشر' },
   { id: 'approved', en: 'Ready', ar: 'جاهز للنشر' },
   { id: 'scheduled', en: 'Scheduled', ar: 'مجدول' },
   { id: 'published', en: 'Published', ar: 'منشور' },
@@ -62,17 +62,20 @@ export function NextStep({ item, busy, onMove, onPublish }: { item: PipelineDeta
   const iso = (local: string) => DateTime.fromISO(local, { zone: businessZone() }).toUTC().toISO() ?? undefined;
   const lastRequest = [...item.events].reverse().find((e) => e.kind === 'transition' && e.to === 'changes_requested' && e.body);
   const go = async (to: ContentStatus, input: MoveInput = {}) => { if (await onMove(to, input)) { setMode(''); setNote(''); setWhen(''); } };
+  /** The person responsible for publishing: they publish straight from any stage before approval; that is the approval. */
+  const publisher = can('approved') && Boolean(onPublish) && Boolean(item.canPublish || item.canSchedule);
+  const beforeApproval = ['draft', 'in_production', 'changes_requested', 'idea'].includes(item.status);
 
   const status = (() => {
     switch (item.status) {
-      case 'ready_for_review': return can('approved') ? t('Waiting for your approval. Check the design and the caption, then approve or ask for changes.', 'بانتظار اعتمادك. راجع التصميم والنص، ثم اعتمد أو اطلب تعديلًا.') : t('Sent to marketing. You will be notified when it is approved or returned.', 'اتبعت للتسويق. هيوصلك إشعار لما يتعتمد أو يرجع بتعديلات.');
-      case 'changes_requested': return t('Marketing asked for changes. Fix them, then send it again.', 'التسويق طلب تعديلات. عدّلها وابعته تاني.');
-      case 'approved': return can('scheduled') ? t('Approved. Pick when it goes out to put it on the calendar.', 'معتمد. حدد ميعاد النشر علشان يتحط في التقويم.') : t('Approved. Marketing will schedule it.', 'معتمد. التسويق هيحدد ميعاد النشر.');
+      case 'ready_for_review': return publisher ? t('Sent to you. Publish or schedule it as it is, or send it back with a note.', 'اتبعت ليك. انشره أو جدوله زي ما هو، أو رجّعه بملاحظة.') : can('approved') ? t('Waiting for your approval. Check the design and the caption, then approve or ask for changes.', 'بانتظار اعتمادك. راجع التصميم والنص، ثم اعتمد أو اطلب تعديلًا.') : t('Sent to the person responsible for publishing. You will be notified when it is published or returned.', 'اتبعت للمسؤول عن النشر. هيوصلك إشعار لما يتنشر أو يرجع بتعديلات.');
+      case 'changes_requested': return publisher ? t('Changes were asked for. Fix them, then publish it.', 'اتطلب تعديل. عدّله وبعدين انشره.') : t('Changes were asked for. Fix them, then send it again.', 'اتطلب تعديل. عدّله وابعته تاني.');
+      case 'approved': return can('scheduled') ? t('Ready. Publish it now or pick when it goes out.', 'جاهز. انشره دلوقتي أو حدد ميعاد النشر.') : t('Approved. The person responsible for publishing will publish it.', 'معتمد. المسؤول عن النشر هينشره.');
       case 'scheduled': return t(`Scheduled for ${item.scheduledAt ? date(item.scheduledAt, 'dateTime') : '—'}. It is marked published by itself once the post is found live.`, `مجدول للنشر ${item.scheduledAt ? date(item.scheduledAt, 'dateTime') : '—'}. هيتعلّم «منشور» لوحده أول ما البوست يظهر على المنصة.`);
       case 'published': return t('Published. Results appear below.', 'اتنشر. النتائج بتظهر تحت.');
       case 'cancelled': return t('Cancelled.', 'ملغي.');
       case 'archived': return t('Archived.', 'مؤرشف.');
-      default: return t('Still being made. Send it to marketing when the design and caption are ready.', 'لسه بيتعمل. ابعته للتسويق لما التصميم والنص يجهزوا.');
+      default: return publisher ? t('When the design and caption are ready, publish it or schedule it. No other approval is needed.', 'لما التصميم والنص يجهزوا، انشره أو جدوله على طول. مش محتاج اعتماد من حد.') : t('Still being made. Send it to the person responsible for publishing when the design and caption are ready.', 'لسه بيتعمل. ابعته للمسؤول عن النشر لما التصميم والنص يجهزوا.');
     }
   })();
 
@@ -104,9 +107,13 @@ export function NextStep({ item, busy, onMove, onPublish }: { item: PipelineDeta
       {mode === 'cancel' && noteBox('cancelled')}
 
       {!mode.startsWith('c') && <>
-        {/* Being made, or returned: send to marketing. */}
-        {can('ready_for_review') && <div className="flow-actions">
-          <Button variant="primary" icon={<Send size={15} />} busy={busy} onClick={() => void go('ready_for_review')}>{item.status === 'changes_requested' ? t('Send again to marketing', 'ابعته تاني للتسويق') : t('Send to marketing for approval', 'ابعته للتسويق للاعتماد')}</Button>
+        {/* Being made, or returned: the publisher publishes it; everyone else sends it to them. */}
+        {publisher && beforeApproval && <div className="flow-actions">
+          <Button variant="primary" icon={<Send size={15} />} disabled={busy} onClick={onPublish}>{t('Publish or schedule', 'انشر أو جدول')}</Button>
+          {can('cancelled') && !item.moves.find((m) => m.to === 'cancelled')?.needsNote && <Button variant="ghost" disabled={busy} onClick={() => void go('cancelled')}>{t('Cancel post', 'ألغِ المنشور')}</Button>}
+        </div>}
+        {!publisher && can('ready_for_review') && <div className="flow-actions">
+          <Button variant="primary" icon={<Send size={15} />} busy={busy} onClick={() => void go('ready_for_review')}>{item.status === 'changes_requested' ? t('Send it again', 'ابعته تاني') : t('Send to the publisher', 'ابعته للمسؤول عن النشر')}</Button>
           {can('cancelled') && !item.moves.find((m) => m.to === 'cancelled')?.needsNote && <Button variant="ghost" disabled={busy} onClick={() => void go('cancelled')}>{t('Cancel post', 'ألغِ المنشور')}</Button>}
         </div>}
 
@@ -118,8 +125,8 @@ export function NextStep({ item, busy, onMove, onPublish }: { item: PipelineDeta
               onClick={() => void go('approved', mode === 'when' && whenOk ? { scheduledAt: iso(when) } : {})}>
               {mode === 'when' ? t('Approve and schedule', 'اعتمد وجدوِل') : t('Approve', 'اعتمد')}
             </Button>
-            {/* Approving and publishing is one decision for marketing: approve, then pick accounts and a time right away. */}
-            {mode !== 'when' && onPublish && (item.canPublish || item.canSchedule) && <Button variant="secondary" icon={<Send size={15} />} disabled={busy} onClick={() => void onMove('approved', {}).then((ok) => { if (ok) onPublish(); })}>{t('Approve, then publish', 'اعتمد وانشر')}</Button>}
+            {/* Approving and publishing is one decision: the publish window approves it when it goes out. */}
+            {mode !== 'when' && publisher && <Button variant="secondary" icon={<Send size={15} />} disabled={busy} onClick={onPublish}>{t('Publish or schedule', 'انشر أو جدول')}</Button>}
             {mode !== 'when' && !onPublish && item.canSchedule && <Button variant="secondary" icon={<CalendarClock size={15} />} disabled={busy} onClick={() => setMode('when')}>{t('Approve with a publish time', 'اعتمد مع ميعاد النشر')}</Button>}
             {mode === 'when' && <Button variant="ghost" disabled={busy} onClick={() => { setMode(''); setWhen(''); }}>{t('Without a time', 'بدون ميعاد')}</Button>}
             {can('changes_requested') && <Button variant="ghost" disabled={busy} onClick={() => setMode('changes')}>{t('Request changes', 'اطلب تعديلًا')}</Button>}

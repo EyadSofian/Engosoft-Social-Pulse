@@ -33,7 +33,7 @@ import { registerNotifyRoutes } from './notify.js';
 import { registerSvgTemplateRoutes } from './svg-templates.js';
 import { campaignIdentity, registerCampaignRoutes } from './campaigns.js';
 import { registerScheduleRoutes } from './course-schedule.js';
-import { registerCourseProfileRoutes, seedCourseCatalog } from './course-profiles.js';
+import { registerCourseProfileRoutes, seedCourseCatalog, syncFromWebsite } from './course-profiles.js';
 import { seedBuiltinTemplates } from './builtin-templates.js';
 import { recoverReferenceJobs, registerReferenceDesignRoutes } from './reference-designs.js';
 import { registerStorageRoutes } from './storage-routes.js';
@@ -220,3 +220,7 @@ setInterval(()=>{void runDuePublications().catch(()=>{});},60_000).unref();
 setInterval(()=>{void runSync().catch(()=>{});},30*60_000).unref();
 setTimeout(()=>{void runStorageMaintenance().catch(()=>console.error('Storage maintenance stopped; review storage status.'));},10_000).unref();
 setInterval(()=>{void runStorageMaintenance().catch(()=>console.error('Storage maintenance stopped; review storage status.'));},60*60_000).unref();
+// The course library follows engosoft.com: once shortly after start, then daily.
+const courseSync=()=>{void syncFromWebsite().then((r)=>console.log(`Course library synced from the website: ${r.added} added, ${r.updated} updated, ${r.hidden} hidden, ${r.total} in the library.`)).catch((e)=>console.error('Course library sync from the website failed:',e instanceof Error?e.message:e));};
+setTimeout(courseSync,2*60_000).unref();
+setInterval(courseSync,24*3600_000).unref();

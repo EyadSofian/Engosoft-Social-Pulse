@@ -7,13 +7,14 @@
 import { randomUUID } from 'node:crypto';
 import { db } from '../db.js';
 import { getUser, userCan, type AuthUser } from '../auth.js';
-import { canSee, getContent, transition, WorkspaceError, type StoredContent } from '../workspace.js';
+import { approveForPublishing, canSee, getContent, transition, WorkspaceError, type StoredContent } from '../workspace.js';
 import { capabilities } from './capabilities.js';
 import { contentMedia } from './media.js';
 import { imageForChannel } from '../../src/domain/output-presets.js';
 import { publish, recentJobs } from './publishing.js';
 import { contentQueue, getAccount, listAccounts, toQueued, type QueuedPublication } from './store.js';
 import type { PublishJob, SocialAccount, SocialProvider } from './types.js';
+import { PRE_APPROVAL } from '../../src/domain/content.js';
 
 /** Platforms whose publishing needs no extra per-post choices. */
 export const AUTO_PROVIDERS: SocialProvider[] = ['facebook', 'instagram', 'linkedin'];
@@ -61,13 +62,18 @@ async function readyTargets(item: StoredContent, accountIds: string[]) {
   return targets;
 }
 
-/** Publishes an approved post to the chosen accounts right away. Each account reports its own result. */
+/**
+ * Publishes a post to the chosen accounts right away. Each account reports its own result. The publisher's
+ * decision is the approval, so a draft goes out without a separate approval step. A post already live on some
+ * accounts can still go to the others.
+ */
 export async function publishNow(user: AuthUser, contentId: string, accountIds: string[]) {
   if (!userCan(user, 'content.publish')) throw new WorkspaceError(403, 'لا تملك صلاحية النشر.');
-  const item = await getContent(contentId);
+  let item = await getContent(contentId);
   if (!item || !canSee(user, item)) throw new WorkspaceError(404, 'المحتوى غير موجود.');
-  if (!['approved', 'scheduled'].includes(item.status)) throw new WorkspaceError(409, 'يُنشر المحتوى المعتمد فقط.');
+  if (!['approved', 'scheduled', 'published', ...PRE_APPROVAL].includes(item.status)) throw new WorkspaceError(409, 'المنشور ده ملغي أو مؤرشف؛ رجّعه الأول.');
   const targets = await readyTargets(item, accountIds);
+  item = await approveForPublishing(user, item);
   const results: { accountId: string; job?: PublishJob; error?: string }[] = [];
   for (const target of targets) {
     try {
@@ -89,8 +95,9 @@ export async function schedulePublication(user: AuthUser, contentId: string, acc
   if (!userCan(user, 'content.publish') || !userCan(user, 'content.schedule')) throw new WorkspaceError(403, 'الجدولة التلقائية تحتاج صلاحيتي الجدولة والنشر.');
   let item = await getContent(contentId);
   if (!item || !canSee(user, item)) throw new WorkspaceError(404, 'المحتوى غير موجود.');
-  if (!['approved', 'scheduled'].includes(item.status)) throw new WorkspaceError(409, 'تُجدول المنشورات المعتمدة فقط.');
+  if (!['approved', 'scheduled', ...PRE_APPROVAL].includes(item.status)) throw new WorkspaceError(409, 'المنشور ده اتنشر أو اتلغى؛ مينفعش يتجدول.');
   const targets = await readyTargets(item, accountIds);
+  item = await approveForPublishing(user, item);
   if (item.status === 'approved' || item.scheduledAt !== new Date(at).toISOString()) item = await transition(user, contentId, 'scheduled', { scheduledAt: at });
   const now = new Date().toISOString();
   await db.tx(async (tx) => {
@@ -130,7 +137,8 @@ export async function runDuePublications(now = new Date()): Promise<number> {
     const user = await getUser(row.createdBy);
     if (!user || user.status !== 'active' || !userCan(user, 'content.publish')) { await finish('failed', 'The person who scheduled it can no longer publish. Schedule it again.'); continue; }
     const item = await getContent(row.contentId);
-    if (!item || item.status !== 'scheduled') { await finish('failed', 'The post is no longer scheduled.'); continue; }
+    // Published counts too: one account going live first (or the sync finding it) must not cancel the others.
+    if (!item || !['scheduled', 'published'].includes(item.status)) { await finish('failed', 'The post is no longer scheduled.'); continue; }
     try {
       const job = await publish(user, { contentId: row.contentId, accountId: row.accountId, kind: row.kind, media: row.media as never, mode: 'direct', consent: true });
       await finish(job.state === 'failed' ? 'failed' : 'sent', job.state === 'failed' ? job.error ?? 'The platform refused the post.' : null, job.id);

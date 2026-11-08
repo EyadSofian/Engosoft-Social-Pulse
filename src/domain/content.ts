@@ -108,15 +108,25 @@ export interface ActivityLog {
 }
 
 /**
- * The status pipeline. Every move names the permission it needs; Marketing
- * holds approval and scheduling, so departments cannot publish around review.
+ * The status pipeline. Every move names the permission it needs (any one of a list will do). The person
+ * responsible for publishing decides what goes out: holding `content.publish` lets them approve, return or
+ * publish a post directly, with no second sign-off from Marketing. Departments without it send posts to them.
  */
 export interface Transition {
   to: ContentStatus;
-  permission: Permission | null;
+  permission: Permission | readonly Permission[] | null;
   /** Moves that need extra input open a form instead of applying directly. */
   needs?: 'note' | 'publish_time' | 'publish_proof';
 }
+
+/** Who may approve: the marketing manager, or whoever is responsible for publishing. */
+export const APPROVER_PERMISSIONS: readonly Permission[] = ['content.approve', 'content.publish'];
+/** Whether a person with the permissions `has` reports may make a move that names `permission`. */
+export const permits = (permission: Transition['permission'], has: (p: Permission) => boolean): boolean =>
+  permission === null ? true : typeof permission === 'string' ? has(permission) : permission.some(has);
+export const mayApprove = (has: (p: Permission) => boolean) => permits(APPROVER_PERMISSIONS, has);
+/** Statuses before approval: the publisher can approve (and publish) straight from any of them. */
+export const PRE_APPROVAL: readonly ContentStatus[] = ['draft', 'in_production', 'ready_for_review', 'changes_requested'];
 
 export const TRANSITIONS: Record<ContentStatus, Transition[]> = {
   idea: [
@@ -126,25 +136,28 @@ export const TRANSITIONS: Record<ContentStatus, Transition[]> = {
   draft: [
     { to: 'in_production', permission: null },
     { to: 'ready_for_review', permission: null },
+    { to: 'approved', permission: APPROVER_PERMISSIONS },
     { to: 'cancelled', permission: null },
   ],
   in_production: [
     { to: 'ready_for_review', permission: null },
+    { to: 'approved', permission: APPROVER_PERMISSIONS },
     { to: 'draft', permission: null },
     { to: 'cancelled', permission: null },
   ],
   ready_for_review: [
-    { to: 'approved', permission: 'content.approve' },
-    { to: 'changes_requested', permission: 'content.approve', needs: 'note' },
-    { to: 'cancelled', permission: 'content.approve', needs: 'note' },
+    { to: 'approved', permission: APPROVER_PERMISSIONS },
+    { to: 'changes_requested', permission: APPROVER_PERMISSIONS, needs: 'note' },
+    { to: 'cancelled', permission: APPROVER_PERMISSIONS, needs: 'note' },
   ],
   changes_requested: [
     { to: 'in_production', permission: null },
     { to: 'ready_for_review', permission: null },
+    { to: 'approved', permission: APPROVER_PERMISSIONS },
   ],
   approved: [
     { to: 'scheduled', permission: 'content.schedule', needs: 'publish_time' },
-    { to: 'changes_requested', permission: 'content.approve', needs: 'note' },
+    { to: 'changes_requested', permission: APPROVER_PERMISSIONS, needs: 'note' },
   ],
   scheduled: [
     { to: 'published', permission: 'content.publish', needs: 'publish_proof' },

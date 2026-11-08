@@ -2,7 +2,7 @@ import { submitLinkedIn, pollLinkedIn, verifyLinkedInEvidence } from './linkedin
 import { randomUUID } from 'node:crypto';
 import { db } from '../db.js';
 import { userCan, type AuthUser } from '../auth.js';
-import { canSee, getContent } from '../workspace.js';
+import { approveForPublishing, canSee, getContent, markPublishedWhenComplete } from '../workspace.js';
 import { getPlan, savePlan } from '../store.js';
 import { newPlan } from '../domain.js';
 import { getAccount } from './store.js';
@@ -21,11 +21,13 @@ export async function updateJob(id:string,result:PublishResult) {
 }
 export async function publish(user:AuthUser,input:PublishInput):Promise<PublishJob> {
  if(!userCan(user,'content.publish'))throw new Error('Publishing permission required.');
- const item=await getContent(input.contentId),account=await getAccount(input.accountId);
+ let item=await getContent(input.contentId);const account=await getAccount(input.accountId);
  if(!item||!canSee(user,item))throw new Error('Content unavailable.');
  if(!account||account.status!=='connected'||!item.channels.includes(account.provider))throw new Error('Select a connected account for an approved channel.');
  const existing=await db.get('SELECT * FROM social_publish_jobs WHERE content_id=? AND account_id=? ORDER BY attempt DESC LIMIT 1',[item.id,account.id]);if(existing&&(!input.retry||existing.state!=='failed'))return toJob(existing);
- if(!['approved','scheduled'].includes(item.status))throw new Error('Marketing must approve the exact content before publishing.');
+ // The publisher's own publish is the approval; already-live posts may still reach their other accounts.
+ item=await approveForPublishing(user,item);
+ if(!['approved','scheduled','published'].includes(item.status))throw new Error('This post is cancelled or archived. Restore it before publishing.');
  if(!input.consent)throw new Error('Explicit publication consent required.');
  const hybrid=account.provider==='tiktok'&&(input.kind==='video'&&input.mode==='direct'||['image','carousel'].includes(input.kind))&&await hybridConfigured(account.id,input.kind);
  if(!hybrid&&capabilities(account.provider,account)[requiredCapability(input.kind,input.mode)]!=='available')throw new Error('Publishing authorization or application approval is required.');
@@ -33,7 +35,7 @@ export async function publish(user:AuthUser,input:PublishInput):Promise<PublishJ
  if(account.provider==='tiktok'&&new Set(input.media.map(m=>m.url)).size!==input.media.length)throw new Error('Select each TikTok media item only once.');
  const media=await resolveMedia(item,input.media.map(m=>m.url));validateMedia(account.provider,input,media,caption);
  if(hybrid)validateHybrid(input,caption,media,item.title);
- const latest=await getContent(item.id);if(!latest||latest.updatedAt!==item.updatedAt||!['approved','scheduled'].includes(latest.status))throw new Error('Approval changed. Review this content again before publishing.');
+ const latest=await getContent(item.id);if(!latest||latest.updatedAt!==item.updatedAt||!['approved','scheduled','published'].includes(latest.status))throw new Error('Approval changed. Review this content again before publishing.');
  const now=new Date().toISOString(),id=randomUUID(),attempt=Number(existing?.attempt||0)+1;
  // Database uniqueness arbitrates across requests/replicas before any remote write.
  const inserted=await db.run('INSERT INTO social_publish_jobs(id,content_id,account_id,provider,actor_id,state,phase,created_at,updated_at,attempt) VALUES(?,?,?,?,?,?,?,?,?,?) ON CONFLICT(content_id,account_id,attempt) DO NOTHING',[id,item.id,account.id,account.provider,user.id,'processing',hybrid?'hybrid:starting':'submitting',now,now,attempt]);
@@ -80,8 +82,8 @@ async function recordEvidence(id:string) {
  const planIds=[...new Set([...item.planIds,plan.id])];
  await db.run('UPDATE content_items SET plan_ids_json=? WHERE id=?',[JSON.stringify(planIds),item.id]);
  // The completed provider response is the evidence; analytics arrive separately through sync.
- const jobs=await contentJobs(item.id);
- if(item.channels.every(channel=>jobs.some(j=>j.provider===channel&&j.state==='published'&&j.externalId)))await db.run("UPDATE content_items SET status='published',updated_at=? WHERE id=?",[job.updatedAt,item.id]);
+ // Published once every platform is, by API or recorded by hand (WhatsApp, X, website).
+ await markPublishedWhenComplete(item.id,job.actorId);
  await db.run('INSERT INTO content_events(id,content_id,actor_id,kind,body,created_at) VALUES(?,?,?,?,?,?) ON CONFLICT(id) DO NOTHING',[`publication:${job.id}`,item.id,job.actorId,'comment',`Verified ${job.provider} publication: ${job.externalId}${job.url?' '+job.url:''}`,job.updatedAt]);
 }
 export async function pollPendingJobs() {

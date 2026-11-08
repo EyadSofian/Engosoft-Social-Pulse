@@ -34,6 +34,8 @@ export function ApprovalCard({
     item.status === 'ready_for_review' &&
     item.moves.some((m) => m.to === 'approved');
   const canSend = item.moves.some((m) => m.to === 'ready_for_review');
+  // The person responsible for publishing publishes drafts directly; their publish is the approval.
+  const publishesDirectly = Boolean(onPublish) && ['draft', 'in_production', 'changes_requested'].includes(item.status) && item.moves.some((m) => m.to === 'approved');
   return (
     <article className="ca-card glass" data-status={item.status}>
       <button
@@ -103,15 +105,21 @@ export function ApprovalCard({
               <Check size={14} />
               {t('Approve', 'اعتمد')}
             </Button>
+            {onPublish && <Button variant="secondary" size="sm" onClick={onPublish}><Send size={14} />{t('Publish or schedule', 'انشر أو جدول')}</Button>}
             <Button variant="secondary" size="sm" onClick={onOpen}>
               {t('Request changes', 'اطلب تعديلًا')}
             </Button>
+          </div>
+        ) : publishesDirectly ? (
+          <div className="ca-card__actions">
+            <Button variant="primary" size="sm" onClick={onPublish}><Send size={14} />{t('Publish or schedule', 'انشر أو جدول')}</Button>
+            <Button variant="ghost" size="sm" onClick={onOpen}>{t('Open', 'افتح')}</Button>
           </div>
         ) : canSend ? (
           <div className="ca-card__actions">
             <Button variant="primary" size="sm" busy={busy} disabled={disabled} onClick={onSend}>
               <Send size={14} />
-              {item.status === 'changes_requested' ? t('Send again', 'ابعته تاني') : t('Send for approval', 'ابعته للاعتماد')}
+              {item.status === 'changes_requested' ? t('Send again', 'ابعته تاني') : t('Send to the publisher', 'ابعته للمسؤول عن النشر')}
             </Button>
             <Button variant="ghost" size="sm" onClick={onOpen}>{t('Open', 'افتح')}</Button>
           </div>
@@ -137,8 +145,8 @@ function NextLine({ item, owner, canApprove, canSend, canPublish }: { item: Pipe
   const { t, date } = useI18n();
   const line = (() => {
     switch (item.status) {
-      case 'ready_for_review': return canApprove ? [<Hourglass key="i" size={13} />, t('Waiting for your decision', 'مستني قرارك')] : [<Hourglass key="i" size={13} />, t('With marketing for approval', 'عند التسويق للاعتماد')];
-      case 'changes_requested': return [<PenLine key="i" size={13} />, canSend ? t('Marketing asked for changes: fix and send again', 'التسويق طلب تعديل: عدّل وابعته تاني') : <>{t('Returned to', 'راجع لـ')} <b>{owner}</b> {t('for changes', 'للتعديل')}</>];
+      case 'ready_for_review': return canApprove ? [<Hourglass key="i" size={13} />, t('Waiting for your decision', 'مستني قرارك')] : [<Hourglass key="i" size={13} />, t('With the person responsible for publishing', 'عند المسؤول عن النشر')];
+      case 'changes_requested': return [<PenLine key="i" size={13} />, canSend ? t('Changes were asked for: fix and send again', 'اتطلب تعديل: عدّل وابعته تاني') : <>{t('Returned to', 'راجع لـ')} <b>{owner}</b> {t('for changes', 'للتعديل')}</>];
       case 'approved': return [<Check key="i" size={13} />, canPublish ? t('Approved: give it a time or publish now', 'معتمد: حدد ميعاد أو انشره دلوقتي') : t('Approved: waiting for a publish time', 'معتمد: مستني ميعاد النشر')];
       case 'scheduled': return [<CalendarClock key="i" size={13} />, <>{t('Goes out', 'بيتنشر')} <b className="u-tnum">{item.scheduledAt ? date(item.scheduledAt, 'dateTime') : '—'}</b></>];
       case 'published': return [<Check key="i" size={13} />, t('Live on the platforms', 'اتنشر على المنصات')];

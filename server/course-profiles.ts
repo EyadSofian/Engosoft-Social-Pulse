@@ -5,7 +5,8 @@ import { requirePermission, requireUser } from './auth.js';
 import { db, defineSchema, defineColumn } from './db.js';
 import { rankRecords } from '../src/features/creative-studio/course-search.js';
 import { readOdooCatalog } from './odoo.js';
-import { suggestedCourseProfile } from './course-profile-suggestions.js';
+import { getSetting, setSetting } from './settings.js';
+import { fetchWebsiteCatalog, type WebsiteCatalog, type WebsiteCourse } from './website-courses.js';
 import { courseCopy } from '../src/domain/course-copy.js';
 export { courseCopy } from '../src/domain/course-copy.js';
 
@@ -20,6 +21,8 @@ defineColumn(
   'review_status',
   "TEXT NOT NULL DEFAULT 'approved'",
 );
+/** 0 when the course is no longer shown on engosoft.com: kept (with any edits) but out of the library. */
+defineColumn('course_profiles', 'on_website', 'INTEGER NOT NULL DEFAULT 1');
 export interface CourseProfile {
   courseId: string;
   courseName: string;
@@ -76,62 +79,87 @@ const input = z.object({
     .default(''),
   reviewStatus: z.enum(['suggested', 'approved']).default('approved'),
 });
+/** The library: courses on the website, plus courses a person added by hand. */
 export const allCourseProfiles = async () =>
-  (await db.all('SELECT * FROM course_profiles ORDER BY course_name')).map(
+  (await db.all("SELECT * FROM course_profiles WHERE on_website=1 OR course_id LIKE 'manual:%' ORDER BY course_name")).map(
     toProfile,
   );
-async function insertSuggested(course: {
-  courseId: string;
-  courseName: string;
-  description?: string;
-  sourceUrl?: string;
-  category?: string;
-  sourceNote?: string;
-}) {
-  const proposed = suggestedCourseProfile(course.courseName);
-  return db.run(
-    'INSERT INTO course_profiles (course_id,course_name,objectives_json,outcomes_json,audience,notes,category,description,source_url,review_status,updated_by,updated_at) VALUES (?,?,?,?,?,?,?,?,?,?,?,?) ON CONFLICT (course_id) DO NOTHING',
-    [
-      course.courseId,
-      course.courseName,
-      JSON.stringify(proposed.objectives),
-      JSON.stringify(proposed.outcomes),
-      proposed.audience,
-      [proposed.notes, course.sourceNote].filter(Boolean).join(' '),
-      course.category || proposed.category,
-      course.description || '',
-      course.sourceUrl || '',
-      'suggested',
-      'website-import',
-      new Date().toISOString(),
-    ],
-  );
+
+/** Rows the website sync wrote and nobody has edited since; only these are overwritten by the next sync. */
+const AUTOMATIC = ['website-import', 'website-sync'];
+/** A sync that finds fewer courses than this is treated as a website problem, not as courses removed. */
+const MIN_COURSES = 30;
+
+export interface CatalogApplied { added: number; updated: number; kept: number; hidden: number; total: number; retrievedAt: string }
+
+/**
+ * Makes the library match the website: new courses are added with the website's goals, outcomes and audience;
+ * courses nobody edited take the website's latest content; courses a person edited keep their edits and only
+ * gain the fields they left empty; courses no longer on the website are hidden (not deleted).
+ */
+export async function applyWebsiteCatalog(catalog: Pick<WebsiteCatalog, 'courses' | 'retrievedAt'>): Promise<CatalogApplied> {
+  if (catalog.courses.length < MIN_COURSES) throw new Error(`The website returned only ${catalog.courses.length} courses; the library was left as it is.`);
+  const now = new Date().toISOString();
+  const result: CatalogApplied = { added: 0, updated: 0, kept: 0, hidden: 0, total: 0, retrievedAt: catalog.retrievedAt };
+  const existing = new Map((await db.all('SELECT * FROM course_profiles')).map((row) => [String(row.course_id), row]));
+  const values = (c: WebsiteCourse) => [c.courseName, JSON.stringify(c.objectives), JSON.stringify(c.outcomes), c.audience, c.notes, c.category, c.description, c.sourceUrl];
+  for (const course of catalog.courses) {
+    const row = existing.get(course.courseId);
+    if (!row) {
+      await db.run(
+        "INSERT INTO course_profiles (course_id,course_name,objectives_json,outcomes_json,audience,notes,category,description,source_url,review_status,updated_by,updated_at,on_website) VALUES (?,?,?,?,?,?,?,?,?,'approved','website-sync',?,1) ON CONFLICT (course_id) DO NOTHING",
+        [course.courseId, ...values(course), now],
+      );
+      result.added++;
+    } else if (AUTOMATIC.includes(String(row.updated_by))) {
+      await db.run(
+        "UPDATE course_profiles SET course_name=?, objectives_json=?, outcomes_json=?, audience=?, notes=?, category=?, description=?, source_url=?, review_status='approved', updated_by='website-sync', updated_at=?, on_website=1 WHERE course_id=?",
+        [...values(course), now, course.courseId],
+      );
+      result.updated++;
+    } else {
+      const saved = toProfile(row);
+      await db.run(
+        'UPDATE course_profiles SET objectives_json=?, outcomes_json=?, audience=?, notes=?, category=?, description=?, source_url=?, on_website=1 WHERE course_id=?',
+        [
+          JSON.stringify(saved.objectives.length ? saved.objectives : course.objectives),
+          JSON.stringify(saved.outcomes.length ? saved.outcomes : course.outcomes),
+          saved.audience || course.audience, saved.notes || course.notes, saved.category || course.category,
+          saved.description || course.description, course.sourceUrl, course.courseId,
+        ],
+      );
+      result.kept++;
+    }
+  }
+  const onSite = new Set(catalog.courses.map((c) => c.courseId));
+  for (const id of existing.keys()) {
+    if (onSite.has(id) || id.startsWith('manual:') || Number(existing.get(id)!.on_website) === 0) continue;
+    await db.run('UPDATE course_profiles SET on_website=0 WHERE course_id=?', [id]);
+    result.hidden++;
+  }
+  result.total = (await allCourseProfiles()).length;
+  await setSetting('courses.website', result);
+  return result;
 }
-export function courseImportSource() {
-  return JSON.parse(
-    readFileSync(
-      new URL('./data/engosoft-website-courses.json', import.meta.url),
-      'utf8',
-    ),
-  ) as {
-    retrievedAt: string;
-    discovered: number;
-    courses: {
-      courseId: string;
-      courseName: string;
-      description: string;
-      sourceUrl: string;
-      sourceNote?: string;
-      sourceQuality: 'page' | 'catalog' | 'sitemap';
-    }[];
-  };
+
+/** The website snapshot bundled with the app (scripts/refresh-website-courses.ts). */
+export function courseImportSource(): WebsiteCatalog {
+  return JSON.parse(readFileSync(new URL('./data/engosoft-website-courses.json', import.meta.url), 'utf8')) as WebsiteCatalog;
 }
+const lastSync = () => getSetting<{ retrievedAt: string } & Partial<CatalogApplied>>('courses.website', { retrievedAt: '' });
+
+/** At start-up: apply the bundled snapshot when it is newer than what the library last took from the website. */
 export async function seedCourseCatalog() {
   const source = courseImportSource();
-  let added = 0;
-  for (const course of source.courses)
-    added += (await insertSuggested(course)).changes;
-  return added;
+  if ((await lastSync()).retrievedAt >= source.retrievedAt) return 0;
+  return (await applyWebsiteCatalog(source)).added;
+}
+
+let websiteSync: Promise<CatalogApplied> | undefined;
+/** Reads engosoft.com now and applies it. Concurrent calls share one run. */
+export function syncFromWebsite(): Promise<CatalogApplied> {
+  websiteSync ??= fetchWebsiteCatalog().then(applyWebsiteCatalog).finally(() => { websiteSync = undefined; });
+  return websiteSync;
 }
 
 let remoteCatalog: Awaited<ReturnType<typeof readOdooCatalog>> = {
@@ -154,7 +182,6 @@ export async function combinedCourseCatalog() {
       });
   }
   if (!profiles.length) await catalogRefresh;
-  const ids = new Set(profiles.map((p) => p.courseId));
   const courses = profiles.map((p) => ({
     id: p.courseId,
     kind: 'course' as const,
@@ -168,10 +195,8 @@ export async function combinedCourseCatalog() {
   return {
     ...remoteCatalog,
     status: profiles.length ? ('connected' as const) : remoteCatalog.status,
-    courses: [
-      ...courses,
-      ...remoteCatalog.courses.filter((c) => !ids.has(c.id)),
-    ],
+    // Only website courses: Odoo still supplies the dates of upcoming runs, never the list of courses.
+    courses,
   };
 }
 
@@ -207,23 +232,8 @@ export function registerCourseProfileRoutes(app: express.Express) {
     requireUser,
     requirePermission('templates.manage'),
     async (_req, res) => {
-      const source = courseImportSource();
-      res.json({
-        retrievedAt: source.retrievedAt,
-        total: source.discovered,
-        pageCount: source.courses.filter((c) => c.sourceQuality === 'page')
-          .length,
-        catalogCount: source.courses.filter(
-          (c) => c.sourceQuality === 'catalog',
-        ).length,
-        unverified: source.courses
-          .filter((c) => c.sourceQuality === 'sitemap')
-          .map((c) => ({
-            courseId: c.courseId,
-            name: c.courseName,
-            url: c.sourceUrl,
-          })),
-      });
+      const last = await lastSync();
+      res.json({ source: 'https://engosoft.com/shop', retrievedAt: last.retrievedAt || courseImportSource().retrievedAt, total: (await allCourseProfiles()).length, hidden: last.hidden ?? 0 });
     },
   );
   app.get('/api/course-profiles', requireUser, async (_req, res) => {
@@ -235,25 +245,11 @@ export function registerCourseProfileRoutes(app: express.Express) {
     requireUser,
     requirePermission('templates.manage'),
     async (_req, res) => {
-      let added = await seedCourseCatalog();
-      const catalog = await readOdooCatalog();
-      if (catalog.status === 'connected')
-        for (const c of catalog.courses)
-          added += (
-            await insertSuggested({
-              courseId: c.id,
-              courseName: c.name,
-              category: c.category,
-              description: c.description,
-              sourceUrl: c.url,
-            })
-          ).changes;
-      res.json({
-        added,
-        total: (await allCourseProfiles()).length,
-        odooStatus: catalog.status,
-        message: catalog.message,
-      });
+      try {
+        res.json(await syncFromWebsite());
+      } catch (error) {
+        res.status(502).json({ error: `تعذّرت قراءة الدورات من الموقع: ${error instanceof Error ? error.message : error}` });
+      }
     },
   );
   app.get(
