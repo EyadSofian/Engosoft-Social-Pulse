@@ -97,6 +97,8 @@ async function applyRow(source: GoogleSource, mapping: GoogleRow, row: Publishin
     await db.run('UPDATE google_calendar_rows SET media_fingerprint=? WHERE source_id=? AND post_id=?', [mediaFingerprint, source.id, row.postId]);
   }
   const media = await contentMedia(item.id), inputs: PublishInput[] = [], errors: string[] = [];
+  // The imported artwork also appears in ordinary content cards and the calendar preview.
+  await updateContent(user, item.id, { creative: media[0]?.type === 'image' ? { requestId: 'drive-import', directionId: row.mediaType, imageUrl: media[0].url, directionName: 'Google Drive' } : null });
   for (const channel of row.channels) {
     try {
       if (['x', 'whatsapp', 'website'].includes(channel)) throw new Error('المنصة مسجلة للتخطيط؛ الربط الحالي يحتاج نشرًا يدويًا من صفحة البوست.');

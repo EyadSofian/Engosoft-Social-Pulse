@@ -157,7 +157,7 @@ export function canEditCaptions(user: AuthUser, item: StoredContent): boolean {
   return userCan(user, 'content.publish') && canSee(user, item) && [...PRE_APPROVAL, 'approved'].includes(item.status);
 }
 
-export async function updateContent(user: AuthUser, id: string, patch: { title?: string; channels?: Channel[]; captions?: Partial<Record<Channel, string>>; creative?: CreativeRef; goal?: Goal | null; plannedFor?: string | null }): Promise<StoredContent> {
+export async function updateContent(user: AuthUser, id: string, patch: { title?: string; channels?: Channel[]; captions?: Partial<Record<Channel, string>>; creative?: CreativeRef | null; goal?: Goal | null; plannedFor?: string | null }): Promise<StoredContent> {
   const item = await getContent(id);
   if (!item) throw new WorkspaceError(404, 'المحتوى غير موجود.');
   if (!canEdit(user, item) && !userCan(user, 'content.schedule')) throw new WorkspaceError(403, 'لا تملك صلاحية تعديل هذا المحتوى.');
@@ -177,7 +177,7 @@ export async function updateContent(user: AuthUser, id: string, patch: { title?:
   requireMutable(item);
   await db.run('UPDATE content_items SET title=?, channels_json=?, captions_json=?, creative_json=?, updated_at=? WHERE id=?', [
     patch.title ?? item.title, JSON.stringify(patch.channels ?? item.channels), JSON.stringify(patch.captions ?? item.captions),
-    JSON.stringify(patch.creative ?? item.creative), new Date().toISOString(), id]);
+    JSON.stringify(patch.creative === undefined ? item.creative : patch.creative), new Date().toISOString(), id]);
   if (patch.captions) await log(id, user.id, 'caption', 'Caption updated');
   return (await getContent(id))!;
 }

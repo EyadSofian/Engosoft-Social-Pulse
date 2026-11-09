@@ -90,6 +90,7 @@ test('a ready row downloads Drive media, creates a real scheduled post, and writ
   assert.equal((await workspace.getContent(row.content_id))?.status, 'scheduled');
   assert.equal(q.kind, 'image'); assert.equal(q.sourceId, s.id); assert.equal(q.state, 'queued');
   assert.match(q.media[0].url, /^\/api\/social\/assets\//);
+  assert.equal((await workspace.getContent(row.content_id))?.creative?.imageUrl, q.media[0].url, 'the calendar and post preview show the imported artwork');
   assert.ok(s.writes.some(w => w.values[0][0] === 'scheduled'));
   await sync.syncGoogleSource(s.id, s.client);
   assert.equal(s.downloads(), 1); assert.equal((await social.contentQueue(row.content_id)).length, 1);
