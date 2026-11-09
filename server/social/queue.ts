@@ -37,7 +37,11 @@ async function plan(item: StoredContent, account: SocialAccount): Promise<Omit<P
   const attachments = await contentMedia(item.id);
   const video = [...attachments].reverse().find((m) => m.type === 'video');
   // Each platform gets the size designed for it (a LinkedIn landscape, an Instagram 3:4…), else the main design.
-  const image = imageForChannel(account.provider, item.creative) || attachments.find(m => m.type === 'image')?.url;
+  const originalImage = imageForChannel(account.provider, item.creative) || attachments.find(m => m.type === 'image')?.url;
+  const original = attachments.find(m => m.url === originalImage);
+  const variant = account.provider === 'instagram' && original
+    ? (await contentMedia(item.id, true)).find(m => m.variantFor === 'instagram' && m.sourceAssetId === original.id) : undefined;
+  const image = variant?.url || originalImage;
   const choice = video ? { kind: 'video' as const, media: [{ url: video.url }] }
     : image ? { kind: 'image' as const, media: [{ url: image }] }
     : ['facebook','linkedin'].includes(account.provider) && item.captions[account.provider]?.trim() ? { kind: 'text' as const, media: [] }

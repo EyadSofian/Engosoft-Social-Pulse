@@ -7,6 +7,7 @@ import { withStorage, MiB } from '../storage.js';
 import { mediaDir } from '../paths.js';
 import type { StoredContent } from '../workspace.js';
 import type { Media, PublishInput, SocialProvider } from './types.js';
+import { preparePublishingImage } from './image-preparation.js';
 
 defineSchema(`CREATE TABLE IF NOT EXISTS social_media (id TEXT PRIMARY KEY,content_id TEXT NOT NULL,path TEXT NOT NULL,metadata_json TEXT NOT NULL,created_at TEXT NOT NULL);`);
 defineColumn('social_media','storage_state',"TEXT NOT NULL DEFAULT 'active'");
@@ -43,16 +44,16 @@ export async function attachVideo(contentId:string,b:Buffer) {
  try {await db.run('INSERT INTO social_media(id,content_id,path,metadata_json,created_at) VALUES(?,?,?,?,?)',[id,contentId,file,JSON.stringify(m),new Date().toISOString()]);return {id,...m};}catch(e){await unlink(file).catch(()=>{});throw e;}
  });
 }
-export async function attachImage(contentId:string,b:Buffer,role?:'thumbnail') {
+export async function attachImage(contentId:string,b:Buffer,role?:'thumbnail',variant?:{provider:'instagram';sourceAssetId:string}) {
  return withStorage(8*MiB,async()=>{
  if(!b.length||b.length>8*1024*1024)throw new Error('Images must be at most 8 MB.');
  const image=sharp(b,{limitInputPixels:40_000_000}),metadata=await image.metadata();
  if(!['jpeg','png','webp'].includes(metadata.format||'')||(metadata.pages||1)>1)throw new Error('Use a still JPEG, PNG or WebP image.');
- const {data,info}=await image.rotate().flatten({background:'#ffffff'}).jpeg({quality:94}).toBuffer({resolveWithObject:true});
+ const data=await preparePublishingImage(b),info=await sharp(data).metadata();
  if(data.length>8*1024*1024)throw new Error('The normalized image exceeds 8 MB.');
  const id=randomUUID(),file=mediaDir('social',`${id}.jpg`);
  await mkdir(mediaDir('social'),{recursive:true});await writeFile(file,data,{flag:'wx'});
- const m:Media={url:`/api/social/assets/${id}`,type:'image',mimeType:'image/jpeg',bytes:data.length,width:info.width,height:info.height,...(role?{role}:{})};
+ const m:Media={url:`/api/social/assets/${id}`,type:'image',mimeType:'image/jpeg',bytes:data.length,width:info.width!,height:info.height!,...(role?{role}:{}),...(variant?{role:'publishing_variant' as const,variantFor:variant.provider,sourceAssetId:variant.sourceAssetId}:{})};
  try {
   await db.tx(async tx=>{
    const now=new Date().toISOString();
@@ -64,7 +65,7 @@ export async function attachImage(contentId:string,b:Buffer,role?:'thumbnail') {
  return {id,...m};
  });
 }
-export async function contentMedia(contentId:string) {return (await db.all<{id:string;metadata_json:string}>("SELECT id,metadata_json FROM social_media WHERE content_id=? AND storage_state='active' ORDER BY created_at,id",[contentId])).map(r=>({id:r.id,...JSON.parse(r.metadata_json) as Media}));}
+export async function contentMedia(contentId:string,includeVariants=false) {return (await db.all<{id:string;metadata_json:string}>("SELECT id,metadata_json FROM social_media WHERE content_id=? AND storage_state='active' ORDER BY created_at,id",[contentId])).map(r=>({id:r.id,...JSON.parse(r.metadata_json) as Media})).filter(m=>includeVariants||m.role!=='publishing_variant');}
 export async function expiredContentMedia(contentId:string) {return (await db.all<{id:string;metadata_json:string;storage_state:string}>("SELECT id,metadata_json,storage_state FROM social_media WHERE content_id=? AND storage_state!='active'",[contentId])).map(r=>({id:r.id,type:(JSON.parse(r.metadata_json) as Media).type,state:r.storage_state}));}
 export async function resolveMedia(item:StoredContent,urls:string[]):Promise<PreparedMedia[]> {
  const result:PreparedMedia[]=[];

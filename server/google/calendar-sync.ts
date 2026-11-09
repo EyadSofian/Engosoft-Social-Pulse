@@ -1,10 +1,10 @@
 import { randomUUID } from 'node:crypto';
-import sharp from 'sharp';
 import { db } from '../db.js';
 import { getUser, userCan, type AuthUser } from '../auth.js';
 import { createContent, getContent, reopenContent, updateContent, type Channel } from '../workspace.js';
 import { attachImage, attachVideo, contentMedia } from '../social/media.js';
 import { attachVideoStream } from '../social/video-upload.js';
+import { preparePublishingImage, type ImageProfile } from '../social/image-preparation.js';
 import { cancelQueued, contentQueue, getAccount } from '../social/store.js';
 import { contentJobs } from '../social/publishing.js';
 import { schedulePreparedPublications, validatePreparedPublication } from '../social/queue.js';
@@ -18,16 +18,8 @@ export interface CalendarGoogleClient {
   file: GoogleClient['file']; children: GoogleClient['children']; download: GoogleClient['download'];
   downloadStream?: GoogleClient['downloadStream'];
 }
-/** Normalize large Drive artwork to a portable JPEG, preserving the whole design. */
-export async function normalizeDriveImage(buffer: Buffer, thumbnail = false) {
-  const metadata = await sharp(buffer, { limitInputPixels: 80_000_000 }).metadata();
-  if (!['jpeg', 'png', 'webp'].includes(metadata.format || '') || (metadata.pages || 1) > 1 || !metadata.width || !metadata.height) throw new Error('استخدم صورة JPEG أو PNG أو WebP ثابتة.');
-  const ratio = metadata.width / metadata.height;
-  if (thumbnail) return sharp(buffer, { limitInputPixels: 80_000_000 }).rotate().flatten({ background: '#ffffff' }).resize({ width: 1080, height: 1920, fit: 'inside' }).jpeg({ quality: 94 }).toBuffer();
-  return sharp(buffer, { limitInputPixels: 80_000_000 }).rotate().flatten({ background: '#ffffff' })
-    .resize(ratio < 0.8 || ratio > 1.91 ? { width: 1080, height: 1350, fit: 'contain', background: '#ffffff' } : { width: 1080 })
-    .jpeg({ quality: 94 }).toBuffer();
-}
+/** Keep a high-resolution master; Instagram gets its own bounded copy from the same source. */
+export const normalizeDriveImage = (buffer: Buffer, profile: ImageProfile = 'original') => preparePublishingImage(buffer, profile);
 
 async function prepareMedia(client: CalendarGoogleClient, row: PublishingRow, contentId: string) {
   const ref = googleReference(row.design), file = await client.file(ref);
@@ -39,15 +31,21 @@ async function prepareMedia(client: CalendarGoogleClient, row: PublishingRow, co
     return [video];
   }
   // Prepare all bytes before attaching: invalid files never produce a partly approved carousel.
-  const prepared: { type: 'image' | 'video'; bytes: Buffer }[] = [];
+  const prepared: { type: 'image' | 'video'; bytes: Buffer; instagram?: Buffer }[] = [];
   for (const item of selected) {
     const bytes = await client.download(item);
-    prepared.push({ type: item.mimeType.startsWith('image/') ? 'image' : 'video', bytes: item.mimeType.startsWith('image/') ? await normalizeDriveImage(bytes) : bytes });
+    const image = item.mimeType.startsWith('image/');
+    prepared.push({ type: image ? 'image' : 'video', bytes: image ? await normalizeDriveImage(bytes) : bytes,
+      ...(image && row.channels.includes('instagram') ? { instagram: await normalizeDriveImage(bytes, 'instagram') } : {}) });
   }
   // Retired assets stay recoverable but cannot be selected for a future publication.
   await db.run("UPDATE social_media SET storage_state='quarantined',quarantined_at=? WHERE content_id=? AND storage_state='active'", [new Date().toISOString(), contentId]);
   const media = [];
-  for (const item of prepared) media.push(item.type === 'image' ? await attachImage(contentId, item.bytes) : await attachVideo(contentId, item.bytes));
+  for (const item of prepared) {
+    const master = item.type === 'image' ? await attachImage(contentId, item.bytes) : await attachVideo(contentId, item.bytes);
+    media.push(master);
+    if (item.instagram && !item.instagram.equals(item.bytes)) await attachImage(contentId, item.instagram, undefined, { provider: 'instagram', sourceAssetId: master.id });
+  }
   return media;
 }
 
@@ -56,7 +54,7 @@ async function prepareThumbnail(client: CalendarGoogleClient, row: PublishingRow
   const ref = googleReference(row.thumbnail), file = await client.file(ref);
   file.resourceKey ||= ref.resourceKey;
   const [image] = chooseDriveMedia(file.mimeType === 'application/vnd.google-apps.folder' ? await client.children(file) : [file], 'image');
-  return attachImage(contentId, await normalizeDriveImage(await client.download(image), true), 'thumbnail');
+  return attachImage(contentId, await normalizeDriveImage(await client.download(image), 'thumbnail'), 'thumbnail');
 }
 
 const canonicalInput = (rows: GoogleValues) => {
@@ -127,13 +125,13 @@ async function applyRow(source: GoogleSource, mapping: GoogleRow, row: Publishin
     return;
   }
   if (Date.parse(row.scheduledAt) <= Date.now()) throw new Error('ميعاد النشر مضى؛ حدد ميعادًا مستقبليًا ثم اترك Ready = YES.');
-  const mediaFingerprint = `${row.design}:${row.mediaType}${row.thumbnail ? `:thumbnail:${row.thumbnail}` : ''}`;
+  const mediaFingerprint = `quality-v2:${row.design}:${row.mediaType}:${row.channels.includes('instagram')}${row.thumbnail ? `:thumbnail:${row.thumbnail}` : ''}`;
   if (mapping.media_fingerprint !== mediaFingerprint || !(await contentMedia(item.id)).length) {
     await prepareMedia(client, row, item.id);
     await prepareThumbnail(client, row, item.id);
     await db.run('UPDATE google_calendar_rows SET media_fingerprint=? WHERE source_id=? AND post_id=?', [mediaFingerprint, source.id, row.postId]);
   }
-  const attachments = await contentMedia(item.id), media = attachments.filter(m => m.role !== 'thumbnail'), thumbnail = attachments.find(m => m.role === 'thumbnail');
+  const attachments = await contentMedia(item.id, true), media = attachments.filter(m => !m.role), thumbnail = attachments.find(m => m.role === 'thumbnail');
   const inputs: PublishInput[] = [], errors: string[] = [];
   // The imported artwork also appears in ordinary content cards and the calendar preview.
   await updateContent(user, item.id, { creative: media[0]?.type === 'image' ? { requestId: 'drive-import', directionId: row.mediaType, imageUrl: media[0].url, directionName: 'Google Drive' } : thumbnail ? { requestId: 'reel', directionId: row.mediaType, imageUrl: thumbnail.url, reelCover: { url: thumbnail.url }, directionName: 'Google Drive' } : null });
@@ -143,7 +141,8 @@ async function applyRow(source: GoogleSource, mapping: GoogleRow, row: Publishin
       const account = targets[channel] ? await getAccount(targets[channel]) : undefined;
       if (!account || account.provider !== channel) throw new Error('حدد حساب النشر المقصود في إعدادات الشيت بالتطبيق.');
       if (channel === 'tiktok' && !row.tiktokCommercial) throw new Error('حدد TikTok Commercial: none أو own أو paid أو both.');
-      const input: PublishInput = { contentId: item.id, accountId: account.id, kind: row.mediaType === 'reel' ? 'video' : row.mediaType, media, mode: 'direct', consent: true,
+      const platformMedia = channel === 'instagram' ? media.map(m => attachments.find(v => v.variantFor === 'instagram' && v.sourceAssetId === m.id) || m) : media;
+      const input: PublishInput = { contentId: item.id, accountId: account.id, kind: row.mediaType === 'reel' ? 'video' : row.mediaType, media: platformMedia, mode: 'direct', consent: true,
         ...(channel === 'youtube' ? { privacy: row.youtubePrivacy, categoryId: row.youtubeCategory, madeForKids: row.madeForKids } : {}),
         ...(channel === 'tiktok' ? { privacy: row.tiktokPrivacy, isAiGenerated: row.aiGenerated, brandOrganic: ['own', 'both'].includes(row.tiktokCommercial || ''), brandContent: ['paid', 'both'].includes(row.tiktokCommercial || ''), disableComment: true, disableDuet: true, disableStitch: true } : {}),
         ...(channel === 'snapchat' ? { snapTarget: row.snapTarget, locale: row.snapLocale } : {}),

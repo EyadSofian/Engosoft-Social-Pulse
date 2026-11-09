@@ -110,10 +110,60 @@ test('Drive URLs are bounded to Google and carousel selection is deterministic',
   assert.throws(() => google.chooseDriveMedia([file('a.jpg'), file('b.jpg')], 'carousel'), /رتّب/);
   assert.deepEqual(google.chooseDriveMedia([file('02-second.jpg'), file('01-first.jpg')], 'carousel').map(f => f.name), ['01-first.jpg', '02-second.jpg']);
 });
-test('Drive artwork is normalized without cropping to a valid Instagram-sized JPEG', async () => {
+test('Drive masters retain resolution; only Instagram copies receive padding and width limits', async () => {
   const b = await sharp({ create: { width: 5000, height: 1000, channels: 3, background: '#e1ab52' } }).png().toBuffer();
   const metadata = await sharp(await sync.normalizeDriveImage(b)).metadata();
-  assert.equal(metadata.format, 'jpeg'); assert.equal(metadata.width, 1080); assert.equal(metadata.height, 1350);
+  assert.equal(metadata.format, 'jpeg'); assert.equal(metadata.width, 5000); assert.equal(metadata.height, 1000);
+  const instagram = await sharp(await sync.normalizeDriveImage(b, 'instagram')).metadata();
+  assert.equal(instagram.width, 1440); assert.equal(instagram.height, 1800); assert.equal(instagram.chromaSubsampling, '4:4:4');
+});
+test('safe JPEGs and prepared Instagram images survive attachment without another lossy encode', async () => {
+  assert.deepEqual(await sync.normalizeDriveImage(jpeg), jpeg);
+  const s = await setup(values(raw('lossless-attachment', { ready: 'NO' })));
+  await sync.syncGoogleSource(s.id, s.client);
+  const [row] = await sources.sourceRows(s.id);
+  const { attachImage, resolveMedia } = await import('../server/social/media');
+  const { readFile } = await import('node:fs/promises');
+  const prepared = await sync.normalizeDriveImage(jpeg, 'instagram');
+  const asset = await attachImage(row.content_id, prepared);
+  const [saved] = await resolveMedia((await workspace.getContent(row.content_id))!, [asset.url]);
+  assert.deepEqual(await readFile(saved.file), prepared);
+  const small = await sharp({ create: { width: 640, height: 800, channels: 3, background: '#164684' } }).jpeg().toBuffer();
+  assert.deepEqual(await sync.normalizeDriveImage(small, 'instagram'), small, 'small sources are not enlarged');
+});
+test('one sheet row queues the full master for LinkedIn and a separate Instagram copy, including carousel order', async () => {
+  const instagram = await accounts.registerAccount('instagram', 'quality-ig', 'Quality IG', user.id, 'quality-token', ['instagram_content_publish']);
+  const linkedin = await accounts.registerAccount('linkedin', 'quality-li', 'Quality LI', user.id, 'quality-token-li', ['w_organization_social']);
+  const s = await setup(values(raw('quality-routing', { platform: 'linkedin,instagram', 'media type': 'carousel' })));
+  await db.run('UPDATE google_calendar_sources SET targets_json=? WHERE id=?', [JSON.stringify({ linkedin: linkedin.id, instagram: instagram.id }), s.id]);
+  s.client.children = async () => [
+    { id: 'second-image', name: '02-second.jpg', mimeType: 'image/jpeg' },
+    { id: 'first-image', name: '01-first.jpg', mimeType: 'image/jpeg' },
+  ];
+  await sync.syncGoogleSource(s.id, s.client);
+  const [row] = await sources.sourceRows(s.id), queued = await social.contentQueue(row.content_id);
+  assert.equal(queued.length, 2, row.error);
+  const { contentMedia, resolveMedia } = await import('../server/social/media');
+  const item = (await workspace.getContent(row.content_id))!;
+  const masterMedia = await resolveMedia(item, queued.find(q => q.accountId === linkedin.id)!.media.map(m => m.url));
+  const instagramMedia = await resolveMedia(item, queued.find(q => q.accountId === instagram.id)!.media.map(m => m.url));
+  assert.deepEqual(masterMedia.map(m => [m.width, m.height]), [[2000, 2500], [2000, 2500]]);
+  assert.deepEqual(instagramMedia.map(m => [m.width, m.height]), [[1440, 1800], [1440, 1800]]);
+  const visible = await contentMedia(row.content_id), all = await contentMedia(row.content_id, true);
+  assert.equal(visible.length, 2, 'variants are hidden from the user attachment list');
+  assert.equal(all.length, 4);
+  assert.deepEqual(instagramMedia.map(m => m.sourceAssetId), visible.map(m => m.id));
+  const targets = await queue.publishTargets((await workspace.getContent(row.content_id))!);
+  assert.ok(targets.find(t => t.accountId === instagram.id)?.ready);
+});
+test('large noisy JPEGs fit the upload budget without severe downscaling or color subsampling', async () => {
+  const source = await sharp(randomBytes(2000 * 2500 * 3), { raw: { width: 2000, height: 2500, channels: 3 } }).jpeg({ quality: 100, chromaSubsampling: '4:4:4' }).toBuffer();
+  assert.ok(source.length > 8 * 1024 * 1024);
+  const prepared = await sync.normalizeDriveImage(source), metadata = await sharp(prepared).metadata();
+  assert.ok(prepared.length <= 8 * 1024 * 1024);
+  assert.ok(metadata.width! >= 1500 && metadata.width! <= 2000);
+  assert.equal(metadata.width! / metadata.height!, 0.8);
+  assert.equal(metadata.chromaSubsampling, '4:4:4');
 });
 test('a ready row downloads Drive media, creates a real scheduled post, and writes results once', async () => {
   const s = await setup(values(raw('ready')));
