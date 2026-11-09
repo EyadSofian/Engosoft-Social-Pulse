@@ -1,5 +1,5 @@
 import { createCipheriv, createDecipheriv, randomBytes } from 'node:crypto';
-import { db, defineSchema } from '../db.js';
+import { db, defineSchema, defineColumn } from '../db.js';
 import type { Credential, SocialAccount, SocialProvider } from './types.js';
 
 defineSchema(`
@@ -55,11 +55,13 @@ CREATE INDEX IF NOT EXISTS social_publish_queue_due ON social_publish_queue(stat
 CREATE INDEX IF NOT EXISTS social_publish_queue_content ON social_publish_queue(content_id);
 `);
 export type QueueState = 'queued' | 'sending' | 'sent' | 'failed' | 'cancelled';
-export interface QueuedPublication { id: string; contentId: string; accountId: string; kind: 'text' | 'image' | 'video'; media: { url: string }[]; publishAt: string; state: QueueState; createdBy: string; jobId: string | null; error: string | null; createdAt: string; updatedAt: string }
+defineColumn('social_publish_queue', 'options_json', "TEXT NOT NULL DEFAULT '{}'");
+defineColumn('social_publish_queue', 'source_id', 'TEXT');
+export interface QueuedPublication { id: string; contentId: string; accountId: string; kind: 'text' | 'image' | 'video' | 'carousel'; media: { url: string }[]; publishAt: string; state: QueueState; createdBy: string; jobId: string | null; error: string | null; createdAt: string; updatedAt: string; options?: Partial<import('./types.js').PublishInput>; sourceId?: string | null }
 export const toQueued = (r: Record<string, unknown>): QueuedPublication => ({
  id: String(r.id), contentId: String(r.content_id), accountId: String(r.account_id), kind: r.kind as QueuedPublication['kind'], media: JSON.parse(String(r.media_json || '[]')),
  publishAt: String(r.publish_at), state: r.state as QueueState, createdBy: String(r.created_by), jobId: (r.job_id as string | null) ?? null, error: (r.error as string | null) ?? null,
- createdAt: String(r.created_at), updatedAt: String(r.updated_at),
+ createdAt: String(r.created_at), updatedAt: String(r.updated_at), options: JSON.parse(String(r.options_json || '{}')), sourceId: r.source_id as string | null,
 });
 export const contentQueue = async (contentId: string) => (await db.all('SELECT * FROM social_publish_queue WHERE content_id=? ORDER BY created_at', [contentId])).map(toQueued);
 /** A post taken off the calendar takes its waiting publications with it. */

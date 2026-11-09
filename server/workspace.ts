@@ -133,8 +133,8 @@ async function openSlot(slotId: string) {
   return slot;
 }
 
-export async function createContent(user: AuthUser, input: { title: string; channels: Channel[]; captions: Partial<Record<Channel, string>>; creative: CreativeRef | null; templateId?: string | null } & PostPlanInput): Promise<StoredContent> {
-  const id = randomUUID(), now = new Date().toISOString();
+export async function createContent(user: AuthUser, input: { title: string; channels: Channel[]; captions: Partial<Record<Channel, string>>; creative: CreativeRef | null; templateId?: string | null } & PostPlanInput, id: string = randomUUID()): Promise<StoredContent> {
+  const now = new Date().toISOString();
   const slot = input.slotId ? await openSlot(input.slotId) : null;
   const goal = input.goal ?? (isGoal(slot?.goal) ? slot.goal : null);
   const plannedFor = input.plannedFor ?? slot?.scheduledAt ?? null;

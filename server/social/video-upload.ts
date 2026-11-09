@@ -70,7 +70,7 @@ export async function attachVideoStream(contentId: string, source: Readable, dec
     let bytes = 0;
     const limit = new Transform({ transform(chunk: Buffer, _encoding, callback) { bytes += chunk.length; callback(bytes > (declaredBytes ?? MAX) ? new StorageError(413, 'video_too_large', 'حجم الفيديو تجاوز الحجم المسموح.') : null, chunk); } });
     // Do not let pipeline destroy the HTTP request before an actionable JSON error can be returned.
-    const abort = () => limit.destroy(new Error('Upload interrupted.')); const closed = () => { if (!(source as { complete?: boolean }).complete) abort(); };
+    const abort = () => limit.destroy(new Error('Upload interrupted.')); const closed = () => { if (!(source as { complete?: boolean }).complete && !source.readableEnded) abort(); };
     source.once('aborted', abort); source.once('error', abort); source.once('close', closed); source.pipe(limit);
     try { await pipeline(limit, createWriteStream(temporary, { flags: 'wx' })); }
     finally { source.unpipe(limit); source.off('aborted', abort); source.off('error', abort); source.off('close', closed); }

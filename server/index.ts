@@ -40,18 +40,21 @@ import { recoverReferenceJobs, registerReferenceDesignRoutes } from './reference
 import { registerStorageRoutes } from './storage-routes.js';
 import { storageWriteGuard } from './storage.js';
 import { runStorageMaintenance } from './storage-retention.js';
+import { registerGoogleCalendarRoutes } from './google/routes.js';
+import { syncGoogleCalendars } from './google/calendar-sync.js';
 
 const app=express();const port=Number(process.env.PORT)||4100;const host=process.env.HOST||'127.0.0.1';
 app.disable('x-powered-by');app.set('trust proxy',1);app.use('/api/ai',express.json({limit:'18mb'}));app.use('/api/studio',express.json({limit:'18mb'}));app.use('/api/svg-templates',express.json({limit:'16mb'}));app.use('/api/uploads',express.json({limit:'16mb'}));app.use(express.json({limit:'1mb'}));
 app.get('/api/health',(_req,res)=>res.json({ok:true}));
 registerAuthRoutes(app);
 // Provider callbacks validate state and the initiating user; signed media is narrowly scoped to one expiring asset.
-const PUBLIC_API=new Set(['/api/health','/api/auth/login','/api/auth/logout',...['facebook','instagram','tiktok','snapchat','youtube'].map(p=>`/api/oauth/${p}/callback`)]);
+const PUBLIC_API=new Set(['/api/health','/api/auth/login','/api/auth/logout',...['facebook','instagram','tiktok','snapchat','youtube','drive'].map(p=>`/api/oauth/${p}/callback`)]);
 app.use('/api',(req,res,next)=>(PUBLIC_API.has(req.originalUrl.split('?')[0])||/^\/api\/social\/media\/[0-9a-f-]{36}$/.test(req.originalUrl.split('?')[0]))?next():requireUser(req,res,next));
 app.use('/api',storageWriteGuard);
 registerWorkspaceRoutes(app);
 registerStorageRoutes(app);
 registerSocialRoutes(app);
+registerGoogleCalendarRoutes(app);
 registerAiTemplateRoutes(app);
 registerCampaignRoutes(app);
 registerScheduleRoutes(app);
@@ -217,6 +220,7 @@ app.listen(port,host,()=>console.log(`Mobde3 listening on http://${host}:${port}
 setTimeout(()=>{void runSync().catch(()=>{});},1500);
 setInterval(()=>{void checkAlerts().catch(()=>{});},60_000).unref();
 // Scheduled Facebook and Instagram publications go out within a minute of their time.
+setInterval(()=>{void syncGoogleCalendars().catch(()=>{});},60_000).unref();
 setInterval(()=>{void runDuePublications().catch(()=>{});},60_000).unref();
 // Publications still processing are checked every minute, not only with the 30-minute sync: an Instagram Reel goes live
 // only when this check sends media_publish after its container is ready.

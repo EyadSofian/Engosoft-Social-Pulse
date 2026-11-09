@@ -15,6 +15,11 @@ import { publish, recentJobs } from './publishing.js';
 import { contentQueue, getAccount, listAccounts, toQueued, type QueuedPublication } from './store.js';
 import type { PublishJob, SocialAccount, SocialProvider } from './types.js';
 import { PRE_APPROVAL } from '../../src/domain/content.js';
+import { sourceCanPublish } from '../google/store.js';
+import { resolveMedia, validateMedia } from './media.js';
+import { requiredCapability } from './capabilities.js';
+import { hybridConfigured, validateHybrid } from './hybrid.js';
+import type { PublishInput } from './types.js';
 
 /** Platforms whose publishing needs no extra per-post choices. */
 export const AUTO_PROVIDERS: SocialProvider[] = ['facebook', 'instagram', 'linkedin'];
@@ -28,9 +33,10 @@ async function plan(item: StoredContent, account: SocialAccount): Promise<Omit<P
   const no = (reason: string) => ({ ready: false, reason, kind: null, media: [] });
   if (!AUTO_PROVIDERS.includes(account.provider)) return no('advanced');
   if (account.status !== 'connected') return no('disconnected');
-  const video = [...(await contentMedia(item.id))].reverse().find((m) => m.type === 'video');
+  const attachments = await contentMedia(item.id);
+  const video = [...attachments].reverse().find((m) => m.type === 'video');
   // Each platform gets the size designed for it (a LinkedIn landscape, an Instagram 3:4…), else the main design.
-  const image = imageForChannel(account.provider, item.creative);
+  const image = imageForChannel(account.provider, item.creative) || attachments.find(m => m.type === 'image')?.url;
   const choice = video ? { kind: 'video' as const, media: [{ url: video.url }] }
     : image ? { kind: 'image' as const, media: [{ url: image }] }
     : ['facebook','linkedin'].includes(account.provider) && item.captions[account.provider]?.trim() ? { kind: 'text' as const, media: [] }
@@ -126,9 +132,11 @@ export async function cancelPublication(user: AuthUser, contentId: string) {
  * scheduled (approval withdrawn or rescheduled posts were already cancelled or moved).
  */
 export async function runDuePublications(now = new Date()): Promise<number> {
-  const due = (await db.all("SELECT * FROM social_publish_queue WHERE state='queued' AND publish_at<=? ORDER BY publish_at LIMIT 20", [now.toISOString()])).map(toQueued);
+  const due = (await db.all("SELECT * FROM social_publish_queue WHERE state='queued' AND publish_at<=? AND (source_id IS NULL OR EXISTS (SELECT 1 FROM google_calendar_sources s WHERE s.id=source_id AND s.enabled=1 AND s.error IS NULL AND s.lock_token IS NULL AND s.last_sync_at>?)) ORDER BY publish_at LIMIT 20", [now.toISOString(), Date.now()-120_000])).map(toQueued);
   let sent = 0;
   for (const row of due) {
+    // A disconnected or stale Google source never sends an out-of-date spreadsheet snapshot.
+    if (row.sourceId && !await sourceCanPublish(row.sourceId)) continue;
     const claimed = await db.run("UPDATE social_publish_queue SET state='sending', updated_at=? WHERE id=? AND state='queued'", [new Date().toISOString(), row.id]);
     if (!claimed.changes) continue;
     const finish = (state: 'sent' | 'failed', error: string | null, jobId: string | null = null) =>
@@ -140,7 +148,7 @@ export async function runDuePublications(now = new Date()): Promise<number> {
     // Published counts too: one account going live first (or the sync finding it) must not cancel the others.
     if (!item || !['scheduled', 'published'].includes(item.status)) { await finish('failed', 'The post is no longer scheduled.'); continue; }
     try {
-      const job = await publish(user, { contentId: row.contentId, accountId: row.accountId, kind: row.kind, media: row.media as never, mode: 'direct', consent: true });
+      const job = await publish(user, { ...row.options, contentId: row.contentId, accountId: row.accountId, kind: row.kind, media: row.media as never, mode: 'direct', consent: true });
       await finish(job.state === 'failed' ? 'failed' : 'sent', job.state === 'failed' ? job.error ?? 'The platform refused the post.' : null, job.id);
       sent++;
     } catch (error) {
@@ -148,6 +156,45 @@ export async function runDuePublications(now = new Date()): Promise<number> {
     }
   }
   return sent;
+}
+
+/** Preflight an explicit spreadsheet selection without approving it or making a remote publication. */
+export async function validatePreparedPublication(user: AuthUser, input: PublishInput) {
+  if (!userCan(user, 'content.publish') || !userCan(user, 'content.schedule')) throw new WorkspaceError(403, 'يلزم تفويض الجدولة والنشر.');
+  const item = await getContent(input.contentId), account = await getAccount(input.accountId);
+  if (!item || !canSee(user, item) || !account || account.status !== 'connected' || !item.channels.includes(account.provider)) throw new Error('اختر حساب نشر متصلًا للمنصة.');
+  const hybrid = account.provider === 'tiktok' && await hybridConfigured(account.id, input.kind);
+  const capability = capabilities(account.provider, account)[requiredCapability(input.kind, 'direct')];
+  if (!hybrid && capability !== 'available') throw new Error(capability === 'unsupported' ? 'نوع الميديا غير مدعوم على المنصة في الربط الحالي.' : 'صلاحية نشر نوع الميديا غير متاحة للحساب.');
+  const media = await resolveMedia(item, input.media.map(m => m.url));
+  validateMedia(account.provider, input, media, item.captions[account.provider] || '');
+  if (account.provider === 'tiktok' && (!input.privacy || typeof input.isAiGenerated !== 'boolean')) throw new Error('أكمل TikTok Privacy وAI Generated في الشيت.');
+  if (account.provider === 'snapchat' && !input.snapTarget) throw new Error('اختر Snapchat Target: story أو spotlight.');
+  if (account.provider === 'snapchat' && input.snapTarget === 'spotlight' && (input.kind !== 'video' || (media[0]?.duration || 0) < 6 || (item.captions.snapchat || '').length > 160 || !input.locale)) throw new Error('Spotlight يحتاج فيديو 6–60 ثانية، ونصًا حتى160 حرفًا، وSnapchat Locale مثل ar_SA.');
+  if (hybrid) validateHybrid(input, item.captions.tiktok || '', media, item.title);
+}
+
+/** Queue preflighted media/options; all publication writes still go through the existing evidence/duplicate guard. */
+export async function schedulePreparedPublications(user: AuthUser, contentId: string, inputs: PublishInput[], at: string, sourceId: string) {
+  for (const input of inputs) {
+    if (input.contentId !== contentId || input.mode !== 'direct' || input.consent !== true) throw new Error('اختيار نشر غير صالح.');
+    await validatePreparedPublication(user, input);
+  }
+  if (!inputs.length) return;
+  if (new Date(at).getTime() <= Date.now()) throw new Error('ميعاد النشر مضى؛ اختر ميعادًا مستقبليًا.');
+  let item = (await getContent(contentId))!;
+  item = await approveForPublishing(user, item);
+  if (item.status !== 'scheduled' || item.scheduledAt !== at) await transition(user, contentId, 'scheduled', { scheduledAt: at });
+  await db.tx(async tx => {
+    const now = new Date().toISOString();
+    await tx.run("UPDATE social_publish_queue SET state='cancelled',updated_at=? WHERE content_id=? AND state='queued'", [now, contentId]);
+    for (const input of inputs) {
+      // No automatic retries of failures or uncertain remote outcomes on the next sheet poll.
+      if (await tx.get("SELECT id FROM social_publish_jobs WHERE content_id=? AND account_id=? LIMIT 1", [contentId, input.accountId])) continue;
+      const { media, contentId: _c, accountId, kind, ...options } = input;
+      await tx.run('INSERT INTO social_publish_queue(id,content_id,account_id,kind,media_json,publish_at,state,created_by,created_at,updated_at,options_json,source_id) VALUES(?,?,?,?,?,?,?,?,?,?,?,?)', [randomUUID(), contentId, accountId, kind, JSON.stringify(media.map(m => ({ url: m.url }))), at, 'queued', user.id, now, now, JSON.stringify(options), sourceId]);
+    }
+  });
 }
 
 /** Everything the Publishing page shows: accounts, the queue and recent results, limited to posts the person can see. */

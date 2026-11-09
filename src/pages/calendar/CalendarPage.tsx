@@ -11,6 +11,7 @@ import { PageHeader } from '../../shell/Header';
 import { usePageMeta } from '../../shell/ShellContext';
 import { ContentCalendar } from './ContentCalendar';
 import { useAuth } from '../../features/auth/AuthProvider';
+import { GoogleCalendarPanel } from '../../features/publishing/GoogleCalendarPanel';
 
 /**
  * One calendar for every post. Approved posts are scheduled straight onto a day, and Facebook / Instagram
@@ -58,6 +59,7 @@ export function CalendarPage() {
             {(can('content.publish') || can('content.schedule')) && <ButtonLink to="/publish" icon={<Send size={15} />}>{t('Publishing', 'النشر')}</ButtonLink>}
           </>}
       />
+      <GoogleCalendarPanel onChange={() => { void store.reload(); }} />
       {plans ? (
         store.phase === 'ready' ? <LegacyCalendar /> : <EmptyState title={store.phase === 'loading' ? t('Loading the calendar…', 'جارٍ تحميل التقويم…') : t('The calendar API is not reachable.', 'واجهة التقويم غير متاحة.')} text={store.staleError || undefined} action={store.phase === 'offline' ? <Button onClick={() => void store.reload()}>{t('Retry', 'أعد المحاولة')}</Button> : undefined} />
       ) : (
