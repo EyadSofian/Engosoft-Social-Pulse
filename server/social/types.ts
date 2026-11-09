@@ -8,7 +8,7 @@ export interface SocialAccount {
  verifiedAt: string | null; lastSyncAt: string | null; error: string | null;
 }
 export interface Credential { accessToken: string; refreshToken?: string; expiresAt: number; scopes: string[] }
-export interface Media { url: string; type: 'image' | 'video'; mimeType: string; bytes: number; width: number; height: number; duration?: number }
+export interface Media { url: string; type: 'image' | 'video'; mimeType: string; bytes: number; width: number; height: number; duration?: number; role?: 'thumbnail' }
 export interface PublishInput {
  contentId: string; accountId: string; kind: 'text' | 'image' | 'video' | 'carousel'; media: Media[];
  mode: 'direct' | 'draft'; privacy?: string; categoryId?: string; tags?: string[]; madeForKids?: boolean;

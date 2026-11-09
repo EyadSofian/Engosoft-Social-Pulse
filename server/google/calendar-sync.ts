@@ -19,10 +19,11 @@ export interface CalendarGoogleClient {
   downloadStream?: GoogleClient['downloadStream'];
 }
 /** Normalize large Drive artwork to a portable JPEG, preserving the whole design. */
-export async function normalizeDriveImage(buffer: Buffer) {
+export async function normalizeDriveImage(buffer: Buffer, thumbnail = false) {
   const metadata = await sharp(buffer, { limitInputPixels: 80_000_000 }).metadata();
   if (!['jpeg', 'png', 'webp'].includes(metadata.format || '') || (metadata.pages || 1) > 1 || !metadata.width || !metadata.height) throw new Error('استخدم صورة JPEG أو PNG أو WebP ثابتة.');
   const ratio = metadata.width / metadata.height;
+  if (thumbnail) return sharp(buffer, { limitInputPixels: 80_000_000 }).rotate().flatten({ background: '#ffffff' }).resize({ width: 1080, height: 1920, fit: 'inside' }).jpeg({ quality: 94 }).toBuffer();
   return sharp(buffer, { limitInputPixels: 80_000_000 }).rotate().flatten({ background: '#ffffff' })
     .resize(ratio < 0.8 || ratio > 1.91 ? { width: 1080, height: 1350, fit: 'contain', background: '#ffffff' } : { width: 1080 })
     .jpeg({ quality: 94 }).toBuffer();
@@ -50,11 +51,46 @@ async function prepareMedia(client: CalendarGoogleClient, row: PublishingRow, co
   return media;
 }
 
+async function prepareThumbnail(client: CalendarGoogleClient, row: PublishingRow, contentId: string) {
+  if (!row.thumbnail) return;
+  const ref = googleReference(row.thumbnail), file = await client.file(ref);
+  file.resourceKey ||= ref.resourceKey;
+  const [image] = chooseDriveMedia(file.mimeType === 'application/vnd.google-apps.folder' ? await client.children(file) : [file], 'image');
+  return attachImage(contentId, await normalizeDriveImage(await client.download(image), true), 'thumbnail');
+}
+
 const canonicalInput = (rows: GoogleValues) => {
   const headers = headersOf(rows);
   return JSON.stringify(rows.slice(1).filter(row => row.some(v => textCell(v))).map(row => rowFingerprint(rowObject(headers, row))).sort());
 };
 export function columnLetter(index: number) { let value = ''; for (let n = index + 1; n; n = Math.floor((n - 1) / 26)) value = String.fromCharCode(65 + (n - 1) % 26) + value; return value; }
+
+/** Literal UUIDs survive sorting and row insertion. Blank/formatted template rows do not get IDs. */
+export function missingPostIds(values: GoogleValues) {
+  const headers = headersOf(values), idColumn = headers.indexOf('post id');
+  const contentColumns = ['date', 'time', 'post title', 'caption', 'design', 'thumbnail', 'platform', 'media type'].map(h => headers.indexOf(h)).filter(i => i >= 0);
+  return values.slice(1).flatMap((row, index) => !textCell(row[idColumn]) && contentColumns.some(col => textCell(row[col]))
+    ? [{ rowIndex: index + 1, idColumn, id: `ENG-${randomUUID()}` }] : []);
+}
+
+async function ensurePostIds(source: GoogleSource, client: CalendarGoogleClient, initial: GoogleValues) {
+  const pending = missingPostIds(initial);
+  if (!pending.length) return initial;
+  const filled = structuredClone(initial);
+  for (const item of pending) { while (filled[item.rowIndex].length <= item.idColumn) filled[item.rowIndex].push(''); filled[item.rowIndex][item.idColumn] = item.id; }
+  if (source.snapshot_json) {
+    const changed = await db.run('UPDATE google_calendar_sources SET snapshot_json=? WHERE id=? AND revision=?', [JSON.stringify(filled), source.id, source.revision]);
+    if (!changed.changes) throw new Error('تغير ملف الكالندر أثناء توليد المعرّفات؛ أعد المزامنة.');
+    return filled;
+  }
+  // Re-read before assigning cells: never seed an ID from a stale row position.
+  const latest = await client.values(source.spreadsheet_id, source.tab);
+  if (canonicalInput(initial) !== canonicalInput(latest)) throw new Error('تغير الشيت أثناء توليد Post ID؛ ستتم مراجعته من جديد.');
+  await client.writeValues(source.spreadsheet_id, pending.map(item => ({ range: `${quotedTab(source.tab)}!${columnLetter(item.idColumn)}${item.rowIndex + 1}`, values: [[item.id]] })));
+  const committed = await client.values(source.spreadsheet_id, source.tab);
+  if (canonicalInput(committed) !== canonicalInput(filled)) throw new Error('لم يثبت Post ID بعد؛ أعد المزامنة قبل الجدولة.');
+  return committed;
+}
 
 export async function rowOutcome(row: GoogleRow) {
   const jobs = await contentJobs(row.content_id), queue = await contentQueue(row.content_id);
@@ -91,14 +127,16 @@ async function applyRow(source: GoogleSource, mapping: GoogleRow, row: Publishin
     return;
   }
   if (Date.parse(row.scheduledAt) <= Date.now()) throw new Error('ميعاد النشر مضى؛ حدد ميعادًا مستقبليًا ثم اترك Ready = YES.');
-  const mediaFingerprint = `${row.design}:${row.mediaType}`;
+  const mediaFingerprint = `${row.design}:${row.mediaType}${row.thumbnail ? `:thumbnail:${row.thumbnail}` : ''}`;
   if (mapping.media_fingerprint !== mediaFingerprint || !(await contentMedia(item.id)).length) {
     await prepareMedia(client, row, item.id);
+    await prepareThumbnail(client, row, item.id);
     await db.run('UPDATE google_calendar_rows SET media_fingerprint=? WHERE source_id=? AND post_id=?', [mediaFingerprint, source.id, row.postId]);
   }
-  const media = await contentMedia(item.id), inputs: PublishInput[] = [], errors: string[] = [];
+  const attachments = await contentMedia(item.id), media = attachments.filter(m => m.role !== 'thumbnail'), thumbnail = attachments.find(m => m.role === 'thumbnail');
+  const inputs: PublishInput[] = [], errors: string[] = [];
   // The imported artwork also appears in ordinary content cards and the calendar preview.
-  await updateContent(user, item.id, { creative: media[0]?.type === 'image' ? { requestId: 'drive-import', directionId: row.mediaType, imageUrl: media[0].url, directionName: 'Google Drive' } : null });
+  await updateContent(user, item.id, { creative: media[0]?.type === 'image' ? { requestId: 'drive-import', directionId: row.mediaType, imageUrl: media[0].url, directionName: 'Google Drive' } : thumbnail ? { requestId: 'reel', directionId: row.mediaType, imageUrl: thumbnail.url, reelCover: { url: thumbnail.url }, directionName: 'Google Drive' } : null });
   for (const channel of row.channels) {
     try {
       if (['x', 'whatsapp', 'website'].includes(channel)) throw new Error('المنصة مسجلة للتخطيط؛ الربط الحالي يحتاج نشرًا يدويًا من صفحة البوست.');
@@ -140,7 +178,7 @@ export async function syncGoogleSource(id: string, clientOverride?: CalendarGoog
     } : google);
     const meta = await client.metadata(source.spreadsheet_id);
     if (!meta.sheets.some(s => s.properties.title === source!.tab)) throw new Error('تابة الكالندر غير موجودة؛ اختر اسم التابة الصحيح.');
-    const values = await client.values(source.spreadsheet_id, source.tab), headers = headersOf(values);
+    const values = await ensurePostIds(source, client, await client.values(source.spreadsheet_id, source.tab)), headers = headersOf(values);
     const rawRows = values.slice(1).map(row => rowObject(headers, row)).filter(row => Object.entries(row).some(([k, v]) => !['status', 'published urls', 'last error'].includes(k) && textCell(v)));
     const ids = rawRows.map(row => textCell(row['post id']));
     const duplicates = new Set(ids.filter((id, i) => id && ids.indexOf(id) !== i));

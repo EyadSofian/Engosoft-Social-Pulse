@@ -3,7 +3,7 @@ import { createHash } from 'node:crypto';
 import type { Channel } from '../workspace.js';
 import type { GoogleValues } from './client.js';
 
-export const PUBLISHING_HEADERS = ['Post ID', 'Date', 'Time', 'Timezone', 'Post Title', 'Caption', 'Design', 'Media Type', 'Platform', 'Ready', 'Notes', 'Status', 'Published URLs', 'Last Error', 'YouTube Privacy', 'YouTube Category', 'Made For Kids', 'TikTok Privacy', 'AI Generated', 'Snapchat Target', 'TikTok Commercial', 'Snapchat Locale'];
+export const PUBLISHING_HEADERS = ['Post ID', 'Date', 'Time', 'Timezone', 'Post Title', 'Caption', 'Design', 'Thumbnail', 'Media Type', 'Platform', 'Ready', 'Notes', 'Status', 'Published URLs', 'Last Error', 'YouTube Privacy', 'YouTube Category', 'Made For Kids', 'TikTok Privacy', 'AI Generated', 'Snapchat Target', 'TikTok Commercial', 'Snapchat Locale'];
 export const CHANNELS: Channel[] = ['facebook', 'instagram', 'linkedin', 'tiktok', 'youtube', 'snapchat', 'x', 'whatsapp', 'website'];
 const aliases: Record<string, string> = { fb: 'facebook', ig: 'instagram', yt: 'youtube', twitter: 'x', 'tik tok': 'tiktok', 'فيسبوك': 'facebook', 'انستجرام': 'instagram', 'تيك توك': 'tiktok', 'يوتيوب': 'youtube', 'سناب شات': 'snapchat', 'لينكدإن': 'linkedin' };
 export const header = (v: unknown) => String(v ?? '').trim().toLowerCase();
@@ -21,7 +21,7 @@ export function rowFingerprint(row: Record<string, unknown>) {
 }
 export interface PublishingRow {
   postId: string; title: string; caption: string; design: string; mediaType: 'image' | 'reel' | 'video' | 'carousel';
-  channels: Channel[]; scheduledAt: string; timezone: string; ready: boolean; fingerprint: string;
+  channels: Channel[]; scheduledAt: string; timezone: string; ready: boolean; fingerprint: string; thumbnail?: string;
   youtubePrivacy?: string; youtubeCategory?: string; madeForKids?: boolean; tiktokPrivacy?: string; aiGenerated?: boolean; snapTarget?: 'story' | 'spotlight'; tiktokCommercial?: string; snapLocale?: string;
 }
 function yesNo(v: unknown, optional = false): boolean | undefined {
@@ -51,6 +51,8 @@ export function parsePublishingRow(row: Record<string, unknown>, defaultZone = '
   if (!channels.length || channels.some(p => !CHANNELS.includes(p as Channel))) throw new Error('منصة غير معروفة؛ استخدم أسماء تابة Platforms وافصل بينها بفاصلة.');
   const mediaType = textCell(row['media type']).toLowerCase();
   if (!['image', 'reel', 'video', 'carousel'].includes(mediaType)) throw new Error('Media Type: image أو reel أو video أو carousel.');
+  const thumbnail = textCell(row.thumbnail);
+  if (thumbnail && (!['reel', 'video'].includes(mediaType) || thumbnail.length > 2048)) throw new Error('Thumbnail اختياري للريل والفيديو فقط؛ اتركه فارغًا للصور والكاروسيل.');
   const title = textCell(row['post title']), caption = textCell(row.caption), design = textCell(row.design);
   if (!title || title.length > 200 || !caption || caption.length > 63206 || !design || design.length > 2048) throw new Error('أكمل Post Title (حتى 200 حرف) وCaption وDesign.');
   const snapTarget = textCell(row['snapchat target']);
@@ -59,5 +61,5 @@ export function parsePublishingRow(row: Record<string, unknown>, defaultZone = '
   if (tiktokCommercial && !['none', 'own', 'paid', 'both'].includes(tiktokCommercial)) throw new Error('TikTok Commercial: none / own / paid / both.');
   const snapLocale = textCell(row['snapchat locale']);
   if (snapLocale && !/^[a-z]{2}_[A-Z]{2}$/.test(snapLocale)) throw new Error('Snapchat Locale مثل ar_SA أو ar_EG أو en_US.');
-  return { postId, title, caption, design, mediaType: mediaType as PublishingRow['mediaType'], channels: channels as Channel[], scheduledAt: dt.toUTC().toISO()!, timezone, ready: yesNo(row.ready)!, fingerprint: rowFingerprint(row), youtubePrivacy: textCell(row['youtube privacy']) || undefined, youtubeCategory: textCell(row['youtube category']) || undefined, madeForKids: yesNo(row['made for kids'], true), tiktokPrivacy: textCell(row['tiktok privacy']) || undefined, aiGenerated: yesNo(row['ai generated'], true), snapTarget: snapTarget as PublishingRow['snapTarget'] || undefined, tiktokCommercial: tiktokCommercial || undefined, snapLocale: snapLocale || undefined };
+  return { postId, title, caption, design, thumbnail: thumbnail || undefined, mediaType: mediaType as PublishingRow['mediaType'], channels: channels as Channel[], scheduledAt: dt.toUTC().toISO()!, timezone, ready: yesNo(row.ready)!, fingerprint: rowFingerprint(row), youtubePrivacy: textCell(row['youtube privacy']) || undefined, youtubeCategory: textCell(row['youtube category']) || undefined, madeForKids: yesNo(row['made for kids'], true), tiktokPrivacy: textCell(row['tiktok privacy']) || undefined, aiGenerated: yesNo(row['ai generated'], true), snapTarget: snapTarget as PublishingRow['snapTarget'] || undefined, tiktokCommercial: tiktokCommercial || undefined, snapLocale: snapLocale || undefined };
 }

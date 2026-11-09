@@ -50,7 +50,17 @@ async function setup(rows: GoogleValues) {
   const client: CalendarGoogleClient = {
     metadata: async () => ({ properties: { title: 'Publishing', timeZone: 'Africa/Cairo' }, sheets: [{ properties: { title: 'Calendar', sheetId: 0 } }] }),
     values: async () => structuredClone(snapshot),
-    writeValues: async (_id, data) => { writes.push(...data); },
+    writeValues: async (_id, data) => {
+      writes.push(...data);
+      for (const item of data) {
+        const match = /!([A-Z]+)(\d+)$/.exec(item.range);
+        if (!match) continue;
+        const col = [...match[1]].reduce((n, c) => n * 26 + c.charCodeAt(0) - 64, 0) - 1;
+        const row = Number(match[2]) - 1;
+        snapshot[row] ??= [];
+        snapshot[row][col] = item.values[0][0];
+      }
+    },
     file: async () => ({ id: 'drive-folder-123', name: 'PMP', mimeType: 'application/vnd.google-apps.folder' }),
     children: async () => [{ id: 'drive-image-123', name: 'PMP.jpg', mimeType: 'image/jpeg', size: String(jpeg.length) }],
     download: async () => { downloads++; return jpeg; },
@@ -68,6 +78,28 @@ test('date serials preserve September 11 and 13:30 without locale inversion', ()
 test('duplicate headers and unknown platforms are rejected', () => {
   assert.throws(() => format.headersOf([['Post ID', ' Post ID ']]), /مكررة/);
   assert.throws(() => format.parsePublishingRow(raw('bad-platform', { platform: 'facebok' })), /منصة/);
+});
+test('Notes and Thumbnail are optional, and image posts cannot accidentally use a Reel thumbnail', () => {
+  assert.equal(format.parsePublishingRow(raw('optional', { notes: '', thumbnail: '' })).thumbnail, undefined);
+  assert.throws(() => format.parsePublishingRow(raw('wrong-cover', { thumbnail: 'https://drive.google.com/file/d/cover-123456/view' })), /Thumbnail/);
+  assert.equal(format.parsePublishingRow(raw('reel-cover', { 'media type': 'reel', thumbnail: 'https://drive.google.com/file/d/cover-123456/view' })).thumbnail, 'https://drive.google.com/file/d/cover-123456/view');
+});
+test('new filled rows get literal stable Post IDs before import; empty template rows remain empty', async () => {
+  const s = await setup(values(raw('', { ready: 'NO' }), { ready: 'NO', timezone: 'Africa/Cairo', notes: '' }));
+  await sync.syncGoogleSource(s.id, s.client);
+  const [row] = await sources.sourceRows(s.id);
+  assert.match(row.post_id, /^ENG-[0-9a-f-]{36}$/);
+  assert.equal(s.writes.filter(w => /!A2$/.test(w.range)).length, 1);
+  assert.equal(s.writes.filter(w => /!A3$/.test(w.range)).length, 0);
+  await sync.syncGoogleSource(s.id, s.client);
+  assert.equal((await sources.sourceRows(s.id))[0].post_id, row.post_id);
+  assert.equal(s.writes.filter(w => /!A2$/.test(w.range)).length, 1);
+});
+test('a failed ID write cannot create content or schedule a publication under a temporary identifier', async () => {
+  const s = await setup(values(raw('')));
+  s.client.writeValues = async () => { throw new Error('read only sheet'); };
+  await assert.rejects(() => sync.syncGoogleSource(s.id, s.client), /read only/);
+  assert.deepEqual(await sources.sourceRows(s.id), []);
 });
 test('Drive URLs are bounded to Google and carousel selection is deterministic', () => {
   assert.equal(google.googleReference('https://drive.google.com/open?id=drive-file-123').id, 'drive-file-123');
@@ -111,14 +143,20 @@ test('Drive MP4s stream to storage and inspect their headers without buffering t
   const tkhd = Buffer.alloc(84); tkhd.writeUInt32BE(1080 * 65536, 76); tkhd.writeUInt32BE(1920 * 65536, 80);
   const video = Buffer.concat([box('ftyp', Buffer.from('isom0000')), box('moov', Buffer.concat([box('mvhd', mvhd), box('trak', box('tkhd', tkhd))]))]);
   const videoPage = await accounts.registerAccount('facebook', 'drive-video-page', 'Video Page', user.id, 'drive-video-token', ['pages_manage_posts', 'publish_video']);
-  const s = await setup(values(raw('stream-video', { 'media type': 'reel' })));
+  const s = await setup(values(raw('stream-video', { 'media type': 'reel', thumbnail: 'https://drive.google.com/file/d/cover-123456/view' })));
   await db.run('UPDATE google_calendar_sources SET targets_json=? WHERE id=?', [JSON.stringify({ facebook: videoPage.id }), s.id]);
   s.client.children = async () => [{ id: 'video-123456', name: 'PMP.mp4', mimeType: 'video/mp4', size: String(video.length) }];
-  s.client.download = async () => { throw new Error('Video must use the streaming path.'); };
+  const file = s.client.file;
+  s.client.file = async ref => ref.id === 'cover-123456' ? { id: ref.id, name: 'cover.jpg', mimeType: 'image/jpeg' } : file(ref);
+  s.client.download = async item => { assert.equal(item.id, 'cover-123456', 'video bytes must use streaming; only the cover uses a buffer'); return jpeg; };
   s.client.downloadStream = async () => Readable.from([video.subarray(0, 32), video.subarray(32)]);
   await sync.syncGoogleSource(s.id, s.client);
   const [row] = await sources.sourceRows(s.id), [q] = await social.contentQueue(row.content_id);
   assert.equal(q.kind, 'video'); assert.equal(q.state, 'queued');
+  assert.equal(q.media.length, 1, 'the thumbnail is not a second video or a carousel slide');
+  const item = (await workspace.getContent(row.content_id))!;
+  assert.ok(item.creative?.reelCover?.url);
+  assert.notEqual(item.creative!.reelCover!.url, q.media[0].url);
 });
 test('unsupported platforms report errors while supported targets keep their stable queue', async () => {
   const s = await setup(values(raw('partial-setup', { platform: 'facebook,x' })));
@@ -151,7 +189,7 @@ test('a row moved during downloads gets its result at the new row; edited inputs
   const read = s.client.values; let reads = 0;
   s.client.values = async (...args) => { reads++; return reads === 1 ? read(...args) : values(raw('move-two', { ready: 'NO' }), raw('move-one')); };
   await sync.syncGoogleSource(s.id, s.client);
-  assert.ok(s.writes.some(w => /L3$/.test(w.range) && w.values[0][0] === 'scheduled'));
+  assert.ok(s.writes.some(w => new RegExp(`${sync.columnLetter(format.PUBLISHING_HEADERS.indexOf('Status'))}3$`).test(w.range) && w.values[0][0] === 'scheduled'));
   const changed = await setup(values(raw('concurrent'))); let counter = 0;
   changed.client.values = async () => ++counter === 1 ? values(raw('concurrent')) : values(raw('concurrent', { ready: 'NO' }));
   await assert.rejects(() => sync.syncGoogleSource(changed.id, changed.client), /تغيرت/);

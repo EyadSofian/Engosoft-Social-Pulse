@@ -18,8 +18,9 @@ import { PRE_APPROVAL } from '../../src/domain/content.js';
 import { sourceCanPublish } from '../google/store.js';
 import { resolveMedia, validateMedia } from './media.js';
 import { requiredCapability } from './capabilities.js';
-import { hybridConfigured, validateHybrid } from './hybrid.js';
+import { hybridConfigured, hybridRoutes, validateHybrid } from './hybrid.js';
 import type { PublishInput } from './types.js';
+import { reelCoverFor } from '../../src/domain/reel-covers.js';
 
 /** Platforms whose publishing needs no extra per-post choices. */
 export const AUTO_PROVIDERS: SocialProvider[] = ['facebook', 'instagram', 'linkedin'];
@@ -168,6 +169,12 @@ export async function validatePreparedPublication(user: AuthUser, input: Publish
   if (!hybrid && capability !== 'available') throw new Error(capability === 'unsupported' ? 'نوع الميديا غير مدعوم على المنصة في الربط الحالي.' : 'صلاحية نشر نوع الميديا غير متاحة للحساب.');
   const media = await resolveMedia(item, input.media.map(m => m.url));
   validateMedia(account.provider, input, media, item.captions[account.provider] || '');
+  const cover = input.kind === 'video' ? reelCoverFor(account.provider, item.creative) : undefined;
+  if (cover) {
+    const [preparedCover] = await resolveMedia(item, [cover.url]);
+    if (preparedCover.type !== 'image') throw new Error('Thumbnail لازم يكون صورة.');
+    if (account.provider === 'tiktok' && cover.timestampMs === undefined && (!hybrid || !(await hybridRoutes(account.id)).some(route => route.enabled && route.service === 'zernio'))) throw new Error('ربط TikTok الحالي يحتاج لقطة من الفيديو كغلاف؛ احذف Thumbnail أو استخدم ربطًا يدعم صورة غلاف مخصصة.');
+  }
   if (account.provider === 'tiktok' && (!input.privacy || typeof input.isAiGenerated !== 'boolean')) throw new Error('أكمل TikTok Privacy وAI Generated في الشيت.');
   if (account.provider === 'snapchat' && !input.snapTarget) throw new Error('اختر Snapchat Target: story أو spotlight.');
   if (account.provider === 'snapchat' && input.snapTarget === 'spotlight' && (input.kind !== 'video' || (media[0]?.duration || 0) < 6 || (item.captions.snapchat || '').length > 160 || !input.locale)) throw new Error('Spotlight يحتاج فيديو 6–60 ثانية، ونصًا حتى160 حرفًا، وSnapchat Locale مثل ar_SA.');
