@@ -13,6 +13,7 @@ import { ChannelIcon } from '../../components/data-display/ChannelIcon';
 import { useToast } from '../../components/feedback/Toast';
 import { platformOf, suggestedTime } from './publishing';
 import { uploadVideo } from '../reels/upload';
+import { CarouselTray } from './CarouselTray';
 
 type Account = { id:string;provider:string;name:string };
 interface Board { posts:CalendarPostRecord[];accounts:Account[] }
@@ -22,48 +23,58 @@ function blank(day?:string):CalendarPostInput {
   const at=DateTime.fromISO(suggestedTime(day)).setZone(businessZone());
   return {title:'',caption:'',date:at.toISODate()!,time:at.toFormat('HH:mm'),timezone:businessZone(),mediaType:'image',mediaSource:'drive',design:'',thumbnail:'',mediaIds:[],platforms:[],targets:{},notes:'',youtubePrivacy:'',youtubeCategory:'27',madeForKids:'',tiktokPrivacy:'',aiGenerated:'',tiktokCommercial:'',snapTarget:'story',snapLocale:'ar_SA'};
 }
-export function CalendarPosts({onChange}:{onChange:()=>void}) {
-  const {can}=useAuth(),{t,date}=useI18n(),toast=useToast();
-  const [query,setQuery]=useQueryState(),[board,setBoard]=useState<Board|null>(null),[error,setError]=useState(''),[search,setSearch]=useState(''),[filter,setFilter]=useState('all');
-  const [seed,setSeed]=useState<CalendarPostInput|null>(null),[copying,setCopying]=useState(false);
-  const allowed=['connections.manage','content.create','content.edit_own','content.schedule','content.publish'].every(p=>can(p as never));
-  const reload=useCallback(async()=>{setBoard(await api<Board>('/api/calendar-posts'));},[]);
-  useEffect(()=>{if(!allowed)return;void reload().catch(e=>setError(e.message));const timer=setInterval(()=>void reload().catch(()=>{}),30000);return()=>clearInterval(timer);},[allowed,reload]);
-  if(!allowed)return null;
-  const managing=query.get('view')==='publishing',open=query.get('calendarPost'),editing=board?.posts.find(p=>p.id===open),posts=board?.posts||[];
-  const visible=posts.filter(p=>(filter==='all'||p.status===filter)&&(!search.trim()||`${p.input.title} ${p.input.caption}`.toLowerCase().includes(search.toLowerCase())));
-  const changed=()=>{void reload();onChange();};
-  const copy=async(post:CalendarPostRecord)=>{
-    setCopying(true);setError('');
-    try {
-      if(post.origin==='dashboard') {
-        const result=await api<{post:CalendarPostRecord}>(`/api/calendar-posts/${post.id}/duplicate`,{body:{}});
-        await reload();onChange();setSeed(null);setQuery({calendarPost:result.post.id});return;
-      }
-      const input=post.origin==='sheet'?await api<CalendarPostInput>(`/api/calendar-posts/import/${post.contentId}`):structuredClone(post.input);
-      const when=blank();setSeed({...input,title:`${input.title} — ${t('copy','نسخة')}`,date:when.date,time:when.time,mediaSource:'drive',mediaIds:[],...(input.mediaSource==='upload'?{design:''}:{})});setQuery({calendarPost:'new'});
-    }catch(e){setError(e instanceof Error?e.message:String(e));}finally{setCopying(false);}
-  };
-  return <>
-    <section className="cp-hub" aria-label={t('Publishing calendar','كالندر النشر')}>
-      <div className="cp-hub__identity"><span className="cp-hub__icon"><CalendarDays size={22}/></span><div><h2>{t('Your publishing calendar','كالندر النشر')}</h2><p>{t('Write it. Choose its platforms. Give it a date.','النص والمنصات والميعاد… كل حاجة في مكان واحد.')}</p></div></div>
-      <div className="cp-hub__stats"><span><i data-status="scheduled"/>{posts.filter(p=>p.status==='scheduled').length} {t('scheduled','مجدول')}</span><span><i data-status="draft"/>{posts.filter(p=>p.status==='draft').length} {t('drafts','مسودة')}</span></div>
-      <div className="cp-view" role="group" aria-label={t('Workspace view','عرض مساحة العمل')}><button type="button" aria-pressed={!managing} onClick={()=>setQuery({view:null})}><CalendarDays size={16}/>{t('Calendar','التقويم')}</button><button type="button" aria-pressed={managing} onClick={()=>setQuery({view:'publishing'})}><LayoutList size={16}/>{t('Manage posts','إدارة المنشورات')}<b>{posts.length}</b></button></div>
-    </section>
-    {error&&<p className="cp-alert" role="alert">{error}</p>}
-    {managing&&<section className="cp-board">
-      <div className="cp-board__tools"><label className="mc-search"><Search size={16}/><input aria-label={t('Search calendar','ابحث في الكالندر')} placeholder={t('Search by title or caption…','دوّر بالعنوان أو النص…')} value={search} onChange={e=>setSearch(e.target.value)}/></label><select aria-label={t('Post status','حالة المنشور')} className="mc-select" value={filter} onChange={e=>setFilter(e.target.value)}><option value="all">{t('All statuses','كل الحالات')}</option>{Object.keys(STATUS).map(k=><option key={k} value={k}>{statusLabel(k,t)}</option>)}</select><Button size="sm" variant="ghost" icon={<RefreshCw size={14}/>} onClick={()=>void reload().catch(e=>setError(e.message))}>{t('Refresh','تحديث')}</Button><span className="u-grow"/><Button variant="primary" icon={<Plus size={16}/>} onClick={()=>{setSeed(null);setQuery({calendarPost:'new'});}}>{t('Add a post','أضف منشور')}</Button></div>
-      {!board?<p role="status" className="cp-empty">{t('Loading your posts…','بنحمّل منشوراتك…')}</p>:!visible.length?<div className="cp-empty"><CalendarDays size={32}/><h3>{search||filter!=='all'?t('No matching posts','مفيش منشورات مطابقة'):t('Your next post starts here','بوستك الجاي يبدأ من هنا')}</h3><p>{t('Create and schedule a post without opening a spreadsheet.','أضف النص والميديا وحدد المنصات والميعاد من غير ما تفتح شيت.')}</p><Button icon={<Plus size={15}/>} onClick={()=>{setSeed(null);setQuery({calendarPost:'new'});}}>{t('Create a post','أضف أول منشور')}</Button></div>:<div className="cp-posts">{visible.map(post=><article className="cp-post" key={post.id}>
-        <div className="cp-post__art">{post.preview?<img src={post.preview} alt={post.input.title}/>:post.input.mediaType==='reel'||post.input.mediaType==='video'?<Film size={28}/>:<ImageIcon size={28}/>}<span className="cp-status" data-status={post.status}>{statusLabel(post.status,t)}</span></div>
-        <div className="cp-post__body"><div className="cp-post__origin">{post.origin==='sheet'?<Cloud size={12}/>:<CalendarDays size={12}/>} {post.origin==='sheet'?t('From Google Sheets','من Google Sheets'):t('From the dashboard','من الداشبورد')}<span>{post.input.mediaType==='reel'?t('Reel','ريل'):post.input.mediaType==='carousel'?t('Carousel','كاروسيل'):post.input.mediaType==='video'?t('Video','فيديو'):t('Image','صورة')}</span></div><h3 dir="auto">{post.input.title}</h3><p className="cp-post__caption" dir="auto">{post.input.caption}</p><div className="cp-post__when"><CalendarClock size={14}/>{post.scheduledAt?date(post.scheduledAt,'dateTime'):t('No date yet','لسه من غير ميعاد')}</div><div className="cp-post__platforms">{post.input.platforms.map(p=><span key={p} title={platformOf(p).name}><ChannelIcon channel={p} size={16}/><small>{post.jobs.find(j=>j.provider===p)?.state==='published'?<Check size={10}/>:null}</small></span>)}</div>
-        {post.errors&&<p className="cp-post__error">{post.errors}</p>}
-        {post.jobs.length>0&&<div className="cp-post__links">{post.jobs.map((j,i)=>j.url?<a key={i} target="_blank" rel="noreferrer" href={j.url.startsWith('/')&&j.provider==='facebook'?`https://www.facebook.com${j.url}`:j.url}>{platformOf(j.provider as CalendarPlatform)?.name||j.provider}<ExternalLink size={11}/></a>:<span key={i}>{j.provider} · {j.state==='published'?t('Published','تم النشر'):j.state}</span>)}</div>}
-        <footer>{post.editable&&<Button size="sm" onClick={()=>{setSeed(null);setQuery({calendarPost:post.id});}}>{t('Edit details','تعديل التفاصيل')}</Button>}<Button size="sm" variant="ghost" icon={<Copy size={13}/>} busy={copying} onClick={()=>void copy(post)}>{t('Duplicate','نسخ')}</Button>{post.origin==='dashboard'&&post.status==='scheduled'&&<Button size="sm" variant="ghost" icon={<Pause size={13}/>} onClick={()=>void api(`/api/calendar-posts/${post.id}/pause`,{body:{}}).then(()=>{changed();toast.success(t('Schedule paused','اتوقفت الجدولة'));}).catch(e=>setError(e.message))}>{t('Pause','إيقاف')}</Button>}<Link className="cp-post__open" to={`/content/${post.contentId}`}>{t('Publication log','سجل النشر')}<ExternalLink size={13}/></Link></footer></div>
-      </article>)}</div>}
-    </section>}
-    {open&&(open==='new'||editing)&&<CalendarPostEditor key={open} initial={open==='new'?seed||blank(query.get('postDay')||undefined):editing!.input} record={editing} accounts={board?.accounts||[]} onClose={()=>{setSeed(null);setQuery({calendarPost:null,postDay:null});}} onSaved={changed}/>}
-  </>;
+export type CalendarBoard = Board;
+/** Everything the calendar-post routes require; managers and admins hold all of them. */
+export const CALENDAR_POST_PERMISSIONS = ['connections.manage','content.create','content.edit_own','content.schedule','content.publish'] as const;
+
+/**
+ * The signed-in manager's calendar posts (dashboard and Google Sheets), refreshed every 30 seconds. A failed refresh
+ * shows its error until the next one succeeds; before, the first error stayed on screen after the server came back.
+ */
+export function useCalendarBoard() {
+  const {can}=useAuth();
+  const allowed=CALENDAR_POST_PERMISSIONS.every(p=>can(p));
+  const [board,setBoard]=useState<Board|null>(null),[error,setError]=useState('');
+  const reload=useCallback(async()=>{
+    try { setBoard(await api<Board>('/api/calendar-posts')); setError(''); }
+    catch(e) { setError(e instanceof Error?e.message:String(e)); }
+  },[]);
+  useEffect(()=>{if(!allowed)return;void reload();const timer=setInterval(()=>void reload(),30000);return()=>clearInterval(timer);},[allowed,reload]);
+  return {allowed,board,error,reload};
 }
+
+/** Opens the post editor from the address: `?calendarPost=new` (with `postDay` or `copyFrom`) or `?calendarPost=<id>`. */
+export function CalendarPostHost({board,onChange}:{board:Board|null;onChange:()=>void}) {
+  const {t}=useI18n();
+  const [query,setQuery]=useQueryState(),[seed,setSeed]=useState<CalendarPostInput|null>(null);
+  const open=query.get('calendarPost'),copyFrom=query.get('copyFrom');
+  useEffect(()=>{
+    setSeed(null);
+    if(open!=='new'||!copyFrom)return;
+    let alive=true;
+    void api<CalendarPostInput>(`/api/calendar-posts/import/${copyFrom}`).then(input=>{
+      if(!alive)return;
+      const when=blank();
+      setSeed({...input,title:`${input.title} — ${t('copy','نسخة')}`,date:when.date,time:when.time,mediaSource:'drive',mediaIds:[],mediaOrder:undefined,...(input.mediaSource==='upload'?{design:''}:{})});
+    }).catch(()=>{});
+    return()=>{alive=false;};
+  },[open,copyFrom]);
+  const editing=board?.posts.find(p=>p.id===open);
+  if(!open||(open!=='new'&&!editing)||(open==='new'&&copyFrom&&!seed))return null;
+  return <CalendarPostEditor key={`${open}-${seed?'copy':'blank'}`} initial={open==='new'?seed||blank(query.get('postDay')||undefined):editing!.input} record={editing} accounts={board?.accounts||[]}
+    onClose={()=>{setSeed(null);setQuery({calendarPost:null,postDay:null,copyFrom:null});}} onSaved={onChange}/>;
+}
+
+/** A new draft from a post: dashboard posts copy their files on the server; sheet rows open prefilled in the editor. */
+export async function duplicateCalendarPost(post:CalendarPostRecord,open:(patch:Record<string,string|null>)=>void) {
+  if(post.origin==='dashboard') {
+    const result=await api<{post:CalendarPostRecord}>(`/api/calendar-posts/${post.id}/duplicate`,{body:{}});
+    open({calendarPost:result.post.id,copyFrom:null});
+  } else open({calendarPost:'new',copyFrom:post.contentId});
+}
+/** Stops a scheduled post: its waiting publications are cancelled; anything already sent stays sent. */
+export const pauseCalendarPost=(post:CalendarPostRecord)=>api(`/api/calendar-posts/${post.id}/pause`,{body:{}});
+export {statusLabel as calendarStatusLabel};
 
 function CalendarPostEditor({initial,record,accounts,onClose,onSaved}:{initial:CalendarPostInput;record?:CalendarPostRecord;accounts:Account[];onClose:()=>void;onSaved:()=>void}) {
   const {t,date}=useI18n(),toast=useToast();
@@ -132,7 +143,7 @@ function CalendarPostEditor({initial,record,accounts,onClose,onSaved}:{initial:C
       <section className="cp-section"><div className="cp-section__title"><span>02</span><h3>{t('Media','الميديا')}</h3><small>{t('Your original quality, preserved','بجودة الملف الأصلي')}</small></div>
         <div className="cp-types" role="group" aria-label={t('Post type','نوع المنشور')}>{(['image','reel','carousel','video'] as const).map(type=><button type="button" key={type} aria-pressed={input.mediaType===type} onClick={()=>set({mediaType:type,...(!['reel','video'].includes(type)?{thumbnail:''}:{})})}>{type==='image'?<ImageIcon size={16}/>:type==='carousel'?<LayoutList size={16}/>:<Film size={16}/>} {type==='image'?t('Image','صورة'):type==='reel'?t('Reel','ريل'):type==='carousel'?t('Carousel','كاروسيل'):t('Video','فيديو')}</button>)}</div>
         <div className="cp-source-switch" role="group" aria-label={t('Media source','مصدر الميديا')}><button type="button" aria-pressed={input.mediaSource==='drive'} onClick={()=>set({mediaSource:'drive'})}><Cloud size={15}/>{t('Google Drive','Google Drive')}</button><button type="button" aria-pressed={input.mediaSource==='upload'} onClick={()=>set({mediaSource:'upload'})}><Upload size={15}/>{t('Upload a file','رفع من الجهاز')}</button></div>
-        {input.mediaSource==='drive'?<label className="ui-field"><span className="ui-field__label">{t('Media link','رابط الميديا من Drive')}</span><div className="cp-link-input"><Link2 size={16}/><input className="ui-input" dir="ltr" type="url" value={input.design} onChange={e=>set({design:e.target.value})} placeholder="https://drive.google.com/file/d/…"/></div><span className="ui-field__hint">{t('Use a file link, or a folder containing only this post’s media. The connected Google account needs access.','رابط الملف مباشرة، أو فولدر مخصص للبوست. لازم حساب Google المربوط يقدر يفتحه.')}</span></label>:<><input hidden ref={fileRef} type="file" multiple={input.mediaType==='carousel'} accept={isVideo?'video/mp4':'image/jpeg,image/png,image/webp'} onChange={e=>void upload(Array.from(e.target.files||[]))}/><button type="button" disabled={busy} className="cp-upload" onClick={()=>fileRef.current?.click()} onDragOver={e=>e.preventDefault()} onDrop={e=>{e.preventDefault();if(!busy)void upload(Array.from(e.dataTransfer.files));}}><Upload size={24}/><b>{progress!==null?t(`Uploading ${Math.round(progress*100)}%`,`جارٍ الرفع ${Math.round(progress*100)}٪`):t('Drop your files here, or browse','اسحب ملفاتك هنا، أو اختار من جهازك')}</b><small>{isVideo?'MP4 · 200 MB':t('JPG, PNG, WebP · up to 8 MB per image','JPG, PNG, WebP · حتى 8MB للصورة')}</small></button>{selectedFiles.length>0&&<div className="cp-files">{selectedFiles.map((f,i)=><div key={f.id}>{f.type==='image'?<img src={f.url} alt={t(`Image ${i+1}`,`صورة ${i+1}`)}/>:<Film size={22}/>}<span>{i+1}</span><button type="button" aria-label={t('Remove media','إزالة الملف')} disabled={busy} onClick={()=>set({mediaIds:input.mediaIds.filter(id=>id!==f.id)})}><X size={12}/></button></div>)}</div>}</>}
+        {input.mediaSource==='drive'?<label className="ui-field"><span className="ui-field__label">{t('Media link','رابط الميديا من Drive')}</span><div className="cp-link-input"><Link2 size={16}/><input className="ui-input" dir="ltr" type="url" value={input.design} onChange={e=>set({design:e.target.value})} placeholder="https://drive.google.com/file/d/…"/></div><span className="ui-field__hint">{t('Use a file link, or a folder containing only this post’s media. The connected Google account needs access.','رابط الملف مباشرة، أو فولدر مخصص للبوست. لازم حساب Google المربوط يقدر يفتحه.')}</span></label>:<><input hidden ref={fileRef} type="file" multiple={input.mediaType==='carousel'} accept={isVideo?'video/mp4':'image/jpeg,image/png,image/webp'} onChange={e=>void upload(Array.from(e.target.files||[]))}/><button type="button" disabled={busy} className="cp-upload" onClick={()=>fileRef.current?.click()} onDragOver={e=>e.preventDefault()} onDrop={e=>{e.preventDefault();if(!busy)void upload(Array.from(e.dataTransfer.files));}}><Upload size={24}/><b>{progress!==null?t(`Uploading ${Math.round(progress*100)}%`,`جارٍ الرفع ${Math.round(progress*100)}٪`):t('Drop your files here, or browse','اسحب ملفاتك هنا، أو اختار من جهازك')}</b><small>{isVideo?'MP4 · 200 MB':t('JPG, PNG, WebP · up to 8 MB per image','JPG, PNG, WebP · حتى 8MB للصورة')}</small></button><CarouselTray files={files} ids={input.mediaIds} orders={input.mediaOrder??{}} platforms={input.platforms} carousel={input.mediaType==='carousel'} disabled={busy} onChange={mediaIds=>set({mediaIds})} onOrders={mediaOrder=>set({mediaOrder})}/></>}
         {isVideo&&<details className="cp-cover" open={Boolean(input.thumbnail)}><summary><ImageIcon size={15}/>{t('Reel cover','غلاف الريل')}<small>{t('Optional','اختياري')}</small><ChevronDown size={14}/></summary><label className="ui-field"><span className="ui-field__label">{t('Cover image link from Drive','رابط صورة الغلاف من Drive')}</span><input className="ui-input" dir="ltr" type="url" value={input.thumbnail} onChange={e=>set({thumbnail:e.target.value})} placeholder="https://drive.google.com/file/d/…"/><span className="ui-field__hint">{t('Leave blank to let the platform choose a frame.','سيبه فاضي لو عايز المنصة تختار لقطة من الفيديو.')}</span></label></details>}
       </section>
       <section className="cp-section"><div className="cp-section__title"><span>03</span><h3>{t('Where are we publishing?','هننشر فين؟')}</h3><small>{t('Choose multiple platforms','اختار منصة أو أكتر')}</small></div>

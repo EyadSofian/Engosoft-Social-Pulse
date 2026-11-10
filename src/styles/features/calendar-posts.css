@@ -12,3 +12,35 @@
 @media(min-width:1000px){.ui-drawer--xl:has(.cp-editor){width:min(1080px,96vw)}.ui-drawer--xl:has(.cp-editor) .ui-drawer__body{padding:26px}}
 @media(max-width:800px){.cp-editor{grid-template-columns:minmax(0,1fr);gap:10px}.cp-preview{display:none}.cp-hub__stats{display:none}.cp-hub{padding:14px}.cp-view{width:100%}.cp-view button{flex:1;justify-content:center}.cp-section__title>small{display:none}.cp-editor__footer>span{display:none}.cp-editor__footer>.ui-btn{flex:1}.cp-board{padding:12px}.cp-posts{grid-template-columns:1fr}}
 @media(prefers-reduced-motion:reduce){.cp-hub *,.cp-editor *{transition:none!important;animation:none!important}}
+
+/* Carousel tray: numbered cards in publishing order, drag or arrows to reorder, a tab per platform. */
+.ct { display: grid; gap: 10px; }
+.ct__tabs { display: flex; flex-wrap: wrap; gap: 6px; }
+.ct__tabs button { position: relative; display: inline-flex; align-items: center; gap: 6px; padding: 6px 12px; border: 1px solid var(--border); border-radius: 999px; background: var(--surface); color: var(--text-muted); font: inherit; font-size: 12.5px; font-weight: 700; cursor: pointer; }
+.ct__tabs button[aria-selected='true'] { border-color: var(--brand); background: var(--brand-soft); color: var(--brand-ink); }
+.ct__own { width: 6px; height: 6px; border-radius: 50%; background: var(--accent); }
+.ct__mode { display: flex; flex-wrap: wrap; align-items: center; gap: 8px 12px; padding: 8px 12px; border-radius: 10px; background: var(--surface-subtle); font-size: 12.5px; color: var(--text-muted); }
+.ct__mode .ui-link { display: inline-flex; align-items: center; gap: 4px; font-size: 12.5px; font-weight: 700; }
+.ct__list { display: grid; grid-template-columns: repeat(auto-fill, minmax(104px, 1fr)); gap: 10px; margin: 0; padding: 0; list-style: none; }
+.ct__list li { border-radius: 12px; transition: transform 140ms, box-shadow 140ms, opacity 140ms; }
+.ct__list li[draggable='true'] { cursor: grab; }
+.ct__list li[data-dragging] { opacity: 0.4; }
+.ct__list li[data-over] { box-shadow: 0 0 0 2px var(--brand); transform: scale(1.02); }
+.ct__list[data-readonly] { opacity: 0.75; }
+.ct-card { position: relative; margin: 0; aspect-ratio: 4 / 5; overflow: hidden; border: 1px solid var(--border); border-radius: 12px; background: var(--surface-subtle); }
+.ct-card img { width: 100%; height: 100%; object-fit: cover; display: block; pointer-events: none; }
+.ct-card__video { display: grid; place-items: center; height: 100%; color: var(--text-muted); }
+.ct-card__num { position: absolute; inset-block-start: 6px; inset-inline-start: 6px; min-width: 22px; height: 22px; padding: 0 6px; border-radius: 999px; background: var(--brand); color: #fff; font-size: 12px; font-weight: 800; display: grid; place-items: center; }
+.ct-card__grip { position: absolute; inset-block-start: 8px; inset-inline-end: 30px; color: #fff; filter: drop-shadow(0 1px 2px rgb(0 0 0 / 0.5)); }
+.ct-card__remove { position: absolute; inset-block-start: 6px; inset-inline-end: 6px; width: 22px; height: 22px; display: grid; place-items: center; border: 0; border-radius: 50%; background: rgb(0 0 0 / 0.55); color: #fff; cursor: pointer; }
+.ct-card__moves { position: absolute; inset-inline: 6px; inset-block-end: 6px; display: flex; justify-content: space-between; opacity: 0; transition: opacity 140ms; }
+.ct-card:hover .ct-card__moves, .ct-card:focus-within .ct-card__moves { opacity: 1; }
+.ct-card__moves button { width: 26px; height: 26px; display: grid; place-items: center; border: 0; border-radius: 8px; background: var(--surface); color: var(--text); box-shadow: 0 1px 3px rgb(0 0 0 / 0.2); cursor: pointer; }
+.ct-card__moves button:disabled { visibility: hidden; }
+.ct--single .ct-card { max-width: 180px; }
+.ct__excluded { display: flex; flex-wrap: wrap; align-items: center; gap: 6px; font-size: 12px; color: var(--text-muted); }
+.ct__excluded button { position: relative; width: 40px; height: 50px; padding: 0; overflow: hidden; border: 1px dashed var(--border-strong); border-radius: 8px; background: var(--surface-subtle); cursor: pointer; opacity: 0.7; }
+.ct__excluded button img { width: 100%; height: 100%; object-fit: cover; }
+.ct__excluded button svg:last-child { position: absolute; inset-block-end: 2px; inset-inline-end: 2px; background: var(--brand); color: #fff; border-radius: 50%; }
+.ct__hint { margin: 0; font-size: 12px; color: var(--text-muted); }
+.ct__hint[data-warn] { color: var(--warning-ink); font-weight: 700; }

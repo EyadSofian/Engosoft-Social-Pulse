@@ -28,6 +28,7 @@
 @import './features/content-board.css';
 @import './features/calendar.css';
 @import './features/calendar-posts.css';
+@import './features/post-calendar.css';
 @import './features/studio.css';
 @import './features/library.css';
 @import './features/settings.css';

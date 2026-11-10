@@ -97,3 +97,26 @@ test('duplicating a native upload creates an independent draft with its full med
  const [file]=await resolveMedia((await getContent(copy.contentId))!,[assets[0].url]);assert.deepEqual(await readFile(file.file),source);
  assert.equal(saved.data.post.input.mediaIds[0],original.id);
 });
+test('a carousel goes out in the arranged order, and a platform with its own order gets that order',async()=>{
+ const {localDesign}=await import('../server/calendar-posts');
+ const {localMediaPlan}=await import('../server/google/calendar-sync');
+ const draft=(await save(input({mediaType:'carousel'}))).data.post;
+ const colors=['#ff0000','#00ff00','#0000ff'];
+ const assets=[];for(const color of colors)assets.push(await attachImage(draft.contentId,await sharp({create:{width:1080,height:1350,channels:3,background:color}}).jpeg().toBuffer()));
+ // Uploaded red, green, blue; arranged blue, red, green; Instagram gets green then blue only.
+ const arranged=[assets[2].id,assets[0].id,assets[1].id];
+ const value={...draft.input,mediaIds:arranged,mediaOrder:{instagram:[assets[1].id,assets[2].id]}};
+ const design=localDesign(value);assert.equal(design,`local:${arranged.join(',')};instagram=2.0`);
+ assert.deepEqual(localMediaPlan(design),{ids:arranged,orders:{instagram:[2,0]}});
+ assert.throws(()=>localMediaPlan(`local:${arranged.join(',')};instagram=0.0`),/غير صالح/);
+ const media=async()=>contentMedia(draft.contentId,true);
+ const sent=async()=>{const all=await media(),q=(await contentQueue(draft.contentId)).find(x=>x.accountId===instagram.id&&x.state==='queued')!;return q.media.map(m=>{const f=all.find(x=>x.url===m.url)!;return f.sourceAssetId||f.id;});};
+ // No platform order: the arranged order (not upload order) goes out.
+ const first=await save({...value,mediaOrder:undefined},true,draft);assert.equal(first.response.status,200,first.data.error);
+ assert.deepEqual(await sent(),arranged,'the arranged order goes out');
+ // Instagram's own order wins for Instagram.
+ const second=await save(value,true,first.data.post);assert.equal(second.response.status,200,second.data.error);
+ assert.deepEqual(await sent(),[assets[1].id,assets[2].id],'Instagram follows its own order');
+ const copy=await fetch(`${base}/api/calendar-posts/${draft.id}/duplicate`,{method:'POST'}).then(r=>r.json()) as {post:CalendarPostRecord};
+ assert.equal(copy.post.input.mediaOrder!.instagram!.length,2);assert.ok(copy.post.input.mediaOrder!.instagram!.every(id=>copy.post.input.mediaIds.includes(id)),'the copy keeps the Instagram order on its own files');
+});

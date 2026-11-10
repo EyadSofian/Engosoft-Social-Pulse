@@ -23,14 +23,27 @@ defineSchema(`CREATE TABLE IF NOT EXISTS dashboard_calendar_posts (
 const inputSchema = z.object({
   title: z.string().trim().min(1).max(200), caption: z.string().max(63206), date: z.string().max(10), time: z.string().max(5), timezone: z.string().max(100),
   mediaType: z.enum(['image', 'reel', 'video', 'carousel']), mediaSource: z.enum(['drive', 'upload']), design: z.string().max(2048), thumbnail: z.string().max(2048),
-  mediaIds: z.array(z.string().uuid()).max(20), platforms: z.array(z.enum(CALENDAR_PLATFORMS)).min(1).max(6),
+  mediaIds: z.array(z.string().uuid()).max(35), mediaOrder: z.partialRecord(z.enum(CALENDAR_PLATFORMS), z.array(z.string().uuid()).max(35)).optional(), platforms: z.array(z.enum(CALENDAR_PLATFORMS)).min(1).max(6),
   targets: z.partialRecord(z.enum(CALENDAR_PLATFORMS), z.string().max(200)), notes: z.string().max(5000),
   youtubePrivacy: z.string().max(30), youtubeCategory: z.string().max(10), madeForKids: z.enum(['', 'YES', 'NO']),
   tiktokPrivacy: z.string().max(60), aiGenerated: z.enum(['', 'YES', 'NO']), tiktokCommercial: z.string().max(10), snapTarget: z.string().max(20), snapLocale: z.string().max(10),
 });
+/**
+ * Uploaded files as the snapshot's Design: `local:<ids>` in the main order, then `;<platform>=<i.j.k>` for each
+ * platform with its own carousel order, as positions in that list (short enough for the 2,048-character cell).
+ */
+export function localDesign(input: CalendarPostInput): string {
+  const own = input.mediaType === 'carousel' ? Object.entries(input.mediaOrder ?? {}).flatMap(([platform, ids]) => {
+    if (!input.platforms.includes(platform as never) || !ids?.length) return [];
+    const positions = ids.map((id) => input.mediaIds.indexOf(id)).filter((index) => index >= 0);
+    const same = positions.length === input.mediaIds.length && positions.every((value, index) => value === index);
+    return same || !positions.length ? [] : [`${platform}=${positions.join('.')}`];
+  }) : [];
+  return [`local:${input.mediaIds.join(',')}`, ...own.sort()].join(';');
+}
 export function nativeSnapshot(id: string, input: CalendarPostInput, enabled: boolean) {
   const row: Record<string, string> = { 'Post ID': id, Date: input.date, Time: input.time, Timezone: input.timezone,
-    'Post Title': input.title, Caption: input.caption || (enabled ? '' : '—'), Design: input.mediaSource === 'upload' ? `local:${input.mediaIds.join(',')}` : input.design || (enabled ? '' : 'pending'),
+    'Post Title': input.title, Caption: input.caption || (enabled ? '' : '—'), Design: input.mediaSource === 'upload' ? localDesign(input) : input.design || (enabled ? '' : 'pending'),
     Thumbnail: input.thumbnail, 'Media Type': input.mediaType, Platform: input.platforms.join(', '), Ready: enabled ? 'YES' : 'NO', Notes: input.notes,
     'YouTube Privacy': input.youtubePrivacy, 'YouTube Category': input.youtubeCategory, 'Made For Kids': input.madeForKids,
     'TikTok Privacy': input.tiktokPrivacy, 'AI Generated': input.aiGenerated, 'TikTok Commercial': input.tiktokCommercial, 'Snapchat Target': input.snapTarget, 'Snapchat Locale': input.snapLocale };
@@ -93,7 +106,8 @@ export function registerCalendarPostRoutes(app: express.Express) {
       const input=JSON.parse(stored.input_json) as CalendarPostInput;
       const selected=input.mediaSource==='upload' ? await resolveMedia(original,input.mediaIds.map(id=>`/api/social/assets/${id}`)) : [];
       const at=DateTime.now().setZone(input.timezone).plus({days:1}).set({hour:10,minute:0,second:0,millisecond:0});
-      input.title=`${input.title.slice(0,190)} — نسخة`; input.date=at.toISODate()!;input.time=at.toFormat('HH:mm');input.mediaIds=[];
+      const originalIds=input.mediaIds, originalOrder=input.mediaOrder;
+      input.title=`${input.title.slice(0,190)} — نسخة`; input.date=at.toISODate()!;input.time=at.toFormat('HH:mm');input.mediaIds=[];input.mediaOrder=undefined;
       const id=randomUUID(),now=new Date().toISOString();
       await db.tx(async tx=>{
         await tx.run('INSERT INTO google_calendar_sources(id,spreadsheet_id,tab,owner_id,targets_json,enabled,snapshot_json) VALUES(?,?,?,?,?,?,?)',[id,`native:${id}`,'Calendar',req.user!.id,JSON.stringify(input.targets),0,JSON.stringify(nativeSnapshot(id,input,false))]);
@@ -105,6 +119,8 @@ export function registerCalendarPostRoutes(app: express.Express) {
         const media=asset.type==='image' ? await attachImage(copy.content_id,await readFile(asset.file)) : await attachVideoStream(copy.content_id,createReadStream(asset.file),asset.bytes);
         input.mediaIds.push(media.id);
       }
+      // Each platform's carousel order carries over to the copied files.
+      if(originalOrder) input.mediaOrder=Object.fromEntries(Object.entries(originalOrder).map(([platform,ids])=>[platform,(ids??[]).map(old=>input.mediaIds[originalIds.indexOf(old)]).filter(Boolean)]));
       await db.tx(async tx=>{
         await tx.run('UPDATE google_calendar_sources SET snapshot_json=? WHERE id=?',[JSON.stringify(nativeSnapshot(id,input,false)),id]);
         await tx.run('UPDATE dashboard_calendar_posts SET input_json=? WHERE id=?',[JSON.stringify(input),id]);

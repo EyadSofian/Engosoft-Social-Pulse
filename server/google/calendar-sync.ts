@@ -22,10 +22,29 @@ export interface CalendarGoogleClient {
 /** Keep a high-resolution master; Instagram gets its own bounded copy from the same source. */
 export const normalizeDriveImage = (buffer: Buffer, profile: ImageProfile = 'original') => preparePublishingImage(buffer, profile);
 
+/**
+ * Dashboard uploads: `local:<ids>` in the order the person arranged them, then `;<platform>=<i.j.k>` for a platform
+ * with its own carousel order, as positions in that list. Null for Drive designs.
+ */
+export function localMediaPlan(design: string): { ids: string[]; orders: Partial<Record<Channel, number[]>> } | null {
+  if (!design.startsWith('local:')) return null;
+  const [main, ...rest] = design.split(';');
+  const ids = main.slice(6).split(',').filter(Boolean);
+  const orders: Partial<Record<Channel, number[]>> = {};
+  for (const part of rest) {
+    const [platform, positions] = part.split('=');
+    if (!platform || !positions) continue;
+    const list = positions.split('.').map(Number);
+    if (list.some((n) => !Number.isInteger(n) || n < 0 || n >= ids.length) || new Set(list).size !== list.length) throw new Error(`ترتيب الكاروسيل لمنصة ${platform} غير صالح؛ رتّب الصور تاني.`);
+    orders[platform as Channel] = list;
+  }
+  return { ids, orders };
+}
+
 async function prepareMedia(client: CalendarGoogleClient, row: PublishingRow, contentId: string, localAllowed = false) {
   if (row.design.startsWith('local:')) {
     if (!localAllowed) throw new Error('الميديا المحلية متاحة لمنشورات الداشبورد فقط.');
-    const ids = row.design.slice(6).split(',').filter(Boolean), attachments = await contentMedia(contentId);
+    const ids = localMediaPlan(row.design)!.ids, attachments = await contentMedia(contentId);
     const selected = ids.map(id => attachments.find(m => m.id === id && !m.role));
     if (!selected.length || selected.some(m => !m) || new Set(ids).size !== ids.length) throw new Error('اختار الملفات المرفوعة على المنشور.');
     const media = selected as NonNullable<typeof selected[number]>[];
@@ -141,13 +160,18 @@ async function applyRow(source: GoogleSource, mapping: GoogleRow, row: Publishin
     return;
   }
   if (Date.parse(row.scheduledAt) <= Date.now()) throw new Error('ميعاد النشر مضى؛ حدد ميعادًا مستقبليًا ثم اترك Ready = YES.');
-  const mediaFingerprint = `quality-v2:${row.design}:${row.mediaType}:${row.channels.includes('instagram')}${row.thumbnail ? `:thumbnail:${row.thumbnail}` : ''}`;
+  // A new per-platform order is a new publication plan, not new files: only the uploaded list counts here.
+  const plan = localMediaPlan(row.design);
+  const mediaFingerprint = `quality-v2:${plan ? row.design.split(';')[0] : row.design}:${row.mediaType}:${row.channels.includes('instagram')}${row.thumbnail ? `:thumbnail:${row.thumbnail}` : ''}`;
   if (mapping.media_fingerprint !== mediaFingerprint || !(await contentMedia(item.id)).length) {
     await prepareMedia(client, row, item.id, source.spreadsheet_id.startsWith('native:'));
     await prepareThumbnail(client, row, item.id);
     await db.run('UPDATE google_calendar_rows SET media_fingerprint=? WHERE source_id=? AND post_id=?', [mediaFingerprint, source.id, row.postId]);
   }
-  const attachments = await contentMedia(item.id, true), media = attachments.filter(m => !m.role), thumbnail = attachments.find(m => m.role === 'thumbnail');
+  const attachments = await contentMedia(item.id, true), thumbnail = attachments.find(m => m.role === 'thumbnail');
+  // Uploaded files go out in the order the person arranged them, not in upload order.
+  const unordered = attachments.filter(m => !m.role);
+  const media = plan ? plan.ids.map(id => unordered.find(m => m.id === id)).filter((m): m is typeof unordered[number] => Boolean(m)) : unordered;
   const inputs: PublishInput[] = [], errors: string[] = [];
   // The imported artwork also appears in ordinary content cards and the calendar preview.
   await updateContent(user, item.id, { creative: media[0]?.type === 'image' ? { requestId: 'drive-import', directionId: row.mediaType, imageUrl: media[0].url, directionName: 'Google Drive' } : thumbnail ? { requestId: 'reel', directionId: row.mediaType, imageUrl: thumbnail.url, reelCover: { url: thumbnail.url }, directionName: 'Google Drive' } : null });
@@ -157,7 +181,11 @@ async function applyRow(source: GoogleSource, mapping: GoogleRow, row: Publishin
       const account = targets[channel] ? await getAccount(targets[channel]) : undefined;
       if (!account || account.provider !== channel) throw new Error('حدد حساب النشر المقصود في إعدادات الشيت بالتطبيق.');
       if (channel === 'tiktok' && !row.tiktokCommercial) throw new Error('حدد TikTok Commercial: none أو own أو paid أو both.');
-      const platformMedia = channel === 'instagram' ? media.map(m => attachments.find(v => v.variantFor === 'instagram' && v.sourceAssetId === m.id) || m) : media;
+      // A platform with its own carousel order gets those files in that order; the rest get the main order.
+      const own = plan?.orders[channel];
+      const chosen = own?.length ? own.map(index => media[index]).filter((m): m is typeof media[number] => Boolean(m)) : media;
+      if (row.mediaType === 'carousel' && chosen.length < 2) throw new Error('الكاروسيل محتاج صورتين على الأقل لهذه المنصة.');
+      const platformMedia = channel === 'instagram' ? chosen.map(m => attachments.find(v => v.variantFor === 'instagram' && v.sourceAssetId === m.id) || m) : chosen;
       const input: PublishInput = { contentId: item.id, accountId: account.id, kind: row.mediaType === 'reel' ? 'video' : row.mediaType, media: platformMedia, mode: 'direct', consent: true,
         ...(channel === 'youtube' ? { privacy: row.youtubePrivacy, categoryId: row.youtubeCategory, madeForKids: row.madeForKids } : {}),
         ...(channel === 'tiktok' ? { privacy: row.tiktokPrivacy, isAiGenerated: row.aiGenerated, brandOrganic: ['own', 'both'].includes(row.tiktokCommercial || ''), brandContent: ['paid', 'both'].includes(row.tiktokCommercial || ''), disableComment: true, disableDuet: true, disableStitch: true } : {}),
