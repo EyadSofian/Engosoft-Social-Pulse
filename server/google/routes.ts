@@ -64,7 +64,7 @@ export function registerGoogleCalendarRoutes(app: express.Express) {
   app.get('/api/google-calendar', async (req, res) => {
     let oauthConfigured = true; try { googleConfig(); } catch { oauthConfigured = false; }
     let connected = false; try { const secret = await loadSecret(googleSecret(req.user!.id)); connected = Boolean(secret?.refreshToken && GOOGLE_SCOPES.every(s => secret.scopes.includes(s))); } catch {}
-    const sources = await db.all('SELECT id,spreadsheet_id,tab,targets_json,enabled,last_sync_at,error,validation_errors_json FROM google_calendar_sources WHERE owner_id=?', [req.user!.id]);
+    const sources = await db.all("SELECT id,spreadsheet_id,tab,targets_json,enabled,last_sync_at,error,validation_errors_json FROM google_calendar_sources WHERE owner_id=? AND spreadsheet_id NOT LIKE 'native:%'", [req.user!.id]);
     const rows = [];
     for (const source of sources) for (const row of await sourceRows(String(source.id))) rows.push({ sourceId: source.id, postId: row.post_id, contentId: row.content_id, ...await rowOutcome(row) });
     res.json({ oauthConfigured, connected, callbackUrl: `${new URL(process.env.APP_URL || 'http://127.0.0.1:4100').origin}/api/oauth/drive/callback`, sources: sources.map(s => ({ ...s, targets: JSON.parse(String(s.targets_json)), targets_json: undefined, validationErrors: JSON.parse(String(s.validation_errors_json)), validation_errors_json: undefined })), rows,
@@ -155,8 +155,8 @@ export function registerGoogleCalendarRoutes(app: express.Express) {
     } catch (e) { res.status(409).json({ error: e instanceof Error ? e.message : 'تعذّرت إعادة المحاولة.' }); }
   });
   app.post('/api/google-calendar/disconnect', mustManage, async (req, res) => {
-    const sources = await db.all<{ id: string }>('SELECT id FROM google_calendar_sources WHERE owner_id=?', [req.user!.id]);
-    await db.run('UPDATE google_calendar_sources SET enabled=0,last_sync_at=NULL,revision=revision+1 WHERE owner_id=?', [req.user!.id]);
+    const sources = await db.all<{ id: string }>("SELECT id FROM google_calendar_sources WHERE owner_id=? AND spreadsheet_id NOT LIKE 'native:%'", [req.user!.id]);
+    await db.run("UPDATE google_calendar_sources SET enabled=0,last_sync_at=NULL,revision=revision+1 WHERE owner_id=? AND spreadsheet_id NOT LIKE 'native:%'", [req.user!.id]);
     for (const s of sources) for (const row of await sourceRows(s.id)) await cancelQueued(row.content_id, 'Google disconnected.');
     await db.run('DELETE FROM social_credentials WHERE id=?', [googleSecret(req.user!.id)]);
     res.json({ disconnected: true });

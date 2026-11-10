@@ -1,8 +1,9 @@
 import { randomUUID } from 'node:crypto';
+import { readFile } from 'node:fs/promises';
 import { db } from '../db.js';
 import { getUser, userCan, type AuthUser } from '../auth.js';
 import { createContent, getContent, reopenContent, updateContent, type Channel } from '../workspace.js';
-import { attachImage, attachVideo, contentMedia } from '../social/media.js';
+import { attachImage, attachVideo, contentMedia, resolveMedia } from '../social/media.js';
 import { attachVideoStream } from '../social/video-upload.js';
 import { preparePublishingImage, type ImageProfile } from '../social/image-preparation.js';
 import { cancelQueued, contentQueue, getAccount } from '../social/store.js';
@@ -21,7 +22,22 @@ export interface CalendarGoogleClient {
 /** Keep a high-resolution master; Instagram gets its own bounded copy from the same source. */
 export const normalizeDriveImage = (buffer: Buffer, profile: ImageProfile = 'original') => preparePublishingImage(buffer, profile);
 
-async function prepareMedia(client: CalendarGoogleClient, row: PublishingRow, contentId: string) {
+async function prepareMedia(client: CalendarGoogleClient, row: PublishingRow, contentId: string, localAllowed = false) {
+  if (row.design.startsWith('local:')) {
+    if (!localAllowed) throw new Error('الميديا المحلية متاحة لمنشورات الداشبورد فقط.');
+    const ids = row.design.slice(6).split(',').filter(Boolean), attachments = await contentMedia(contentId);
+    const selected = ids.map(id => attachments.find(m => m.id === id && !m.role));
+    if (!selected.length || selected.some(m => !m) || new Set(ids).size !== ids.length) throw new Error('اختار الملفات المرفوعة على المنشور.');
+    const media = selected as NonNullable<typeof selected[number]>[];
+    if (row.mediaType === 'carousel' ? media.length < 2 || media.some(m => m.type !== 'image') : media.length !== 1 || media[0].type !== (row.mediaType === 'image' ? 'image' : 'video')) throw new Error('الملفات لا تطابق نوع المنشور؛ الكاروسيل يحتاج صورتين على الأقل.');
+    await db.run("UPDATE social_media SET storage_state='quarantined',quarantined_at=? WHERE content_id=? AND storage_state='active' AND id NOT IN (" + ids.map(() => '?').join(',') + ')', [new Date().toISOString(),contentId,...ids]);
+    if (row.channels.includes('instagram')) for (const m of media.filter(m => m.type === 'image')) {
+      const [asset] = await resolveMedia((await getContent(contentId))!, [m.url]);
+      const bytes = await readFile(asset.file), variant = await normalizeDriveImage(bytes, 'instagram');
+      if (!bytes.equals(variant)) await attachImage(contentId, variant, undefined, { provider:'instagram', sourceAssetId:m.id });
+    }
+    return media;
+  }
   const ref = googleReference(row.design), file = await client.file(ref);
   file.resourceKey ||= ref.resourceKey;
   const selected = chooseDriveMedia(file.mimeType === 'application/vnd.google-apps.folder' ? await client.children(file) : [file], row.mediaType);
@@ -127,7 +143,7 @@ async function applyRow(source: GoogleSource, mapping: GoogleRow, row: Publishin
   if (Date.parse(row.scheduledAt) <= Date.now()) throw new Error('ميعاد النشر مضى؛ حدد ميعادًا مستقبليًا ثم اترك Ready = YES.');
   const mediaFingerprint = `quality-v2:${row.design}:${row.mediaType}:${row.channels.includes('instagram')}${row.thumbnail ? `:thumbnail:${row.thumbnail}` : ''}`;
   if (mapping.media_fingerprint !== mediaFingerprint || !(await contentMedia(item.id)).length) {
-    await prepareMedia(client, row, item.id);
+    await prepareMedia(client, row, item.id, source.spreadsheet_id.startsWith('native:'));
     await prepareThumbnail(client, row, item.id);
     await db.run('UPDATE google_calendar_rows SET media_fingerprint=? WHERE source_id=? AND post_id=?', [mediaFingerprint, source.id, row.postId]);
   }

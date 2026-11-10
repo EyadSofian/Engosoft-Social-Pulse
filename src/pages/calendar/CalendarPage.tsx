@@ -1,5 +1,5 @@
 import { useRef, useState } from 'react';
-import { ArrowRight, Download, FileSpreadsheet, Send, Upload } from 'lucide-react';
+import { ArrowRight, Download, FileSpreadsheet, Plus, Send, Upload } from 'lucide-react';
 import { useToast } from '../../components/feedback/Toast';
 import { useLiveData } from '../../app/providers/LiveDataProvider';
 import { useQueryState } from '../../app/router/router';
@@ -12,6 +12,7 @@ import { usePageMeta } from '../../shell/ShellContext';
 import { ContentCalendar } from './ContentCalendar';
 import { useAuth } from '../../features/auth/AuthProvider';
 import { GoogleCalendarPanel } from '../../features/publishing/GoogleCalendarPanel';
+import { CalendarPosts } from '../../features/publishing/CalendarPosts';
 
 /**
  * One calendar for every post. Approved posts are scheduled straight onto a day, and Facebook / Instagram
@@ -39,6 +40,9 @@ export function CalendarPage() {
     setUploading(false);
   };
   const plans = query.get('view') === 'live' && can('content.schedule');
+  const native = ['connections.manage','content.create','content.edit_own','content.schedule','content.publish'].every(p => can(p as never));
+  const [calendarRevision, setCalendarRevision] = useState(0);
+  const refresh = () => { void store.reload(); setCalendarRevision(value => value + 1); };
 
   return (
     <div className="u-stack">
@@ -46,24 +50,28 @@ export function CalendarPage() {
         title={plans ? t('Spreadsheet plans', 'خطط الجداول') : t('Calendar', 'التقويم')}
         description={plans
           ? t('Import the XLSX template, export to CSV or ICS, and drag plans to a new time. Alerts fire before and after each post time. This view is Arabic-only.', 'ارفع قالب XLSX، صدّر CSV أو ICS، واسحب الخطة لموعد جديد. التنبيهات قبل وبعد موعد كل منشور. هذا العرض بالعربية فقط.')
-          : t('The month’s plan and every post on its day. Upload the plan, turn each planned row into a post, then publish or schedule them with + on any day.', 'خطة الشهر وكل منشور في يومه. ارفع الخطة، حوّل كل سطر مخطط لمنشور، وبعدين انشره أو جدوله بزر + على أي يوم.')}
+          : t('Create, plan and publish. Your content, accounts and results in one calendar.', 'جهّز المحتوى، اختار المنصات وحدد الميعاد. كل منشوراتك ونتايجها في كالندر واحد.')}
         actions={plans
           ? <Button icon={<ArrowRight size={15} className="u-flip" />} onClick={() => setQuery({ view: null })}>{t('Back to the calendar', 'العودة للتقويم')}</Button>
           : <>
+            {native && <Button variant="primary" icon={<Plus size={16}/>} onClick={() => setQuery({calendarPost:'new'})}>{t('Add calendar post','أضف منشور للكـالندر')}</Button>}
             {can('content.schedule') && <>
               <input ref={file} hidden type="file" accept=".xlsx,.csv" onChange={(event) => void upload(event.target.files?.[0])} />
-              <Button variant="primary" icon={<Upload size={15} />} busy={uploading} onClick={() => file.current?.click()}>{t('Upload a plan', 'ارفع خطة')}</Button>
+              <Button variant="ghost" icon={<Upload size={15} />} busy={uploading} onClick={() => file.current?.click()}>{t('Import a plan', 'استيراد خطة')}</Button>
               <Button variant="ghost" icon={<Download size={15} />} onClick={downloadTemplate}>{t('Plan template', 'نموذج الخطة')}</Button>
               <Button variant="ghost" icon={<FileSpreadsheet size={15} />} onClick={() => setQuery({ view: 'live' })}>{t('Spreadsheet view', 'عرض الجداول')}</Button>
             </>}
             {(can('content.publish') || can('content.schedule')) && <ButtonLink to="/publish" icon={<Send size={15} />}>{t('Publishing', 'النشر')}</ButtonLink>}
           </>}
       />
-      <GoogleCalendarPanel onChange={() => { void store.reload(); }} />
+      {!plans && <CalendarPosts onChange={refresh}/>}
+      <GoogleCalendarPanel onChange={refresh} />
       {plans ? (
         store.phase === 'ready' ? <LegacyCalendar /> : <EmptyState title={store.phase === 'loading' ? t('Loading the calendar…', 'جارٍ تحميل التقويم…') : t('The calendar API is not reachable.', 'واجهة التقويم غير متاحة.')} text={store.staleError || undefined} action={store.phase === 'offline' ? <Button onClick={() => void store.reload()}>{t('Retry', 'أعد المحاولة')}</Button> : undefined} />
+      ) : query.get('view') !== 'publishing' ? (
+        <ContentCalendar key={calendarRevision}/>
       ) : (
-        <ContentCalendar />
+        null
       )}
     </div>
   );

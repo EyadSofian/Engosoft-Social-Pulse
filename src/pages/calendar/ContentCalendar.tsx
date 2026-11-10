@@ -168,7 +168,7 @@ export function ContentCalendar() {
         <div className="mc-tabs" role="tablist" aria-label={t('Calendar view', 'عرض التقويم')}>
           {(['month', 'week', 'list'] as Mode[]).map((value) => <button key={value} type="button" role="tab" aria-selected={mode === value} onClick={() => setQuery({ mode: value === 'week' ? null : value })}>{value === 'month' ? t('Month', 'شهر') : value === 'week' ? t('Week', 'أسبوع') : t('List', 'قائمة')}</button>)}
         </div>
-        {can('content.create') && <Button variant="primary" icon={<Plus size={16} />} onClick={() => create.open()}>{t('Create post', 'منشور جديد')}</Button>}
+        {can('content.create') && <Button variant="primary" icon={<Plus size={16} />} onClick={() => can('connections.manage') && can('content.publish') && can('content.schedule') ? setQuery({calendarPost:'new'}) : create.open()}>{t('Create post', 'منشور جديد')}</Button>}
       </div>
 
       <div className="mc-filters">
@@ -222,6 +222,7 @@ export function ContentCalendar() {
       <div className="mc-legend"><span data-tone="neutral">{t('Draft', 'مسودة')}</span><span data-tone="brand">{t('In review / scheduled', 'للمراجعة / مجدول')}</span><span data-tone="success">{t('Approved / published', 'معتمد / منشور')}</span><span data-tone="warning">{t('Changes requested', 'مطلوب تعديل')}</span><span className="mc-legend__auto"><Zap size={11} /> {t('Publishes automatically', 'يُنشر تلقائيًا')}</span><span className="mc-legend__plan">{t('Planned, not made yet: press to make it', 'مخطط ولم يُصمَّم: اضغط لعمله')}</span><small>{zone()}</small></div>
 
       <Dialog open={picking !== null} onClose={() => setPicking(null)} title={t('Schedule a post', 'جدولة منشور')} description={picking ? date(picking, 'weekdayDate') : undefined}>
+        {can('connections.manage') && can('content.publish') && <div className="cp-day-create"><Button variant="primary" icon={<Plus size={15}/>} onClick={()=>{const day=picking;setPicking(null);setQuery({calendarPost:'new',postDay:day});}}>{t('Create a post for this day','أضف بوست جديد لليوم ده')}</Button><span>{t('Or choose an approved post below','أو اختار منشور معتمد من تحت')}</span></div>}
         {ready.length ? <ul className="mc-pick">{ready.map((item) => <li key={item.id}><button type="button" onClick={() => { setPublishing({ item, day: picking ?? undefined }); setPicking(null); }}>
           <Thumb item={item} size="md" /><span className="u-grow"><b dir="auto">{item.title}</b><span className="mc-channels">{item.channels.map((channel) => <ChannelIcon key={channel} channel={channel} size={12} />)}</span></span><Send size={15} />
         </button></li>)}</ul> : <div className="u-stack">

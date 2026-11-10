@@ -1,0 +1,15 @@
+# Dashboard publishing calendar
+
+Calendar now includes a native post editor and a **Manage posts** view. No spreadsheet is required. The editor uses the current shell tokens, Arabic/English labels, platform icons, drawer, buttons and overlay focus handling.
+
+The title, shared caption, Drive media link or local upload, optional video cover, selected platform accounts, timezone/date/time and private team notes are saved in `dashboard_calendar_posts`. Each native post owns an independent `native:<UUID>` source and a persisted snapshot. It uses the existing Google calendar parser, media preparation, preflight, queue, publication evidence and duplicate guards. Native local uploads do not require a Google grant. Drive links and covers use the manager's existing Drive grant.
+
+- Saving a draft makes no remote publication and downloads no Drive media. The local upload action saves a draft first, then uses the existing image/video upload APIs. Videos retain their chunked upload and original bytes.
+- Scheduling requires a future time, explicit destination accounts, publishing consent and the provider's required options. TikTok privacy choices are loaded from the connected creator endpoint. Invalid preparation disables the native source and cancels its waiting queues; the UI reports the error rather than claiming it was scheduled.
+- Images keep the high-resolution master and the separate Instagram derivative. Local media must belong to this exact content record. A cover is optional, excluded from image posts, and sent through the existing provider cover flow.
+- Editing uses source revision checks and a persistent lease. An in-flight/started remote publication locks edits. Pausing disables the native source immediately and cancels only waiting queue rows. It cannot recall a request already sent to a provider.
+- Native duplication copies owned media into a new draft with new media/content IDs, keeping the original quality. It does not copy publication jobs. Imported sheet rows can be copied into the editor with their Drive links and explicit provider choices; existing sheet rows retain their original source ownership.
+- Existing sheet posts and their confirmed provider outcomes appear in Manage posts. Each provider reports its own state/link; TikTok may confirm publication without returning a URL. X/WhatsApp/website retain their existing manual workflow and are not offered as automatic native destinations.
+- Every route checks the user's existing connection, create, edit, schedule and publish permissions. Posts are scoped to the responsible manager. No new account access or provider permissions are granted by this feature.
+
+Validation: `tests/calendar-posts.test.ts` covers drafts without Google, upload ownership, destination selection, full-resolution and Instagram queue routing, pausing, stale revisions, cross-origin writes, provider-attempt locks and independent media duplication. `tests/google-calendar.test.ts` retains Drive/Sheets import and snapshot safety coverage.

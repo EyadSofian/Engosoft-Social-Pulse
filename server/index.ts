@@ -41,6 +41,7 @@ import { registerStorageRoutes } from './storage-routes.js';
 import { storageWriteGuard } from './storage.js';
 import { runStorageMaintenance } from './storage-retention.js';
 import { registerGoogleCalendarRoutes } from './google/routes.js';
+import { registerCalendarPostRoutes } from './calendar-posts.js';
 import { syncGoogleCalendars } from './google/calendar-sync.js';
 
 const app=express();const port=Number(process.env.PORT)||4100;const host=process.env.HOST||'127.0.0.1';
@@ -55,6 +56,7 @@ registerWorkspaceRoutes(app);
 registerStorageRoutes(app);
 registerSocialRoutes(app);
 registerGoogleCalendarRoutes(app);
+registerCalendarPostRoutes(app);
 registerAiTemplateRoutes(app);
 registerCampaignRoutes(app);
 registerScheduleRoutes(app);
