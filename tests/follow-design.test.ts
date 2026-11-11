@@ -3,16 +3,18 @@ import { existsSync } from 'node:fs';
 import test from 'node:test';
 import sharp from 'sharp';
 process.env.MEDIA_DIR = (await import('node:fs')).mkdtempSync((await import('node:path')).join((await import('node:os')).tmpdir(), 'follow-design-'));
-const { followImage, followPlanningNote, followPrompt, resolveFollowDesign, templateCampaign } = await import('../server/creative-intelligence/generation/follow-design');
+const { followImage, followPrompt, resolveFollowDesign, templateCampaign } = await import('../server/creative-intelligence/generation/follow-design');
 
 test('a library design resolves to its reference image and its text blocks', async () => {
   const design = await resolveFollowDesign({ templateId: 'brand-campaign-offer' }, '00000000-0000-4000-8000-000000000001');
   assert.ok(design && existsSync(design.path));
-  assert.match(followPlanningNote(design!), /same text blocks/);
-  assert.match(followPlanningNote(design!), /tape line/);
+  assert.match(design!.structure!, /tape line/);
+  assert.match(design!.structure!, /Headline: «مشاريع أكبر\.\. ومسؤوليات أعلى!»/);
   assert.equal(await resolveFollowDesign({ templateId: 'no-such-design' }, '00000000-0000-4000-8000-000000000001'), undefined);
   const image = await followImage(design!);
   assert.ok(image && Math.abs(image.aspect - 0.8) < 0.01);
+  // Sent at full detail, not shrunk to 1024 px.
+  assert.equal((await sharp(image!.data).metadata()).width, 1080);
 });
 
 test('the image model keeps the design and changes only words and photos; another shape is rearranged, not stretched', () => {

@@ -37,9 +37,9 @@ export interface GenerationSize {
  * The canvas the model draws for an output size: the smallest valid one with the same shape that is at least the
  * output in both directions (never upscaled) and at least a megapixel.
  */
-export function generationSizeFor(width: number, height: number): GenerationSize {
-  const { step, maxEdge, maxRatio, minPixels, maxPixels, stablePixels } = IMAGE_API;
-  const ratio = width / height;
+/** Every canvas the model accepts with this shape, smallest first, up to `maxPixels`. */
+function validSizes(ratio: number, maxPixels: number = IMAGE_API.maxPixels): [number, number][] {
+  const { step, maxEdge, maxRatio, minPixels } = IMAGE_API;
   const drawn = Math.min(maxRatio, Math.max(1 / maxRatio, ratio));
   const valid: [number, number][] = [];
   for (let h = step; h <= maxEdge; h += step) {
@@ -47,9 +47,30 @@ export function generationSizeFor(width: number, height: number): GenerationSize
     if (w < step || w > maxEdge || w * h < minPixels || w * h > maxPixels || w > h * maxRatio || h > w * maxRatio) continue;
     if (Math.abs(w / h - drawn) / drawn <= RATIO_TOLERANCE) valid.push([w, h]);
   }
+  return valid;
+}
+const sizeOf = (w: number, h: number, ratio: number): GenerationSize => ({ width: w, height: h, size: `${w}x${h}`, band: ratio > IMAGE_API.maxRatio || ratio < 1 / IMAGE_API.maxRatio, experimental: w * h > IMAGE_API.stablePixels });
+
+export function generationSizeFor(width: number, height: number): GenerationSize {
+  const ratio = width / height;
+  const valid = validSizes(ratio);
   // Larger than the model can draw: the largest canvas of that shape.
   const [w, h] = valid.find(([w, h]) => w >= width && h >= height && w * h >= DETAIL_PIXELS) ?? valid[valid.length - 1];
-  return { width: w, height: h, size: `${w}x${h}`, band: ratio > maxRatio || ratio < 1 / maxRatio, experimental: w * h > stablePixels };
+  return sizeOf(w, h, ratio);
+}
+
+/**
+ * The canvas a finished design is drawn at: `scale` times the output in both directions, within the sizes the model
+ * draws reliably (not the experimental ones above 2560×1440), and never smaller than `generationSizeFor`. The result
+ * is scaled down to the output, which gives crisper letters and edges than drawing at the output size.
+ */
+export function drawSizeFor(width: number, height: number, scale = 1): GenerationSize {
+  const base = generationSizeFor(width, height);
+  if (!(scale > 1) || base.band || base.experimental) return base;
+  const ratio = width / height;
+  const valid = validSizes(ratio, IMAGE_API.stablePixels).filter(([w, h]) => w * h >= base.width * base.height);
+  const [w, h] = valid.find(([w, h]) => w >= width * scale && h >= height * scale) ?? valid[valid.length - 1] ?? [base.width, base.height];
+  return sizeOf(w, h, ratio);
 }
 
 /**

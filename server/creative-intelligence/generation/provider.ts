@@ -83,6 +83,33 @@ export class OpenAIImageProvider implements CreativeImageProvider {
   }
 }
 
+/**
+ * The preferred image model, and another when it cannot draw: a server error, no image, a timeout, or a model the
+ * account cannot use (403/404, or a 400 about the model). Every call after a fallback goes to the second model, so
+ * a design's repairs are drawn by the model that drew it. `model` names the one in use.
+ */
+export class FallbackImageProvider implements CreativeImageProvider {
+  readonly name = 'openai';
+  private current: CreativeImageProvider;
+  constructor(private readonly primary: CreativeImageProvider, private readonly fallback: CreativeImageProvider) { this.current = primary; }
+  get model() { return this.current.model; }
+  private async run(call: (provider: CreativeImageProvider) => Promise<GeneratedImage[]>): Promise<GeneratedImage[]> {
+    if (this.current === this.fallback) return call(this.fallback);
+    try {
+      return await call(this.primary);
+    } catch (error) {
+      const status = error instanceof ImageProviderError ? error.status : undefined;
+      const message = error instanceof Error ? error.message : String(error);
+      const switchModel = status === undefined || status >= 500 || status === 403 || status === 404 || (status === 400 && /model/i.test(message));
+      if (!switchModel) throw error;
+      this.current = this.fallback;
+      return call(this.fallback);
+    }
+  }
+  generate(request: ImageGenerateRequest) { return this.run((provider) => provider.generate(request)); }
+  edit(request: ImageEditRequest) { return this.run((provider) => provider.edit(request)); }
+}
+
 /** Structured JSON from an OpenAI text/vision model through the Responses API. */
 export async function openAIJson<T>(input: {
   apiKey: string; model: string; instructions: string; schemaName: string; schema: object;

@@ -188,7 +188,7 @@ export function BrandTemplateComposer({ template, initialPrompt = '', onClose }:
     setBusy('ai'); setDesignError('');
     try {
       const format = mainFormat(platforms, chosenIds);
-      const body = await api<{ jobId: string; requestId?: string }>('/api/ai/full-creative', { body: { prompt: request, format, directions: 1, followDesign: { templateId: template.id, surface } } });
+      const body = await api<{ jobId: string; requestId?: string }>('/api/ai/full-creative', { body: { prompt: request, format, directions: 1, followDesign: { templateId: template.id, surface }, ...(facts.trim() ? { facts } : {}) } });
       setActiveCreative({ jobId: body.jobId, requestId: body.requestId ?? '', prompt: request, platforms, sizes: chosenIds, format, startedAt: new Date().toISOString(), status: 'running' });
       setAiRun({ jobId: body.jobId, requestId: body.requestId ?? '', prompt: request });
     } catch (error) { setDesignError(errorMessage(error, t('Could not start the design.', 'تعذّر بدء التصميم.'))); }

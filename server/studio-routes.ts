@@ -4,6 +4,7 @@ import { z } from 'zod';
 import { requirePermission, requireUser } from './auth.js';
 import { requireAiBudget } from './usage.js';
 import { loadFullCreativeRun } from './creative-intelligence/generation/full-creative.js';
+import { approvedStrings } from './creative-intelligence/typography-validation/copy-check.js';
 import { aiEdit, decompose, extractObject, originalWithoutLogo, outlineLayer, renderStudio, saveUpload, studioPath, studioUrl, type StudioDoc } from './creative-intelligence/studio/studio.js';
 import { runStudioCommand } from './creative-intelligence/studio/edit-router.js';
 import { HEX_COLOR, migrateStudioDoc, STUDIO_FILE, STUDIO_VERSION } from '../src/domain/studio.js';
@@ -28,7 +29,7 @@ function startStudioJob(ownerId: string, work: () => Promise<StudioOutcome>): St
 }
 /** Approved headline, facts and CTA of the run: what a text edit may restate without a warning. */
 function approvedCopyOf(requestId: string): string[] {
-  try { const c = loadFullCreativeRun(requestId).brief.canonicalCopy; return [c.headline, c.subheadline, ...(c.facts ?? []), c.cta].filter((s): s is string => Boolean(s)); } catch { return []; }
+  try { return approvedStrings(loadFullCreativeRun(requestId).brief.canonicalCopy); } catch { return []; }
 }
 
 const box = z.object({ x: z.number().min(0), y: z.number().min(0), width: z.number().positive(), height: z.number().positive() });

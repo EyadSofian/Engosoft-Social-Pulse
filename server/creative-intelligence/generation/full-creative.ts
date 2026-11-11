@@ -19,15 +19,16 @@ import { applyCampaignStamp, campaignBrief, stampGeometry, stampRoom, stampText,
 import { checkFinish, finishCheckOn, type FinishProblem, type Overlay } from '../criticism/finish-check.js';
 import { plannedLogoBox, resolveLogo, type Corner, type LogoDecision, type NoLogoDecision } from '../logo-resolution/resolver.js';
 import type { SafeArea } from '../logo-resolution/validator.js';
-import { checkCopy, copyPasses, type CanonicalCopy, type CopyCheck } from '../typography-validation/copy-check.js';
+import { approvedStrings, checkCopy, copyPasses, type CanonicalCopy, type CopyBlock, type CopyCheck } from '../typography-validation/copy-check.js';
 import { compileBriefPrompt, compileDesignPrompt, DEFAULT_SETTINGS, ENGINE_SKILL_VERSIONS, ENGINE_VERSION, planCaptions, planDesign, planStrategy, type DesignDecision, type EngineSettings, type ReferenceInput, type ReservedArea, type StrategyDecision, type UserReference } from '../skills/engine.js';
 import { THEMES, type ThemeId } from '../skills/themes.js';
 import { pasteInside, patchRejected } from './patch.js';
 import { houseReferences, referencePrompt } from './house-references.js';
-import { followDataUrl, followImage, followPlanningNote, followPrompt, type FollowDesign } from './follow-design.js';
+import { followDesignPrompt, followImage, followPrompt, placeArtworks, sameShape, type FollowDesign } from './follow-design.js';
+import { followCaptions, followCopy, planFollowContent } from './follow-content.js';
 import { highlightPhrase, storyLayout, storyZones, TYPESET_VERSION, typesetCreative, type TypesetPlan, type TypesetResult } from '../typography/typeset.js';
-import { openAIJson, OpenAIImageProvider, type CreativeImageProvider, type ImageQuality } from './provider.js';
-import { canvasBrief, copyDensityOf, coverWindow, describeCanvas, generationSizeFor, publishingPreset } from '../../../src/domain/output-presets.js';
+import { FallbackImageProvider, openAIJson, OpenAIImageProvider, type CreativeImageProvider, type ImageQuality } from './provider.js';
+import { canvasBrief, copyDensityOf, coverWindow, describeCanvas, drawSizeFor, generationSizeFor, publishingPreset } from '../../../src/domain/output-presets.js';
 
 export const FULL_CREATIVE_VERSIONS = { director: 'creative-director:v2', compiler: 'full-creative-compiler:v4', pipeline: 'full-creative-pipeline:v2', designLanguage: DESIGN_LANGUAGE_VERSION, typeset: TYPESET_VERSION } as const;
 
@@ -90,6 +91,8 @@ export interface CreativeBriefPlan {
   directions: CreativeDirectionPlan[];
   /** Design-engine runs: the strategy decisions, references and skill versions behind the brief. */
   engine?: { version: string; skills: Record<string, string>; settings: EngineSettings; strategy: StrategyDecision; references: ReferenceInput[] };
+  /** A post made as a design the user picked: what its new photos show, and what the content step could not place. */
+  follow?: { photos: string; notes: string[] };
 }
 
 export interface FullCreativeRequest {
@@ -118,6 +121,8 @@ export interface FullCreativeRequest {
   campaign?: CampaignIdentity;
   /** A design the user picked: the post is made as the same design with new words and photos (follow-design.ts). */
   followDesign?: FollowDesign;
+  /** Course facts the person picked (one per line): usable on a followed design, not required. */
+  facts?: string;
 }
 export interface FullCreativeResult {
   directionId: string;
@@ -514,6 +519,23 @@ export const imageQualityFor = (env: NodeJS.ProcessEnv = process.env): ImageQual
 };
 
 /**
+ * How much larger than the output a design is drawn before it is scaled down (CREATIVE_DRAW_SCALE, 1–2, default
+ * 1.5). Drawn at the output size, letters and fine edges came out soft; 1.5 costs about twice as much per image.
+ */
+export const drawScaleFor = (env: NodeJS.ProcessEnv = process.env): number => {
+  const n = Number(env.CREATIVE_DRAW_SCALE?.trim() || 1.5);
+  return Number.isFinite(n) ? Math.min(2, Math.max(1, n)) : 1.5;
+};
+/** The canvas with the size it is drawn at. */
+export const drawnCanvas = (spec: Canvas, env: NodeJS.ProcessEnv = process.env): Canvas => ({ ...spec, generation: drawSizeFor(spec.output.width, spec.output.height, drawScaleFor(env)).size });
+
+/**
+ * The image model for a post made as a picked design (OPENAI_FOLLOW_IMAGE_MODEL, default gpt-image-2.5-sunburst:
+ * OpenAI recommends it where editing precision matters). Flare stays the fallback when it fails.
+ */
+export const followModelFor = (env: NodeJS.ProcessEnv = process.env) => env.OPENAI_FOLLOW_IMAGE_MODEL?.trim() || 'gpt-image-2.5-sunburst';
+
+/**
  * How many images the model draws for a new direction before the critic keeps the best (CREATIVE_CANDIDATES,
  * 1–3, default 1). One API call returns them all; each costs a full image and a critic read, and the person sees
  * only one, so extra candidates are opt-in. Other sizes of a design draw one.
@@ -542,6 +564,11 @@ export function candidateScore(inspection: Pick<CreativeInspection, 'verdict' | 
 export function copyForCanvas(copy: CanonicalCopy, format: CanvasTarget): CanonicalCopy {
   const canvas = canvasOf(format);
   const density = copyDensityOf({ id: canvas.key, ...canvas.output });
+  if (copy.blocks?.length) {
+    // A followed design keeps every block; smaller canvases keep the headline, the prices and the button.
+    const keep: Record<string, CopyBlock['kind'][]> = { reduced: ['headline', 'price', 'button', 'mark'], thumbnail: ['headline', 'price'], brand: ['headline', 'line'] };
+    return density in keep ? { ...copy, blocks: copy.blocks.filter((b) => keep[density].includes(b.kind)) } : copy;
+  }
   if (density === 'reduced') return { headline: copy.headline, ...(copy.facts?.length ? { facts: copy.facts } : {}), ...(copy.cta ? { cta: copy.cta } : {}) };
   if (density === 'thumbnail') return { headline: copy.headline, ...(copy.facts?.length ? { facts: copy.facts.slice(0, 1) } : {}) };
   if (density === 'brand') return { headline: copy.headline, ...(copy.subheadline ? { subheadline: copy.subheadline } : {}) };
@@ -571,21 +598,31 @@ export async function produceDirection(input: {
   const { provider, direction, format, quality, dir, env, master } = input;
   const brief = withCanvasCopy(input.brief, format);
   const progress = (stage: ProgressStage) => input.onProgress?.({ stage, directionId: direction.id });
-  const spec = canvasOf(format);
+  const spec = drawnCanvas(canvasOf(format), env);
   const plan = logoPlanOf(direction, format);
   const started = Date.now();
   const style = promptStyleFor(env);
-  const basePrompt = master
-    ? `${promptFor(brief, direction, format, true, 'model', style)}\n\n${freshSizeBrief(format)}`
-    : promptFor(brief, direction, format, false, 'model', style);
+  // A design the user picked to follow is the base design, not a loose style reference. With its blocks planned
+  // (follow-content.ts) it is the whole brief: redraw it exactly with these words.
+  const followed = input.follow ? await followImage(input.follow) : null;
+  const blocks = brief.canonicalCopy.blocks ?? [];
+  const following = Boolean(followed && blocks.length);
+  const canvasAspect = spec.output.width / spec.output.height;
+  const sameAsDesign = Boolean(followed && sameShape(followed.aspect, canvasAspect));
+  // The design's campaign artwork goes back at its own spot on the same shape; on another shape the campaign stamp is placed as usual.
+  const artworks = following && sameAsDesign ? input.follow?.artworks ?? [] : [];
+  const campaign = artworks.length ? undefined : input.campaign;
+  const basePrompt = following
+    ? followDesignPrompt({ blocks, photos: brief.follow?.photos ?? '', canvasLabel: spec.label, designAspect: followed!.aspect, canvasAspect, artworks: input.follow?.artworks })
+    : master
+      ? `${promptFor(brief, direction, format, true, 'model', style)}\n\n${freshSizeBrief(format)}`
+      : promptFor(brief, direction, format, false, 'model', style);
   // Every design, every size, is drawn with the same approved Engosoft posts attached as style references (the
   // same text picks the same set); another size also gets its design as the last, labelled reference.
-  // A design the user picked to follow takes their place: it is the base design, not a loose style reference.
-  const followed = input.follow ? await followImage(input.follow) : null;
   const references = followed ? [] : await houseReferences(`${brief.objective} ${brief.audience} ${brief.canonicalCopy.headline} ${direction.concept}`, input.campaign?.keyVisualPath);
   const images = [...(followed ? [{ data: followed.data, mime: followed.mime }] : []), ...references.map(({ data, mime }) => ({ data, mime })), ...(master ? [{ data: await asReference(master), mime: 'image/jpeg' as const }] : [])];
-  const guide = followed ? followPrompt(followed, spec.output.width / spec.output.height) : referencePrompt(references);
-  const prompt = `${basePrompt}${stampRoom(input.campaign, logoCanvasOf(format), await stampGeometry(input.campaign))}${guide}${master ? masterReference(images.length) : ''}`;
+  const guide = following ? '' : followed ? followPrompt(followed, canvasAspect) : referencePrompt(references);
+  const prompt = `${basePrompt}${stampRoom(campaign, logoCanvasOf(format), await stampGeometry(campaign))}${guide}${master ? masterReference(images.length) : ''}`;
   const problems: string[] = [];
   progress('generating');
   const n = master ? 1 : candidatesFor(env);
@@ -593,9 +630,11 @@ export async function produceDirection(input: {
     ? await provider.edit({ prompt, size: spec.generation, quality, images, n })
     : await provider.generate({ prompt, size: spec.generation, quality, n });
   const planned = direction.engine?.design;
-  const context = `Canvas: ${spec.label} ${direction.name}: ${direction.concept} Copy: ${JSON.stringify(brief.canonicalCopy)}. Arabic right-to-left layout: a left-pointing arrow on the CTA is intended. Line breaks within the headline are a design choice.${planned ? ` Planned design — theme ${direction.theme}; first focal point: ${planned.layoutDesigner.primaryFocalPoint}; then ${planned.layoutDesigner.secondaryFocalPoint}; reading path ${planned.layoutDesigner.visualFlow}; headline lines ${JSON.stringify(planned.typographyDirector.headlineLines)}; lighting ${planned.lightingDirector.setup}, key ${planned.lightingDirector.keyDirection}; colour ${planned.colorDirector.harmony}.` : ''}`;
+  const context = following
+    ? `Canvas: ${spec.label} A post redrawn from a design the user picked (${direction.name}), with exactly these text blocks: ${blocks.map((b) => `${b.role}: «${b.text}»`).join('; ')}. Arabic right-to-left layout; line breaks within a block are a design choice. The official logo${artworks.length ? ' and the campaign artwork are' : ' is'} added afterwards.`
+    : `Canvas: ${spec.label} ${direction.name}: ${direction.concept} Copy: ${JSON.stringify(brief.canonicalCopy)}. Arabic right-to-left layout: a left-pointing arrow on the CTA is intended. Line breaks within the headline are a design choice.${planned ? ` Planned design — theme ${direction.theme}; first focal point: ${planned.layoutDesigner.primaryFocalPoint}; then ${planned.layoutDesigner.secondaryFocalPoint}; reading path ${planned.layoutDesigner.visualFlow}; headline lines ${JSON.stringify(planned.typographyDirector.headlineLines)}; lighting ${planned.lightingDirector.setup}, key ${planned.lightingDirector.keyDirection}; colour ${planned.colorDirector.harmony}.` : ''}`;
   progress('inspecting');
-  const approvedCopy = [brief.canonicalCopy.headline, brief.canonicalCopy.subheadline, ...(brief.canonicalCopy.facts ?? []), brief.canonicalCopy.cta].filter((s): s is string => Boolean(s));
+  const approvedCopy = approvedStrings(brief.canonicalCopy);
   // Every candidate is read by the critic; the rest of the pipeline works on the best one only.
   const read = await Promise.all(drawn.map(async (candidate, index) => {
     if (drawn.length > 1) writeFileSync(resolve(dir, `${direction.id}-candidate-${index + 1}.png`), candidate.png);
@@ -632,9 +671,15 @@ export async function produceDirection(input: {
       inspection = await inspectCreative(output, context, env, approvedCopy);
     }
   }
-  // Spelling repair: re-letter only the strings the audit found misspelt, in place, then keep it if it is better.
+  // Text repair: re-letter only the strings the audit found misspelt, in place — and, on a followed design of the
+  // same shape, letter a missing block at the spot it has in that design — then keep it if it is better.
   let copyChecks = checkCopy(brief.canonicalCopy, inspection.texts.map((t) => t.text), inspection.copyAudit);
-  const misspelt = copyChecks.filter((c) => c.verdict === 'incorrect').flatMap((check) => { const box = textBoxFor(inspection, check.expected); return box ? [{ check, box }] : []; });
+  const blockFor = (expected: string) => blocks.find((b) => b.text === expected);
+  const misspelt = copyChecks.flatMap((check) => {
+    if (check.verdict === 'incorrect') { const box = textBoxFor(inspection, check.expected); return box ? [{ check, box, missing: undefined as CopyBlock | undefined }] : []; }
+    const block = check.verdict === 'missing' && following && sameAsDesign && !master ? blockFor(check.expected) : undefined;
+    return block?.box ? [{ check, box: block.box, missing: block }] : [];
+  });
   if (misspelt.length) {
     progress('repairing');
     const boxes = misspelt.map(({ box }) => drawnBox(spec, { x: Math.max(0, box.x - 0.015), y: Math.max(0, box.y - 0.012), width: Math.min(1 - Math.max(0, box.x - 0.015), box.width + 0.03), height: Math.min(1 - Math.max(0, box.y - 0.012), box.height + 0.024) }));
@@ -643,8 +688,8 @@ export async function produceDirection(input: {
     let refused = 0;
     for (let attempt = 0; attempt < 2; attempt++) {
       const [edited] = await provider.edit({
-        prompt: `Re-letter only the text inside the transparent masked areas. ${misspelt.map(({ check }, i) => `Area ${i + 1} must read exactly «${check.expected}».`).join(' ')} Repaint the background inside each area as a seamless continuation of the pixels around it — the same colours, gradient, texture and any highlight bar or button — never a black, dark or flat panel or a new frame. Keep the same typeface style, weight, size, colour, alignment and line breaks. Every Arabic letter correctly joined and spelled exactly as given: no extra, missing or doubled letters, no extra words. Preserve every other pixel.`,
-        size: spec.generation, quality, images: [{ data: raw, mime: 'image/png' }], mask: await maskFor(gw, gh, ...boxes),
+        prompt: `Re-letter only the text inside the transparent masked areas. ${misspelt.map(({ check, missing }, i) => missing ? `Area ${i + 1} is missing its text: letter «${check.expected}» there, as the ${missing.role} of the design${followed ? ' (Image 2 shows where and how that design sets it)' : ''}.` : `Area ${i + 1} must read exactly «${check.expected}».`).join(' ')} Repaint the background inside each area as a seamless continuation of the pixels around it — the same colours, gradient, texture and any highlight bar or button — never a black, dark or flat panel or a new frame. Keep the same typeface style, weight, size, colour, alignment and line breaks. Every Arabic letter correctly joined and spelled exactly as given: no extra, missing or doubled letters, no extra words. Preserve every other pixel.`,
+        size: spec.generation, quality, images: [{ data: raw, mime: 'image/png' }, ...(followed && misspelt.some((m) => m.missing) ? [{ data: followed.data, mime: followed.mime }] : [])], mask: await maskFor(gw, gh, ...boxes),
       });
       const candidate = await pasteInside(raw, edited.png, boxes);
       if ((await Promise.all(boxes.map((b) => patchRejected(raw, candidate, b)))).some(Boolean)) { refused++; continue; }
@@ -691,7 +736,16 @@ export async function produceDirection(input: {
     logo = await forcedHouseLogo(output, spec, plan);
   }
   copyChecks = checkCopy(brief.canonicalCopy, inspection.texts.map((t) => t.text), inspection.copyAudit);
-  if (!copyPasses(copyChecks)) problems.push(`Text in the image does not match the approved copy: ${copyChecks.filter((c) => c.verdict !== 'exact').map((c) => `${c.field} ${c.verdict}`).join(', ')}`);
+  if (!copyPasses(copyChecks)) problems.push(following
+    ? `Text in the image does not match the post's words: ${copyChecks.filter((c) => c.critical && c.verdict !== 'exact' && c.verdict !== 'acceptable').map((c) => `«${c.expected}» ${c.verdict}`).join(', ')}`
+    : `Text in the image does not match the approved copy: ${copyChecks.filter((c) => c.verdict !== 'exact').map((c) => `${c.field} ${c.verdict}`).join(', ')}`);
+  if (following) {
+    problems.push(...(brief.follow?.notes ?? []));
+    // Words of the old design the redraw kept, or words nobody asked for. The logo and the artwork are not ours to check.
+    const allowed = [...approvedCopy, ...(input.follow?.artworks ?? []).map((a) => a.says), 'ENGO SOFT Engosoft www.engosoft.com'];
+    const stray = strayTexts(inspection.texts, allowed);
+    if (stray.length) problems.push(`Words in the image that are not in the post: ${stray.slice(0, 4).map((t) => `«${t.slice(0, 40)}»`).join(', ')}`);
+  }
   if (inspection.logosOrWatermarks.length) problems.push(`Generated image contains a logo or watermark: ${inspection.logosOrWatermarks.map((l) => l.description).join('; ')}`);
   if (inspection.verdict !== 'accept') problems.push(`Critic verdict ${inspection.verdict}: ${inspection.defects.join('; ') || inspection.summary}`);
   let imagePath: string | undefined;
@@ -702,7 +756,9 @@ export async function produceDirection(input: {
     const honesty = await verifyComposite(output, image, record);
     if (honesty.length) problems.unshift(...honesty.map((p) => `Logo composite: ${p}`));
     const content = zonesFromInspection(inspection, spec.output.width, spec.output.height).map((z) => z.box);
-    const finished = await finishOverlays({ logoImage: image, logo: record, content, campaign: input.campaign, spec, env });
+    // The design's own campaign artwork goes back at its spot, from its files.
+    const art = artworks.length ? await placeArtworks(image, artworks) : { image };
+    const finished = await finishOverlays({ logoImage: art.image, logo: record, content, campaign, spec, env });
     problems.push(...finished.problems);
     imagePath = resolve(dir, `${direction.id}.png`);
     writeFileSync(imagePath, finished.image);
@@ -764,7 +820,7 @@ async function produceTypeset(input: Parameters<typeof produceDirection>[0]): Pr
   const { provider, direction, format, quality, dir, env, master } = input;
   const brief = withCanvasCopy(input.brief, format);
   const progress = (stage: ProgressStage) => input.onProgress?.({ stage, directionId: direction.id });
-  const spec = canvasOf(format);
+  const spec = drawnCanvas(canvasOf(format), env);
   const plan = logoPlanOf(direction, format);
   const started = Date.now();
   const adaptation = Boolean(master);
@@ -826,7 +882,7 @@ async function produceTypeset(input: Parameters<typeof produceDirection>[0]): Pr
   let finished = await finish();
 
   progress('inspecting');
-  const approvedCopy = [brief.canonicalCopy.headline, brief.canonicalCopy.subheadline, ...(brief.canonicalCopy.facts ?? []), brief.canonicalCopy.cta].filter((s): s is string => Boolean(s));
+  const approvedCopy = approvedStrings(brief.canonicalCopy);
   const context = `Canvas: ${spec.label} ${direction.name}: ${direction.concept} The copy ${JSON.stringify(approvedCopy)} was typeset by the design system${direction.engine ? `; planned first focal point ${direction.engine.design.layoutDesigner.primaryFocalPoint}, reading path ${direction.engine.design.layoutDesigner.visualFlow}` : ''}.`;
   // Judged before the official logo is added: the critic treats any logo it sees as one the image model drew.
   let inspection = await inspectCreative(composed.ts.png, context, env, approvedCopy, { typeset: true });
@@ -872,6 +928,36 @@ async function produceTypeset(input: Parameters<typeof produceDirection>[0]): Pr
   return { directionId: direction.id, directionName: direction.name, status, problems, imagePath, rawImagePath: rawPath, cleanImagePath, logo: composed.logo, repaired, refinements, copyChecks, inspection, prompt, model: generated.model, latencyMs: Date.now() - started, textMode: 'typeset', typeset: composed.ts.layout };
 }
 
+/** Image quality for a post made as a picked design (OPENAI_FOLLOW_IMAGE_QUALITY), else the general setting. */
+export const followQualityFor = (env: NodeJS.ProcessEnv = process.env): ImageQuality => {
+  const value = env.OPENAI_FOLLOW_IMAGE_QUALITY?.trim();
+  return value === 'medium' || value === 'high' || value === 'xhigh' || value === 'max' ? value : imageQualityFor(env);
+};
+
+/**
+ * The brief of a post made as a picked design: every block of the design filled from the request
+ * (follow-content.ts), one direction per requested design (each an attempt at the same redraw), and the captions
+ * started alongside the image.
+ */
+export async function planFollowCreative(prompt: string, follow: FollowDesign, count: number, context: VerifiedCourseContext | undefined, env: NodeJS.ProcessEnv, onDesigning?: () => void, picked = ''): Promise<{ brief: CreativeBriefPlan; captions: Promise<StrategyDecision['captionWriter'] | null> }> {
+  const facts = [
+    ...(context ? [`Course: ${context.facts.title.value}`, ...factLines(context), ...(context.facts.registrationUrl ? [`Registration: ${context.facts.registrationUrl.value}`] : [])] : []),
+    ...picked.split('\n').map((line) => line.trim()).filter(Boolean),
+  ];
+  const { content, notes } = await planFollowContent({ design: follow, request: prompt, facts, env });
+  onDesigning?.();
+  const house = houseLogo() ?? { mark: 'lockup' as LogoMark, corner: 'top-left' as Corner };
+  const same = 'As the chosen design';
+  const brief: CreativeBriefPlan = {
+    language: content.language, objective: content.objective, audience: content.audience,
+    canonicalCopy: followCopy(content.blocks), caption: '',
+    captions: { facebook: '', instagram: '', whatsapp: '', linkedin: '', tiktok: '', snapchat: '', website: '' },
+    directions: Array.from({ length: count }, (_, i) => ({ id: `d${i + 1}`, name: follow.name, concept: `${follow.name}, redrawn with the new words${content.photos ? ' and photos' : ''}`, subject: content.photos || same, composition: same, palette: same, typography: same, mood: same, logoMark: house.mark, logoCorner: house.corner })),
+    follow: { photos: content.photos, notes },
+  };
+  return { brief, captions: followCaptions({ request: prompt, content, facts, env }).catch(() => null) };
+}
+
 export async function generateFullCreative(request: FullCreativeRequest, env = process.env, onProgress?: ProgressFn): Promise<FullCreativeRun> {
   const format = request.format ?? 'feed';
   const count = Math.min(2, Math.max(1, request.directions ?? 2));
@@ -885,22 +971,38 @@ export async function generateFullCreative(request: FullCreativeRequest, env = p
   // The campaign's slogan shapes the copy; its key visual joins the attachments as a style reference.
   const campaign = request.campaign;
   const follow = request.followDesign;
-  const planningPrompt = `${request.prompt}${campaignBrief(campaign)}${follow ? followPlanningNote(follow) : ''}`;
+  const planningPrompt = `${request.prompt}${campaignBrief(campaign)}`;
   const keyVisual = campaign?.keyVisualPath ? (() => { try { return { name: `Campaign key visual — ${campaign.name}`, mime: 'image/png', dataUrl: `data:image/png;base64,${readFileSync(campaign.keyVisualPath).toString('base64')}` }; } catch { return null; } })() : null;
-  // The copywriter sees the design to follow, so the words fit its blocks.
-  const followFile = follow ? (() => { try { return { name: `Design to follow — ${follow.name}`, mime: 'image/jpeg', dataUrl: followDataUrl(follow) }; } catch { return null; } })() : null;
-  const attachments = [...(followFile ? [followFile] : []), ...(request.attachments ?? []), ...(keyVisual && !follow ? [keyVisual] : [])].slice(0, 6);
-  const brief = request.engine === 'legacy'
+  const attachments = [...(request.attachments ?? []), ...(keyVisual ? [keyVisual] : [])].slice(0, 6);
+  // A design to follow has its own short path: its blocks filled from the request, then one exact redraw. The
+  // general planning (copywriter, layout, theme) would rewrite the words and fight the design's layout.
+  const followed = follow ? await planFollowCreative(request.prompt, follow, count, context, env, () => onProgress?.({ stage: 'designing' }), request.facts) : null;
+  const brief = followed ? followed.brief : request.engine === 'legacy'
     ? await planCreative(request.objective ? `${planningPrompt}\nObjective: ${request.objective}` : planningPrompt, format, count, context, env, request.style)
     : await planCreativeWithEngine(planningPrompt, format, count, context, env, request.style, request.settings, () => onProgress?.({ stage: 'designing' }), { objective: request.objective, attachments: attachments.length ? attachments : undefined, campaign });
-  if (campaign?.hashtag) {
+  const addHashtag = () => {
+    if (!campaign?.hashtag) return;
     brief.caption = withHashtag(brief.caption, campaign.hashtag);
     brief.captions = Object.fromEntries(Object.entries(brief.captions).map(([platform, text]) => [platform, typeof text === 'string' ? withHashtag(text, campaign.hashtag) : text])) as CreativeBriefPlan['captions'];
-  }
+  };
+  if (!followed) addHashtag();
   brief.directions = brief.directions.map((d, i) => ({ ...d, id: `d${i + 1}` }));
   onProgress?.({ stage: 'generating', brief });
-  const provider = new OpenAIImageProvider(env.OPENAI_API_KEY ?? '', request.model ?? (env.OPENAI_IMAGE_MODEL?.trim() || 'gpt-image-2.5-flare'));
-  const settled = await Promise.allSettled(brief.directions.map((direction) => produceDirection({ provider, brief, direction, format, quality: request.quality ?? imageQualityFor(env), dir: outputDir, env, onProgress, campaign, follow })));
+  const fallbackModel = env.OPENAI_IMAGE_MODEL?.trim() || 'gpt-image-2.5-flare';
+  const imageModel = request.model ?? (follow ? followModelFor(env) : fallbackModel);
+  const provider: CreativeImageProvider = imageModel === fallbackModel
+    ? new OpenAIImageProvider(env.OPENAI_API_KEY ?? '', imageModel)
+    : new FallbackImageProvider(new OpenAIImageProvider(env.OPENAI_API_KEY ?? '', imageModel), new OpenAIImageProvider(env.OPENAI_API_KEY ?? '', fallbackModel));
+  const quality = request.quality ?? (follow ? followQualityFor(env) : imageQualityFor(env));
+  const settled = await Promise.allSettled(brief.directions.map((direction) => produceDirection({ provider, brief, direction, format, quality, dir: outputDir, env, onProgress, campaign, follow })));
+  if (followed) {
+    // Written while the image was drawn; without them the post's words stand in, so the post can still be captioned in the editor.
+    const written = await followed.captions;
+    const fallback = brief.canonicalCopy.blocks?.map((b) => b.text).join('\n') ?? brief.canonicalCopy.headline;
+    brief.caption = written?.caption || fallback;
+    brief.captions = written?.captions ?? { facebook: fallback, instagram: fallback, whatsapp: fallback, linkedin: fallback, tiktok: fallback, snapchat: fallback, website: fallback };
+    addHashtag();
+  }
   const results = settled.map((entry, index): FullCreativeResult => entry.status === 'fulfilled' ? entry.value : {
     directionId: brief.directions[index].id, directionName: brief.directions[index].name, status: 'failed',
     problems: [`Generation failed: ${entry.reason instanceof Error ? entry.reason.message : String(entry.reason)}`],

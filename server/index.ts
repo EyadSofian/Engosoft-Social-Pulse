@@ -116,7 +116,9 @@ const fullCreativeRequest=z.object({prompt:z.string().trim().min(5).max(2000),fo
  // The campaign the post belongs to: its slogan shapes the copy and its stamp is placed on the design.
  campaignId:z.string().uuid().optional(),
  // A design to follow: a library design or the user's own file; the post is made as the same design with new words and photos.
- followDesign:z.union([z.object({templateId:z.string().max(60),surface:z.enum(['light','blue']).optional()}),z.object({name:z.string().max(200),dataUrl:z.string().max(8_000_000).regex(/^data:image\/(png|jpeg|webp);base64,/)})]).optional()});
+ followDesign:z.union([z.object({templateId:z.string().max(60),surface:z.enum(['light','blue']).optional()}),z.object({name:z.string().max(200),dataUrl:z.string().max(8_000_000).regex(/^data:image\/(png|jpeg|webp);base64,/)})]).optional(),
+ // Course facts picked on the template screen (course, date, time, place, link): usable on the post, not required.
+ facts:z.string().max(2000).optional()});
 const OBJECTIVE_TEXT={course_launch:'Course announcement',course_schedule:'Course schedule',certificate:'Certificate or achievement',education:'Educational content',event:'Event or occasion',general:'General post'} as const;
 const localOnly=(res:express.Response)=>{if(!process.env.OPENAI_API_KEY?.trim()){res.status(503).json({error:'أضف OPENAI_API_KEY على الخادم.'});return true;}return false;};
 const limited=(req:express.Request,res:express.Response)=>{const who=req.ip||'local';const now=Date.now();const recent=(fullCreativeCalls.get(who)||[]).filter(at=>now-at<10*60_000);if(recent.length>=6){res.status(429).json({error:'بلغت الحد المؤقت: 6 طلبات تصميم خلال 10 دقائق.'});return true;}fullCreativeCalls.set(who,[...recent,now]);return false;};

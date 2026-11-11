@@ -118,7 +118,8 @@ export function contentFacts(item: StoredContent): string {
     try {
       const run = loadFullCreativeRun(requestId);
       const c = run.brief.canonicalCopy;
-      lines.push(`Headline: ${c.headline}`, ...(c.subheadline ? [`Subheadline: ${c.subheadline}`] : []), ...(c.cta ? [`Call to action: ${c.cta}`] : []), ...(c.facts ?? []).map((f) => `Verified fact: ${f}`), `Audience: ${run.brief.audience}`, `Objective: ${run.brief.objective}`);
+      if (c.blocks?.length) lines.push(...c.blocks.map((b) => `On the post (${b.role}): ${b.text}`), `Audience: ${run.brief.audience}`, `Objective: ${run.brief.objective}`);
+      else lines.push(`Headline: ${c.headline}`, ...(c.subheadline ? [`Subheadline: ${c.subheadline}`] : []), ...(c.cta ? [`Call to action: ${c.cta}`] : []), ...(c.facts ?? []).map((f) => `Verified fact: ${f}`), `Audience: ${run.brief.audience}`, `Objective: ${run.brief.objective}`);
     } catch { /* trace missing: the title and fields are enough */ }
   }
   for (const [key, value] of Object.entries(item.creative?.svgTemplate?.values ?? {})) {

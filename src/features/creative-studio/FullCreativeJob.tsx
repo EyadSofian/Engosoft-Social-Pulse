@@ -110,9 +110,17 @@ export function FullCreativeJob({ jobId, requestId, platforms, sizes, format, pr
   return <div className="creative-job">
     <motion.div className="creative-job__summary glass" initial={{ opacity: 0, y: 8 }} animate={{ opacity: 1, y: 0 }}>
       <div>
-        <small>{run?.context.status === 'matched' || job?.brief?.canonicalCopy.facts?.length ? t('VERIFIED FROM ODOO', 'بيانات موثّقة من Odoo') : t('NO ODOO FACTS', 'دون بيانات Odoo')}</small>
-        <h2 dir="auto">{brief.canonicalCopy.headline}</h2>
-        <p dir="auto">{[run?.context.event?.title, ...(brief.canonicalCopy.facts ?? [])].filter(Boolean).join(' · ')}</p>
+        {brief.canonicalCopy.blocks?.length
+          ? <>
+            <small>{t('WORDS ON THIS DESIGN', 'الكلام اللي في التصميم')}</small>
+            <h2 dir="auto">{brief.canonicalCopy.headline}</h2>
+            <ul className="creative-job__blocks">{brief.canonicalCopy.blocks.filter((b) => b.text && b.text !== brief.canonicalCopy.headline).map((b, i) => <li key={i} dir="auto">{b.text}</li>)}</ul>
+          </>
+          : <>
+            <small>{run?.context.status === 'matched' || job?.brief?.canonicalCopy.facts?.length ? t('VERIFIED FROM ODOO', 'بيانات موثّقة من Odoo') : t('NO ODOO FACTS', 'دون بيانات Odoo')}</small>
+            <h2 dir="auto">{brief.canonicalCopy.headline}</h2>
+            <p dir="auto">{[run?.context.event?.title, ...(brief.canonicalCopy.facts ?? [])].filter(Boolean).join(' · ')}</p>
+          </>}
       </div>
       <Button variant="secondary" onClick={onRestart}>{t('New request', 'طلب جديد')}</Button>
     </motion.div>

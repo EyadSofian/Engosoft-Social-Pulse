@@ -31,6 +31,13 @@ export interface BrandInput {
   maxChars?: number;
   photo?: { kind: BrandPhotoKind; cutout?: boolean; aspect: number };
   sample: { ar: string; en: string };
+  /**
+   * Artwork that is part of the design (a campaign stamp or hashtag): where it sits in the template's reference
+   * image, as fractions from the top-left, and the words it shows. When AI redraws the design, the file is placed
+   * there exactly instead of being redrawn.
+   */
+  place?: { x: number; y: number; width: number; height: number };
+  says?: string;
 }
 
 export interface BrandTemplate {
@@ -141,7 +148,7 @@ export const BRAND_TEMPLATES: BrandTemplate[] = [
     surfaces: ['blue'],
     brief: 'Campaign course offer in Egyptian/Gulf marketing Arabic: a punchy headline of 3–5 words with a 1–2 word phrase to colour green, a tape line naming the course ("جهّز نفسك لشهادة PMP"), one supporting line about the career benefit. Prices come from the person, never from you.',
     inputs: [
-      { key: 'stamp', type: 'photo', label: t('شعار الحملة', 'Campaign stamp'), hint: t('PNG بخلفية شفافة. سيبه زي ما هو لنفس الحملة', 'A PNG with a transparent background. Keep it for the same campaign'), photo: { kind: 'artwork', aspect: 1 }, sample: t('/brand-references/campaign-5050-stamp.png', '/brand-references/campaign-5050-stamp.png') },
+      { key: 'stamp', type: 'photo', label: t('شعار الحملة', 'Campaign stamp'), hint: t('PNG بخلفية شفافة. سيبه زي ما هو لنفس الحملة', 'A PNG with a transparent background. Keep it for the same campaign'), photo: { kind: 'artwork', aspect: 1 }, sample: t('/brand-references/campaign-5050-stamp.png', '/brand-references/campaign-5050-stamp.png'), place: { x: 0.365, y: 0.13, width: 0.27, height: 0.215 }, says: 'عرض الخمسين خمسين %50 خصم %50 كاش باك' },
       { key: 'headline', type: 'text', label: t('العنوان', 'Headline'), ai: true, required: true, maxChars: 44, sample: t('مشاريع أكبر.. ومسؤوليات أعلى!', 'Bigger projects, bigger roles!') },
       { key: 'highlight', type: 'text', label: t('الكلمة الملونة في العنوان', 'Coloured phrase'), hint: t('جزء من العنوان يتلوّن أخضر', 'Part of the headline, set in green'), ai: true, maxChars: 20, sample: t('مشاريع أكبر..', 'Bigger projects,') },
       { key: 'tape', type: 'text', label: t('شريط الدورة', 'Course tape'), ai: true, required: true, maxChars: 40, sample: t('جهّز نفسك لشهادة PMP', 'Get ready for PMP') },
@@ -150,7 +157,7 @@ export const BRAND_TEMPLATES: BrandTemplate[] = [
       { key: 'currency', type: 'text', label: t('العملة', 'Currency'), maxChars: 8, sample: t('ر.س', 'SAR') },
       { key: 'instead', type: 'text', label: t('كلمة «بدل»', 'Word for «instead of»'), maxChars: 10, sample: t('بـــدل', 'instead of') },
       { key: 'oldPrice', type: 'text', label: t('السعر القديم', 'Old price'), fact: true, maxChars: 10, sample: t('1,400', '1,400') },
-      { key: 'hashtag', type: 'photo', label: t('هاشتاج الحملة', 'Campaign hashtag'), hint: t('PNG بخلفية شفافة (اختياري)', 'A PNG with a transparent background (optional)'), photo: { kind: 'artwork', aspect: 2.6 }, sample: t('/brand-references/campaign-5050-hashtag.png', '/brand-references/campaign-5050-hashtag.png') },
+      { key: 'hashtag', type: 'photo', label: t('هاشتاج الحملة', 'Campaign hashtag'), hint: t('PNG بخلفية شفافة (اختياري)', 'A PNG with a transparent background (optional)'), photo: { kind: 'artwork', aspect: 2.6 }, sample: t('/brand-references/campaign-5050-hashtag.png', '/brand-references/campaign-5050-hashtag.png'), place: { x: 0.7, y: 0.895, width: 0.27, height: 0.09 }, says: '#جمعة_تغير_مسارك' },
     ],
   },
   {

@@ -1,7 +1,30 @@
 /** Compare text read from generated pixels with the canonical copy. Generated Arabic is never trusted blindly. */
 
 export type CopyVerdict = 'exact' | 'acceptable' | 'incorrect' | 'missing';
-export interface CanonicalCopy { headline: string; subheadline?: string; facts?: string[]; cta?: string }
+/**
+ * One text block of a design the user picked to follow (follow-content.ts): what it holds now, what it held in
+ * that design, and where it sat there. When a copy has blocks, they are the complete list of words in the image.
+ */
+export interface CopyBlock {
+  role: string;
+  kind: 'headline' | 'line' | 'price' | 'label' | 'button' | 'mark';
+  text: string;
+  /** The words this block had in the design being followed. */
+  was?: string;
+  /** Where the block sat in the design being followed, as fractions from the top-left. */
+  box?: { x: number; y: number; width: number; height: number };
+  /** A phrase inside a headline set in the accent colour. */
+  highlight?: string;
+}
+export interface CanonicalCopy { headline: string; subheadline?: string; facts?: string[]; cta?: string; blocks?: CopyBlock[] }
+
+/** Every string the image must show: the blocks of a followed design, or the headline, supporting line, facts and button. */
+export const approvedStrings = (copy: CanonicalCopy): string[] => copy.blocks?.length
+  ? copy.blocks.map((b) => b.text).filter(Boolean)
+  : [copy.headline, copy.subheadline, ...(copy.facts ?? []), copy.cta].filter((s): s is string => Boolean(s));
+
+/** A block a reader acts on: the headline, a price, the button, or any line with a number in it. */
+export const criticalBlock = (block: CopyBlock) => block.kind === 'headline' || block.kind === 'price' || block.kind === 'button' || /[\d٠-٩]/.test(block.text);
 export interface CopyCheck { field: string; expected: string; verdict: CopyVerdict; critical: boolean }
 
 const strip = (value: string) => value
@@ -33,6 +56,9 @@ export function checkCopy(canonical: CanonicalCopy, readText: string[], audit: {
     if (foldedTokens.every((word) => foldedWords.has(word))) return 'acceptable';
     return foldedTokens.some((word) => foldedWords.has(word)) ? 'incorrect' : 'missing';
   };
+  if (canonical.blocks?.length) {
+    return canonical.blocks.filter((b) => b.text.trim()).map((block, index) => ({ field: `block${index + 1}:${block.role}`, expected: block.text, verdict: verdict(block.text), critical: criticalBlock(block) }));
+  }
   const checks: CopyCheck[] = [{ field: 'headline', expected: canonical.headline, verdict: verdict(canonical.headline), critical: true }];
   if (canonical.subheadline) checks.push({ field: 'subheadline', expected: canonical.subheadline, verdict: verdict(canonical.subheadline), critical: false });
   canonical.facts?.forEach((fact, index) => checks.push({ field: `fact${index + 1}`, expected: fact, verdict: verdict(fact), critical: true }));
