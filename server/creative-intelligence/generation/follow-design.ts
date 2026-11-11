@@ -169,6 +169,73 @@ export async function placeArtworks(image: Buffer, artworks: FollowArtwork[]): P
 type Box = { x: number; y: number; width: number; height: number };
 
 /**
+ * The image model often draws the campaign artwork itself although it was told to leave its spot clean, and the
+ * file placed on top never lines up exactly: the stamp then shows twice, blurred. Before the files go on, each
+ * artwork spot (a little larger than its box) is covered with a clean piece of the same background, taken from
+ * the calmest free areas of the image (in two halves, so a smaller calm area is enough), blended in at the edges.
+ * When no calm area is found the spot is left as drawn.
+ */
+export async function clearArtworkSpots(image: Buffer, artworks: FollowArtwork[]): Promise<Buffer> {
+  const { width: W = 0, height: H = 0 } = await sharp(image).metadata();
+  if (!W || !H || !artworks.length) return image;
+  const grey = await sharp(image).greyscale().raw().toBuffer();
+  const spread = (b: Box) => {
+    let sum = 0, sq = 0, n = 0;
+    for (let y = b.y; y < b.y + b.height; y += 2) for (let x = b.x; x < b.x + b.width; x += 2) { const v = grey[y * W + x]; sum += v; sq += v * v; n++; }
+    const mean = sum / n;
+    return Math.sqrt(Math.max(0, sq / n - mean * mean));
+  };
+  const overlaps = (a: Box, b: Box) => a.x < b.x + b.width && b.x < a.x + a.width && a.y < b.y + b.height && b.y < a.y + a.height;
+  const spots = artworks.map((art) => {
+    const gx = art.place.width * 0.12, gy = art.place.height * 0.12;
+    const x = Math.max(0, Math.round((art.place.x - gx) * W)), y = Math.max(0, Math.round((art.place.y - gy) * H));
+    return { x, y, width: Math.min(W - x, Math.round((art.place.width + 2 * gx) * W)), height: Math.min(H - y, Math.round((art.place.height + 2 * gy) * H)) };
+  });
+  const meanAt = (b: Box) => { let sum = 0, n = 0; for (let y = b.y; y < b.y + b.height; y += 3) for (let x = b.x; x < b.x + b.width; x += 3) { sum += grey[y * W + x]; n++; } return sum / n; };
+  // The calmest place in the image for a piece this size, clear of every spot and close in tone to the spot's surroundings.
+  const calmest = (w: number, h: number, tone: number) => {
+    const step = Math.max(8, Math.round(Math.min(W, H) / 60));
+    let best: { box: Box; score: number } | null = null;
+    for (let y = 0; y + h <= H; y += step) for (let x = 0; x + w <= W; x += step) {
+      const box = { x, y, width: w, height: h };
+      if (spots.some((s) => overlaps(box, s))) continue;
+      const score = spread(box) + Math.abs(meanAt(box) - tone) * 0.5;
+      if (!best || score < best.score) best = { box, score };
+    }
+    return best;
+  };
+  const layers: NonNullable<Parameters<ReturnType<typeof sharp>['composite']>[0]> = [];
+  for (const spot of spots) {
+    const feather = Math.max(2, Math.round(Math.min(spot.width, spot.height) * 0.08));
+    const ring = [{ x: spot.x, y: Math.max(0, spot.y - feather * 2), width: spot.width, height: Math.min(feather * 2, spot.y) }, { x: spot.x, y: spot.y + spot.height, width: spot.width, height: Math.min(feather * 2, H - spot.y - spot.height) }].filter((b) => b.height > 0);
+    const tone = ring.length ? ring.reduce((t, b) => t + meanAt(b), 0) / ring.length : meanAt(spot);
+    // Two halves, the second overlapping the first by the feather, so a smaller calm area is enough.
+    const half = Math.ceil(spot.width / 2);
+    const strips = [{ x: 0, width: half + feather, seam: false }, { x: half - feather, width: spot.width - half + feather, seam: true }];
+    const pieces: { x: number; width: number; data: Buffer; seam: boolean }[] = [];
+    for (const strip of strips) {
+      const found = calmest(strip.width, spot.height, tone);
+      // Only fine grain is copied; anything busier holds text or shapes.
+      if (!found || spread(found.box) > 12) { pieces.length = 0; break; }
+      pieces.push({ ...strip, data: await sharp(image).extract({ left: found.box.x, top: found.box.y, width: strip.width, height: spot.height }).removeAlpha().raw().toBuffer() });
+    }
+    if (pieces.length !== strips.length) continue;
+    for (const piece of pieces) {
+      const rgba = Buffer.alloc(piece.width * spot.height * 4);
+      for (let y = 0; y < spot.height; y++) for (let x = 0; x < piece.width; x++) {
+        const i = y * piece.width + x, gx = piece.x + x;
+        const outer = Math.min(gx, y, spot.width - 1 - gx, spot.height - 1 - y);
+        const edge = piece.seam ? Math.min(outer, x) : outer;
+        rgba[i * 4] = piece.data[i * 3]; rgba[i * 4 + 1] = piece.data[i * 3 + 1]; rgba[i * 4 + 2] = piece.data[i * 3 + 2];
+        rgba[i * 4 + 3] = Math.round(255 * Math.min(1, edge / feather));
+      }
+      layers.push({ input: await sharp(rgba, { raw: { width: piece.width, height: spot.height, channels: 4 } }).png().toBuffer(), left: spot.x + piece.x, top: spot.y });
+    }
+  }
+  return layers.length ? sharp(image).composite(layers).png().toBuffer() : image;
+}
+
+/**
  * The design's own logo (the 50/50 campaign's older «ENGO | SOFT» lockup) placed from its file, instead of the
  * official logo. On a canvas of the design's shape it goes at its measured spot; on another shape, in the same
  * top-left corner at the same share of the canvas width (of a wide canvas's height-based width, as the template

@@ -5,8 +5,8 @@ import { join } from 'node:path';
 import { after, test } from 'node:test';
 import sharp from 'sharp';
 process.env.MEDIA_DIR = mkdtempSync(join(tmpdir(), 'follow-content-'));
-const { courseShown, currencyWithPrice, digitsOf, dropUnwrittenCurrency, withEveryDesignBlock, dropInventedNumbers, followContentInstructions, followCopy, missingNumbers, planFollowContent } = await import('../server/creative-intelligence/generation/follow-content');
-const { followDesignPrompt, placeArtworks, placeOwnLogo, resolveFollowDesign } = await import('../server/creative-intelligence/generation/follow-design');
+const { courseShown, currencyWithPrice, unlisted, digitsOf, dropUnwrittenCurrency, withEveryDesignBlock, dropInventedNumbers, followContentInstructions, followCopy, missingNumbers, planFollowContent } = await import('../server/creative-intelligence/generation/follow-content');
+const { clearArtworkSpots, followDesignPrompt, placeArtworks, placeOwnLogo, resolveFollowDesign } = await import('../server/creative-intelligence/generation/follow-design');
 const { produceDirection, planFollowCreative } = await import('../server/creative-intelligence/generation/full-creative');
 const { FallbackImageProvider, ImageProviderError } = await import('../server/creative-intelligence/generation/provider');
 const { checkCopy, copyPasses } = await import('../server/creative-intelligence/typography-validation/copy-check');
@@ -260,4 +260,22 @@ test('one price: the design\'s old price and «بدل» tag are removed, and the
   assert.equal(out.filter((b) => b.was === 'جهّز نفسك لشهادة PMP').length, 1);
   const prompt = followDesignPrompt({ blocks: out, photos: '', canvasLabel: 'Feed', designAspect: 0.8, canvasAspect: 0.8 });
   assert.match(prompt, /Remove these blocks of Image 1 and close the gap:.*«1,400»/);
+});
+
+test('list dashes are not written: items on one line are joined with a bullet', () => {
+  assert.equal(unlisted('- BIM Architecture - BIM Structure - BIM MEP'), 'BIM Architecture • BIM Structure • BIM MEP');
+  assert.equal(unlisted('• BIM MEP'), 'BIM MEP');
+  assert.equal(unlisted('من التصميم للتنفيذ - خطوة بخطوة'), 'من التصميم للتنفيذ - خطوة بخطوة');
+});
+
+test('the campaign stamp the image model drew is cleared before the file goes on, so it never shows twice', async () => {
+  const design = (await resolveFollowDesign({ templateId: 'brand-campaign-offer' }, '00000000-0000-4000-8000-000000000017'))!;
+  const stamp = design.artworks!.find((a) => a.key === 'stamp')!;
+  // A blue post with a white block drawn where the stamp goes (the model's own copy).
+  const box = { left: Math.round(stamp.place.x * 1080), top: Math.round(stamp.place.y * 1350), width: Math.round(stamp.place.width * 1080), height: Math.round(stamp.place.height * 1350) };
+  const drawn = await sharp({ create: { width: 1080, height: 1350, channels: 3, background: '#0443f2' } })
+    .composite([{ input: await sharp({ create: { width: box.width, height: box.height, channels: 3, background: '#ffffff' } }).png().toBuffer(), left: box.left, top: box.top }]).png().toBuffer();
+  const cleared = await clearArtworkSpots(drawn, design.artworks!);
+  const { channels } = await sharp(cleared).extract(box).toBuffer().then((b) => sharp(b).stats());
+  assert.ok(channels[0].mean < 20, `the white copy is gone (red mean ${channels[0].mean})`);
 });

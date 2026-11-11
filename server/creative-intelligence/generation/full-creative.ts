@@ -24,7 +24,7 @@ import { compileBriefPrompt, compileDesignPrompt, DEFAULT_SETTINGS, ENGINE_SKILL
 import { THEMES, type ThemeId } from '../skills/themes.js';
 import { pasteInside, patchRejected } from './patch.js';
 import { houseReferences, referencePrompt } from './house-references.js';
-import { followDesignPrompt, followImage, followPrompt, placeArtworks, placeOwnLogo, sameShape, type FollowDesign } from './follow-design.js';
+import { clearArtworkSpots, followDesignPrompt, followImage, followPrompt, placeArtworks, placeOwnLogo, sameShape, type FollowDesign } from './follow-design.js';
 import { followCaptions, followCopy, planFollowContent } from './follow-content.js';
 import { highlightPhrase, storyLayout, storyZones, TYPESET_VERSION, typesetCreative, type TypesetPlan, type TypesetResult } from '../typography/typeset.js';
 import { FallbackImageProvider, openAIJson, OpenAIImageProvider, type CreativeImageProvider, type ImageQuality } from './provider.js';
@@ -765,7 +765,7 @@ export async function produceDirection(input: {
     if (honesty.length) problems.unshift(...honesty.map((p) => `Logo composite: ${p}`));
     const content = zonesFromInspection(inspection, spec.output.width, spec.output.height).map((z) => z.box);
     // The design's own campaign artwork goes back at its spot, from its files.
-    const art = artworks.length ? await placeArtworks(image, artworks) : { image };
+    const art = artworks.length ? await placeArtworks(await clearArtworkSpots(image, artworks), artworks) : { image };
     const finished = await finishOverlays({ logoImage: art.image, logo: record, content, campaign, spec, env });
     problems.push(...finished.problems);
     imagePath = resolve(dir, `${direction.id}.png`);

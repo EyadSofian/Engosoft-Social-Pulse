@@ -49,6 +49,7 @@ export function followContentInstructions(design: FollowDesign): string {
     '   - A price ticket shows the number only. No currency word or sign («ريال», «ر.س», «ريال سعودي», «SAR», the riyal symbol) unless the person wrote one next to that price, and then exactly as they wrote it.',
     '   - Only when the request describes the post instead of giving its lines, write the copy yourself: each block about as long as its old words, in the same register and punch.',
     '   - When a course name is given, it is on the post exactly as written, once: in the person\'s line that already names the course, or else in the block of the design that names the course (the tape, for example «جهّز نفسك لشهادة PMP» becomes «دبلومة التصميم الداخلي» or «جهّز نفسك لدبلومة التصميم الداخلي»). A line of the person\'s that was going there moves whole to the line under it; none of their lines is dropped for it. When the design has no such block, add one under the headline.',
+    '   - Dashes, bullets or numbers at the start of the person\'s lines mark list items: they are never written. Items that share a block are joined with « • » («BIM Architecture • BIM Structure • BIM MEP»); items with a block each are written alone.',
     '   - Everything the request says must be on the post: the course or topic, the offer, every price with its option name, discounts, cashback, dates, times, places and numbers. Never drop a fact the person wrote.',
     '   - Facts (numbers, prices, currencies, percentages, dates, names, course codes like PMP or BIM) are copied exactly as the person wrote them.',
     '   - Keep none of the design\'s old words, numbers, names or prices, except mark blocks (the website line, the campaign hashtag), which keep their words exactly.',
@@ -148,11 +149,21 @@ export function withEveryDesignBlock(blocks: CopyBlock[], design: FollowDesign):
   return [...blocks, ...missing];
 }
 
+/**
+ * List items the person wrote with dashes or bullets («- BIM Architecture») are items, not text: on one line they
+ * are joined with « • », and no line starts with a stray dash.
+ */
+export function unlisted(text: string): string {
+  const marker = /^\s*(?:[-–—•*·▪]|\d+[.)])\s+/;
+  if (!marker.test(text)) return text;
+  return text.replace(marker, '').split(/\s+[-–—•*·▪]\s+/).map((item) => item.trim()).filter(Boolean).join(' • ');
+}
+
 /** Blocks as the model returned them, tidied: boxes inside the canvas, a highlight only when it is in the headline. */
 export function tidyBlocks(blocks: CopyBlock[]): CopyBlock[] {
   const clamp = (v: number) => Math.min(1, Math.max(0, Number.isFinite(v) ? v : 0));
   return blocks.map((block) => {
-    const text = block.text.trim().replace(/\s+/g, ' ');
+    const text = unlisted(block.text.trim().replace(/\s+/g, ' '));
     const box = block.box && { x: clamp(block.box.x), y: clamp(block.box.y), width: clamp(block.box.width), height: clamp(block.box.height) };
     const highlight = block.highlight?.trim() && text.includes(block.highlight.trim()) ? block.highlight.trim() : '';
     return { role: block.role.trim() || block.kind, kind: BLOCK_KINDS.includes(block.kind) ? block.kind : 'line', text, was: block.was?.trim() ?? '', ...(box && box.width > 0 && box.height > 0 ? { box } : {}), ...(highlight ? { highlight } : {}) };
