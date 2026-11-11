@@ -122,6 +122,11 @@ export function BrandTemplateComposer({ template, initialPrompt = '', onClose }:
   const [cutouts, setCutouts] = useState<Record<string, boolean>>({});
   const [prompt, setPrompt] = useState(initialPrompt);
   const [facts, setFacts] = useState('');
+  /** The course name the person types (or picks from a course): it goes on the post exactly as written. */
+  const [course, setCourse] = useState('');
+  const asksCourse = template.kind === 'course';
+  /** The facts the AI gets: the course name first, then what came from a picked course (date, time, place, link). */
+  const allFacts = [asksCourse && course.trim() ? `الدورة: ${course.trim()}` : '', facts].filter(Boolean).join('\n');
   /** Whether the request has filled the post once: later requests are changes to the current post. */
   const [filled, setFilled] = useState(false);
   const [manual, setManual] = useState(false);
@@ -188,7 +193,7 @@ export function BrandTemplateComposer({ template, initialPrompt = '', onClose }:
     setBusy('ai'); setDesignError('');
     try {
       const format = mainFormat(platforms, chosenIds);
-      const body = await api<{ jobId: string; requestId?: string }>('/api/ai/full-creative', { body: { prompt: request, format, directions: 1, followDesign: { templateId: template.id, surface }, ...(facts.trim() ? { facts } : {}) } });
+      const body = await api<{ jobId: string; requestId?: string }>('/api/ai/full-creative', { body: { prompt: request, format, directions: 1, followDesign: { templateId: template.id, surface }, ...(facts.trim() ? { facts } : {}), ...(asksCourse && course.trim() ? { course: course.trim() } : {}) } });
       setActiveCreative({ jobId: body.jobId, requestId: body.requestId ?? '', prompt: request, platforms, sizes: chosenIds, format, startedAt: new Date().toISOString(), status: 'running' });
       setAiRun({ jobId: body.jobId, requestId: body.requestId ?? '', prompt: request });
     } catch (error) { setDesignError(errorMessage(error, t('Could not start the design.', 'تعذّر بدء التصميم.'))); }
@@ -203,7 +208,7 @@ export function BrandTemplateComposer({ template, initialPrompt = '', onClose }:
     setBusy('design'); setMessage(''); setDesignError('');
     try {
       const current = filled ? Object.fromEntries(template.inputs.filter((i) => i.type !== 'photo').map((i) => [i.key, values[i.key] ?? ''])) : undefined;
-      const out = await api<{ values: Record<string, string>; surface: BrandSurface }>('/api/brand-templates/fill', { body: { templateId: template.id, prompt: request, language: languageOf(request), facts, surface, current } });
+      const out = await api<{ values: Record<string, string>; surface: BrandSurface }>('/api/brand-templates/fill', { body: { templateId: template.id, prompt: request, language: languageOf(request), facts: allFacts, surface, current } });
       // A first fill replaces the sample words; facts it could not find stay as they were (empty, or from the course).
       setValues((now) => ({ ...now, ...Object.fromEntries(Object.entries(out.values).filter(([key, v]) => v || !template.inputs.find((i) => i.key === key)?.fact)) }));
       if (out.surface && template.surfaces.includes(out.surface)) setSurface(out.surface);
@@ -236,7 +241,8 @@ export function BrandTemplateComposer({ template, initialPrompt = '', onClose }:
     const date = start ? start.toLocaleDateString('ar-EG-u-nu-latn', { weekday: 'long', day: 'numeric', month: 'long', timeZone: 'Africa/Cairo' }) : '';
     const time = start ? start.toLocaleTimeString('ar-EG-u-nu-latn', { hour: 'numeric', minute: '2-digit', timeZone: 'Africa/Cairo' }) : '';
     const place = run?.location ?? '';
-    setFacts([`الدورة: ${name}`, date && `التاريخ: ${date}`, time && `الوقت: ${time}`, place && `المكان: ${place}`, run?.registrationUrl && `رابط التسجيل: ${run.registrationUrl}`].filter(Boolean).join('\n'));
+    setCourse(name);
+    setFacts([date && `التاريخ: ${date}`, time && `الوقت: ${time}`, place && `المكان: ${place}`, run?.registrationUrl && `رابط التسجيل: ${run.registrationUrl}`].filter(Boolean).join('\n'));
     setPrompt((current) => current || name);
     setFilled(false);
     setValues((current) => ({ ...current, ...(template.inputs.some((i) => i.key === 'date') && date ? { date } : {}), ...(template.inputs.some((i) => i.key === 'time') && time ? { time } : {}), ...(template.inputs.some((i) => i.key === 'place') && place ? { place } : {}) }));
@@ -311,6 +317,10 @@ export function BrandTemplateComposer({ template, initialPrompt = '', onClose }:
         </div>}
       </div>
       <div className="brand-ai">
+        {asksCourse && <label className="ui-field"><span className="ui-field__label"><GraduationCap size={14} /> {t('Course name', 'اسم الكورس')}</span>
+          <input className="ui-input" dir="auto" maxLength={160} value={course} onChange={(e) => { setCourse(e.target.value); if (designError) setDesignError(''); }}
+            placeholder={t('e.g. Interior Design Diploma', 'مثال: دبلومة التصميم الداخلي')} />
+          <span className="ui-field__hint">{t('It goes on the post exactly as you write it.', 'هيظهر على البوست زي ما كتبته بالظبط.')}</span></label>}
         <label className="ui-field"><span className="ui-field__label"><Sparkles size={14} /> {filled ? t('Ask for a change', 'اطلب تعديل') : t('Describe the whole post', 'اكتب المنشور كله في طلب واحد')}</span>
           <textarea className="ui-input" rows={filled ? 2 : 5} data-first={filled ? undefined : ""} dir="auto" value={prompt} onChange={(e) => { setPrompt(e.target.value); if (designError) setDesignError(''); }}
             onKeyDown={(e) => { if (e.key === 'Enter' && (e.metaKey || e.ctrlKey)) { e.preventDefault(); void design(); } }}
@@ -322,7 +332,7 @@ export function BrandTemplateComposer({ template, initialPrompt = '', onClose }:
           <Button size="sm" variant={canDesign ? 'secondary' : 'primary'} icon={<Wand2 size={14} />} busy={busy === 'design'} disabled={Boolean(busy) || locked} onClick={() => void design()}>
             {canDesign ? t('Quick fill (words only)', 'ملء سريع للقالب (الكلام بس)') : filled ? t('Apply the change', 'نفّذ التعديل') : t('Make the design', 'صمّم')}{toDraw.length ? t(` + ${toDraw.length} AI image`, ` + ${toDraw.length === 1 ? 'صورة واحدة' : `${toDraw.length} صور`} بالذكاء الاصطناعي`) : ''}
           </Button>
-          <Button size="sm" variant="ghost" icon={<GraduationCap size={14} />} onClick={() => setCoursePanel(!coursePanel)}>{t('From a course (optional)', 'من دورة (اختياري)')}</Button>
+          <Button size="sm" variant="ghost" icon={<GraduationCap size={14} />} onClick={() => setCoursePanel(!coursePanel)}>{asksCourse ? t('Find the course (optional)', 'دوّر على الكورس (اختياري)') : t('From a course (optional)', 'من دورة (اختياري)')}</Button>
         </div>
         {designError && <p role="alert" className="creative-home__error">{designError}</p>}
         {lastRequest && !designError && <p className="u-xs u-muted brand-ai__facts" dir="auto">{t('Last request', 'آخر طلب')}: {lastRequest}</p>}

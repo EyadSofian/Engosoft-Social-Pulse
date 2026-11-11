@@ -52,6 +52,12 @@ export interface BrandTemplate {
   inputs: BrandInput[];
   /** Words the AI copywriter gets about the template's tone and structure. */
   brief: string;
+  /**
+   * The design's own logo when it is not the house logo (the 50/50 campaign keeps the older «ENGO | SOFT» lockup):
+   * its file and where it sits in the reference image. When AI redraws the design, this file is placed there
+   * instead of the official logo, on every size.
+   */
+  logo?: { file: string; place: { x: number; y: number; width: number; height: number } };
 }
 
 const REF = (n: string) => `/brand-references/post-${n}.jpg`;
@@ -146,6 +152,8 @@ export const BRAND_TEMPLATES: BrandTemplate[] = [
     kind: 'course',
     references: { blue: REF('campaign-5050') },
     surfaces: ['blue'],
+    // Measured on post-campaign-5050.jpg (1080×1350): the lockup is 205×67 px at 34,45, the file's native size.
+    logo: { file: '/brand/logos/engosoft-old-lockup-reversed.png', place: { x: 0.03, y: 0.031, width: 0.193, height: 0.054 } },
     brief: 'Campaign course offer in Egyptian/Gulf marketing Arabic: a punchy headline of 3–5 words with a 1–2 word phrase to colour green, a tape line naming the course ("جهّز نفسك لشهادة PMP"), one supporting line about the career benefit. Prices come from the person, never from you.',
     inputs: [
       { key: 'stamp', type: 'photo', label: t('شعار الحملة', 'Campaign stamp'), hint: t('PNG بخلفية شفافة. سيبه زي ما هو لنفس الحملة', 'A PNG with a transparent background. Keep it for the same campaign'), photo: { kind: 'artwork', aspect: 1 }, sample: t('/brand-references/campaign-5050-stamp.png', '/brand-references/campaign-5050-stamp.png'), place: { x: 0.365, y: 0.13, width: 0.27, height: 0.215 }, says: 'عرض الخمسين خمسين %50 خصم %50 كاش باك' },

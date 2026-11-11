@@ -46,6 +46,7 @@ export function followContentInstructions(design: FollowDesign): string {
     '   - A line longer than its block goes on two lines of that block, or is split at a natural break across two neighbouring blocks that read as one sentence in the design (a headline and the line under it, a tape and the line under the tape). Never drop part of a line.',
     '   - Prices written as «بعد 1000» and «قبل 2000» (after / before, «بدل», «بدلاً من», «كان», «الآن») are the new price and the old price: the new one on the main price ticket, the old one where the design shows its old price, with its «instead of» tag. On a price ticket write the number, and the currency only when the request names one that differs from the design\'s (for example «جنيه» on a riyal design); otherwise the design\'s own currency sign stays beside it, as the design shows it.',
     '   - Only when the request describes the post instead of giving its lines, write the copy yourself: each block about as long as its old words, in the same register and punch.',
+    '   - When a course name is given, it is on the post exactly as written, once: in the person\'s line that already names the course, or else in the block of the design that names the course (the tape, for example «جهّز نفسك لشهادة PMP» becomes «دبلومة التصميم الداخلي» or «جهّز نفسك لدبلومة التصميم الداخلي»). A line of the person\'s that was going there moves whole to the line under it; none of their lines is dropped for it. When the design has no such block, add one under the headline.',
     '   - Everything the request says must be on the post: the course or topic, the offer, every price with its option name, discounts, cashback, dates, times, places and numbers. Never drop a fact the person wrote.',
     '   - Facts (numbers, prices, currencies, percentages, dates, names, course codes like PMP or BIM) are copied exactly as the person wrote them.',
     '   - Keep none of the design\'s old words, numbers, names or prices, except mark blocks (the website line, the campaign hashtag), which keep their words exactly.',
@@ -73,6 +74,17 @@ export function missingNumbers(given: string, blocks: CopyBlock[], artwork: stri
   const shown = numbersIn([...blocks.map((b) => b.text), ...artwork].join(' '));
   return [...numbersIn(given)].filter((n) => !shown.has(n));
 }
+
+/** Arabic and Latin text folded for comparison: no diacritics or tatweel, one form of alef, yaa and taa marbuta. */
+const fold = (text: string) => digitsOf(text.normalize('NFKC'))
+  .replace(/[\u064B-\u0670\u0640]/g, '').replace(/[أإآٱ]/g, 'ا').replace(/ى/g, 'ي').replace(/ة/g, 'ه')
+  .replace(/[^\p{L}\p{N}]+/gu, ' ').trim().toLowerCase();
+
+/** The course name is on the post: all of it, in order, inside one block («لدبلومة …» counts for «دبلومة …»). */
+export const courseShown = (course: string, blocks: CopyBlock[]) => {
+  const name = fold(course);
+  return !name || blocks.some((b) => fold(b.text).includes(name));
+};
 
 /**
  * The last guard on facts: a block (other than a series mark) that shows a number nobody gave loses that block's
@@ -102,7 +114,7 @@ export function tidyBlocks(blocks: CopyBlock[]): CopyBlock[] {
   });
 }
 
-async function askForContent(design: FollowDesign, request: string, facts: string[], env: NodeJS.ProcessEnv, note = ''): Promise<FollowContent> {
+async function askForContent(design: FollowDesign, request: string, facts: string[], env: NodeJS.ProcessEnv, note = '', course = ''): Promise<FollowContent> {
   const out = await openAIJson<FollowContent>({
     apiKey: env.OPENAI_API_KEY ?? '', model: env.OPENAI_CREATIVE_TEXT_MODEL?.trim() || 'gpt-5.5', reasoning: 'medium',
     schemaName: 'engosoft_follow_design_content', schema: contentSchema,
@@ -110,6 +122,7 @@ async function askForContent(design: FollowDesign, request: string, facts: strin
     content: [
       { type: 'input_text', text: [
         `Request from the person making the post: ${request}`,
+        course ? `Course name (must be on the post exactly as written): «${course}»` : '',
         `Verified course facts (use them only where the design has a block for them, such as a date badge; they are not required): ${facts.length ? facts.join(' | ') : 'none (do not imply any date or schedule that the request does not give)'}`,
         design.structure ? `About this design: ${design.structure}` : 'This design was uploaded by the person: read its blocks from the image.',
         note,
@@ -125,21 +138,30 @@ async function askForContent(design: FollowDesign, request: string, facts: strin
  * content back once with that list; what is still missing after that, and any number that was removed because
  * nobody gave it, is returned in `notes` so the result is shown for review instead of looking finished.
  */
-export async function planFollowContent(input: { design: FollowDesign; request: string; facts: string[]; env: NodeJS.ProcessEnv }): Promise<{ content: FollowContent; notes: string[] }> {
+export async function planFollowContent(input: { design: FollowDesign; request: string; facts: string[]; env: NodeJS.ProcessEnv; course?: string }): Promise<{ content: FollowContent; notes: string[] }> {
   const { design, request, facts, env } = input;
-  // Every number the person wrote must be on the post; verified course facts may be used but are not required.
-  const given = [request, ...facts].join('\n');
+  const course = input.course?.trim().replace(/\s+/g, ' ') ?? '';
+  // Every number the person wrote, and the course name they typed, must be on the post; verified course facts may
+  // be used but are not required.
+  const given = [request, course, ...facts].join('\n');
   const artwork = (design.artworks ?? []).map((a) => a.says);
-  let content = await askForContent(design, request, facts, env);
-  let missing = missingNumbers(request, content.blocks.filter((b) => b.kind !== 'mark'), artwork);
-  if (missing.length) {
-    const again = await askForContent(design, request, facts, env, `Your previous version left these numbers from the request off the post: ${missing.join(', ')}. Put every one of them on the post, with the words that go with it, in a block that fits. Previous version: ${JSON.stringify(content.blocks.map(({ role, kind, text }) => ({ role, kind, text })))}`).catch(() => null);
-    const left = again ? missingNumbers(request, again.blocks.filter((b) => b.kind !== 'mark'), artwork) : missing;
-    if (again && left.length < missing.length) { content = again; missing = left; }
+  const lost = (blocks: CopyBlock[]) => {
+    const own = blocks.filter((b) => b.kind !== 'mark');
+    return { numbers: missingNumbers(`${request}\n${course}`, own, artwork), course: Boolean(course) && !courseShown(course, own) };
+  };
+  const count = (l: ReturnType<typeof lost>) => l.numbers.length + Number(l.course);
+  let content = await askForContent(design, request, facts, env, '', course);
+  let missing = lost(content.blocks);
+  if (count(missing)) {
+    const off = [...missing.numbers, ...(missing.course ? [`the course name «${course}»`] : [])];
+    const again = await askForContent(design, request, facts, env, `Your previous version left these off the post: ${off.join(', ')}. Put every one of them on the post, with the words that go with it, in a block that fits. Previous version: ${JSON.stringify(content.blocks.map(({ role, kind, text }) => ({ role, kind, text })))}`, course).catch(() => null);
+    const left = again ? lost(again.blocks) : missing;
+    if (again && count(left) < count(missing)) { content = again; missing = left; }
   }
   const cleaned = dropInventedNumbers(content.blocks, given);
   const notes = [
-    ...(missing.length ? [`Facts from the request that are not on the post: ${missing.join(', ')}`] : []),
+    ...(missing.numbers.length ? [`Facts from the request that are not on the post: ${missing.numbers.join(', ')}`] : []),
+    ...(missing.course ? [`The course name «${course}» is not on the post.`] : []),
     ...cleaned.removed.map((text) => `Removed a line with a number nobody gave: «${text}»`),
   ];
   return { content: { ...content, blocks: cleaned.blocks }, notes };

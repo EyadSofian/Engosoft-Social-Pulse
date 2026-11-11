@@ -24,7 +24,7 @@ import { compileBriefPrompt, compileDesignPrompt, DEFAULT_SETTINGS, ENGINE_SKILL
 import { THEMES, type ThemeId } from '../skills/themes.js';
 import { pasteInside, patchRejected } from './patch.js';
 import { houseReferences, referencePrompt } from './house-references.js';
-import { followDesignPrompt, followImage, followPrompt, placeArtworks, sameShape, type FollowDesign } from './follow-design.js';
+import { followDesignPrompt, followImage, followPrompt, placeArtworks, placeOwnLogo, sameShape, type FollowDesign } from './follow-design.js';
 import { followCaptions, followCopy, planFollowContent } from './follow-content.js';
 import { highlightPhrase, storyLayout, storyZones, TYPESET_VERSION, typesetCreative, type TypesetPlan, type TypesetResult } from '../typography/typeset.js';
 import { FallbackImageProvider, openAIJson, OpenAIImageProvider, type CreativeImageProvider, type ImageQuality } from './provider.js';
@@ -123,6 +123,8 @@ export interface FullCreativeRequest {
   followDesign?: FollowDesign;
   /** Course facts the person picked (one per line): usable on a followed design, not required. */
   facts?: string;
+  /** The course name the person typed: on a followed design it must show on the post exactly as written. */
+  course?: string;
 }
 export interface FullCreativeResult {
   directionId: string;
@@ -752,8 +754,14 @@ export async function produceDirection(input: {
   if (logo.requiresCreativeRepair) {
     problems.unshift(`Logo: ${logo.reason}`);
   } else {
-    const { image, record } = await compositeLogo(output, { variantId: logo.variantId, x: logo.placement.x, y: logo.placement.y, width: logo.placement.width });
-    const honesty = await verifyComposite(output, image, record);
+    // The followed design's own logo (the 50/50 campaign's older lockup) goes where the design has it, from its
+    // file; otherwise the official logo goes where the resolver found a clean corner.
+    const own = input.follow?.logo && followed ? await placeOwnLogo(output, input.follow.logo, { same: sameAsDesign, designAspect: followed.aspect, safe: spec.safeArea }) : null;
+    const official = own ? null : await compositeLogo(output, { variantId: logo.variantId, x: logo.placement.x, y: logo.placement.y, width: logo.placement.width });
+    const image = own?.image ?? official!.image;
+    const record = own?.box ?? official!.record;
+    if (own) logo = { ...logo, placement: { ...own.box, anchor: 'top-left' }, reason: 'The design\'s own logo (the older ENGO | SOFT lockup), placed from its file at its spot' };
+    const honesty = official ? await verifyComposite(output, official.image, official.record) : [];
     if (honesty.length) problems.unshift(...honesty.map((p) => `Logo composite: ${p}`));
     const content = zonesFromInspection(inspection, spec.output.width, spec.output.height).map((z) => z.box);
     // The design's own campaign artwork goes back at its spot, from its files.
@@ -939,12 +947,12 @@ export const followQualityFor = (env: NodeJS.ProcessEnv = process.env): ImageQua
  * (follow-content.ts), one direction per requested design (each an attempt at the same redraw), and the captions
  * started alongside the image.
  */
-export async function planFollowCreative(prompt: string, follow: FollowDesign, count: number, context: VerifiedCourseContext | undefined, env: NodeJS.ProcessEnv, onDesigning?: () => void, picked = ''): Promise<{ brief: CreativeBriefPlan; captions: Promise<StrategyDecision['captionWriter'] | null> }> {
+export async function planFollowCreative(prompt: string, follow: FollowDesign, count: number, context: VerifiedCourseContext | undefined, env: NodeJS.ProcessEnv, onDesigning?: () => void, picked = '', course = ''): Promise<{ brief: CreativeBriefPlan; captions: Promise<StrategyDecision['captionWriter'] | null> }> {
   const facts = [
     ...(context ? [`Course: ${context.facts.title.value}`, ...factLines(context), ...(context.facts.registrationUrl ? [`Registration: ${context.facts.registrationUrl.value}`] : [])] : []),
     ...picked.split('\n').map((line) => line.trim()).filter(Boolean),
   ];
-  const { content, notes } = await planFollowContent({ design: follow, request: prompt, facts, env });
+  const { content, notes } = await planFollowContent({ design: follow, request: prompt, facts, env, course });
   onDesigning?.();
   const house = houseLogo() ?? { mark: 'lockup' as LogoMark, corner: 'top-left' as Corner };
   const same = 'As the chosen design';
@@ -955,7 +963,7 @@ export async function planFollowCreative(prompt: string, follow: FollowDesign, c
     directions: Array.from({ length: count }, (_, i) => ({ id: `d${i + 1}`, name: follow.name, concept: `${follow.name}, redrawn with the new words${content.photos ? ' and photos' : ''}`, subject: content.photos || same, composition: same, palette: same, typography: same, mood: same, logoMark: house.mark, logoCorner: house.corner })),
     follow: { photos: content.photos, notes },
   };
-  return { brief, captions: followCaptions({ request: prompt, content, facts, env }).catch(() => null) };
+  return { brief, captions: followCaptions({ request: prompt, content, facts: [...(course.trim() ? [`Course: ${course.trim()}`] : []), ...facts], env }).catch(() => null) };
 }
 
 export async function generateFullCreative(request: FullCreativeRequest, env = process.env, onProgress?: ProgressFn): Promise<FullCreativeRun> {
@@ -965,7 +973,7 @@ export async function generateFullCreative(request: FullCreativeRequest, env = p
   const outputDir = mediaDir('creatives', requestId);
   mkdirSync(outputDir, { recursive: true });
   onProgress?.({ stage: 'context' });
-  const odoo = request.skipOdoo ? { status: 'skipped' as const, message: 'Odoo lookup skipped' } : await resolveOdooContext(request.prompt).catch((error) => ({ status: 'unavailable' as const, message: error instanceof Error ? error.message : 'Odoo error' }));
+  const odoo = request.skipOdoo ? { status: 'skipped' as const, message: 'Odoo lookup skipped' } : await resolveOdooContext(request.course?.trim() ? `${request.course.trim()}\n${request.prompt}` : request.prompt).catch((error) => ({ status: 'unavailable' as const, message: error instanceof Error ? error.message : 'Odoo error' }));
   const context = odoo.status === 'matched' ? odoo.context : undefined;
   onProgress?.({ stage: 'planning' });
   // The campaign's slogan shapes the copy; its key visual joins the attachments as a style reference.
@@ -976,7 +984,7 @@ export async function generateFullCreative(request: FullCreativeRequest, env = p
   const attachments = [...(request.attachments ?? []), ...(keyVisual ? [keyVisual] : [])].slice(0, 6);
   // A design to follow has its own short path: its blocks filled from the request, then one exact redraw. The
   // general planning (copywriter, layout, theme) would rewrite the words and fight the design's layout.
-  const followed = follow ? await planFollowCreative(request.prompt, follow, count, context, env, () => onProgress?.({ stage: 'designing' }), request.facts) : null;
+  const followed = follow ? await planFollowCreative(request.prompt, follow, count, context, env, () => onProgress?.({ stage: 'designing' }), request.facts, request.course) : null;
   const brief = followed ? followed.brief : request.engine === 'legacy'
     ? await planCreative(request.objective ? `${planningPrompt}\nObjective: ${request.objective}` : planningPrompt, format, count, context, env, request.style)
     : await planCreativeWithEngine(planningPrompt, format, count, context, env, request.style, request.settings, () => onProgress?.({ stage: 'designing' }), { objective: request.objective, attachments: attachments.length ? attachments : undefined, campaign });

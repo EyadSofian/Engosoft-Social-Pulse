@@ -5,8 +5,8 @@ import { join } from 'node:path';
 import { after, test } from 'node:test';
 import sharp from 'sharp';
 process.env.MEDIA_DIR = mkdtempSync(join(tmpdir(), 'follow-content-'));
-const { digitsOf, dropInventedNumbers, followContentInstructions, followCopy, missingNumbers, planFollowContent } = await import('../server/creative-intelligence/generation/follow-content');
-const { followDesignPrompt, placeArtworks, resolveFollowDesign } = await import('../server/creative-intelligence/generation/follow-design');
+const { courseShown, digitsOf, dropInventedNumbers, followContentInstructions, followCopy, missingNumbers, planFollowContent } = await import('../server/creative-intelligence/generation/follow-content');
+const { followDesignPrompt, placeArtworks, placeOwnLogo, resolveFollowDesign } = await import('../server/creative-intelligence/generation/follow-design');
 const { produceDirection, planFollowCreative } = await import('../server/creative-intelligence/generation/full-creative');
 const { FallbackImageProvider, ImageProviderError } = await import('../server/creative-intelligence/generation/provider');
 const { checkCopy, copyPasses } = await import('../server/creative-intelligence/typography-validation/copy-check');
@@ -73,7 +73,7 @@ test('a number left off the post sends the content back once, and the second ans
   const seen = responses({ engosoft_follow_design_content: () => content(++call === 1 ? BLOCKS.filter((b) => b.text !== '2000') : BLOCKS) });
   const { content: out, notes } = await planFollowContent({ design, request: REQUEST, facts: ['يبدأ الأحد 24 نوفمبر'], env: { OPENAI_API_KEY: 'test' } });
   assert.equal(seen.length, 2);
-  assert.match(seen[1].body.input[0].content[0].text!, /left these numbers from the request off the post: 2000/);
+  assert.match(seen[1].body.input[0].content[0].text!, /left these off the post: 2000/);
   // The course date (24) is allowed but not required, so it is not reported missing.
   assert.deepEqual(notes, []);
   assert.deepEqual(out.blocks.map((b) => b.text), BLOCKS.map((b) => b.text));
@@ -191,4 +191,45 @@ test('a followed design is redrawn from the design itself, a missing price is le
   // The 50/50 stamp is back at its own spot in the finished post.
   const { channels } = await sharp(result.imagePath!).extract({ left: Math.round(0.4 * 1080), top: Math.round(0.15 * 1350), width: Math.round(0.2 * 1080), height: Math.round(0.17 * 1350) }).toBuffer().then((b) => sharp(b).stats());
   assert.ok(channels[1].mean > 120, 'stamp pixels at the stamp spot (plain blue is 70)');
+  // The design's own older logo, not the official one, at the spot it has in the design.
+  assert.match((result.logo as { reason: string }).reason, /own logo/);
+  const logo = await sharp(result.imagePath!).extract({ left: 34, top: 45, width: 205, height: 67 }).toBuffer().then((b) => sharp(b).stats());
+  assert.ok(logo.channels[0].mean > 50, `white logo strokes at the logo spot (plain blue red is 0), got ${logo.channels[0].mean}`);
+});
+
+test('the 50/50 design keeps its own older logo: at its spot on its shape, in the same corner on others, never enlarged', async () => {
+  const design = (await resolveFollowDesign({ templateId: 'brand-campaign-offer' }, '00000000-0000-4000-8000-000000000014'))!;
+  assert.match(design.logo!.path, /engosoft-old-lockup-reversed\.png$/);
+  const canvas = (width: number, height: number) => sharp({ create: { width, height, channels: 3, background: '#0443f2' } }).png().toBuffer();
+  const feed = (await placeOwnLogo(await canvas(1080, 1350), design.logo!, { same: true, designAspect: 0.8 }))!;
+  // Measured in the design: 205×67 at 34,45.
+  assert.ok(Math.abs(feed.box.x - 34) <= 3 && Math.abs(feed.box.y - 45) <= 4, JSON.stringify(feed.box));
+  assert.ok(Math.abs(feed.box.width - 207) <= 3, JSON.stringify(feed.box));
+  const white = await sharp(feed.image).extract({ left: feed.box.x, top: feed.box.y, width: feed.box.width, height: feed.box.height }).toBuffer().then((b) => sharp(b).stats());
+  assert.ok(white.channels[0].mean > 50, 'the logo is drawn (plain blue red is 4)');
+  // A story: top-left again, below the platform's top bar, the same width share.
+  const story = (await placeOwnLogo(await canvas(1080, 1920), design.logo!, { same: false, designAspect: 0.8, safe: { top: 230, left: 0 } }))!;
+  assert.ok(story.box.y >= 230 && story.box.x < 60, JSON.stringify(story.box));
+  assert.ok(Math.abs(story.box.width - 208) <= 3, JSON.stringify(story.box));
+  // A wide banner sizes it from its height, like the official logo.
+  const wide = (await placeOwnLogo(await canvas(1200, 630), design.logo!, { same: false, designAspect: 0.8 }))!;
+  assert.ok(wide.box.width < 190 && wide.box.x < 50, JSON.stringify(wide.box));
+});
+
+test('the course name the person typed must be on the post, exactly as written', async () => {
+  const block = (text: string): Block => ({ role: 'Course tape', kind: 'line', text });
+  assert.equal(courseShown('دبلومة التصميم الداخلي', [block('جهّز نفسك لدبلومة التصميم الداخلي')]), true);
+  assert.equal(courseShown('دبلومة التصميم الداخلى', [block('دبلومة التصميم الداخلي')]), true);
+  assert.equal(courseShown('دبلومة التصميم الداخلي', [block('حوّل شغفك بالتصميم الداخلي')]), false);
+  const design = (await resolveFollowDesign({ templateId: 'brand-campaign-offer' }, '00000000-0000-4000-8000-000000000015'))!;
+  assert.match(followContentInstructions(design), /When a course name is given, it is on the post exactly as written/);
+  const withCourse = [BLOCKS[0], { ...BLOCKS[1], text: 'دبلومة التصميم الداخلي' }, { ...BLOCKS[2], text: 'حوّل شغفك بالتصميم الداخلي لمهارة احترافية مطلوبة في سوق العمل.' }, ...BLOCKS.slice(3)];
+  let call = 0;
+  const seen = responses({ engosoft_follow_design_content: () => content(++call === 1 ? BLOCKS : withCourse) });
+  const { content: out, notes } = await planFollowContent({ design, request: REQUEST, facts: [], env: { OPENAI_API_KEY: 'test' }, course: ' دبلومة التصميم  الداخلي ' });
+  assert.equal(seen.length, 2);
+  assert.match(seen[0].body.input[0].content[0].text!, /Course name \(must be on the post exactly as written\): «دبلومة التصميم الداخلي»/);
+  assert.match(seen[1].body.input[0].content[0].text!, /left these off the post: the course name «دبلومة التصميم الداخلي»/);
+  assert.deepEqual(notes, []);
+  assert.equal(out.blocks[1].text, 'دبلومة التصميم الداخلي');
 });
