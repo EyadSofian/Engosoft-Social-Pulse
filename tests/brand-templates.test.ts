@@ -4,7 +4,7 @@ import sharp from 'sharp';
 import { aiDrawable, BRAND_TEMPLATES, brandSamples, brandTemplate, missingInputs } from '../src/domain/brand-templates';
 import { PUBLISHING_PRESETS } from '../src/domain/output-presets';
 import { layoutBrandTemplate, type Measure } from '../src/features/brand-templates/layout';
-import { fillableInputs, fillInstructions, keepGivenFacts, removeWhiteBackground } from '../server/brand-templates';
+import { clipWords, fillableInputs, fillInstructions, keepGivenFacts, removeWhiteBackground } from '../server/brand-templates';
 
 /** Rough widths without a browser: Arabic and Latin glyphs at about half and 0.56 of the font size. */
 const measure: Measure = (text, font) => {
@@ -86,4 +86,10 @@ test('a drawn cut-out loses its white studio background but keeps white inside t
   assert.equal(alpha(5, 5), 0);
   assert.equal(alpha(100, 100), 255, 'white inside the subject stays');
   assert.equal(alpha(100, 150), 255);
+});
+
+test('a line over its limit is cut at a whole word, never mid-word', () => {
+  assert.equal(clipWords('3 تخصصات تفتح لك آفاق جديدة: Architecture, Structure, MEP', 48), '3 تخصصات تفتح لك آفاق جديدة: Architecture');
+  assert.equal(clipWords('من التصميم للتنفيذ.. الـBIM يجمع كل حاجة', 34), 'من التصميم للتنفيذ.. الـBIM يجمع');
+  assert.equal(clipWords('قصير', 20), 'قصير');
 });

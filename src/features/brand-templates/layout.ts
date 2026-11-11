@@ -119,7 +119,10 @@ class Ctx {
     this.body.push(`<image href="${esc(href)}" x="${n(x)}" y="${n(y)}" width="${n(w)}" height="${n(h)}" preserveAspectRatio="${fit}"${clip ? ` clip-path="url(#${clip})"` : ''}/>`);
   }
   svg(background: string) {
-    return `<svg xmlns="http://www.w3.org/2000/svg" width="${this.W}" height="${this.H}" viewBox="0 0 ${this.W} ${this.H}"><defs>${this.defs.join('')}</defs>${background}${this.body.join('')}</svg>`;
+    // direction="ltr" on the root: an inline preview sits in a right-to-left page and would inherit it, which
+    // anchors every text without its own direction from the wrong side (the price over its currency, the website
+    // off the left edge). Exported PNGs render standalone and already default to left-to-right.
+    return `<svg xmlns="http://www.w3.org/2000/svg" width="${this.W}" height="${this.H}" viewBox="0 0 ${this.W} ${this.H}" direction="ltr"><defs>${this.defs.join('')}</defs>${background}${this.body.join('')}</svg>`;
   }
 }
 
@@ -581,6 +584,17 @@ const campaignOffer: Builder = (c) => {
   const wide = c.ratio > 1.15;
   const head = c.value('headline'), hi = c.value('highlight'), tape = c.value('tape'), sub = c.value('subline');
   const price = c.value('price'), currency = c.value('currency'), instead = c.value('instead'), old = c.value('oldPrice');
+  /**
+   * A supporting line that needs two lines breaks at its natural place, after «:» (or the first «•»), so a list
+   * like «3 تخصصات: Architecture • Structure • MEP» never splits one of its items across the lines.
+   */
+  const subFor = (maxWidth: number, size: number) => {
+    if (c.width(sub, ss, size) <= maxWidth) return sub;
+    const at = sub.search(/[:：]\s*/);
+    if (at > 0) return `${sub.slice(0, at + 1)}\n${sub.slice(at + 1).trim()}`;
+    const bullet = sub.indexOf('•');
+    return bullet > 0 ? `${sub.slice(0, bullet).trim()}\n${sub.slice(bullet).trim()}` : sub;
+  };
   const stamp = c.value('stamp'), hashtag = c.value('hashtag');
   const hs = c.style(head, 800, C.white), ts = c.style(tape, 800, C.white), ss = c.style(sub, 800, C.white);
   /** One line as in the design, unless that would make it much smaller; then two. */
@@ -606,26 +620,33 @@ const campaignOffer: Builder = (c) => {
     c.text(f, ts, cx, top + (h - f.size) / 2 + f.size * 0.02, 'center');
     return h;
   };
-  /** New price on a blue ticket, «instead of» on a white label with a gift, the old price on a second ticket. */
+  /**
+   * New price on a blue ticket, «instead of» on a white label with a gift and the old price on a second ticket
+   * when there is an old price. The rings and ticks follow the stack that is actually drawn.
+   */
+  const ticketHeight = (k: number) => 150 * k + (old ? (instead ? 70 * k : 0) + 98 * k : 0);
   const ticket = (cx: number, top: number, k: number) => {
     const tw = 380 * k, th = 150 * k, angle = -8;
     const g: string[] = [];
     const py = top;
     g.push(`<path d="${torn(cx - tw / 2, py, tw, th, 3)}" fill="#1D57FF" filter="url(#${shadow})"/>`);
     const ps = c.style(price, 800, GREEN, { family: 'Plus Jakarta Sans', rtl: false });
-    const pf = c.fit(price, ps, { maxWidth: tw * 0.62, maxLines: 1, max: 118 * k });
     const cs = c.style(currency, 800, C.white);
-    const cf = c.fit(currency, cs, { maxWidth: tw * 0.3, maxLines: 1, max: 54 * k });
-    const total = pf.width + 18 * k + cf.width;
+    const gap = currency ? 18 * k : 0;
+    const cf = currency ? c.fit(currency, cs, { maxWidth: tw * 0.34, maxLines: 1, max: 54 * k }) : { width: 0, size: 0 } as Fitted;
+    // The number and its currency share the ticket's width, so a long currency («ريال») never runs into the price.
+    const pf = c.fit(price, ps, { maxWidth: tw * 0.84 - cf.width - gap, maxLines: 1, max: 118 * k });
+    const total = pf.width + gap + cf.width;
     const startX = cx - total / 2;
     // Arabic reads the currency after the number on the left; English puts it first.
-    const priceX = cs.rtl ? startX + cf.width + 18 * k : startX;
-    const curX = cs.rtl ? startX : startX + pf.width + 18 * k;
+    const priceX = cs.rtl ? startX + cf.width + gap : startX;
+    const curX = cs.rtl ? startX : startX + pf.width + gap;
     const base = py + th / 2 + pf.size * 0.36;
-    g.push(`<text x="${n(priceX)}" y="${n(base)}" font-family="Plus Jakarta Sans" font-weight="800" font-size="${n(pf.size)}" fill="${GREEN}">${esc(price)}</text>`);
-    if (currency) g.push(`<text x="${n(curX)}" y="${n(base - pf.size * 0.05)}" font-family="${cs.family}" font-weight="800" font-size="${n(cf.size)}" fill="${C.white}"${cs.rtl ? ' direction="ltr"' : ''}>${esc(currency)}</text>`);
+    g.push(`<text x="${n(priceX)}" y="${n(base)}" font-family="Plus Jakarta Sans" font-weight="800" font-size="${n(pf.size)}" fill="${GREEN}" direction="ltr" text-anchor="start">${esc(price)}</text>`);
+    if (currency) g.push(`<text x="${n(curX + (cs.rtl ? cf.width : 0))}" y="${n(base - pf.size * 0.05)}" font-family="${cs.family}" font-weight="800" font-size="${n(cf.size)}" fill="${C.white}"${cs.rtl ? ' direction="rtl"' : ' direction="ltr"'} text-anchor="start">${esc(currency)}</text>`);
     const lw = 270 * k, lh = 78 * k, ly = py + th - 8 * k;
-    if (instead) {
+    const label = Boolean(old && instead);
+    if (label) {
       g.push(`<path d="${torn(cx - lw / 2 + 30 * k, ly, lw, lh, 5)}" fill="#F3FEFF"/>`);
       const is = c.style(instead, 800, '#0A3BE0');
       const iF = c.fit(instead, is, { maxWidth: lw * 0.6, maxLines: 1, max: 56 * k });
@@ -635,20 +656,27 @@ const campaignOffer: Builder = (c) => {
       g.push(`<g fill="none" stroke="${GREEN}" stroke-width="${n(sw)}" stroke-linejoin="round"><rect x="${n(gx)}" y="${n(gy + gs * 0.3)}" width="${n(gs)}" height="${n(gs * 0.7)}"/><rect x="${n(gx - gs * 0.06)}" y="${n(gy + gs * 0.12)}" width="${n(gs * 1.12)}" height="${n(gs * 0.2)}"/><path d="M ${n(gx + gs / 2)} ${n(gy + gs * 0.12)} V ${n(gy + gs)} M ${n(gx + gs / 2)} ${n(gy + gs * 0.12)} C ${n(gx + gs * 0.2)} ${n(gy - gs * 0.15)} ${n(gx + gs * 0.1)} ${n(gy + gs * 0.1)} ${n(gx + gs / 2)} ${n(gy + gs * 0.12)} C ${n(gx + gs * 0.8)} ${n(gy - gs * 0.15)} ${n(gx + gs * 0.9)} ${n(gy + gs * 0.1)} ${n(gx + gs / 2)} ${n(gy + gs * 0.12)}"/></g>`);
     }
     if (old) {
-      const ow = 250 * k, oh = 92 * k, oy = ly + lh + 6 * k;
+      const ow = 250 * k, oh = 92 * k, oy = label ? ly + lh + 6 * k : py + th + 6 * k;
       g.push(`<path d="${torn(cx - ow / 2 + 20 * k, oy, ow, oh, 9)}" fill="#0445F4" filter="url(#${shadow})"/>`);
       const os = c.style(old, 800, C.white, { family: 'Plus Jakarta Sans', rtl: false });
       const of = c.fit(old, os, { maxWidth: ow * 0.7, maxLines: 1, max: 62 * k });
-      g.push(`<text x="${n(cx + 20 * k)}" y="${n(oy + oh / 2 + of.size * 0.36)}" font-family="Plus Jakarta Sans" font-weight="800" font-size="${n(of.size)}" fill="${C.white}" text-anchor="middle">${esc(old)}</text>`);
+      g.push(`<text x="${n(cx + 20 * k)}" y="${n(oy + oh / 2 + of.size * 0.36)}" font-family="Plus Jakarta Sans" font-weight="800" font-size="${n(of.size)}" fill="${C.white}" text-anchor="middle" direction="ltr">${esc(old)}</text>`);
     }
-    // Small white rings and green ticks around the ticket, as in the design.
+    // Small white rings and green ticks around the ticket, as in the design: the upper ones beside the price, the
+    // lower ones under whatever is the last piece of the stack.
+    const stack = ticketHeight(k);
     const ring = (x: number, y: number, r: number) => g.push(`<circle cx="${n(x)}" cy="${n(y)}" r="${n(r)}" fill="none" stroke="${C.white}" stroke-width="${n(5 * k)}"/>`);
-    ring(cx + tw * 0.62, py + th * 0.45, 14 * k); ring(cx - tw * 0.52, py + th * 1.55, 14 * k);
     const tick = (x: number, y: number, a: number, len: number) => g.push(`<rect x="${n(x)}" y="${n(y)}" width="${n(len)}" height="${n(12 * k)}" rx="${n(3 * k)}" fill="${GREEN}" transform="rotate(${a} ${n(x)} ${n(y)})"/>`);
+    ring(cx + tw * 0.62, py + th * 0.45, 14 * k);
     tick(cx + tw * 0.46, py + th * 1.05, -60, 42 * k); tick(cx + tw * 0.53, py + th * 1.12, -40, 38 * k); tick(cx + tw * 0.56, py + th * 1.3, -8, 34 * k);
-    tick(cx - tw * 0.5, py + th * 2.0, 200, 40 * k); tick(cx - tw * 0.46, py + th * 2.18, 230, 36 * k);
+    if (old) {
+      ring(cx - tw * 0.52, py + stack - 40 * k, 14 * k);
+      tick(cx - tw * 0.5, py + stack + 4 * k, 200, 40 * k); tick(cx - tw * 0.46, py + stack + 30 * k, 230, 36 * k);
+    } else {
+      ring(cx - tw * 0.6, py + th * 0.62, 12 * k);
+    }
     c.body.push(`<g transform="rotate(${angle} ${n(cx)} ${n(py + th)})">${g.join('')}</g>`);
-    return th + (instead ? 78 * k : 0) + (old ? 98 * k : 0);
+    return stack;
   };
 
   const hashH = (wide ? 96 : 108) * c.s;
@@ -669,29 +697,40 @@ const campaignOffer: Builder = (c) => {
     let y = top + c.m * 0.2;
     headline(hf, cx, y); y += hf.height + c.m * 0.5;
     y += tapeStrip(cx, y, tx1 - tx0, 50 * c.s) + c.m * 0.45;
-    const sf = c.fit(sub, ss, { maxWidth: tx1 - tx0, maxLines: 1, max: 46 * c.s });
+    const sf = c.fit(subFor(tx1 - tx0, 46 * c.s), ss, { maxWidth: tx1 - tx0, maxLines: 2, max: 46 * c.s, leading: 1.3 });
     c.text(sf, { ...ss }, cx, y, 'center'); y += sf.height;
-    ticket(lx + colW / 2, top + st + c.m * 0.2, Math.min(k, (bottom - top - st - c.m * 0.4) / 330));
+    ticket(lx + colW / 2, top + st + c.m * 0.2, Math.min(k, (bottom - top - st - c.m * 0.4) / (ticketHeight(1) + 60)));
     void y;
     return c.svg(bg);
   }
-  // Portrait, square and story: one centred column, measured from the 1080×1350 design.
+  // Portrait, square and story: one centred column with the proportions of the 1080×1350 design. The pieces are
+  // measured with the real words first (a long headline takes two lines, a long supporting line two, a price with
+  // no old price a shorter ticket), then the column is scaled to the space and centred in it.
   const top = c.story ? H * 0.1 : H * 0.115, bottom = footTop + c.m * 0.2;
   const band = bottom - top;
-  const need = 1040 * c.s;
-  const f = Math.min(c.story ? 1.25 : 1.05, band / need);
-  const spare = Math.max(0, band - need * f);
   const cx = W / 2, maxW = W - c.m * 2.4;
-  let y = top + spare * 0.2;
-  const st = 300 * c.s * f;
-  if (stamp) c.image(stamp, cx - st / 2, y, st, st, 'xMidYMid meet');
-  y += st + 28 * c.s * f + spare * 0.2;
-  const hf = fitHead(W - c.m * 1.6, 68 * c.s * f);
+  const column = (f: number) => {
+    const st = stamp ? 300 * c.s * f : 0;
+    const hf = fitHead(W - c.m * 1.6, 68 * c.s * f);
+    const tf = tape ? c.fit(tape, ts, { maxWidth: W * 0.78 * 0.86, maxLines: 1, max: 52 * c.s * f }) : null;
+    const tapeH = tf ? tf.size * 1.85 : 0;
+    const sf = sub ? c.fit(subFor(maxW, 54 * c.s * f), ss, { maxWidth: maxW, maxLines: 2, max: 54 * c.s * f, leading: 1.3 }) : null;
+    const k = c.s * f * 0.92;
+    const gaps = [st ? 28 : 0, 30, tape ? 22 : 0, sub ? 46 : 0].reduce((a, b) => a + b, 0) * c.s * f;
+    // The ticket's rings and ticks reach a little past its stack.
+    const height = st + hf.height + tapeH + (sf?.height ?? 0) + gaps + (price ? ticketHeight(k) + 40 * k : 0);
+    return { f, st, hf, sf, k, height };
+  };
+  let plan = column(c.story ? 1.4 : 1.05);
+  for (let i = 0; i < 12 && plan.height > band; i++) plan = column(plan.f * Math.max(0.8, band / plan.height));
+  const { f, st, hf, sf, k } = plan;
+  const spare = Math.max(0, band - plan.height);
+  let y = top + spare * 0.35;
+  if (stamp) { c.image(stamp, cx - st / 2, y, st, st, 'xMidYMid meet'); y += st + 28 * c.s * f + spare * 0.12; }
   headline(hf, cx, y); y += hf.height + 30 * c.s * f;
-  y += tapeStrip(cx, y, W * 0.78, 52 * c.s * f) + 22 * c.s * f;
-  const sf = c.fit(sub, ss, { maxWidth: maxW, maxLines: 2, max: 54 * c.s * f, leading: 1.3 });
-  c.text(sf, ss, cx, y, 'center'); y += sf.height + 46 * c.s * f + spare * 0.25;
-  ticket(cx, y, c.s * f * 0.92);
+  if (tape) y += tapeStrip(cx, y, W * 0.78, 52 * c.s * f) + 22 * c.s * f;
+  if (sf) { c.text(sf, ss, cx, y, 'center'); y += sf.height + 46 * c.s * f + spare * 0.18; }
+  if (price) ticket(cx, y, k);
   return c.svg(bg);
 };
 
@@ -722,7 +761,9 @@ const banner: Builder = (c, surface) => {
   const tx0 = x0 + logoW + c.m, tx1 = x1 - picW - (picture ? c.m : 0);
   const ms = c.style(main, 800, dark ? C.white : C.deep), ss = c.style(second, 500, dark ? '#E5ECFF' : C.grey);
   const mf = c.fit(main, ms, { maxWidth: tx1 - tx0, maxLines: 1, max: bandH * 0.42, min: 10 });
-  const sf = c.fit(second, ss, { maxWidth: tx1 - tx0, maxLines: 1, max: bandH * 0.2, min: 8 });
+  // A long supporting line takes two lines (broken after its «:») rather than shrinking to an unreadable size.
+  const secondText = c.width(second, ss, bandH * 0.2) > tx1 - tx0 && /[:：]/.test(second) ? second.replace(/([:：])\s*/, '$1\n') : second;
+  const sf = c.fit(secondText, ss, { maxWidth: tx1 - tx0, maxLines: 2, max: bandH * 0.2, min: 8, leading: 1.3 });
   const total = mf.height + (second ? sf.height + bandH * 0.08 : 0);
   let y = y0 + (bandH - total) / 2;
   c.text(mf, ms, c.edge(ms, tx0, tx1), y); y += mf.height + bandH * 0.08;

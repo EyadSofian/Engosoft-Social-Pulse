@@ -142,10 +142,10 @@ export const BRAND_TEMPLATES: BrandTemplate[] = [
     brief: 'Campaign course offer in Egyptian/Gulf marketing Arabic: a punchy headline of 3–5 words with a 1–2 word phrase to colour green, a tape line naming the course ("جهّز نفسك لشهادة PMP"), one supporting line about the career benefit. Prices come from the person, never from you.',
     inputs: [
       { key: 'stamp', type: 'photo', label: t('شعار الحملة', 'Campaign stamp'), hint: t('PNG بخلفية شفافة. سيبه زي ما هو لنفس الحملة', 'A PNG with a transparent background. Keep it for the same campaign'), photo: { kind: 'artwork', aspect: 1 }, sample: t('/brand-references/campaign-5050-stamp.png', '/brand-references/campaign-5050-stamp.png') },
-      { key: 'headline', type: 'text', label: t('العنوان', 'Headline'), ai: true, required: true, maxChars: 40, sample: t('مشاريع أكبر.. ومسؤوليات أعلى!', 'Bigger projects, bigger roles!') },
+      { key: 'headline', type: 'text', label: t('العنوان', 'Headline'), ai: true, required: true, maxChars: 44, sample: t('مشاريع أكبر.. ومسؤوليات أعلى!', 'Bigger projects, bigger roles!') },
       { key: 'highlight', type: 'text', label: t('الكلمة الملونة في العنوان', 'Coloured phrase'), hint: t('جزء من العنوان يتلوّن أخضر', 'Part of the headline, set in green'), ai: true, maxChars: 20, sample: t('مشاريع أكبر..', 'Bigger projects,') },
-      { key: 'tape', type: 'text', label: t('شريط الدورة', 'Course tape'), ai: true, required: true, maxChars: 34, sample: t('جهّز نفسك لشهادة PMP', 'Get ready for PMP') },
-      { key: 'subline', type: 'text', label: t('السطر اللي تحت الشريط', 'Line under the tape'), ai: true, maxChars: 48, sample: t('واستثمر في خطوتك المهنية الجاية', 'and invest in your next career step') },
+      { key: 'tape', type: 'text', label: t('شريط الدورة', 'Course tape'), ai: true, required: true, maxChars: 40, sample: t('جهّز نفسك لشهادة PMP', 'Get ready for PMP') },
+      { key: 'subline', type: 'text', label: t('السطر اللي تحت الشريط', 'Line under the tape'), hint: t('سطر أو سطرين', 'One or two lines'), ai: true, maxChars: 90, sample: t('واستثمر في خطوتك المهنية الجاية', 'and invest in your next career step') },
       { key: 'price', type: 'text', label: t('السعر الجديد', 'New price'), required: true, fact: true, maxChars: 8, sample: t('700', '700') },
       { key: 'currency', type: 'text', label: t('العملة', 'Currency'), maxChars: 8, sample: t('ر.س', 'SAR') },
       { key: 'instead', type: 'text', label: t('كلمة «بدل»', 'Word for «instead of»'), maxChars: 10, sample: t('بـــدل', 'instead of') },

@@ -288,7 +288,7 @@ export function BrandTemplateComposer({ template, initialPrompt = '', onClose }:
       </div>
       <div className="brand-ai">
         <label className="ui-field"><span className="ui-field__label"><Sparkles size={14} /> {filled ? t('Ask for a change', 'اطلب تعديل') : t('Describe the whole post', 'اكتب المنشور كله في طلب واحد')}</span>
-          <textarea className="ui-input" rows={filled ? 2 : 5} data-first={filled ? undefined : ""} dir="auto" value={prompt} onChange={(e) => setPrompt(e.target.value)}
+          <textarea className="ui-input" rows={filled ? 2 : 5} data-first={filled ? undefined : ""} dir="auto" value={prompt} onChange={(e) => { setPrompt(e.target.value); if (designError) setDesignError(''); }}
             onKeyDown={(e) => { if (e.key === 'Enter' && (e.metaKey || e.ctrlKey)) { e.preventDefault(); void design(); } }}
             placeholder={filled
               ? t('e.g. blue background, shorter headline, the price is 900', 'مثال: خلّي الخلفية زرقا، العنوان أقصر، السعر 900')
