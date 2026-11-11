@@ -32,7 +32,7 @@ export interface LogoValidationResult {
 export const LOGO_LIMITS = {
   minContrast: 3,
   maxLowContrastShare: 0.1,
-  maxComplexity: { lockup: 0.18, symbol: 0.3 },
+  maxComplexity: { lockup: 0.18, symbol: 0.3, horizontal: 0.2 },
 } as const;
 
 export interface LogoValidationInput {

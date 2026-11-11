@@ -55,29 +55,32 @@ export const DIRECTION_ARCHETYPES = [
  * Official logo treatments. Both come in positive and reversed artwork; the colour is chosen afterwards from
  * the measured background, so the director only picks the mark and the corner.
  */
-export type LogoMark = 'lockup' | 'symbol';
-export const LOGO_MARKS: LogoMark[] = ['lockup', 'symbol'];
+export type LogoMark = 'lockup' | 'symbol' | 'horizontal';
+/** Marks a design may choose itself (CREATIVE_LOGO=auto); the horizontal lockup is the house mark. */
+export const LOGO_MARKS: LogoMark[] = ['lockup', 'symbol', 'horizontal'];
 export const LOGO_CORNERS: Corner[] = ['top-left', 'top-right', 'bottom-left', 'bottom-right'];
 
 /**
- * The house logo: every design carries the full lockup in the same corner, so a feed of Engosoft posts reads as
- * one brand instead of a different mark in a different corner each time. The corner is the calm one in an Arabic
+ * The house logo: every design carries the horizontal lockup (symbol, engosoft and the tagline side by side, as on
+ * every post of the November 2026 brand pack) in the same corner, at the same size, so a feed of Engosoft posts
+ * reads as one brand. The stacked lockup needed a quarter of the canvas clear, which the image model rarely left,
+ * so designs ended up with the small symbol or no logo at all. The corner is the calm one in an Arabic
  * layout, where the headline starts top-right. CREATIVE_LOGO=auto lets each design choose again (the old behaviour).
  */
-export const HOUSE_LOGO: { mark: LogoMark; corner: Corner } = { mark: 'lockup', corner: 'top-left' };
+export const HOUSE_LOGO: { mark: LogoMark; corner: Corner } = { mark: 'horizontal', corner: 'top-left' };
 export const houseLogo = (env: NodeJS.ProcessEnv = process.env) => (env.CREATIVE_LOGO?.trim() === 'auto' ? null : HOUSE_LOGO);
 
 export const LOGO_GUIDANCE = houseLogo() ? [
-  `logoMark and logoCorner are fixed by the brand: always '${HOUSE_LOGO.mark}' in the '${HOUSE_LOGO.corner}' corner, on every design and every direction. Plan the layout so that corner (about 32% of the width, 20% of the height) is calm negative space: never the headline, a face, the subject or the CTA there.`,
+  `logoMark and logoCorner are fixed by the brand: always '${HOUSE_LOGO.mark}' in the '${HOUSE_LOGO.corner}' corner, on every design and every direction. Plan the layout so that corner (about 34% of the width, 11% of the height) is calm negative space: never the headline, a face, the subject or the CTA there.`,
 ] : [
   "logoMark: pick the official logo treatment that suits THIS composition. 'lockup' (the symbol above the Engosoft wordmark; needs a calm area about 30% of the width) suits spacious, editorial, text-light layouts where the brand name should read clearly. 'symbol' (the mark alone, about 9% of the width) suits dense, full-bleed, cinematic or subject-heavy layouts where a full lockup would crowd the design.",
   "logoCorner: the corner that is naturally calm in this composition, away from the headline, faces, the subject and the CTA. In right-to-left layouts the headline usually sits on the right, so a left corner is often calm; a bottom corner works only when the CTA is not there.",
 ];
 
 /** Area kept clean for the logo, as a fraction of the canvas, per mark. */
-export const LOGO_ZONE: Record<LogoMark, { w: number; h: number }> = { lockup: { w: 0.32, h: 0.2 }, symbol: { w: 0.17, h: 0.15 } };
+export const LOGO_ZONE: Record<LogoMark, { w: number; h: number }> = { lockup: { w: 0.32, h: 0.2 }, symbol: { w: 0.17, h: 0.15 }, horizontal: { w: 0.34, h: 0.11 } };
 
-export const markOfVariant = (variantId: string): LogoMark => (variantId.startsWith('symbol') ? 'symbol' : 'lockup');
+export const markOfVariant = (variantId: string): LogoMark => (variantId.startsWith('symbol') ? 'symbol' : variantId.startsWith('horizontal') ? 'horizontal' : 'lockup');
 
 /** The canvas a logo zone is measured on: output pixels and the edges the platform covers. */
 export interface LogoCanvas { width: number; height: number; safe: { top: number; bottom: number; left: number; right: number } }
@@ -105,5 +108,5 @@ export function logoReservation(mark: LogoMark, corner: Corner, canvas?: LogoCan
   const where = covered
     ? `the ${corner.endsWith('left') ? 'left' : 'right'} area from ${pct(z.x)}% to ${pct(z.x + z.w)}% of the width and from ${pct(z.y)}% to ${pct(z.y + z.h)}% of the height (just ${corner.startsWith('top') ? 'below the platform bar at the top' : 'above the platform bar at the bottom'}, which stays background too)`
     : `the ${corner} area — about ${pct(z.w)}% of the width and ${pct(z.h)}% of the height —`;
-  return `Keep ${where} a calm, uncluttered continuation of the background with no text, faces, objects or graphics; the headline starts beside it or below it, never inside it. The official logo (${mark === 'lockup' ? 'full lockup: the symbol above the Engosoft wordmark' : 'symbol'}) will be placed there afterwards. Do NOT draw any logo, brand mark, monogram, wordmark, watermark, or the word "Engosoft" anywhere.`;
+  return `Keep ${where} a calm, uncluttered continuation of the background with no text, faces, objects or graphics; the headline starts beside it or below it, never inside it. The official logo (${mark === 'lockup' ? 'full lockup: the symbol above the Engosoft wordmark' : mark === 'horizontal' ? 'horizontal lockup: the symbol beside the Engosoft wordmark, one short line' : 'symbol'}) will be placed there afterwards. Do NOT draw any logo, brand mark, monogram, wordmark, watermark, or the word "Engosoft" anywhere.`;
 }

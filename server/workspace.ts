@@ -212,8 +212,11 @@ export async function addVersion(user: AuthUser, contentId: string, input: { ima
   const item = row ? toContent(row) : undefined;
   // A template post's version carries the field values it was exported with, so reopening it edits the latest copy.
   const svgTemplate = (input.studio as { svgTemplate?: CreativeRef['svgTemplate'] } | null)?.svgTemplate;
-  // Sizes were made from the previous design, so a new version starts without them.
-  const { sizes: _stale, ...creative } = item?.creative ?? { requestId: '', directionId: '' };
+  // Sizes were made from the previous design, so a new version starts without them. The first version of a new post
+  // records the design it was saved with: its sizes belong to it and stay (they were lost on every new post before).
+  const same = item?.creative?.imageUrl === input.imageUrl;
+  const { sizes: stale, ...rest } = item?.creative ?? { requestId: '', directionId: '' };
+  const creative = same && stale ? { ...rest, sizes: stale } : rest;
   if (item) await db.run('UPDATE content_items SET creative_json=?, updated_at=? WHERE id=?', [JSON.stringify({ ...creative, ...(svgTemplate ? { svgTemplate, ...(svgTemplate.format ? { directionId: svgTemplate.format } : {}) } : {}), imageUrl: version.imageUrl, ...(version.storyUrl ? { storyUrl: version.storyUrl } : {}) }), version.createdAt, contentId]);
   await log(contentId, user.id, 'version', input.note);
   return version;

@@ -21,10 +21,11 @@ test('the resolver uses the mark and corner the director planned, and falls back
   assert.match(symbol.variantId, /reversed/);
 });
 
-test('by default every design gets the house logo: the lockup in the top-left corner, whatever the direction planned', () => {
-  assert.deepEqual(logoPlanOf(direction({ logoMark: 'symbol', logoCorner: 'bottom-right' }), 'feed'), { mark: 'lockup', corner: 'top-left' });
+test('by default every design gets the house logo: the horizontal lockup in the top-left corner, whatever the direction planned', () => {
+  assert.deepEqual(logoPlanOf(direction({ logoMark: 'symbol', logoCorner: 'bottom-right' }), 'feed'), { mark: 'horizontal', corner: 'top-left' });
   const prompt = compileFullCreativePrompt(brief, direction({ logoMark: 'symbol', logoCorner: 'bottom-right' }), 'feed');
-  assert.match(prompt, /Keep the top-left area — about 32% of the width/);
+  assert.match(prompt, /Keep the top-left area — about 34% of the width/);
+  assert.match(prompt, /horizontal lockup/);
 });
 
 test('with CREATIVE_LOGO=auto the prompt reserves the planned corner at the size of the planned mark and carries the design standard', (t) => {
@@ -41,9 +42,9 @@ test('with CREATIVE_LOGO=auto the prompt reserves the planned corner at the size
   assert.match(story, /just above the bottom 20%/);
 });
 
-test('older plans without a logo choice keep the format default', () => {
-  assert.deepEqual(logoPlanOf(direction(), 'feed'), { mark: 'lockup', corner: 'top-left' });
-  assert.deepEqual(logoPlanOf(direction({ logoMark: 'wordmark' as never, logoCorner: 'middle' as never }), 'story'), { mark: 'lockup', corner: 'top-left' });
+test('older plans without a logo choice get the house logo', () => {
+  assert.deepEqual(logoPlanOf(direction(), 'feed'), { mark: 'horizontal', corner: 'top-left' });
+  assert.deepEqual(logoPlanOf(direction({ logoMark: 'wordmark' as never, logoCorner: 'middle' as never }), 'story'), { mark: 'horizontal', corner: 'top-left' });
 });
 
 test('a story keeps the logo space just below the top bar, and a recomposed story gets a full-height plan', async () => {
@@ -63,4 +64,19 @@ test('a story keeps the logo space just below the top bar, and a recomposed stor
   assert.match(plan, /use its whole height/);
   assert.match(plan, /Below 80%: background only/);
   assert.doesNotMatch(recomposePlan('feed'), /phone story/);
+});
+
+test('the house logo never moves corner or turns into the symbol: a busy corner is reported, then placed anyway', async () => {
+  const { forcedHouseLogo } = await import('../server/creative-intelligence/generation/full-creative');
+  const busy = await sharp(Buffer.from(Array.from({ length: 1080 * 1350 * 3 }, (_, i) => (i * 7919) % 251)), { raw: { width: 1080, height: 1350, channels: 3 } }).png().toBuffer();
+  const strict = await resolveLogo({ creative: busy, zones: [], preferredCorner: 'top-left', preferredMark: 'horizontal', strictCorner: true });
+  assert.equal(strict.requiresCreativeRepair, true);
+  const placed = await forcedHouseLogo(busy, { output: { width: 1080, height: 1350 }, safeArea: { top: 0, right: 0, bottom: 0, left: 0 } }, { mark: 'horizontal', corner: 'top-left' });
+  assert.match(placed.variantId, /^horizontal-/);
+  assert.equal(placed.placement.anchor, 'top-left');
+  assert.ok(placed.placement.x < 120 && placed.placement.y < 120 && placed.placement.width > 250);
+  const blue = await resolveLogo({ creative: await flat('#0046FF'), zones: [], preferredCorner: 'top-left', preferredMark: 'horizontal', strictCorner: true });
+  assert.ok(!blue.requiresCreativeRepair && blue.variantId === 'horizontal-reversed' && blue.placement.anchor === 'top-left');
+  const light = await resolveLogo({ creative: await flat('#F1F4F9'), zones: [], preferredCorner: 'top-left', preferredMark: 'horizontal', strictCorner: true });
+  assert.ok(!light.requiresCreativeRepair && light.variantId === 'horizontal-positive');
 });

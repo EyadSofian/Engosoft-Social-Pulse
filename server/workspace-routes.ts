@@ -35,7 +35,7 @@ const postPlan = { goal: z.enum(GOALS as [Goal, ...Goal[]]).nullable().optional(
 
 /** Which of the three ways a post's design was made; each way is its own permission. */
 type DesignWay = 'template' | 'upload' | 'ai' | 'reel';
-const designWay = (creative: z.infer<typeof creativeRef> | null): DesignWay => creative?.requestId === 'reel' ? 'reel' : creative?.svgTemplate || creative?.schedule ? 'template' : creative?.imageUrl.startsWith('/api/uploads/') ? 'upload' : 'ai';
+const designWay = (creative: z.infer<typeof creativeRef> | null): DesignWay => creative?.requestId === 'reel' ? 'reel' : creative?.svgTemplate || creative?.schedule || creative?.requestId === 'brand-template' ? 'template' : creative?.imageUrl.startsWith('/api/uploads/') ? 'upload' : 'ai';
 const WAY_PERMISSION: Record<DesignWay, Permission> = { template: 'design.templates', upload: 'design.upload', ai: 'design.free', reel: 'design.video' };
 const WAY_REFUSAL: Record<DesignWay, string> = { template: 'استخدام القوالب ليس ضمن صلاحياتك.', upload: 'رفع التصميمات الجاهزة ليس ضمن صلاحياتك.', ai: 'التصميم بالذكاء الاصطناعي ليس ضمن صلاحياتك؛ استخدم قالبًا جاهزًا.', reel: 'رفع الريلز والفيديو ليس ضمن صلاحياتك.' };
 

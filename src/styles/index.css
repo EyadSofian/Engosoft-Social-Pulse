@@ -36,6 +36,7 @@
 @import './theme/effects.css';
 @import './theme/ambient.css';
 @import './features/create.css';
+@import './features/brand-templates.css';
 @import './features/svg-templates.css';
 @import './features/usage.css';
 @import './features/notifications.css';

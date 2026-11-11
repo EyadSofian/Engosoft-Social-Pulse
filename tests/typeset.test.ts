@@ -165,7 +165,7 @@ test('the layout plan is checked against the logo and stamp areas', async () => 
   const { reservedAreas } = await import('../server/creative-intelligence/generation/full-creative');
   const campaign = { id: 'c', name: 'جمعة', slogan: '', hashtag: '#جمعة_تغير_مسارك', corner: 'bottom-right' as const, width: 0.3, stampPath: '', keyVisualPath: '' };
   const areas = await reservedAreas('story', campaign);
-  assert.deepEqual(areas.map((a) => a.name), ['official logo (full lockup)', 'campaign stamp', 'platform top bar', 'platform bottom bar']);
+  assert.deepEqual(areas.map((a) => a.name), ['official logo (horizontal lockup)', 'campaign stamp', 'platform top bar', 'platform bottom bar']);
   const stampArea = areas[1].zone;
   const clash = { layoutDesigner: { ...design.layoutDesigner, ctaZone: { x: stampArea.x, y: stampArea.y, width: stampArea.width, height: stampArea.height } } };
   assert.match(planConflicts(clash as never, areas).join(' '), /button \(CTA\).*campaign stamp/);
@@ -268,7 +268,7 @@ test('a story of a design is layered: the picture is drawn text-free around the 
     assert.match(calls[0].prompt, /Ignore all of its text, its button, its highlight bars and its logo/);
     assert.match(calls[0].prompt, /the hero subject, scaled up to fill this band edge to edge/);
     assert.equal(result.logo.requiresCreativeRepair, false);
-    assert.match((result.logo as { variantId: string }).variantId, /^lockup/);
+    assert.match((result.logo as { variantId: string }).variantId, /^horizontal/);
     const meta = await sharp(result.imagePath!).metadata();
     assert.equal(meta.width, 1080); assert.equal(meta.height, 1920);
   } finally {

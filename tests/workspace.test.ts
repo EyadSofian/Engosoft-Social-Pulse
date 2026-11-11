@@ -97,3 +97,11 @@ test('withdrawing a scheduled post cancels its old plans before a new approval r
   await ws.transition(marketing, item.id, 'changes_requested', { note: 'Revise first' });
   assert.equal((await ws.updateContent(ops, item.id, { title: 'Revised copy' })).title, 'Revised copy');
 });
+
+test('a new post keeps the sizes it was saved with; a new design version starts without them', async () => {
+  const story = '/api/uploads/11111111-1111-4111-8111-111111111111.png';
+  const item = await ws.createContent(ops, { title: 'Sizes kept', channels: ['facebook', 'instagram'], captions: {}, creative: { ...creative, sizes: { 'instagram-story': story, 'facebook-story': story } } });
+  assert.deepEqual((await ws.getContent(item.id))?.creative?.sizes, { 'instagram-story': story, 'facebook-story': story });
+  await ws.addVersion(ops, item.id, { imageUrl: '/api/uploads/22222222-2222-4222-8222-222222222222.png', storyUrl: null, studio: null, note: 'Studio edit' });
+  assert.equal((await ws.getContent(item.id))?.creative?.sizes, undefined);
+});

@@ -15,6 +15,7 @@ import { useI18n } from '../../i18n/I18nProvider';
 import { api } from '../../lib/api';
 import { PageHeader } from '../../shell/Header';
 import { usePageMeta } from '../../shell/ShellContext';
+import { BrandTemplateGrid } from '../../features/brand-templates/BrandTemplateComposer';
 
 /** AI-designed SVG templates: generate from a prompt or reference, then make posts from them at no image cost. */
 function SvgTemplateSection() {
@@ -58,6 +59,10 @@ export function LibraryPage() {
       <span><b>{t('Course schedule of the month', 'جدول مواعيد الدورات للشهر')}</b><small>{t('Built-in template: upload the CSV/Excel sheet or read Odoo, and get every Facebook and Instagram post (4:5 and 1:1).', 'قالب جاهز: ارفع شيت CSV/Excel أو اقرأ من Odoo، وخد كل بوستات فيسبوك وإنستجرام (4:5 و1:1).')}</small></span>
       <img src="/post-assets/schedule-preview.jpg" alt="" />
     </Link>}
+    {can('design.templates') && <section className="library-section">
+      <div className="library-section__head"><h2><LayoutTemplate size={18} /> {t('Engosoft brand designs', 'تصاميم هوية إنجوسوفت')}</h2><small className="u-muted">{t('From the brand pack. Each asks for what it needs and makes every size.', 'من دليل الهوية. كل قالب بيطلب اللي محتاجه وبيطلع كل المقاسات.')}</small></div>
+      <BrandTemplateGrid onOpen={(template) => navigate(`/?brand=${template.id}`)} />
+    </section>}
     <SvgTemplateSection />
     {can('templates.manage') && <CampaignsPanel />}
     {can('design.free') && <AiTemplatesPanel />}

@@ -7,8 +7,8 @@ import logos from '../brand/logos.json';
 
 const sha256 = (bytes: Buffer | string) => createHash('sha256').update(bytes).digest('hex');
 
-test('brand manifest lists exactly the four approved logo artworks', () => {
-  assert.deepEqual(logos.variants.map((v) => v.id).sort(), ['lockup-positive', 'lockup-reversed', 'symbol-positive', 'symbol-reversed']);
+test('brand manifest lists exactly the approved logo artworks', () => {
+  assert.deepEqual(logos.variants.map((v) => v.id).sort(), ['horizontal-positive', 'horizontal-reversed', 'lockup-positive', 'lockup-reversed', 'symbol-positive', 'symbol-reversed']);
   for (const variant of logos.variants) assert.equal(variant.immutable, true);
 });
 

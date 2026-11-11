@@ -6,7 +6,6 @@ import type express from 'express';
 import sharp from 'sharp';
 import { z } from 'zod';
 import { requirePermission, requireUser } from './auth.js';
-import { REFERENCE_DESIGNS } from './builtin-templates.js';
 import { db, defineSchema } from './db.js';
 import { mediaDir } from './paths.js';
 import { getTemplate, type SvgTemplate } from './svg-templates.js';
@@ -15,6 +14,7 @@ import { OpenAIImageProvider, type CreativeImageProvider } from './creative-inte
 import { canvasBrief, generationSizeFor, publishingPreset, type PublishingPreset } from '../src/domain/output-presets.js';
 import { compositeLogo } from './creative-intelligence/logo-resolution/compositor.js';
 import { resolveLogo } from './creative-intelligence/logo-resolution/resolver.js';
+import { forcedHouseLogo } from './creative-intelligence/generation/full-creative.js';
 import { inspectCreative, zonesFromInspection } from './creative-intelligence/criticism/inspect.js';
 import { studioPath } from './creative-intelligence/studio/studio.js';
 import { canEdit, contentIsMutable, getContent } from './workspace.js';
@@ -40,17 +40,23 @@ export async function renderReferenceDesign(template: SvgTemplate, values: Recor
   return finishReferenceDesign(template, generated.png, spec, format, presetId, generated.model);
 }
 
-/** The official logo goes in the quiet top-left area the prompt reserved, in the variant that suits the reference. */
-function referenceLogo(template: SvgTemplate, size: { width: number; height: number }, format: Format, presetId?: string) {
+/**
+ * The official logo goes in the quiet top-left area the prompt reserved: the horizontal house lockup, in the
+ * artwork (blue or white) that reads on the pixels it actually lands on, not on what the reference looked like.
+ */
+async function referenceLogo(raw: Buffer, size: { width: number; height: number }, format: Format, presetId?: string) {
   const preset = publishingPreset(presetId);
-  const reference = REFERENCE_DESIGNS.find((r) => template.sourceImage!.endsWith(`/${r.file}`));
-  return { variantId: reference?.light ? 'lockup-positive' as const : 'lockup-reversed' as const, x: preset ? Math.max(Math.round(size.width * .04), preset.safe.left + 20) : Math.round(size.width * .04), y: preset ? Math.max(Math.round(size.height * .03), preset.safe.top + 20) : format === 'story' ? 230 : Math.round(size.height * .03), width: Math.round(Math.min(size.width * .19, size.height * .3)) };
+  const safe = preset?.safe ?? (format === 'story' ? { top: 230, right: 0, bottom: 330, left: 0 } : { top: 0, right: 0, bottom: 0, left: 0 });
+  const decision = await resolveLogo({ creative: raw, zones: [], preferredCorner: 'top-left', preferredMark: 'horizontal', strictCorner: true, safeArea: safe });
+  const placed = decision.requiresCreativeRepair ? await forcedHouseLogo(raw, { output: size, safeArea: safe }, { mark: 'horizontal', corner: 'top-left' }) : decision;
+  return { variantId: placed.variantId, x: placed.placement.x, y: placed.placement.y, width: placed.placement.width };
 }
 
 /** Output size, logo, and files: the design with the logo is served; the one without it stays private for edits. */
 async function finishReferenceDesign(template: SvgTemplate, png: Buffer, size: { width: number; height: number }, format: Format, presetId: string | undefined, model: string) {
   const raw = await toSize(png, size);
-  const { image } = await compositeLogo(raw, referenceLogo(template, size, format, presetId));
+  void template;
+  const { image } = await compositeLogo(raw, await referenceLogo(raw, size, format, presetId));
   const dir = mediaDir('uploads'); mkdirSync(dir, { recursive: true });
   const id = randomUUID();
   writeFileSync(resolve(dir, `${id}.png`), image);
@@ -153,13 +159,10 @@ async function placeLogoAndSave(raw: Buffer, preset: PublishingPreset, words: st
     .then((inspection) => zonesFromInspection(inspection, preset.width, preset.height))
     .catch(() => []);
   // The resolver picks the corner and variant that read on this background; a fixed top-left lockup is the fallback.
-  const decision = await resolveLogo({ creative: raw, zones, preferredCorner: 'top-left', preferredMark: 'lockup', safeArea: preset.safe });
-  // stats() reads the input, not the pipeline: extract to a buffer first, or it measures the whole picture.
-  const { dominant } = await sharp(await sharp(raw).extract({ left: 0, top: 0, width: Math.round(preset.width * 0.3), height: Math.round(preset.height * 0.25) }).toBuffer()).stats();
-  const light = (dominant.r * 299 + dominant.g * 587 + dominant.b * 114) / 1000 > 150;
-  const placement = decision.requiresCreativeRepair
-    ? { variantId: light ? 'lockup-positive' as const : 'lockup-reversed' as const, x: Math.max(Math.round(preset.width * 0.04), preset.safe.left + 20), y: Math.max(Math.round(preset.height * 0.03), preset.safe.top + 20), width: Math.round(Math.min(preset.width * 0.19, preset.height * 0.3)) }
-    : { variantId: decision.variantId, x: decision.placement.x, y: decision.placement.y, width: decision.placement.width };
+  // The house lockup at its fixed spot; when the corner is busy it still goes there, in the artwork that reads best.
+  const decision = await resolveLogo({ creative: raw, zones, preferredCorner: 'top-left', preferredMark: 'horizontal', strictCorner: true, safeArea: preset.safe });
+  const placed = decision.requiresCreativeRepair ? await forcedHouseLogo(raw, { output: preset, safeArea: preset.safe }, { mark: 'horizontal', corner: 'top-left' }) : decision;
+  const placement = { variantId: placed.variantId, x: placed.placement.x, y: placed.placement.y, width: placed.placement.width };
   const { image } = await compositeLogo(raw, placement);
   const dir = mediaDir('uploads'); mkdirSync(dir, { recursive: true });
   const id = randomUUID();

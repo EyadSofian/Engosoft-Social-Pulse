@@ -25,6 +25,7 @@ import { bootstrapAdmin, requirePermission, requireUser, userCan } from './auth.
 import { registerAuthRoutes, registerWorkspaceRoutes } from './workspace-routes.js';
 import { countTemplateUse, getTemplate, registerAiTemplateRoutes } from './ai-templates.js';
 import { registerStudioRoutes } from './studio-routes.js';
+import { registerBrandTemplateRoutes } from './brand-templates.js';
 import { registerCaptionRoutes } from './captions.js';
 import { registerContentKitRoutes } from './content-intelligence/kit.js';
 import { db, initDb } from './db.js';
@@ -67,6 +68,7 @@ registerUsageRoutes(app);
 registerNotifyRoutes(app);
 registerSvgTemplateRoutes(app);
 registerReferenceDesignRoutes(app);
+registerBrandTemplateRoutes(app);
 registerCourseProfileRoutes(app);
 app.get('/api/odoo/schedule',async(_req,res)=>{
  const result=await readOdooSchedule();

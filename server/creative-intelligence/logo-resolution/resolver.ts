@@ -20,6 +20,9 @@ export interface NoLogoDecision { requiresCreativeRepair: true; reason: string; 
 /** Lockup widths as a fraction of canvas width; the symbol is the fallback when no lockup fits. */
 const LOCKUP_WIDTHS = [0.26, 0.23];
 const SYMBOL_WIDTHS = [0.085, 0.07];
+/** The house mark: the horizontal lockup at the width the brand-pack posts use (a quarter of the canvas). */
+const HORIZONTAL_WIDTHS = [0.27, 0.24];
+const widthsFor = (kind: string, lockup?: number[]) => (kind === 'lockup' ? lockup ?? LOCKUP_WIDTHS : kind === 'horizontal' ? HORIZONTAL_WIDTHS : SYMBOL_WIDTHS);
 
 function cornerPosition(corner: Corner, width: number, height: number, canvas: RasterImage, inset: number, safe?: SafeArea) {
   const top = Math.max(inset, safe?.top ?? 0), bottom = Math.max(inset, safe?.bottom ?? 0);
@@ -34,10 +37,10 @@ function cornerPosition(corner: Corner, width: number, height: number, canvas: R
  * Where the logo lands when its corner is free: the first size the resolver tries for that mark, in output
  * pixels. Layouts that set the type themselves (the house story) keep this box and its clear space free.
  */
-export function plannedLogoBox(canvas: { width: number; height: number }, mark: 'lockup' | 'symbol', corner: Corner, safe?: SafeArea, widthShare?: number): Box {
+export function plannedLogoBox(canvas: { width: number; height: number }, mark: 'lockup' | 'symbol' | 'horizontal', corner: Corner, safe?: SafeArea, widthShare?: number): Box {
   const variant = allLogoVariants().find((v) => v.kind === mark)!;
   const basis = logoSizeBasis(canvas.width, canvas.height);
-  const width = Math.max(minimumLogoWidth(variant, basis), Math.round((widthShare ?? (mark === 'lockup' ? LOCKUP_WIDTHS[0] : SYMBOL_WIDTHS[0])) * basis));
+  const width = Math.max(minimumLogoWidth(variant, basis), Math.round((widthShare ?? widthsFor(mark)[0]) * basis));
   const height = logoHeightFor(variant, width);
   const inset = Math.round(logoEdgeMargin(canvas.width) * 1.1);
   const { x, y } = cornerPosition(corner, width, height, { width: canvas.width, height: canvas.height } as RasterImage, inset, safe);
@@ -50,8 +53,11 @@ export async function resolveLogo(input: {
   /** Corner the art director reserved; it is tried first and preferred on ties. */
   preferredCorner?: Corner;
   /** Mark the art director chose for this design; the other mark is only a fallback. Without one, both compete on fit. */
-  preferredMark?: 'lockup' | 'symbol';
-  /** The house corner: another corner is used only when nothing fits in this one. */
+  preferredMark?: 'lockup' | 'symbol' | 'horizontal';
+  /**
+   * The house logo: only the preferred mark in the preferred corner. Another corner or mark is never tried (it made
+   * every design carry a different logo in a different place); when nothing fits, the caller repairs the corner.
+   */
   strictCorner?: boolean;
   safeArea?: SafeArea;
   /** Lockup widths to try, as shares of the canvas width (a layout that planned a smaller logo); never below the minimum. */
@@ -60,14 +66,16 @@ export async function resolveLogo(input: {
   const image = Buffer.isBuffer(input.creative) ? await decodeImage(input.creative) : input.creative;
   const inset = Math.round(logoEdgeMargin(image.width) * 1.1);
   const basis = logoSizeBasis(image.width, image.height);
-  const corners: Corner[] = ['top-left', 'top-right', 'bottom-left', 'bottom-right'];
+  const house = Boolean(input.strictCorner && input.preferredCorner && input.preferredMark);
+  const corners: Corner[] = house ? [input.preferredCorner!] : ['top-left', 'top-right', 'bottom-left', 'bottom-right'];
   if (input.preferredCorner) corners.sort((a, b) => Number(b === input.preferredCorner) - Number(a === input.preferredCorner));
   let best: { score: number; decision: LogoDecision } | null = null;
   let bestRejected: NoLogoDecision['bestRejected'];
   let fewestErrors = Infinity;
   for (const corner of corners) {
-    for (const variant of allLogoVariants()) {
-      const fractions = variant.kind === 'lockup' ? input.lockupWidths ?? LOCKUP_WIDTHS : SYMBOL_WIDTHS;
+    // The horizontal lockup competes only when it is asked for, so older plans keep their marks.
+    for (const variant of allLogoVariants().filter((v) => (house ? v.kind === input.preferredMark : v.kind !== 'horizontal' || input.preferredMark === 'horizontal'))) {
+      const fractions = variant.kind === 'lockup' || variant.kind === 'horizontal' ? (input.lockupWidths && variant.kind === input.preferredMark ? input.lockupWidths : widthsFor(variant.kind)) : SYMBOL_WIDTHS;
       for (const fraction of fractions) {
         const width = Math.max(minimumLogoWidth(variant, basis), Math.round(fraction * basis));
         const height = logoHeightFor(variant, width);
@@ -97,7 +105,7 @@ export async function resolveLogo(input: {
       }
     }
   }
-  return best?.decision ?? { requiresCreativeRepair: true, reason: 'No approved variant fits any corner without collisions or contrast failure', bestRejected };
+  return best?.decision ?? { requiresCreativeRepair: true, reason: house ? `The house logo does not fit the ${input.preferredCorner} corner without collisions or contrast failure` : 'No approved variant fits any corner without collisions or contrast failure', bestRejected };
 }
 
 /** Pixel box of the zone the generator was asked to keep clean, for a masked repair. */

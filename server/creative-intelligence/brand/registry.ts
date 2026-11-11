@@ -10,7 +10,7 @@ import spacingJson from '../../../brand/spacing.json';
 import typographyJson from '../../../brand/typography.json';
 import usageRulesJson from '../../../brand/usage-rules.json';
 
-export const LOGO_VARIANT_IDS = ['lockup-reversed', 'lockup-positive', 'symbol-reversed', 'symbol-positive'] as const;
+export const LOGO_VARIANT_IDS = ['lockup-reversed', 'lockup-positive', 'symbol-reversed', 'symbol-positive', 'horizontal-reversed', 'horizontal-positive'] as const;
 export type LogoVariantId = (typeof LOGO_VARIANT_IDS)[number];
 
 export const BACKGROUND_CLASSES = [
@@ -28,7 +28,7 @@ const variantSchema = z.object({
   publicPath: z.string(),
   sha256: z.string().regex(/^[0-9a-f]{64}$/),
   format: z.literal('svg'),
-  kind: z.enum(['lockup', 'symbol']),
+  kind: z.enum(['lockup', 'symbol', 'horizontal']),
   width: z.number().positive(),
   height: z.number().positive(),
   aspectRatio: z.number().positive(),
@@ -46,7 +46,7 @@ const variantSchema = z.object({
 });
 const logosSchema = z.object({
   source: z.object({ sha256: z.string(), tagline: z.string() }).loose(),
-  variants: z.array(variantSchema).length(4),
+  variants: z.array(variantSchema).length(LOGO_VARIANT_IDS.length),
   containers: z.object({
     'brand-blue-circle': z.object({ fill: hex, symbolVariant: z.enum(LOGO_VARIANT_IDS), symbolWidthToDiameter: z.number().positive() }),
     'white-circle': z.object({ fill: hex, symbolVariant: z.enum(LOGO_VARIANT_IDS), symbolWidthToDiameter: z.number().positive() }),
@@ -54,8 +54,8 @@ const logosSchema = z.object({
   provisional: z.object({
     status: z.literal('pending_brand_confirmation'),
     clearSpaceUnits: z.number().positive(),
-    orangeDotDiameterToHeight: z.object({ lockup: z.number().positive(), symbol: z.number().positive() }),
-    minimumRenderedWidthPx: z.object({ lockup: z.number().positive(), symbol: z.number().positive() }),
+    orangeDotDiameterToHeight: z.object({ lockup: z.number().positive(), symbol: z.number().positive(), horizontal: z.number().positive() }),
+    minimumRenderedWidthPx: z.object({ lockup: z.number().positive(), symbol: z.number().positive(), horizontal: z.number().positive() }),
     referenceCanvasWidthPx: z.number().positive(),
   }).loose(),
 }).loose();
@@ -65,7 +65,7 @@ for (const variant of logos.variants) {
   const classes = [...variant.usage.approvedBackgrounds, ...variant.usage.forbiddenBackgrounds, ...variant.usage.unspecifiedBackgrounds];
   if (new Set(classes).size !== classes.length) throw new Error(`brand/logos.json: ${variant.id} lists a background class twice`);
 }
-if (new Set(logos.variants.map((v) => v.id)).size !== 4) throw new Error('brand/logos.json: duplicate variant id');
+if (new Set(logos.variants.map((v) => v.id)).size !== LOGO_VARIANT_IDS.length) throw new Error('brand/logos.json: duplicate variant id');
 
 export type LogoVariant = z.infer<typeof variantSchema>;
 export type BackgroundVerdict = 'approved' | 'forbidden' | 'unspecified';

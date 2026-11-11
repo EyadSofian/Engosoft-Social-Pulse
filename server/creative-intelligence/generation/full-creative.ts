@@ -17,7 +17,7 @@ import { inspectCreative, zonesFromInspection, type CreativeInspection } from '.
 import { compositeLogo, verifyComposite } from '../logo-resolution/compositor.js';
 import { applyCampaignStamp, campaignBrief, stampGeometry, stampRoom, stampText, stampZone, textStamp, withHashtag, type CampaignIdentity } from '../logo-resolution/campaign-stamp.js';
 import { checkFinish, finishCheckOn, type FinishProblem, type Overlay } from '../criticism/finish-check.js';
-import { resolveLogo, type Corner, type LogoDecision, type NoLogoDecision } from '../logo-resolution/resolver.js';
+import { plannedLogoBox, resolveLogo, type Corner, type LogoDecision, type NoLogoDecision } from '../logo-resolution/resolver.js';
 import type { SafeArea } from '../logo-resolution/validator.js';
 import { checkCopy, copyPasses, type CanonicalCopy, type CopyCheck } from '../typography-validation/copy-check.js';
 import { compileBriefPrompt, compileDesignPrompt, DEFAULT_SETTINGS, ENGINE_SKILL_VERSIONS, ENGINE_VERSION, planCaptions, planDesign, planStrategy, type DesignDecision, type EngineSettings, type ReferenceInput, type ReservedArea, type StrategyDecision, type UserReference } from '../skills/engine.js';
@@ -369,6 +369,27 @@ async function finishOverlays(input: { logoImage: Buffer; logo: PxBox; content: 
   return { image: stamped.image, problems };
 }
 
+/**
+ * The house logo when its corner could not be cleaned: placed anyway at its usual spot and size, in the artwork
+ * (blue or white) that reads best on what is under it, and reported for review. A design never ships without its
+ * logo, and never with a different logo in a different corner.
+ */
+export async function forcedHouseLogo(image: Buffer, spec: Pick<Canvas, 'output' | 'safeArea'>, plan: { mark: LogoMark; corner: Corner }): Promise<LogoDecision> {
+  const box = plannedLogoBox(spec.output, plan.mark, plan.corner, spec.safeArea);
+  const region = await sharp(image).extract({ left: Math.max(0, box.x), top: Math.max(0, box.y), width: Math.min(box.width, spec.output.width - box.x), height: Math.min(box.height, spec.output.height - box.y) }).toBuffer();
+  const { channels } = await sharp(region).stats();
+  const luminance = (0.2126 * channels[0].mean + 0.7152 * channels[1].mean + 0.0722 * channels[2].mean) / 255;
+  const light = luminance > 0.55;
+  const prefix = plan.mark === 'symbol' ? 'symbol' : plan.mark === 'horizontal' ? 'horizontal' : 'lockup';
+  return {
+    variantId: `${prefix}-${light ? 'positive' : 'reversed'}` as LogoDecision['variantId'],
+    placement: { ...box, anchor: plan.corner },
+    reason: `House logo placed at its fixed spot without a clean corner (background luminance ${luminance.toFixed(2)})`,
+    confidence: 0.3, backgroundAssessment: { backgroundClass: light ? 'light' : 'dark-photographic', luminance, contrast: 0, visualComplexity: 1 },
+    policy: 'engineering-default', requiresCreativeRepair: false, resolverVersion: 'house-fallback:v1',
+  };
+}
+
 /** The logo mark and corner for a direction: the house logo, or (CREATIVE_LOGO=auto) the direction's plan with the format's defaults. */
 export function logoPlanOf(direction: CreativeDirectionPlan, format: CanvasTarget): { mark: LogoMark; corner: Corner } {
   const house = houseLogo();
@@ -424,7 +445,7 @@ export async function reservedAreas(format: CanvasTarget, campaign?: CampaignIde
   const c = canvasOf(format), canvas = logoCanvasOf(format);
   const house = houseLogo() ?? { mark: 'lockup' as LogoMark, corner: c.reservedCorner };
   const logo = logoZoneOn(house.mark, house.corner, canvas);
-  const areas: ReservedArea[] = [{ name: `official logo (${house.mark === 'lockup' ? 'full lockup' : 'symbol'})`, zone: { x: logo.x, y: logo.y, width: logo.w, height: logo.h } }];
+  const areas: ReservedArea[] = [{ name: `official logo (${house.mark === 'lockup' ? 'full lockup' : house.mark === 'horizontal' ? 'horizontal lockup' : 'symbol'})`, zone: { x: logo.x, y: logo.y, width: logo.w, height: logo.h } }];
   const geometry = campaign && (campaign.stampPath || stampText(campaign)) ? await stampGeometry(campaign) : null;
   if (campaign && geometry) areas.push({ name: 'campaign stamp', zone: stampZone(canvas, campaign.corner, geometry) });
   if (c.safeArea.top) areas.push({ name: 'platform top bar', zone: { x: 0, y: 0, width: 1, height: c.safeArea.top / c.output.height } });
@@ -657,6 +678,10 @@ export async function produceDirection(input: {
     }
     if (patched) logo = await resolveLogo({ creative: output, zones: zonesFromInspection(inspection, spec.output.width, spec.output.height), preferredCorner: plan.corner, preferredMark: plan.mark, strictCorner: Boolean(houseLogo()), safeArea: spec.safeArea });
   }
+  if (logo.requiresCreativeRepair && houseLogo()) {
+    problems.push(`Logo: ${logo.reason}; placed at its usual spot anyway — check that it reads well.`);
+    logo = await forcedHouseLogo(output, spec, plan);
+  }
   copyChecks = checkCopy(brief.canonicalCopy, inspection.texts.map((t) => t.text), inspection.copyAudit);
   if (!copyPasses(copyChecks)) problems.push(`Text in the image does not match the approved copy: ${copyChecks.filter((c) => c.verdict !== 'exact').map((c) => `${c.field} ${c.verdict}`).join(', ')}`);
   if (inspection.logosOrWatermarks.length) problems.push(`Generated image contains a logo or watermark: ${inspection.logosOrWatermarks.map((l) => l.description).join('; ')}`);
@@ -776,6 +801,10 @@ async function produceTypeset(input: Parameters<typeof produceDirection>[0]): Pr
       writeFileSync(resolve(dir, `${direction.id}-repaired-raw.png`), raw);
       composed = await compose(raw);
     } else problems.push('Logo corner repair: the image model\'s corner did not blend in (blank, a dark or flat panel, or a seam); kept the original.');
+  }
+  if (composed.logo.requiresCreativeRepair && houseLogo()) {
+    problems.push(`Logo: ${composed.logo.reason}; placed at its usual spot anyway — check that it reads well.`);
+    composed = { ...composed, logo: await forcedHouseLogo(composed.ts.png, spec, plan) };
   }
   const finish = async () => {
     const { ts, logo } = composed;

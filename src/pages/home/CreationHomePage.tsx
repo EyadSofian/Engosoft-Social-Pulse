@@ -32,6 +32,8 @@ import { useI18n } from '../../i18n/I18nProvider';
 import { usePageMeta } from '../../shell/ShellContext';
 import { DesignSettings } from '../../features/creative-studio/DesignSettings';
 import { DEFAULT_ENGINE_SETTINGS, type EngineSettings } from '../../domain/design-engine';
+import { BRAND_TEMPLATES, brandTemplate } from '../../domain/brand-templates';
+import { BrandTemplateComposer, BrandTemplateGrid } from '../../features/brand-templates/BrandTemplateComposer';
 
 type Stage = 'compose' | 'generating';
 /** The three ways to make a post; `choose` is the first screen for people who may use more than one. */
@@ -107,7 +109,7 @@ export function CreationHomePage() {
   // Coming back while a design is still running reopens it; links that name a template open that template.
   const [mode, setMode] = useState<Mode>(() => {
     if (free && (query.has('creative') || query.has('template') || getActiveCreative()?.status === 'running')) return 'ai';
-    if ((query.has('svgTemplate') || query.has('schedule')) && ways.includes('template')) return 'template';
+    if ((query.has('svgTemplate') || query.has('schedule') || query.has('brand')) && ways.includes('template')) return 'template';
     return ways.length === 1 ? ways[0] : 'choose';
   });
   // A plan left from an abandoned visit must not attach a new post to someone else's plan row.
@@ -133,6 +135,8 @@ export function CreationHomePage() {
     } catch { /* bad prefill ignored */ }
   }, [query]);
   const [sourcePanel, setSourcePanel] = useState<'course' | 'post' | null>(null);
+  // A library design picked from the AI screen: the template opens with the idea already written.
+  const [brandPick, setBrandPick] = useState<{ id: string; prompt: string } | null>(() => (query.get('brand') ? { id: query.get('brand')!, prompt: '' } : null));
   const { items: pipeline } = usePipeline();
   usePageMeta(t('Create', 'إنشاء'), [{ label: t('Create', 'إنشاء') }]);
   useEffect(() => {
@@ -239,7 +243,7 @@ export function CreationHomePage() {
     {mode !== 'choose' && stage === 'compose' && <PostDetails key={planKey} />}
     {mode === 'upload' && <UploadMode />}
     {mode === 'reel' && <ReelMode />}
-    {mode === 'template' && <TemplateMode initialId={query.get('svgTemplate')} initialSchedule={query.has('schedule')} />}
+    {mode === 'template' && <TemplateMode key={brandPick?.id ?? ''} initialId={query.get('svgTemplate')} initialSchedule={query.has('schedule')} initialBrand={brandPick?.id ?? null} initialPrompt={brandPick?.prompt ?? ''} />}
     {mode === 'ai' && <div className={stage === 'compose' ? 'create-layout' : 'create-layout create-layout--single'}>
     <div className="creative-home__hero">
       {stage === 'compose' && <>
@@ -258,6 +262,10 @@ export function CreationHomePage() {
           setPrompt((current) => `${current}${current ? ' — ' : ''}${name}${when}`);
           setSourcePanel(null);
         }} /></div>}
+        {ways.includes('template') && <div className="create-ai-templates">
+          <span className="u-xs u-muted">{t('Or follow a library design (exact logo, every size, no AI image cost):', 'أو صمّمه على شكل تصميم من المكتبة (الشعار مظبوط، كل المقاسات، من غير تكلفة صور):')}</span>
+          <div className="create-ai-templates__list">{BRAND_TEMPLATES.map((entry) => <button key={entry.id} type="button" onClick={() => { setBrandPick({ id: entry.id, prompt }); setMode('template'); }}><img src={entry.references.blue ?? entry.references.light} alt="" />{t(entry.name.en, entry.name.ar)}</button>)}</div>
+        </div>}
         {references.length > 0 && <ul className="creative-home__references">{references.map((file, index) => <li key={`${file.name}-${index}`}>{file.mime.startsWith('image/') && file.dataUrl && <img src={file.dataUrl} alt="" />}<span>{file.name}</span><button type="button" onClick={() => setReferences((current) => current.filter((_, i) => i !== index))} aria-label={t(`Remove ${file.name}`, `احذف ${file.name}`)}>×</button></li>)}</ul>}
         <CampaignPicker value={campaignId} onChange={setCampaignId} />
         <div className="creative-home__platforms" role="group" aria-label={t('Platforms', 'المنصات')}>{CREATIVE_PLATFORMS.map((platform) => <button key={platform} type="button" aria-pressed={platforms.includes(platform)} onClick={() => togglePlatform(platform)}><span className="creative-home__platform-icon"><ChannelIcon channel={platform} size={15} /></span>{PLATFORM_FORMATS[platform].label}</button>)}</div>
@@ -371,7 +379,7 @@ function SizePicker({ platforms, chosen, main, designs, onDesigns, onToggle, onM
 }
 
 /** Ready templates: pick the kind of post, then a template, fill it and export without any image-model cost. */
-function TemplateMode({ initialId, initialSchedule }: { initialId: string | null; initialSchedule: boolean }) {
+function TemplateMode({ initialId, initialSchedule, initialBrand, initialPrompt }: { initialId: string | null; initialSchedule: boolean; initialBrand: string | null; initialPrompt: string }) {
   const { t } = useI18n();
   const { navigate } = useRouter();
   const { can } = useAuth();
@@ -380,14 +388,20 @@ function TemplateMode({ initialId, initialSchedule }: { initialId: string | null
   const [selected, setSelected] = useState<string | null>(initialId);
   const [kind, setKind] = useState<TemplateKind | 'all'>('all');
   const [schedule, setSchedule] = useState(initialSchedule);
+  const [brand, setBrand] = useState(() => brandTemplate(initialBrand) ?? null);
   const template = items?.find((item) => item.id === selected);
   if (schedule) return <ScheduleComposer onClose={() => setSchedule(false)} />;
+  if (brand) return <BrandTemplateComposer key={brand.id} template={brand} initialPrompt={initialBrand === brand.id ? initialPrompt : ''} onClose={() => setBrand(null)} />;
   if (error) return <div className="library-empty glass" role="alert"><p>{error}</p><Button variant="secondary" onClick={() => void reload()}>{t('Retry', 'أعد المحاولة')}</Button></div>;
   if (!items) return <div className="board-loading"><span className="ui-btn__spinner" /></div>;
   if (template) return <TemplateComposer key={template.id} template={template} onClose={() => setSelected(null)} />;
   const shown = kind === 'all' ? items : items.filter((item) => item.kind === kind);
   const kinds = (Object.keys(KIND_LABEL) as TemplateKind[]).filter((value) => items.some((item) => item.kind === value));
   return <section className="u-stack">
+    <div className="library-section">
+      <div className="library-section__head"><h2><LayoutTemplate size={18} /> {t('Engosoft brand designs', 'تصاميم هوية إنجوسوفت')}</h2><small className="u-muted">{t('Every size, the exact logo, your photos', 'كل المقاسات، الشعار الصح، وصورك')}</small></div>
+      <BrandTemplateGrid onOpen={setBrand} />
+    </div>
     {/* The monthly course schedule is a template of its own: rows from a sheet or Odoo, as many posts as the month needs. */}
     <button type="button" className="schedule-card glass" onClick={() => setSchedule(true)}>
       <span className="schedule-card__icon"><CalendarDays size={22} /></span>

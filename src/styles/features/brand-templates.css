@@ -1,0 +1,48 @@
+/* Engosoft brand templates: the template cards and the composer (inputs on one side, every size live on the other). */
+.brand-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(210px, 1fr)); gap: 14px; }
+.brand-card { display: grid; align-content: start; gap: 8px; padding: 12px; color: var(--text); font: inherit; text-align: start; cursor: pointer; border-radius: 16px; transition: transform .15s var(--ease), box-shadow .15s var(--ease); }
+.brand-card:hover { transform: translateY(-2px); }
+.brand-card img { width: 100%; aspect-ratio: 4 / 5; object-fit: cover; border-radius: 10px; background: var(--surface-subtle); }
+.brand-card b { font-size: 15px; }
+.brand-card small { color: var(--text-muted); font-size: 12.5px; line-height: 1.7; }
+.brand-card em { color: var(--brand-ink); font-size: 12px; font-style: normal; line-height: 1.6; }
+
+.brand-composer { display: grid; grid-template-columns: minmax(320px, 440px) 1fr; gap: 20px; align-items: start; }
+.brand-composer__form { padding: 18px; border-radius: 16px; }
+.brand-composer__title { display: flex; justify-content: space-between; align-items: center; gap: 12px; flex-wrap: wrap; }
+.brand-composer__title h2 { margin: 0; font-size: 18px; }
+.brand-composer__title .size-plan__switch { min-width: 150px; }
+.brand-ai { display: grid; gap: 8px; padding: 12px; border-radius: 12px; background: var(--brand-soft, var(--surface-subtle)); }
+.brand-ai .ui-field__label { display: inline-flex; align-items: center; gap: 6px; }
+.brand-ai__row { display: flex; gap: 8px; flex-wrap: wrap; }
+.brand-ai__facts { margin: 0; }
+.brand-form { gap: 12px; }
+.brand-form__req { color: var(--danger, #e5484d); }
+.brand-photo { display: flex; gap: 12px; align-items: center; }
+.brand-photo__thumb { flex: none; display: grid; place-items: center; width: 72px; height: 72px; overflow: hidden; border: 1px dashed var(--border-strong); border-radius: 12px; background: var(--surface-subtle); color: var(--text-subtle); }
+.brand-photo__thumb[data-clear] { background-color: #fff; background-image: conic-gradient(#e6e9ef 25%, #fff 0 50%, #e6e9ef 0 75%, #fff 0); background-size: 14px 14px; }
+.brand-photo__thumb img { width: 100%; height: 100%; object-fit: contain; }
+.brand-photo__actions { display: flex; gap: 6px; flex-wrap: wrap; }
+.brand-sizes { display: flex; gap: 8px; flex-wrap: wrap; }
+.brand-size { display: inline-flex; align-items: center; gap: 6px; padding: 7px 10px; border: 1px solid var(--border-strong); border-radius: 10px; background: var(--surface); color: var(--text-muted); font: inherit; font-size: 12.5px; cursor: pointer; }
+.brand-size[aria-pressed='true'] { border-color: var(--brand); background: var(--brand-soft, var(--surface-subtle)); color: var(--brand-ink); }
+.brand-size small { color: var(--text-subtle); }
+
+.brand-composer__previews { display: flex; flex-wrap: wrap; gap: 16px; align-items: flex-start; position: sticky; top: calc(var(--header-h) + 16px); }
+.brand-preview { margin: 0; display: grid; gap: 6px; width: min(300px, 100%); }
+.brand-preview[data-wide] { width: min(460px, 100%); }
+.brand-preview__frame { width: 100%; overflow: hidden; border-radius: 10px; box-shadow: 0 4px 18px rgba(10, 20, 60, .14); background: var(--surface-subtle); }
+.brand-preview__frame svg { display: block; width: 100%; height: 100%; }
+.brand-preview figcaption { display: flex; align-items: center; gap: 6px; color: var(--text-muted); font-size: 12px; }
+.create-ai-templates { display: grid; gap: 8px; }
+.create-ai-templates__list { display: flex; gap: 6px; flex-wrap: wrap; }
+.create-ai-templates__list button { display: inline-flex; align-items: center; gap: 6px; padding: 5px 10px 5px 5px; border: 1px solid var(--border-strong); border-radius: 999px; background: var(--surface); color: var(--text); font: inherit; font-size: 12.5px; cursor: pointer; }
+.create-ai-templates__list button img { width: 24px; height: 30px; object-fit: cover; border-radius: 6px; }
+.create-ai-templates__list button:hover { border-color: var(--brand); }
+
+@media (max-width: 960px) {
+  .brand-composer { grid-template-columns: 1fr; }
+  .brand-composer__previews { position: static; }
+  .brand-preview { width: calc(50% - 8px); }
+  .brand-preview[data-wide] { width: 100%; }
+}

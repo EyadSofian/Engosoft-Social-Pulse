@@ -20,8 +20,8 @@ async function noise(width = 1080, height = 1350) {
 }
 const codes = (result: { issues: { code: string; severity: string }[] }) => result.issues.filter((i) => i.severity === 'error').map((i) => i.code);
 
-test('registry exposes the four variants with derived geometry', () => {
-  assert.equal(allLogoVariants().length, 4);
+test('registry exposes the approved variants with derived geometry', () => {
+  assert.equal(allLogoVariants().length, 6);
   const lockup = getLogoVariant('lockup-reversed');
   assert.equal(logoHeightFor(lockup, 300), 191);
   assert.equal(minimumLogoWidth(lockup, 1080), 240);

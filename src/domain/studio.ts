@@ -87,7 +87,7 @@ export interface StudioDoc {
   objects: StudioObject[];
   /** Faces and subjects, kept so the logo never lands on them. */
   zones: StudioZone[];
-  logo: { variantId: 'lockup-reversed' | 'lockup-positive' | 'symbol-reversed' | 'symbol-positive'; x: number; y: number; width: number } | null;
+  logo: { variantId: 'lockup-reversed' | 'lockup-positive' | 'symbol-reversed' | 'symbol-positive' | 'horizontal-reversed' | 'horizontal-positive'; x: number; y: number; width: number } | null;
 }
 
 export const STUDIO_FILE = /^[0-9a-f-]{36}\.png$/;
