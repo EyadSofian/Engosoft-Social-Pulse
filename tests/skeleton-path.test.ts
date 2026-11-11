@@ -10,7 +10,8 @@ import { join } from 'node:path';
 import { after, test } from 'node:test';
 import sharp from 'sharp';
 process.env.MEDIA_DIR = mkdtempSync(join(tmpdir(), 'skeleton-path-'));
-const { foldLine, lineMatches, produceSkeleton, skeletonFor, skeletonPathFor } = await import('../server/creative-intelligence/generation/skeleton');
+const { foldLine, lineMatches, locateLines, produceSkeleton, skeletonFor, skeletonPathFor } = await import('../server/creative-intelligence/generation/skeleton');
+const { personLines, missingLines } = await import('../server/creative-intelligence/generation/template-fill');
 const { adaptFullCreative, generateFullCreative, loadFullCreativeRun, recoverInterruptedRuns, updateTrace } = await import('../server/creative-intelligence/generation/full-creative');
 const { resolveFollowDesign } = await import('../server/creative-intelligence/generation/follow-design');
 const { brandSamples, brandTemplate } = await import('../src/domain/brand-templates');
@@ -41,7 +42,7 @@ const reader = (lines: () => string[], wrong: (text: string) => boolean = () => 
 };
 
 /** A fake image model: hands Image 1 back (a perfect redraw) or a solid colour, and counts its calls. */
-function fakeModel(mode: 'echo' | { colour: string } | 'fail' = 'echo') {
+function fakeModel(mode: 'echo' | { colour: string } | { shift: number } | 'fail' = 'echo') {
   const calls: { prompt: string; size: string }[] = [];
   return {
     calls,
@@ -52,7 +53,10 @@ function fakeModel(mode: 'echo' | { colour: string } | 'fail' = 'echo') {
         calls.push({ prompt: r.prompt, size: r.size });
         if (mode === 'fail') throw new Error('Request timed out');
         const [width, height] = r.size.split('x').map(Number);
-        const png = mode === 'echo' ? await sharp(r.images[0].data).resize(width, height, { fit: 'fill' }).png().toBuffer() : await sharp({ create: { width, height, channels: 3, background: mode.colour } }).png().toBuffer();
+        const echo = () => sharp(r.images[0].data).resize(width, height, { fit: 'fill' }).png().toBuffer();
+        const png = mode === 'echo' ? await echo()
+          : 'shift' in mode ? await sharp(await sharp(await echo()).extend({ top: 0, bottom: mode.shift, background: '#0443F2' }).png().toBuffer()).extract({ left: 0, top: mode.shift, width, height }).png().toBuffer()
+          : await sharp({ create: { width, height, channels: 3, background: mode.colour } }).png().toBuffer();
         return [{ png, model: 'fake-image', size: r.size, quality: 'high' as const, latencyMs: 1 }];
       },
     },
@@ -188,3 +192,34 @@ async function adaptFullCreativeWith(provider: ReturnType<typeof fakeModel>['pro
   mod.setImageProviderForTests(() => provider as never);
   try { return await adaptFullCreative(loadFullCreativeRun(requestId), directionId, format, ENV); } finally { mod.setImageProviderForTests(null); }
 }
+
+test('a finish that moved the lines is not used, even with every word right: they would run into the stamp (seen on a real run)', async () => {
+  const doc = campaignDoc();
+  const sk = await skeletonFor(doc, FEED);
+  const seen = responses({ engosoft_line_reads: reader(() => sk.lines.map((l) => l.text)) });
+  const { provider } = fakeModel({ shift: 80 });
+  const out = await produceSkeleton({ doc, canvas: FEED, provider, quality: 'high', topic: 'x', env: ENV });
+  assert.equal(out.shipped, 'skeleton');
+  assert.match(out.notes.join(' '), /moved .*exact layout was kept/);
+  assert.ok(!seen.includes('engosoft_line_reads'), 'positions are checked in code before anything is read');
+  const still = await locateLines(sk.full, sk.full, sk.lines);
+  assert.ok(still.every((spot) => !spot.moved && spot.dx === 0 && spot.dy === 0), 'the layout against itself has not moved');
+});
+
+test('the person\'s lines are the post\'s lines: prices and list marks aside, and a line lost by the fill is named', () => {
+  const prompt = 'مع التطور العمراني في المملكة.. فرص جديدة للمصممين!\nInterior Design\n- حوّل شغفك بالتصميم الداخلي لمهارة احترافية مطلوبة في سوق العمل.\nبعد 1000\nقبل 2000';
+  assert.deepEqual(personLines(prompt), ['مع التطور العمراني في المملكة.. فرص جديدة للمصممين!', 'Interior Design', 'حوّل شغفك بالتصميم الداخلي لمهارة احترافية مطلوبة في سوق العمل.']);
+  assert.deepEqual(personLines('اعمل بوست لدورة CFM الجاية'), [], 'one sentence describing the post has no lines to keep');
+  const values = { headline: 'مع التطور العمراني في المملكة..', subline: 'فرص جديدة للمصممين!', tape: 'التصميم الداخلي' };
+  assert.deepEqual(missingLines(personLines(prompt), values, ['headline', 'subline', 'tape']), ['Interior Design', 'حوّل شغفك بالتصميم الداخلي لمهارة احترافية مطلوبة في سوق العمل.'], 'a line split across neighbouring fields still counts as there');
+});
+
+test('the fill keeps no currency the person did not write and the design\'s own «بدل» (seen on a real run)', async () => {
+  const { fillTemplateValues } = await import('../server/creative-intelligence/generation/template-fill');
+  responses({ engosoft_brand_template_fill: () => ({ headline: 'مع التطور العمراني في المملكة.. فرص جديدة للمصممين!', highlight: 'فرص جديدة', tape: 'Interior Design', subline: 'حوّل شغفك بالتصميم الداخلي لمهارة احترافية مطلوبة في سوق العمل.', price: '1000', currency: 'ريال', instead: 'بدلاً من', oldPrice: '2000' }) });
+  const out = await fillTemplateValues(campaign, { prompt: 'مع التطور العمراني في المملكة.. فرص جديدة للمصممين!\nInterior Design\nحوّل شغفك بالتصميم الداخلي لمهارة احترافية مطلوبة في سوق العمل.\nبعد 1000\nقبل 2000', careful: true }, ENV);
+  assert.equal(out.values.currency, '');
+  assert.equal(out.values.instead, 'بـــدل');
+  assert.deepEqual(out.missing, []);
+  assert.equal(out.values.subline, 'حوّل شغفك بالتصميم الداخلي لمهارة احترافية مطلوبة في سوق العمل.', 'the person\'s line is not cut to the field\'s 90 characters... or any limit');
+});

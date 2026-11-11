@@ -1068,13 +1068,16 @@ export async function planSkeletonCreative(request: FullCreativeRequest, follow:
     ...(request.facts ?? '').split('\n').map((line) => line.trim()).filter(Boolean),
   ];
   const surface = follow.surface && template.surfaces.includes(follow.surface) ? follow.surface : template.surfaces[template.surfaces.length - 1];
-  const filled = await fillTemplateValues(template, { prompt: request.prompt, facts: facts.join('\n'), course: request.course, surface }, env);
+  const filled = await fillTemplateValues(template, { prompt: request.prompt, facts: facts.join('\n'), course: request.course, surface, careful: true }, env);
   onDesigning?.();
   // The design's campaign files (stamp, hashtag) stay as they are.
   const values = { ...filled.values, ...Object.fromEntries(template.inputs.filter((i) => i.photo?.kind === 'artwork').map((i) => [i.key, i.sample.ar])) };
   const doc = designDocFromTemplate(template, values, filled.surface);
   const blocks: CopyBlock[] = doc.layers.flatMap((l) => (l.kind === 'text' && l.text.trim() ? [{ role: l.role, kind: l.block, text: l.text, ...(l.highlight ? { highlight: l.highlight } : {}) }] : []));
-  const notes = request.course?.trim() && !designWords(doc).some((w) => w.text.includes(request.course!.trim())) ? [`The course name «${request.course.trim()}» is not on the post.`] : [];
+  const notes = [
+    ...filled.missing.map((line) => `Your line «${line}» is not on the post as written.`),
+    ...(request.course?.trim() && !designWords(doc).some((w) => w.text.includes(request.course!.trim())) ? [`The course name «${request.course.trim()}» is not on the post.`] : []),
+  ];
   const house = houseLogo() ?? { mark: 'lockup' as LogoMark, corner: 'top-left' as Corner };
   const same = 'As the chosen design';
   const brief: CreativeBriefPlan = {
