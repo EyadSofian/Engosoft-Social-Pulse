@@ -1,13 +1,12 @@
-import { useMemo, useState } from 'react';
-import { ArrowDownRight, ArrowUpRight, ExternalLink, FileSpreadsheet, Printer, RefreshCw, SearchX } from 'lucide-react';
+import { useState } from 'react';
+import { ArrowDownRight, ArrowUpRight, FileSpreadsheet, Printer, RefreshCw } from 'lucide-react';
 import { useQueryState } from '../../app/router/router';
 import { useLiveData } from '../../app/providers/LiveDataProvider';
 import { SeriesChart, type SeriesDatum } from '../../components/charts/Series';
 import { ChannelIcon } from '../../components/data-display/ChannelIcon';
-import { DataTable, type Column } from '../../components/data-display/DataTable';
 import { EmptyState } from '../../components/feedback/States';
 import { LiveGate } from '../../components/feedback/LiveGate';
-import { FilterSelect, SearchInput } from '../../components/forms/Field';
+import { FilterSelect } from '../../components/forms/Field';
 import { Button } from '../../components/ui/Button';
 import { Card, CardBody, CardHeader } from '../../components/ui/Card';
 import { Segmented } from '../../components/ui/Tabs';
@@ -18,9 +17,10 @@ import { dateFromKey, dayKeyOf } from '../../lib/format';
 import { PLATFORMS } from '../../lib/platforms';
 import { PageHeader } from '../../shell/Header';
 import { usePageMeta } from '../../shell/ShellContext';
-import type { Platform, Post } from '../../types';
+import type { Platform } from '../../types';
 import { exportWorkbook, KPI_LABEL, printReport } from './export';
 import { useAnalytics, type AnalyticsModel, type Kpi } from './model';
+import { PostsSection } from './PostsSection';
 
 const PERIOD_VALUES = PERIODS.map((period) => String(period.value));
 
@@ -111,7 +111,7 @@ export function AnalyticsHub() {
           <>
             <Activity model={model} />
             <PlatformTable model={model} onPick={setPlatform} />
-            <PostTable posts={model.posts} />
+            <PostsSection posts={model.posts} />
           </>
         ) : (
           <Card>
@@ -235,63 +235,6 @@ function PlatformTable({ model, onPick }: { model: AnalyticsModel; onPick: (plat
           </tbody>
         </table>
       </div>
-    </Card>
-  );
-}
-
-function PostTable({ posts }: { posts: Post[] }) {
-  const { t, num, compact, date, pct } = useI18n();
-  const [search, setSearch] = useState('');
-
-  const found = useMemo(() => {
-    const needle = search.trim().toLowerCase();
-    if (!needle) return posts;
-    return posts.filter((post) => post.title.toLowerCase().includes(needle) || post.accountName.toLowerCase().includes(needle));
-  }, [posts, search]);
-
-  // A column no post has a number for is only dashes; leave it out.
-  const has = (key: 'reach' | 'views') => posts.some((post) => post.metrics[key] != null);
-  const columns: Column<Post>[] = [
-    {
-      key: 'title',
-      header: t('Post', 'المنشور'),
-      cell: (post) => (
-        <div className="an-cell">
-          <ChannelIcon channel={post.platform} size={15} />
-          <span className="an-cell__text">
-            <a href={post.permalink} target="_blank" rel="noreferrer" dir="auto">
-              <span className="u-truncate">{post.title || t('(no caption)', '(بدون نص)')}</span>
-              <ExternalLink size={11} aria-hidden />
-            </a>
-            <small className="u-muted">{post.accountName || channelName[post.platform]}</small>
-          </span>
-        </div>
-      ),
-    },
-    { key: 'date', header: t('Published', 'تاريخ النشر'), sort: (post) => post.ts, cell: (post) => <span className="u-tnum u-sm">{date(post.ts, 'dayShort')}</span> },
-    ...(has('reach') ? [{ key: 'reach', header: t('Reach', 'الوصول'), align: 'end' as const, sort: (post: Post) => post.metrics.reach, cell: (post: Post) => <span className="u-tnum">{compact(post.metrics.reach)}</span> }] : []),
-    ...(has('views') ? [{ key: 'views', header: t('Views', 'المشاهدات'), align: 'end' as const, sort: (post: Post) => post.metrics.views, cell: (post: Post) => <span className="u-tnum">{compact(post.metrics.views)}</span> }] : []),
-    { key: 'interactions', header: t('Interactions', 'التفاعلات'), align: 'end', sort: (post) => (post.measured ? post.interactions : null), cell: (post) => <span className="u-tnum">{post.measured ? compact(post.interactions) : '—'}</span> },
-    { key: 'rate', header: t('Rate', 'المعدل'), align: 'end', sort: (post) => post.engagementRate, cell: (post) => <span className="u-tnum">{pct(post.engagementRate, 1)}</span>, secondary: true },
-  ];
-
-  return (
-    <Card>
-      <CardHeader
-        title={t('Posts', 'المنشورات')}
-        count={num(found.length)}
-        actions={<SearchInput value={search} onChange={setSearch} label={t('Search posts', 'ابحث في المنشورات')} placeholder={t('Caption or account…', 'نص المنشور أو اسم الحساب…')} />}
-      />
-      <DataTable
-        caption={t('Posts', 'المنشورات')}
-        rows={found}
-        columns={columns}
-        rowKey={(post) => post.key}
-        pageSize={25}
-        initialSort={{ key: 'date', dir: 'desc' }}
-        dense
-        empty={<EmptyState compact icon={<SearchX size={22} />} title={t('No post matches this search.', 'مفيش منشور مطابق للبحث.')} text={t('Try another word, or clear the search.', 'جرّب كلمة تانية، أو امسح البحث.')} />}
-      />
     </Card>
   );
 }

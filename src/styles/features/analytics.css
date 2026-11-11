@@ -314,3 +314,216 @@
   outline-offset: 2px;
   border-radius: 4px;
 }
+
+/* ── Post cards ────────────────────────────────────────────────────── */
+
+.an-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(min(100%, 220px), 1fr));
+  gap: var(--sp-3);
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+.an-grid > li {
+  min-width: 0;
+}
+
+.an-post {
+  all: unset;
+  box-sizing: border-box;
+  display: flex;
+  flex-direction: column;
+  gap: var(--sp-2);
+  width: 100%;
+  height: 100%;
+  padding: var(--sp-2) var(--sp-2) var(--sp-3);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-lg);
+  background: var(--surface);
+  cursor: pointer;
+  transition: border-color 120ms, box-shadow 120ms, transform 120ms;
+}
+
+.an-post:hover {
+  border-color: var(--border-strong);
+  box-shadow: var(--shadow-sm);
+  transform: translateY(-1px);
+}
+
+.an-post:focus-visible {
+  outline: 2px solid var(--brand);
+  outline-offset: 2px;
+}
+
+.an-thumb {
+  display: grid;
+  place-items: center;
+  flex: none;
+  width: 100%;
+  aspect-ratio: 1 / 1;
+  overflow: hidden;
+  border-radius: calc(var(--radius-lg) - 4px);
+  background: var(--surface-subtle);
+}
+
+.an-thumb img {
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+  display: block;
+}
+
+.an-thumb--empty {
+  color: var(--text-subtle);
+}
+
+/* Small square in the table's post column. */
+.an-cell .an-thumb {
+  width: 44px;
+  border-radius: 8px;
+}
+
+.an-cell .an-thumb--empty svg {
+  width: 18px;
+  height: 18px;
+}
+
+.an-post__meta {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  min-width: 0;
+  padding-inline: 4px;
+  font-size: var(--fs-xs);
+  color: var(--text-muted);
+}
+
+.an-post__date {
+  margin-inline-start: auto;
+  flex: none;
+  color: var(--text-subtle);
+}
+
+.an-post__caption {
+  display: -webkit-box;
+  -webkit-line-clamp: 2;
+  -webkit-box-orient: vertical;
+  overflow: hidden;
+  min-height: 2.9em;
+  padding-inline: 4px;
+  font-size: var(--fs-sm);
+  font-weight: 600;
+  line-height: 1.45;
+  color: var(--text);
+}
+
+.an-post__stats {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 4px;
+  margin-top: auto;
+  padding: var(--sp-2) 4px 0;
+  border-top: 1px solid var(--border);
+}
+
+.an-stat {
+  display: flex;
+  flex-direction: column;
+  min-width: 0;
+}
+
+.an-stat b {
+  font-size: var(--fs-md, 15px);
+  font-weight: 650;
+  color: var(--text);
+}
+
+.an-stat small {
+  font-size: var(--fs-xs);
+  color: var(--text-subtle);
+}
+
+.an-more {
+  display: flex;
+  justify-content: center;
+  margin-top: var(--sp-4);
+}
+
+/* ── Post popup ────────────────────────────────────────────────────── */
+
+.an-detail {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) minmax(0, 1fr);
+  gap: var(--sp-4);
+  align-items: start;
+}
+
+@media (max-width: 640px) {
+  .an-detail {
+    grid-template-columns: minmax(0, 1fr);
+  }
+}
+
+.an-thumb--large {
+  aspect-ratio: 4 / 5;
+}
+
+.an-thumb--large img {
+  object-fit: contain;
+  background: var(--surface-subtle);
+}
+
+.an-detail__side {
+  display: flex;
+  flex-direction: column;
+  gap: var(--sp-4);
+  min-width: 0;
+}
+
+.an-detail__caption {
+  margin: 0;
+  font-size: var(--fs-sm);
+  line-height: 1.7;
+  white-space: pre-line;
+  overflow-wrap: anywhere;
+}
+
+.an-detail__headline {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: var(--sp-3);
+  padding: var(--sp-3);
+  border-radius: var(--radius-lg);
+  background: var(--surface-subtle);
+}
+
+.an-detail__headline .an-stat b {
+  font-size: 24px;
+}
+
+.an-detail__figures {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: var(--sp-2) var(--sp-4);
+  margin: 0;
+}
+
+.an-detail__figures > div {
+  display: flex;
+  justify-content: space-between;
+  gap: var(--sp-2);
+  padding-block: 6px;
+  border-bottom: 1px solid var(--border);
+}
+
+.an-detail__figures dt {
+  font-size: var(--fs-sm);
+  color: var(--text-muted);
+}
+
+.an-detail__figures dd {
+  margin: 0;
+  font-weight: 650;
+}
