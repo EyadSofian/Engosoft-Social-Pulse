@@ -3,7 +3,7 @@ import { existsSync } from 'node:fs';
 import test from 'node:test';
 import sharp from 'sharp';
 process.env.MEDIA_DIR = (await import('node:fs')).mkdtempSync((await import('node:path')).join((await import('node:os')).tmpdir(), 'follow-design-'));
-const { followImage, followPlanningNote, followPrompt, resolveFollowDesign } = await import('../server/creative-intelligence/generation/follow-design');
+const { followImage, followPlanningNote, followPrompt, resolveFollowDesign, templateCampaign } = await import('../server/creative-intelligence/generation/follow-design');
 
 test('a library design resolves to its reference image and its text blocks', async () => {
   const design = await resolveFollowDesign({ templateId: 'brand-campaign-offer' }, '00000000-0000-4000-8000-000000000001');
@@ -29,4 +29,10 @@ test('an uploaded design is saved as a JPEG beside the run; a non-image is refus
   const design = await resolveFollowDesign({ name: 'mine.png', dataUrl: `data:image/png;base64,${png.toString('base64')}` }, '00000000-0000-4000-8000-000000000002');
   assert.ok(design?.path.endsWith('follow-design.jpg') && existsSync(design.path));
   assert.equal(await resolveFollowDesign({ name: 'x', dataUrl: 'data:text/plain;base64,aGk=' }, '00000000-0000-4000-8000-000000000002'), undefined);
+});
+
+test('the 50/50 design keeps its exact stamp file; a design without a stamp has none', () => {
+  const stamp = templateCampaign('brand-campaign-offer');
+  assert.ok(stamp && existsSync(stamp.stampPath) && stamp.stampPath.endsWith('campaign-5050-stamp.png'));
+  assert.equal(templateCampaign('brand-headline'), undefined);
 });

@@ -41,8 +41,11 @@ test('the official logo is the brand file in the artwork that suits the surface,
   const offer = brandTemplate('brand-campaign-offer')!;
   const feed = layoutBrandTemplate({ template: offer, surface: 'blue', measure, values: brandSamples(offer, 'ar'), canvas: { width: 1080, height: 1350 } });
   const square = layoutBrandTemplate({ template: offer, surface: 'blue', measure, values: brandSamples(offer, 'ar'), canvas: { width: 1080, height: 1080 } });
-  const logoBox = (svg: string) => /<image href="\/brand\/logos\/engosoft-horizontal-reversed\.svg" x="([\d.]+)" y="([\d.]+)" width="([\d.]+)"/.exec(svg)!.slice(1).map(Number);
+  // The campaign template uses the campaign's own (older) lockup, with the background grain masked over it.
+  const logoBox = (svg: string) => /<image href="\/brand\/logos\/engosoft-old-lockup-reversed\.png" x="([\d.]+)" y="([\d.]+)" width="([\d.]+)"[^>]*filter=[^>]*\/><rect[^>]+mask=/.exec(svg)!.slice(1).map(Number);
   assert.deepEqual(logoBox(feed), logoBox(square), 'same place and size on the 4:5 and the 1:1');
+  assert.ok(logoBox(feed)[2] <= 214 * 1.25, 'drawn near its native size, so it stays sharp');
+  assert.ok(!/engosoft-horizontal/.test(feed));
   // Never the old stacked lockup or a drawn mark.
   for (const template of BRAND_TEMPLATES) assert.ok(!/engosoft-lockup-/.test(layoutBrandTemplate({ template, surface: template.surfaces[0], measure, values: brandSamples(template, 'ar'), canvas: { width: 1080, height: 1350 } })));
 });
@@ -92,4 +95,9 @@ test('a line over its limit is cut at a whole word, never mid-word', () => {
   assert.equal(clipWords('3 تخصصات تفتح لك آفاق جديدة: Architecture, Structure, MEP', 48), '3 تخصصات تفتح لك آفاق جديدة: Architecture');
   assert.equal(clipWords('من التصميم للتنفيذ.. الـBIM يجمع كل حاجة', 34), 'من التصميم للتنفيذ.. الـBIM يجمع');
   assert.equal(clipWords('قصير', 20), 'قصير');
+});
+
+test('two prices for two options are not written as an old and a new price', () => {
+  const prompt = fillInstructions(brandTemplate('brand-campaign-offer')!, 'ar');
+  assert.match(prompt, /different options \(online and offline/);
 });

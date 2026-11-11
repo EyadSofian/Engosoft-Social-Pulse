@@ -10,6 +10,7 @@ import sharp from 'sharp';
 import { brandTemplate, type BrandSurface } from '../../../src/domain/brand-templates.js';
 import { mediaDir } from '../../paths.js';
 import type { ReferenceImage } from './house-references.js';
+import type { CampaignIdentity } from '../logo-resolution/campaign-stamp.js';
 
 /** Saved on the run, so other sizes made later follow the same design. */
 export interface FollowDesign {
@@ -63,6 +64,7 @@ export function followPlanningNote(design: FollowDesign): string {
     'Write copy that fills the same text blocks as that design: the same kinds of lines (headline, highlighted phrase, labels, badge, price, button…), about the same number of lines and length each, so it sits in the same places.',
     design.structure ? `Its blocks: ${design.structure}` : '',
     'Never reuse its words, numbers, names or prices; facts come only from this request and the verified facts.',
+    'Show a crossed-out or «instead of» old price only when the request says the price was reduced from it. Two prices for different options (online and offline, two levels) are two options shown side by side, never an old and a new price.',
   ].filter(Boolean).join('\n');
 }
 
@@ -77,4 +79,17 @@ export function followPrompt(image: { aspect: number }, canvasAspect: number, in
     'Do not draw its logo, any logo, website line or footer: leave that spot as clean background; the official logo is placed afterwards.',
     sameShape ? '' : `Image ${index} has a different shape from this canvas: keep its style and its elements and rearrange them to fit this canvas naturally. Never stretch, squash, crop or pad it.`,
   ].filter(Boolean).join('\n');
+}
+
+/**
+ * A library design that carries a campaign stamp (the «عرض الخمسين خمسين» lockup) keeps it exact: the stamp file
+ * is placed on the finished design like a campaign's stamp, instead of the image model redrawing its lettering.
+ */
+export function templateCampaign(templateId: string): CampaignIdentity | undefined {
+  const template = brandTemplate(templateId);
+  const stamp = template?.inputs.find((input) => input.photo?.kind === 'artwork' && input.key === 'stamp');
+  if (!template || !stamp) return undefined;
+  const path = resolve(process.cwd(), 'public', stamp.sample.ar.replace(/^\//, ''));
+  if (!existsSync(path)) return undefined;
+  return { id: `template:${template.id}`, name: template.name.en, slogan: '', hashtag: '', stampPath: path, keyVisualPath: '', corner: 'top-right', width: 0.3 };
 }

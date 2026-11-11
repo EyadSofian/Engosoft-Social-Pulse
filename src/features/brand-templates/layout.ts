@@ -28,6 +28,11 @@ const C = {
 const LOGO = {
   horizontal: { positive: '/brand/logos/engosoft-horizontal-positive.svg', reversed: '/brand/logos/engosoft-horizontal-reversed.svg', ratio: 266.21 / 68.52 },
   symbol: { positive: '/brand/logos/engosoft-symbol-positive.svg', reversed: '/brand/logos/engosoft-symbol-reversed.svg', ratio: 19.164 / 25.871 },
+  /**
+   * The older «ENGO | SOFT» lockup the campaign posts use, white on transparent. Cut from the 50/50 campaign post
+   * at its size there (214 px wide on 1080), so it is drawn at about that size to stay sharp.
+   */
+  old: { reversed: '/brand/logos/engosoft-old-lockup-reversed.png', ratio: 214 / 76, width: 214 },
 };
 
 const esc = (value: string) => value.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;');
@@ -579,7 +584,21 @@ const campaignOffer: Builder = (c) => {
   c.defs.push(`<filter id="${grain}" x="0" y="0" width="100%" height="100%"><feTurbulence type="fractalNoise" baseFrequency="${n(0.9 / Math.max(0.5, c.s))}" numOctaves="2" seed="7"/><feColorMatrix values="0 0 0 0 0.02  0 0 0 0 0.16  0 0 0 0 0.75  0 0 0 0.55 0"/><feComposite in2="SourceGraphic" operator="in"/></filter>`,
     `<filter id="${shadow}" x="-10%" y="-20%" width="120%" height="150%"><feDropShadow dx="0" dy="${n(5 * c.s)}" stdDeviation="${n(2 * c.s)}" flood-color="#0026A8" flood-opacity="0.9"/></filter>`);
   const bg = `<rect width="${W}" height="${H}" fill="#0443F2"/><rect width="${W}" height="${H}" fill="#0443F2" filter="url(#${grain})" opacity="0.6"/>`;
-  logo(c, true);
+  // The campaign's own logo (the older lockup) at its place in the design, with the same grain over it as over
+  // the background, so it sits in the print instead of on top of it.
+  {
+    const width = Math.min(LOGO.old.width * 1.25, Math.round((c.ratio > 1.15 ? Math.min(W, H * 1.4) : W) * 0.2));
+    const height = width / LOGO.old.ratio;
+    const top = c.story ? Math.max(Math.round(H * 0.06), c.safe.top * 0.4) : Math.max(c.m * 0.85, c.safe.top + c.m * 0.5);
+    const x = Math.max(c.m * 0.6, c.safe.left + c.m * 0.5);
+    const mask = c.id('logomask');
+    c.defs.push(`<mask id="${mask}" maskUnits="userSpaceOnUse" x="${n(x)}" y="${n(top)}" width="${n(width)}" height="${n(height)}"><image href="${LOGO.old.reversed}" x="${n(x)}" y="${n(top)}" width="${n(width)}" height="${n(height)}" preserveAspectRatio="xMidYMid meet"/></mask>`);
+    // A soft deep-blue shadow under it, as in the campaign post, then a light pass of the background grain.
+    const lift = c.id('lift');
+    c.defs.push(`<filter id="${lift}" x="-10%" y="-20%" width="120%" height="150%"><feDropShadow dx="0" dy="${n(3 * c.s)}" stdDeviation="${n(3 * c.s)}" flood-color="#00157A" flood-opacity="0.55"/></filter>`);
+    c.body.push(`<image href="${LOGO.old.reversed}" x="${n(x)}" y="${n(top)}" width="${n(width)}" height="${n(height)}" preserveAspectRatio="xMidYMid meet" filter="url(#${lift})"/>`);
+    c.body.push(`<rect x="${n(x)}" y="${n(top)}" width="${n(width)}" height="${n(height)}" fill="#0443F2" filter="url(#${grain})" opacity="0.4" mask="url(#${mask})"/>`);
+  }
   const footTop = footer(c, true, { motif: 'none' });
   const wide = c.ratio > 1.15;
   const head = c.value('headline'), hi = c.value('highlight'), tape = c.value('tape'), sub = c.value('subline');
@@ -750,8 +769,11 @@ const banner: Builder = (c, surface) => {
   const main = pick('headline', 'title', 'line1', 'tape');
   const second = pick('subline', 'line2', 'eyebrow', 'tag', 'label');
   const picture = c.input.template.inputs.filter((i) => i.type === 'photo').map((i) => (values[i.key] ?? '').trim()).find(Boolean) ?? '';
-  const logoW = Math.min((x1 - x0) * 0.22, bandH * 3.885 * 0.42);
-  c.image(dark ? LOGO.horizontal.reversed : LOGO.horizontal.positive, x0, y0 + (bandH - logoW / LOGO.horizontal.ratio) / 2, logoW, logoW / LOGO.horizontal.ratio, 'xMidYMid meet');
+  // The campaign template keeps its own (older) lockup on every size.
+  const oldLogo = c.input.template.id === 'brand-campaign-offer';
+  const logoRatio = oldLogo ? LOGO.old.ratio : LOGO.horizontal.ratio;
+  const logoW = Math.min((x1 - x0) * 0.22, bandH * 3.885 * 0.42, oldLogo ? LOGO.old.width * 1.25 : Infinity);
+  c.image(oldLogo ? LOGO.old.reversed : dark ? LOGO.horizontal.reversed : LOGO.horizontal.positive, x0, y0 + (bandH - logoW / logoRatio) / 2, logoW, logoW / logoRatio, 'xMidYMid meet');
   const picW = picture ? Math.min(bandH * 1.1, (x1 - x0) * 0.22) : 0;
   if (picture) {
     const clip = roundedClip(c, x1 - picW, y0, picW, bandH, bandH * 0.12);

@@ -62,3 +62,4 @@
 .create-follow small { color: var(--text-muted); font-size: 12px; line-height: 1.6; }
 .create-follow button { flex: none; width: 28px; height: 28px; border: 0; border-radius: 8px; background: transparent; color: var(--text-muted); font-size: 18px; cursor: pointer; }
 .create-follow button:hover { background: var(--surface); color: var(--text); }
+.brand-composer__ai { min-width: 0; }

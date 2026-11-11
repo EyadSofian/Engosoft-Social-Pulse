@@ -10,7 +10,9 @@ import { api, errorMessage } from '../../lib/api';
 import { useAuth } from '../auth/AuthProvider';
 import { takePostPlan, readPostPlan } from '../content/postPlan';
 import { CoursePicker, runOf } from '../creative-studio/CoursePicker';
-import { CREATIVE_PLATFORMS, DEFAULT_SIZES, PLATFORM_FORMATS, slotOf, type CreativePlatform } from '../creative-studio/platforms';
+import { CREATIVE_PLATFORMS, DEFAULT_SIZES, mainFormat, PLATFORM_FORMATS, slotOf, type CreativePlatform } from '../creative-studio/platforms';
+import { FullCreativeJob } from '../creative-studio/FullCreativeJob';
+import { setActiveCreative } from '../creative-studio/activeCreative';
 import { PublishHere, SavedHere } from '../publishing/PublishHere';
 import { exportPng, loadBrandFonts } from '../svg-templates/render';
 import { browserMeasure, layoutBrandTemplate } from './layout';
@@ -126,6 +128,9 @@ export function BrandTemplateComposer({ template, initialPrompt = '', onClose }:
   /** Errors of the design request, shown under it rather than at the bottom of the form. */
   const [designError, setDesignError] = useState('');
   const [lastRequest, setLastRequest] = useState('');
+  /** An AI design made on this template's look (the image model redraws it; it is not slot filling). */
+  const [aiRun, setAiRun] = useState<{ jobId: string; requestId: string; prompt: string } | null>(null);
+  const canDesign = can('design.free');
   const [coursePanel, setCoursePanel] = useState(false);
   const [platforms, setPlatforms] = useState<CreativePlatform[]>(() => {
     const planned = (readPostPlan().channels ?? []).filter((c): c is CreativePlatform => (CREATIVE_PLATFORMS as string[]).includes(c));
@@ -169,6 +174,25 @@ export function BrandTemplateComposer({ template, initialPrompt = '', onClose }:
     setCutouts((c) => ({ ...c, [input.key]: false }));
     set(input.key, url);
     void hasTransparency(url).then((clear) => setCutouts((c) => ({ ...c, [input.key]: clear })));
+  };
+  /** Preset ids of the ticked sizes, for the AI design and its other sizes. */
+  const chosenIds = chosen.flatMap((group) => group.presets.filter((p) => platforms.includes(p.channel as CreativePlatform)).map((p) => p.id));
+  /**
+   * The creative path: the request goes to the AI designer with this template as the design to follow. It plans the
+   * copy and the composition and draws a new design in the same look, instead of putting words into fixed places.
+   */
+  const designWithAi = async () => {
+    const request = (prompt.trim() || lastRequest).trim();
+    if (request.length < 10) { setDesignError(t('Describe the post in a little more detail.', 'اكتب طلب التصميم بتفاصيل أكتر.')); return; }
+    if (!platforms.length) { setDesignError(t('Choose at least one platform.', 'اختار منصة واحدة على الأقل.')); return; }
+    setBusy('ai'); setDesignError('');
+    try {
+      const format = mainFormat(platforms, chosenIds);
+      const body = await api<{ jobId: string; requestId?: string }>('/api/ai/full-creative', { body: { prompt: request, format, directions: 1, followDesign: { templateId: template.id, surface } } });
+      setActiveCreative({ jobId: body.jobId, requestId: body.requestId ?? '', prompt: request, platforms, sizes: chosenIds, format, startedAt: new Date().toISOString(), status: 'running' });
+      setAiRun({ jobId: body.jobId, requestId: body.requestId ?? '', prompt: request });
+    } catch (error) { setDesignError(errorMessage(error, t('Could not start the design.', 'تعذّر بدء التصميم.'))); }
+    setBusy('');
   };
   /** Photos AI will draw with this request: empty, required, and allowed (never a real person or a campaign file). */
   const toDraw = template.inputs.filter((input) => aiDrawable(input) && input.required && !values[input.key]);
@@ -294,8 +318,9 @@ export function BrandTemplateComposer({ template, initialPrompt = '', onClose }:
               ? t('e.g. blue background, shorter headline, the price is 900', 'مثال: خلّي الخلفية زرقا، العنوان أقصر، السعر 900')
               : t(template.brief, 'مثال: ' + examplePrompt(template))} /></label>
         <div className="brand-ai__row">
-          <Button size="sm" variant="primary" icon={<Wand2 size={14} />} busy={busy === 'design'} disabled={Boolean(busy) || locked} onClick={() => void design()}>
-            {filled ? t('Apply the change', 'نفّذ التعديل') : t('Make the design', 'صمّم')}{toDraw.length ? t(` + ${toDraw.length} AI image`, ` + ${toDraw.length === 1 ? 'صورة واحدة' : `${toDraw.length} صور`} بالذكاء الاصطناعي`) : ''}
+          {canDesign && <Button size="sm" variant="primary" icon={<Sparkles size={14} />} busy={busy === 'ai'} disabled={Boolean(busy) || locked} onClick={() => void designWithAi()}>{t('Design it with AI in this look (1 image)', 'صمّمه بالذكاء الاصطناعي على الشكل ده (صورة واحدة)')}</Button>}
+          <Button size="sm" variant={canDesign ? 'secondary' : 'primary'} icon={<Wand2 size={14} />} busy={busy === 'design'} disabled={Boolean(busy) || locked} onClick={() => void design()}>
+            {canDesign ? t('Quick fill (words only)', 'ملء سريع للقالب (الكلام بس)') : filled ? t('Apply the change', 'نفّذ التعديل') : t('Make the design', 'صمّم')}{toDraw.length ? t(` + ${toDraw.length} AI image`, ` + ${toDraw.length === 1 ? 'صورة واحدة' : `${toDraw.length} صور`} بالذكاء الاصطناعي`) : ''}
           </Button>
           <Button size="sm" variant="ghost" icon={<GraduationCap size={14} />} onClick={() => setCoursePanel(!coursePanel)}>{t('From a course (optional)', 'من دورة (اختياري)')}</Button>
         </div>
@@ -303,6 +328,7 @@ export function BrandTemplateComposer({ template, initialPrompt = '', onClose }:
         {lastRequest && !designError && <p className="u-xs u-muted brand-ai__facts" dir="auto">{t('Last request', 'آخر طلب')}: {lastRequest}</p>}
         {coursePanel && <div className="creative-home__source"><CoursePicker autoFocus onPick={pickCourse} /></div>}
         {facts && <p className="u-xs u-muted brand-ai__facts" dir="auto">{facts.split('\n').join(' · ')}</p>}
+        {canDesign && <p className="u-xs u-muted">{t('AI design: it plans the words and the composition and draws a new post in this look, with every size made for its shape. It takes a few minutes. Quick fill only puts the words into the template\'s fixed places.', 'التصميم بالذكاء الاصطناعي بيفكّر في الكلام والتكوين ويرسم بوست جديد على نفس الشكل، وكل مقاس بيتعمل لشكله، وبياخد كام دقيقة. الملء السريع بيحط الكلام في أماكن القالب الثابتة بس.')}</p>}
         <p className="u-xs u-muted">{t('Names, dates and prices are taken only from what you write or the course, never made up.', 'الأسماء والمواعيد والأسعار بتتاخد من كلامك أو من الدورة بس، عمرها ما تتألف.')}</p>
       </div>
       {photoInputs.length > 0 && <div className="brand-form u-stack">{photoInputs.map(field)}</div>}
@@ -333,12 +359,14 @@ export function BrandTemplateComposer({ template, initialPrompt = '', onClose }:
       {saved && <SavedHere contentId={created} sent={saved === 'sent'} />}
       <PublishHere contentId={publishing} onClose={() => setPublishing(null)} />
     </div>
-    <div className="brand-composer__previews" aria-label={t('Preview of every size', 'معاينة كل المقاسات')}>
+    {aiRun ? <div className="brand-composer__ai">
+      <FullCreativeJob key={aiRun.jobId} jobId={aiRun.jobId} requestId={aiRun.requestId} platforms={platforms} sizes={chosenIds} format={mainFormat(platforms, chosenIds)} prompt={aiRun.prompt} onRestart={() => setAiRun(null)} />
+    </div> : <div className="brand-composer__previews" aria-label={t('Preview of every size', 'معاينة كل المقاسات')}>
       {!fonts && <div className="board-loading"><span className="ui-btn__spinner" /></div>}
       {previews.map(({ group, svg }) => <figure key={group.key} className="brand-preview" data-wide={group.width > group.height ? '' : undefined}>
         <div className="brand-preview__frame" style={{ aspectRatio: `${group.width} / ${group.height}` }} dangerouslySetInnerHTML={{ __html: svg }} />
         <figcaption><span className="creative-job__size-icons">{[...new Set(group.presets.map((p) => p.channel))].filter((c) => platforms.includes(c as CreativePlatform)).map((c) => <ChannelIcon key={c} channel={c} size={12} />)}</span> <span dir="ltr" className="u-tnum">{group.width}×{group.height}</span></figcaption>
       </figure>)}
-    </div>
+    </div>}
   </section>;
 }

@@ -18,7 +18,7 @@ import { generatePostImage, imageRequest } from './post-image.js';
 import { briefRequest, generateCreativeBrief } from './creative-brief.js';
 import { applyCreativeCommand, creativeEditRequest } from './creative-edit.js';
 import { adaptFullCreative, generateFullCreative, isCanvasTarget, loadFullCreativeRun } from './creative-intelligence/generation/full-creative.js';
-import { resolveFollowDesign } from './creative-intelligence/generation/follow-design.js';
+import { resolveFollowDesign, templateCampaign } from './creative-intelligence/generation/follow-design.js';
 import { canEdit, getContent } from './workspace.js';
 import { THEME_IDS } from '../src/domain/design-engine.js';
 import { getJob, startJob, toPublicRun } from './creative-intelligence/generation/jobs.js';
@@ -130,7 +130,9 @@ app.post('/api/ai/full-creative',requirePermission('design.free'),requireAiBudge
  const requestId=randomUUID();
  const followDesign=parsed.data.followDesign?await resolveFollowDesign(parsed.data.followDesign,requestId):undefined;
  if(parsed.data.followDesign&&!followDesign)return res.status(400).json({error:'التصميم اللي اخترته مش موجود أو الملف مش صورة.'});
- const job=startJob('generate',req.user!.id,(setStage)=>generateFullCreative({...parsed.data,followDesign,campaign,objective:parsed.data.objective&&OBJECTIVE_TEXT[parsed.data.objective],style:template?.style,requestId,ownerId:req.user!.id},process.env,setStage),requestId);
+ // A library design with a campaign stamp keeps the exact stamp file when no campaign was picked.
+ const stamped=campaign??(parsed.data.followDesign&&'templateId' in parsed.data.followDesign?templateCampaign(parsed.data.followDesign.templateId):undefined);
+ const job=startJob('generate',req.user!.id,(setStage)=>generateFullCreative({...parsed.data,followDesign,campaign:stamped,objective:parsed.data.objective&&OBJECTIVE_TEXT[parsed.data.objective],style:template?.style,requestId,ownerId:req.user!.id},process.env,setStage),requestId);
  res.status(202).json({jobId:job.id,requestId});
 });
 app.post('/api/ai/full-creative/:requestId/adapt',requirePermission('design.free'),requireAiBudget,async(req,res)=>{
