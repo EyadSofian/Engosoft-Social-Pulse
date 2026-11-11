@@ -5,7 +5,7 @@ import { join } from 'node:path';
 import { after, test } from 'node:test';
 import sharp from 'sharp';
 process.env.MEDIA_DIR = mkdtempSync(join(tmpdir(), 'follow-content-'));
-const { courseShown, digitsOf, dropInventedNumbers, followContentInstructions, followCopy, missingNumbers, planFollowContent } = await import('../server/creative-intelligence/generation/follow-content');
+const { courseShown, currencyWithPrice, digitsOf, dropUnwrittenCurrency, withEveryDesignBlock, dropInventedNumbers, followContentInstructions, followCopy, missingNumbers, planFollowContent } = await import('../server/creative-intelligence/generation/follow-content');
 const { followDesignPrompt, placeArtworks, placeOwnLogo, resolveFollowDesign } = await import('../server/creative-intelligence/generation/follow-design');
 const { produceDirection, planFollowCreative } = await import('../server/creative-intelligence/generation/full-creative');
 const { FallbackImageProvider, ImageProviderError } = await import('../server/creative-intelligence/generation/provider');
@@ -76,7 +76,9 @@ test('a number left off the post sends the content back once, and the second ans
   assert.match(seen[1].body.input[0].content[0].text!, /left these off the post: 2000/);
   // The course date (24) is allowed but not required, so it is not reported missing.
   assert.deepEqual(notes, []);
-  assert.deepEqual(out.blocks.map((b) => b.text), BLOCKS.map((b) => b.text));
+  assert.deepEqual(out.blocks.filter((b) => b.text).map((b) => b.text), BLOCKS.map((b) => b.text));
+  // The design's currency sign, which the person did not write, is listed to be removed.
+  assert.equal(out.blocks.find((b) => b.was === 'ر.س')?.text, '');
   assert.equal(out.blocks[0].highlight, 'مع التطور العمراني في المملكة..');
   // The design image goes along at full detail.
   assert.equal(seen[0].body.input[0].content[1].type, 'input_image');
@@ -232,4 +234,30 @@ test('the course name the person typed must be on the post, exactly as written',
   assert.match(seen[1].body.input[0].content[0].text!, /left these off the post: the course name «دبلومة التصميم الداخلي»/);
   assert.deepEqual(notes, []);
   assert.equal(out.blocks[1].text, 'دبلومة التصميم الداخلي');
+});
+
+test('a price shows no currency the person did not write, and «قبل/بعد» never reach the post', () => {
+  const price = (text: string): Block => ({ role: 'New price', kind: 'price', text });
+  assert.deepEqual(dropUnwrittenCurrency([price('1000 ر.س'), price('2000 ريال سعودي'), { role: 'Tag', kind: 'label', text: 'بدل' }], REQUEST).map((b) => b.text), ['1000', '2000', 'بدل']);
+  assert.equal(dropUnwrittenCurrency([price('900 ريال')], '900 ريال')[0].text, '900 ريال');
+  assert.match(followContentInstructions({ name: 'x', path: '/x' }), /never written on the post.*«1000 بدل 2000»/);
+});
+
+test('one price: the design\'s old price and «بدل» tag are removed, and the person\'s currency stays on its price', async () => {
+  const design = (await resolveFollowDesign({ templateId: 'brand-campaign-offer' }, '00000000-0000-4000-8000-000000000016'))!;
+  const bim: Block[] = [
+    { role: 'headline', kind: 'headline', was: 'مشاريع أكبر.. ومسؤوليات أعلى!', text: 'من التصميم للتنفيذ.. الـBIM يجمع كل التفاصيل!' },
+    { role: 'course tape', kind: 'line', was: 'جهّز نفسك لشهادة PMP', text: '3 تخصصات تفتح لك آفاق جديدة:' },
+    { role: 'supporting line', kind: 'line', was: 'واستثمر في خطوتك المهنية الجاية', text: '- BIM Architecture - BIM Structure - BIM MEP' },
+    { role: 'new price', kind: 'price', was: '700', text: '900' },
+    { role: 'currency', kind: 'label', was: '', text: 'ريال' },
+    { role: 'website line', kind: 'mark', was: 'www.engosoft.com', text: 'www.engosoft.com' },
+  ];
+  const out = withEveryDesignBlock(currencyWithPrice(bim), design);
+  assert.equal(out.find((b) => b.role === 'new price')!.text, '900 ريال');
+  assert.equal(out.find((b) => b.role === 'currency')!.text, '');
+  for (const was of ['1,400', 'بـــدل', 'ر.س']) assert.equal(out.find((b) => b.was === was)?.text, '', was);
+  assert.equal(out.filter((b) => b.was === 'جهّز نفسك لشهادة PMP').length, 1);
+  const prompt = followDesignPrompt({ blocks: out, photos: '', canvasLabel: 'Feed', designAspect: 0.8, canvasAspect: 0.8 });
+  assert.match(prompt, /Remove these blocks of Image 1 and close the gap:.*«1,400»/);
 });

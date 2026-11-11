@@ -13,6 +13,7 @@ import { captionWriter } from '../skills/strategy.js';
 import type { StrategyDecision } from '../skills/engine.js';
 import type { CanonicalCopy, CopyBlock } from '../typography-validation/copy-check.js';
 import { followDataUrl, type FollowDesign } from './follow-design.js';
+import { brandTemplate } from '../../../src/domain/brand-templates.js';
 
 export interface FollowContent {
   language: 'ar' | 'en';
@@ -44,7 +45,8 @@ export function followContentInstructions(design: FollowDesign): string {
     '2. Write each block\'s new text from the request.',
     '   - The person\'s own words come first. When the request is written as the post\'s lines (one line per thing, the way the design reads), use those lines exactly as written, in that order, each in the block that plays the same part: do not rewrite, shorten, translate or "improve" them, and keep their punctuation («..», «!»). The design adapts to the words, never the words to the design.',
     '   - A line longer than its block goes on two lines of that block, or is split at a natural break across two neighbouring blocks that read as one sentence in the design (a headline and the line under it, a tape and the line under the tape). Never drop part of a line.',
-    '   - Prices written as «بعد 1000» and «قبل 2000» (after / before, «بدل», «بدلاً من», «كان», «الآن») are the new price and the old price: the new one on the main price ticket, the old one where the design shows its old price, with its «instead of» tag. On a price ticket write the number, and the currency only when the request names one that differs from the design\'s (for example «جنيه» on a riyal design); otherwise the design\'s own currency sign stays beside it, as the design shows it.',
+    '   - Prices written as «بعد 1000» and «قبل 2000» (after / before, «بدل», «بدلاً من», «كان», «الآن») are the new price and the old price: the new one on the main price ticket, the old one where the design shows its old price. «بعد» and «قبل» only tell which price is which: they are never written on the post. The tag between the two prices keeps the design\'s own word (in this design «بدل»), so the post reads «1000 بدل 2000».',
+    '   - A price ticket shows the number only. No currency word or sign («ريال», «ر.س», «ريال سعودي», «SAR», the riyal symbol) unless the person wrote one next to that price, and then exactly as they wrote it.',
     '   - Only when the request describes the post instead of giving its lines, write the copy yourself: each block about as long as its old words, in the same register and punch.',
     '   - When a course name is given, it is on the post exactly as written, once: in the person\'s line that already names the course, or else in the block of the design that names the course (the tape, for example «جهّز نفسك لشهادة PMP» becomes «دبلومة التصميم الداخلي» or «جهّز نفسك لدبلومة التصميم الداخلي»). A line of the person\'s that was going there moves whole to the line under it; none of their lines is dropped for it. When the design has no such block, add one under the headline.',
     '   - Everything the request says must be on the post: the course or topic, the offer, every price with its option name, discounts, cashback, dates, times, places and numbers. Never drop a fact the person wrote.',
@@ -103,6 +105,49 @@ export function dropInventedNumbers(blocks: CopyBlock[], given: string): { block
   return { blocks: kept, removed };
 }
 
+const CURRENCY = /(ريال\s*سعودي|ر\.\s*س\.?|ريال|SAR|﷼|\u20C1)/gi;
+/** Price blocks lose a currency word or sign the person never wrote; the ticket then shows the number alone. */
+export function dropUnwrittenCurrency(blocks: CopyBlock[], request: string): CopyBlock[] {
+  const written = new Set((request.match(CURRENCY) ?? []).map((c) => c.replace(/\s+/g, '')));
+  return blocks.map((block) => {
+    if (block.kind !== 'price') return block;
+    const text = block.text.replace(CURRENCY, (c) => (written.has(c.replace(/\s+/g, '')) ? c : '')).replace(/\s+/g, ' ').trim();
+    return text === block.text ? block : { ...block, text };
+  });
+}
+
+/**
+ * A currency the person wrote is part of its price: a block that holds only a currency word («ريال») joins the
+ * price before it («900 ريال») instead of taking another block's place (it landed on the «بدل» tag).
+ */
+export function currencyWithPrice(blocks: CopyBlock[]): CopyBlock[] {
+  const out = blocks.map((b) => ({ ...b }));
+  out.forEach((block, i) => {
+    const only = block.text.replace(CURRENCY, '').trim() === '' && block.text.trim() !== '';
+    const price = out.slice(0, i).reverse().find((b) => b.kind === 'price' && b.text && /\d/.test(b.text));
+    if (block.kind === 'price' || !only || !price) return;
+    if (!fold(price.text).includes(fold(block.text))) price.text = `${price.text} ${block.text.trim()}`;
+    block.text = ''; block.highlight = undefined;
+  });
+  return out.map((b) => (b.highlight === undefined ? (({ highlight: _, ...rest }) => rest)(b) : b));
+}
+
+/**
+ * Every block a library design has is on the list, so the redraw replaces or removes it. A block the copywriter
+ * did not list (the old price «1,400» when the person gave one price) would otherwise stay in the image.
+ */
+export function withEveryDesignBlock(blocks: CopyBlock[], design: FollowDesign): CopyBlock[] {
+  const template = design.templateId ? brandTemplate(design.templateId) : undefined;
+  if (!template) return blocks;
+  const listed = blocks.map((b) => fold(b.was ?? '')).filter(Boolean);
+  const kindOf = (key: string): CopyBlock['kind'] => (/price/i.test(key) ? 'price' : /instead|currency|tag|label/i.test(key) ? 'label' : key === 'headline' ? 'headline' : 'line');
+  const missing = template.inputs
+    .filter((input) => input.type !== 'photo' && input.key !== 'highlight' && input.sample.ar.trim())
+    .filter((input) => { const was = fold(input.sample.ar); return !listed.some((l) => l.includes(was) || was.includes(l)); })
+    .map((input): CopyBlock => ({ role: input.label.en, kind: kindOf(input.key), was: input.sample.ar, text: '' }));
+  return [...blocks, ...missing];
+}
+
 /** Blocks as the model returned them, tidied: boxes inside the canvas, a highlight only when it is in the headline. */
 export function tidyBlocks(blocks: CopyBlock[]): CopyBlock[] {
   const clamp = (v: number) => Math.min(1, Math.max(0, Number.isFinite(v) ? v : 0));
@@ -158,7 +203,7 @@ export async function planFollowContent(input: { design: FollowDesign; request: 
     const left = again ? lost(again.blocks) : missing;
     if (again && count(left) < count(missing)) { content = again; missing = left; }
   }
-  const cleaned = dropInventedNumbers(content.blocks, given);
+  const cleaned = dropInventedNumbers(withEveryDesignBlock(currencyWithPrice(dropUnwrittenCurrency(content.blocks, request)), design), given);
   const notes = [
     ...(missing.numbers.length ? [`Facts from the request that are not on the post: ${missing.numbers.join(', ')}`] : []),
     ...(missing.course ? [`The course name «${course}» is not on the post.`] : []),
