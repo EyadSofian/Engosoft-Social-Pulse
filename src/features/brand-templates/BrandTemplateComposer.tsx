@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useRef, useState } from 'react';
-import { ArrowRight, Check, FileText, GraduationCap, ImagePlus, Send, Sparkles, Wand2, X } from 'lucide-react';
+import { ArrowRight, Check, FileText, GraduationCap, ImagePlus, PenLine, Send, Sparkles, Wand2, X } from 'lucide-react';
 import { Button } from '../../components/ui/Button';
 import { ChannelIcon } from '../../components/data-display/ChannelIcon';
 import { aiDrawable, BRAND_TEMPLATES, brandSamples, missingInputs, type BrandInput, type BrandSurface, type BrandTemplate } from '../../domain/brand-templates';
@@ -64,6 +64,18 @@ function startValues(template: BrandTemplate): Record<string, string> {
   }));
 }
 
+/** An example request per template, in the words a marketer would type. */
+const EXAMPLES: Record<string, string> = {
+  'brand-headline': 'إعلان إن التسجيل فتح في دورات إدارة المشاريع المعتمدة، بخلفية زرقا',
+  'brand-instructor': 'ويبينار مجاني عن إدارة المرافق مع د. محمد جمال، خبرة 15 سنة في CFM، يوم الثلاثاء 24 نوفمبر الساعة 8 مساءً بتوقيت السعودية أونلاين على Zoom',
+  'brand-photo-card': 'بوست عن قيم الشركة: التدريب العملي والشهادات المعتمدة، والشريط برتقالي',
+  'brand-cutout': 'حملة تسجيل لدورة Primavera، عنوان حماسي',
+  'brand-offer': 'عرض الجمعة البيضاء خصم 50% على دورات إدارة المشروعات، 2500 ريال بدل 5000',
+  'brand-campaign-offer': 'عرض الخمسين خمسين على دورة PMP، السعر 700 ريال بدل 1,400',
+  'brand-carousel': 'الشريحة 02: خطوات الحصول على شهادة PMP',
+};
+const examplePrompt = (template: BrandTemplate) => EXAMPLES[template.id] ?? template.description.ar;
+
 interface SizeGroup { key: string; width: number; height: number; presets: PublishingPreset[] }
 function sizeGroups(platforms: CreativePlatform[]): SizeGroup[] {
   const groups = new Map<string, SizeGroup>();
@@ -108,6 +120,12 @@ export function BrandTemplateComposer({ template, initialPrompt = '', onClose }:
   const [cutouts, setCutouts] = useState<Record<string, boolean>>({});
   const [prompt, setPrompt] = useState(initialPrompt);
   const [facts, setFacts] = useState('');
+  /** Whether the request has filled the post once: later requests are changes to the current post. */
+  const [filled, setFilled] = useState(false);
+  const [manual, setManual] = useState(false);
+  /** Errors of the design request, shown under it rather than at the bottom of the form. */
+  const [designError, setDesignError] = useState('');
+  const [lastRequest, setLastRequest] = useState('');
   const [coursePanel, setCoursePanel] = useState(false);
   const [platforms, setPlatforms] = useState<CreativePlatform[]>(() => {
     const planned = (readPostPlan().channels ?? []).filter((c): c is CreativePlatform => (CREATIVE_PLATFORMS as string[]).includes(c));
@@ -152,26 +170,40 @@ export function BrandTemplateComposer({ template, initialPrompt = '', onClose }:
     set(input.key, url);
     void hasTransparency(url).then((clear) => setCutouts((c) => ({ ...c, [input.key]: clear })));
   };
-  const writeCopy = async () => {
-    if (prompt.trim().length < 3) { setMessage(t('Write the idea of the post first.', 'اكتب فكرة المنشور الأول.')); return; }
-    setBusy('copy'); setMessage('');
+  /** Photos AI will draw with this request: empty, required, and allowed (never a real person or a campaign file). */
+  const toDraw = template.inputs.filter((input) => aiDrawable(input) && input.required && !values[input.key]);
+  const languageOf = (text: string) => (/[a-z]/i.test(text) && !/[؀-ۿ]/.test(text) ? 'en' : 'ar');
+  /** One request makes the whole post: every word and fact it gives, the background, and the photo AI may draw. */
+  const design = async (request = prompt) => {
+    if (request.trim().length < 3) { setDesignError(t('Describe the post first.', 'اكتب طلب التصميم الأول.')); return; }
+    setBusy('design'); setMessage(''); setDesignError('');
     try {
-      const { values: written } = await api<{ values: Record<string, string> }>('/api/brand-templates/copy', { body: { templateId: template.id, prompt, language: /[a-z]/i.test(prompt) && !/[؀-ۿ]/.test(prompt) ? 'en' : 'ar', facts } });
-      setValues((current) => ({ ...current, ...Object.fromEntries(Object.entries(written).filter(([, v]) => v)) }));
-      setSaved(''); setCreated(null);
-    } catch (error) { setMessage(errorMessage(error, t('Could not write the texts.', 'تعذّر كتابة النصوص.'))); }
+      const current = filled ? Object.fromEntries(template.inputs.filter((i) => i.type !== 'photo').map((i) => [i.key, values[i.key] ?? ''])) : undefined;
+      const out = await api<{ values: Record<string, string>; surface: BrandSurface }>('/api/brand-templates/fill', { body: { templateId: template.id, prompt: request, language: languageOf(request), facts, surface, current } });
+      // A first fill replaces the sample words; facts it could not find stay as they were (empty, or from the course).
+      setValues((now) => ({ ...now, ...Object.fromEntries(Object.entries(out.values).filter(([key, v]) => v || !template.inputs.find((i) => i.key === key)?.fact)) }));
+      if (out.surface && template.surfaces.includes(out.surface)) setSurface(out.surface);
+      setFilled(true); setSaved(''); setCreated(null);
+      for (const input of toDraw) await drawPhoto(input, request, true);
+      setLastRequest(request); setPrompt('');
+    } catch (error) { setDesignError(errorMessage(error, t('Could not make the design.', 'تعذّر عمل التصميم.'))); }
     setBusy('');
   };
-  const drawPhoto = async (input: BrandInput) => {
-    const idea = prompt.trim() || Object.values(values).filter((v) => v && !v.startsWith('data:') && !v.startsWith('/')).join(' — ');
-    if (idea.length < 3) { setMessage(t('Write the idea of the post first.', 'اكتب فكرة المنشور الأول.')); return; }
-    setBusy(`photo:${input.key}`); setMessage('');
+  useEffect(() => { if (initialPrompt.trim().length >= 3) void design(initialPrompt); },
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+    []);
+  const drawPhoto = async (input: BrandInput, request = prompt, inside = false) => {
+    const idea = request.trim() || Object.values(values).filter((v) => v && !v.startsWith('data:') && !v.startsWith('/')).join(' — ');
+    if (idea.length < 3) { setDesignError(t('Describe the post first.', 'اكتب طلب التصميم الأول.')); return; }
+    const alone = !inside;
+    if (alone) setBusy(`photo:${input.key}`);
+    setMessage('');
     try {
       const { url, cutout } = await api<{ url: string; cutout: boolean }>('/api/brand-templates/photo', { body: { templateId: template.id, inputKey: input.key, prompt: idea } });
       setCutouts((c) => ({ ...c, [input.key]: cutout }));
       set(input.key, url);
-    } catch (error) { setMessage(errorMessage(error, t('Could not draw the photo.', 'تعذّر رسم الصورة.'))); }
-    setBusy('');
+    } catch (error) { setDesignError(errorMessage(error, t('Could not draw the photo.', 'تعذّر رسم الصورة.'))); }
+    if (alone) setBusy('');
   };
   const pickCourse = (pick: Parameters<Parameters<typeof CoursePicker>[0]['onPick']>[0]) => {
     const run = runOf(pick);
@@ -182,6 +214,7 @@ export function BrandTemplateComposer({ template, initialPrompt = '', onClose }:
     const place = run?.location ?? '';
     setFacts([`الدورة: ${name}`, date && `التاريخ: ${date}`, time && `الوقت: ${time}`, place && `المكان: ${place}`, run?.registrationUrl && `رابط التسجيل: ${run.registrationUrl}`].filter(Boolean).join('\n'));
     setPrompt((current) => current || name);
+    setFilled(false);
     setValues((current) => ({ ...current, ...(template.inputs.some((i) => i.key === 'date') && date ? { date } : {}), ...(template.inputs.some((i) => i.key === 'time') && time ? { time } : {}), ...(template.inputs.some((i) => i.key === 'place') && place ? { place } : {}) }));
     setCoursePanel(false);
   };
@@ -242,6 +275,8 @@ export function BrandTemplateComposer({ template, initialPrompt = '', onClose }:
   };
 
   const locked = saved === 'sent';
+  const photoInputs = template.inputs.filter((i) => i.type === 'photo');
+  const textInputs = template.inputs.filter((i) => i.type !== 'photo');
   return <section className="brand-composer">
     <div className="brand-composer__form glass u-stack">
       <button type="button" className="create-back" onClick={onClose}><ArrowRight size={15} className="u-flip" /> {t('Other templates', 'قوالب تانية')}</button>
@@ -252,17 +287,30 @@ export function BrandTemplateComposer({ template, initialPrompt = '', onClose }:
         </div>}
       </div>
       <div className="brand-ai">
-        <label className="ui-field"><span className="ui-field__label"><Sparkles size={14} /> {t('The idea (AI writes the texts)', 'فكرة المنشور (الذكاء الاصطناعي يكتب النصوص)')}</span>
-          <textarea className="ui-input" rows={2} dir="auto" value={prompt} onChange={(e) => setPrompt(e.target.value)} placeholder={t('e.g. PMP course offer, 50% off for Black Friday', 'مثال: عرض دورة PMP خصم 50% في الجمعة البيضاء')} /></label>
+        <label className="ui-field"><span className="ui-field__label"><Sparkles size={14} /> {filled ? t('Ask for a change', 'اطلب تعديل') : t('Describe the whole post', 'اكتب المنشور كله في طلب واحد')}</span>
+          <textarea className="ui-input" rows={filled ? 2 : 5} data-first={filled ? undefined : ""} dir="auto" value={prompt} onChange={(e) => setPrompt(e.target.value)}
+            onKeyDown={(e) => { if (e.key === 'Enter' && (e.metaKey || e.ctrlKey)) { e.preventDefault(); void design(); } }}
+            placeholder={filled
+              ? t('e.g. blue background, shorter headline, the price is 900', 'مثال: خلّي الخلفية زرقا، العنوان أقصر، السعر 900')
+              : t(template.brief, 'مثال: ' + examplePrompt(template))} /></label>
         <div className="brand-ai__row">
-          <Button size="sm" variant="primary" icon={<Wand2 size={14} />} busy={busy === 'copy'} disabled={Boolean(busy) || locked} onClick={() => void writeCopy()}>{t('Write the texts', 'اكتب النصوص')}</Button>
+          <Button size="sm" variant="primary" icon={<Wand2 size={14} />} busy={busy === 'design'} disabled={Boolean(busy) || locked} onClick={() => void design()}>
+            {filled ? t('Apply the change', 'نفّذ التعديل') : t('Make the design', 'صمّم')}{toDraw.length ? t(` + ${toDraw.length} AI image`, ` + ${toDraw.length === 1 ? 'صورة واحدة' : `${toDraw.length} صور`} بالذكاء الاصطناعي`) : ''}
+          </Button>
           <Button size="sm" variant="ghost" icon={<GraduationCap size={14} />} onClick={() => setCoursePanel(!coursePanel)}>{t('From a course (optional)', 'من دورة (اختياري)')}</Button>
         </div>
+        {designError && <p role="alert" className="creative-home__error">{designError}</p>}
+        {lastRequest && !designError && <p className="u-xs u-muted brand-ai__facts" dir="auto">{t('Last request', 'آخر طلب')}: {lastRequest}</p>}
         {coursePanel && <div className="creative-home__source"><CoursePicker autoFocus onPick={pickCourse} /></div>}
         {facts && <p className="u-xs u-muted brand-ai__facts" dir="auto">{facts.split('\n').join(' · ')}</p>}
-        <p className="u-xs u-muted">{t('AI writes only the wording. Names, dates, prices and places come from you or the course.', 'الذكاء الاصطناعي بيكتب الكلام بس. الأسماء والمواعيد والأسعار والأماكن منك أو من الدورة.')}</p>
+        <p className="u-xs u-muted">{t('Names, dates and prices are taken only from what you write or the course, never made up.', 'الأسماء والمواعيد والأسعار بتتاخد من كلامك أو من الدورة بس، عمرها ما تتألف.')}</p>
       </div>
-      <div className="brand-form u-stack">{template.inputs.map(field)}</div>
+      {photoInputs.length > 0 && <div className="brand-form u-stack">{photoInputs.map(field)}</div>}
+      {filled && missing.length > 0 && <p className="u-sm brand-ai__missing" dir="auto">{t(`Still missing: ${missing.map((i) => i.label.en).join(', ')}. Add it to the request or type it below.`, `لسه ناقص: ${missing.map((i) => i.label.ar).join('، ')}. قولها في الطلب أو اكتبها تحت.`)}</p>}
+      <details className="brand-manual" open={manual} onToggle={(e) => setManual((e.target as HTMLDetailsElement).open)}>
+        <summary><PenLine size={14} /> {t('Edit the words by hand', 'عدّل الكلام بإيدك')}</summary>
+        <div className="brand-form u-stack">{textInputs.map(field)}</div>
+      </details>
       <div className="ui-field"><span className="ui-field__label">{t('Platforms', 'المنصات')}</span>
         <div className="creative-home__platforms" role="group" aria-label={t('Platforms', 'المنصات')}>{CREATIVE_PLATFORMS.map((platform) => <button key={platform} type="button" disabled={locked} aria-pressed={platforms.includes(platform)} onClick={() => { setPlatforms((current) => current.includes(platform) ? current.filter((p) => p !== platform) : [...current, platform]); setCreated(null); }}><span className="creative-home__platform-icon"><ChannelIcon channel={platform} size={15} /></span>{PLATFORM_FORMATS[platform].label}</button>)}</div>
       </div>

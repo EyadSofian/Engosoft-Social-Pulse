@@ -46,3 +46,10 @@
   .brand-preview { width: calc(50% - 8px); }
   .brand-preview[data-wide] { width: 100%; }
 }
+.brand-ai__missing { margin: 0; padding: 8px 10px; border-radius: 10px; background: var(--warning-soft, #fff4e5); color: var(--warning-ink, #8a4b00); }
+.brand-manual { border: 1px solid var(--border); border-radius: 12px; padding: 10px 12px; }
+.brand-manual > summary { display: flex; align-items: center; gap: 6px; cursor: pointer; color: var(--text-muted); font-size: 13.5px; list-style: none; }
+.brand-manual > summary::-webkit-details-marker { display: none; }
+.brand-manual[open] > summary { margin-bottom: 12px; color: var(--text); }
+.brand-ai textarea.ui-input { height: auto; min-height: 64px; padding-block: 10px; line-height: 1.7; resize: vertical; }
+.brand-ai textarea.ui-input[data-first] { min-height: 132px; }

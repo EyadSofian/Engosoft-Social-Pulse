@@ -4,7 +4,7 @@ import sharp from 'sharp';
 import { aiDrawable, BRAND_TEMPLATES, brandSamples, brandTemplate, missingInputs } from '../src/domain/brand-templates';
 import { PUBLISHING_PRESETS } from '../src/domain/output-presets';
 import { layoutBrandTemplate, type Measure } from '../src/features/brand-templates/layout';
-import { copyInstructions, removeWhiteBackground, writableInputs } from '../server/brand-templates';
+import { fillableInputs, fillInstructions, keepGivenFacts, removeWhiteBackground } from '../server/brand-templates';
 
 /** Rough widths without a browser: Arabic and Latin glyphs at about half and 0.56 of the font size. */
 const measure: Measure = (text, font) => {
@@ -62,13 +62,20 @@ test('each template declares what it needs; real people and campaign files are n
   assert.equal(aiDrawable(brandTemplate('brand-campaign-offer')!.inputs.find((i) => i.key === 'stamp')!), false);
   assert.equal(aiDrawable(brandTemplate('brand-photo-card')!.inputs.find((i) => i.key === 'photo')!), true);
   assert.deepEqual(missingInputs(instructor, {}).map((i) => i.key), ['title', 'instructorPhoto', 'instructorName']);
-  // The copywriter gets only wording fields: never names, dates, prices or places.
+  // One request fills every word and fact, but facts only from what the person gave.
   for (const template of BRAND_TEMPLATES) {
-    for (const input of writableInputs(template)) assert.ok(!input.fact && input.type !== 'photo', `${template.id}.${input.key}`);
-    const prompt = copyInstructions(template, 'ar');
-    assert.match(prompt, /Never invent facts/);
-    for (const fact of template.inputs.filter((i) => i.fact)) assert.ok(!prompt.includes(`- ${fact.key} (`), `${template.id} asks AI for ${fact.key}`);
+    assert.ok(fillableInputs(template).every((input) => input.type !== 'photo'), template.id);
+    const prompt = fillInstructions(template, 'ar');
+    assert.match(prompt, /Never invent a number/);
+    for (const fact of template.inputs.filter((i) => i.fact)) assert.ok(prompt.includes(`- ${fact.key} (`) && prompt.includes('[FACT]'), `${template.id} misses ${fact.key}`);
   }
+});
+
+test('a fact whose numbers the person never gave is dropped', () => {
+  const offer = brandTemplate('brand-campaign-offer')!;
+  const kept = keepGivenFacts(offer, { headline: 'مشاريع أكبر 2026', price: '700', oldPrice: '1,400' }, 'عرض PMP السعر ٧٠٠ بدل 1400');
+  assert.deepEqual(kept, { headline: 'مشاريع أكبر 2026', price: '700', oldPrice: '1,400' });
+  assert.equal(keepGivenFacts(offer, { price: '650' }, 'عرض PMP بخصم').price, '');
 });
 
 test('a drawn cut-out loses its white studio background but keeps white inside the person', async () => {
