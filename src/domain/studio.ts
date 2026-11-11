@@ -3,6 +3,7 @@
  * Shared by the server (decompose, render) and the editor. Layers are drawn in array order, bottom first.
  */
 
+import type { BrandKitId } from './brand-kits';
 export const STUDIO_VERSION = 'studio:v2';
 
 export interface Box { x: number; y: number; width: number; height: number }
@@ -88,6 +89,11 @@ export interface StudioDoc {
   /** Faces and subjects, kept so the logo never lands on them. */
   zones: StudioZone[];
   logo: { variantId: 'lockup-reversed' | 'lockup-positive' | 'symbol-reversed' | 'symbol-positive' | 'horizontal-reversed' | 'horizontal-positive'; x: number; y: number; width: number } | null;
+  /**
+   * The design's logo kit when it is not the official one (the older «ENGO | SOFT» lockup of the 50/50 design): a
+   * save puts that kit's file back at the design's spot instead of the official logo. Absent means official.
+   */
+  kit?: BrandKitId;
 }
 
 export const STUDIO_FILE = /^[0-9a-f-]{36}\.png$/;

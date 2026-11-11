@@ -5,7 +5,8 @@ import { requirePermission, requireUser } from './auth.js';
 import { requireAiBudget } from './usage.js';
 import { loadFullCreativeRun } from './creative-intelligence/generation/full-creative.js';
 import { approvedStrings } from './creative-intelligence/typography-validation/copy-check.js';
-import { aiEdit, decompose, extractObject, originalWithoutLogo, outlineLayer, renderStudio, saveUpload, studioPath, studioUrl, type StudioDoc } from './creative-intelligence/studio/studio.js';
+import { aiEdit, decompose, extractObject, originalWithoutLogo, outlineLayer, renderStudio, saveUpload, studioPath, studioUrl, type StudioDoc, type StudioOwnLogo } from './creative-intelligence/studio/studio.js';
+import { followImage } from './creative-intelligence/generation/follow-design.js';
 import { runStudioCommand } from './creative-intelligence/studio/edit-router.js';
 import { HEX_COLOR, migrateStudioDoc, STUDIO_FILE, STUDIO_VERSION } from '../src/domain/studio.js';
 import { addVersion, canEdit, contentIsMutable, getContent, listVersions } from './workspace.js';
@@ -47,7 +48,8 @@ const doc = z.preprocess((value) => migrateStudioDoc(value) ?? value, z.object({
   layers: z.array(layer).max(150), notices: z.array(z.string().max(600)).max(12).optional(),
   objects: z.array(z.object({ id: z.string().max(24), label: z.string().max(60), box })).max(20),
   zones: z.array(z.object({ kind: z.enum(['text', 'face', 'subject', 'cta', 'platform-ui', 'salient']), box, label: z.string().optional() })).max(80),
-  logo: z.object({ variantId: z.enum(['lockup-reversed', 'lockup-positive', 'symbol-reversed', 'symbol-positive']), x: z.number(), y: z.number(), width: z.number() }).nullable(),
+  logo: z.object({ variantId: z.enum(['lockup-reversed', 'lockup-positive', 'symbol-reversed', 'symbol-positive', 'horizontal-reversed', 'horizontal-positive']), x: z.number(), y: z.number(), width: z.number() }).nullable(),
+  kit: z.enum(['official', 'engo-soft-old']).optional(),
 }));
 
 async function editableItem(req: express.Request, res: express.Response) {
@@ -81,6 +83,21 @@ function logoPlanFor(doc: StudioDoc, requestId: string, directionId: string): { 
     if (logo && !logo.requiresCreativeRepair) return { mark: markOfVariant(logo.variantId), corner: logo.placement.anchor };
   } catch { /* run trace missing */ }
   return undefined;
+}
+
+/**
+ * The design's own logo kit when its run followed a design that has one (the 50/50 campaign's older lockup), so a
+ * Studio save keeps that logo instead of switching to the official one (audit #10). Runs from before kits were
+ * named only ever had the older lockup as an own logo.
+ */
+async function ownLogoFor(requestId: string): Promise<StudioOwnLogo | undefined> {
+  try {
+    const follow = loadFullCreativeRun(requestId).request.followDesign;
+    if (!follow?.logo) return undefined;
+    const image = await followImage(follow);
+    if (!image) return undefined;
+    return { kit: follow.logo.kit ?? 'engo-soft-old', place: follow.logo.place, designAspect: image.aspect, file: follow.logo.path };
+  } catch { return undefined; }
 }
 
 export function registerStudioRoutes(app: express.Express) {
@@ -160,7 +177,7 @@ export function registerStudioRoutes(app: express.Express) {
     const parsed = z.object({ doc, note: z.string().max(200).default('Studio edit') }).safeParse(req.body);
     if (!parsed.success) return res.status(400).json({ error: 'بيانات الطبقات غير صالحة.' });
     try {
-      const result = await renderStudio(parsed.data.doc as StudioDoc, safeAreaOf(formatOf(item.creative!.directionId, item.creative!.requestId)), logoPlanFor(parsed.data.doc as StudioDoc, item.creative!.requestId, item.creative!.directionId));
+      const result = await renderStudio(parsed.data.doc as StudioDoc, safeAreaOf(formatOf(item.creative!.directionId, item.creative!.requestId)), logoPlanFor(parsed.data.doc as StudioDoc, item.creative!.requestId, item.creative!.directionId), await ownLogoFor(item.creative!.requestId));
       if (result.problems.some((p) => p.startsWith('Logo'))) return res.status(422).json({ error: result.problems.join(' '), problems: result.problems, previewUrl: studioUrl(result.file) });
       const version = await addVersion(req.user!, item.id, { imageUrl: studioUrl(result.file), storyUrl: item.creative!.storyUrl ?? null, studio: result.doc, note: parsed.data.note });
       res.json({ version, problems: result.problems });

@@ -18,7 +18,8 @@ import { STATUS_LABEL, type PipelineItem } from '../../features/content-pipeline
 import { api } from '../../lib/api';
 import { TEMPLATE_PREFILL_KEY, type AiTemplate } from '../../features/ai-templates/AiTemplatesPanel';
 import { usePipeline } from '../../features/content-pipeline/usePipeline';
-import { CoursePicker, runOf } from '../../features/creative-studio/CoursePicker';
+import { CoursePicker } from '../../features/creative-studio/CoursePicker';
+import { courseFacts, fullCreativeBody } from '../../features/creative-studio/creativeRequest';
 import { clearActiveCreative, getActiveCreative, setActiveCreative } from '../../features/creative-studio/activeCreative';
 import { TemplateComposer, TemplateGrid, KindPicker, useSvgTemplates } from '../../features/svg-templates/SvgTemplates';
 import { KIND_LABEL, type TemplateKind } from '../../features/svg-templates/render';
@@ -142,6 +143,8 @@ export function CreationHomePage() {
     } catch { /* bad prefill ignored */ }
   }, [query]);
   const [sourcePanel, setSourcePanel] = useState<'course' | 'post' | null>(null);
+  /** A course picked from the website: its name goes on the post verbatim and its run's facts are sent with the request. */
+  const [picked, setPicked] = useState<{ course: string; facts: string } | null>(null);
   // A library design picked from the AI screen: the template opens with the idea already written.
   const [brandPick] = useState<{ id: string; prompt: string } | null>(() => (query.get('brand') ? { id: query.get('brand')!, prompt: '' } : null));
   const { items: pipeline } = usePipeline();
@@ -194,7 +197,7 @@ export function CreationHomePage() {
       // Both designs are made at the main size; the other ticked shapes are adapted from the one picked.
       const format = main;
       const attachments = references.filter((file) => file.dataUrl).map(({ name, mime, dataUrl }) => ({ name, mime, dataUrl: dataUrl! }));
-      const body = await api<{ jobId: string; requestId?: string }>('/api/ai/full-creative', { body: { prompt, ...(campaignId ? { campaignId } : {}), format, directions: designs, settings: designSettings, ...(objective !== 'auto' ? { objective } : {}), ...(attachments.length ? { attachments } : {}), ...(template ? { templateId: template.id } : {}), ...(follow ? { followDesign: 'templateId' in follow ? { templateId: follow.templateId } : { name: follow.name, dataUrl: follow.dataUrl } } : {}) } });
+      const body = await api<{ jobId: string; requestId?: string }>('/api/ai/full-creative', { body: fullCreativeBody({ prompt, campaignId: campaignId || undefined, format, directions: designs, settings: designSettings, objective, attachments, templateId: template?.id, followDesign: follow ? ('templateId' in follow ? { templateId: follow.templateId } : { name: follow.name, dataUrl: follow.dataUrl }) : undefined, course: picked?.course, facts: picked?.facts }) });
       setJobId(body.jobId); setRequestId(body.requestId ?? ''); setStage('generating');
       setActiveCreative({ jobId: body.jobId, requestId: body.requestId ?? '', prompt, platforms, sizes: chosenSizes, format, startedAt: new Date().toISOString(), status: 'running' });
     } catch (error) { setMessage(error instanceof Error ? error.message : String(error)); }
@@ -271,12 +274,12 @@ export function CreationHomePage() {
         </div>
         {sourcePanel === 'post' && <div className="creative-home__source"><strong>{t('Existing posts', 'منشورات سابقة')}</strong><p className="u-xs u-muted">{t('Existing workspace posts are references only.', 'المنشورات السابقة مراجع فقط.')}</p><div>{(pipeline ?? []).slice(0, 8).map((item) => <button key={item.id} type="button" onClick={() => { setPrompt((current) => `${current}${current ? ' — ' : ''}${item.title}`); setSourcePanel(null); }}>{item.title}</button>)}</div></div>}
         {sourcePanel === 'course' && <div className="creative-home__source"><strong>{t('Website courses and their upcoming runs', 'دورات الموقع ومواعيدها القادمة')}</strong><p className="u-xs u-muted">{t('Dates and links come from Odoo; the design uses them exactly.', 'التواريخ والروابط من Odoo، ويستخدمها التصميم كما هي.')}</p><CoursePicker autoFocus onPick={(pick) => {
-          const run = runOf(pick);
-          const name = pick.type === 'course' ? pick.course.name : pick.event.title;
-          const when = run ? ` — ${new Date(run.startsAt).toLocaleDateString('ar-EG-u-nu-latn', { day: 'numeric', month: 'long', year: 'numeric', timeZone: 'Africa/Cairo' })}` : '';
-          setPrompt((current) => `${current}${current ? ' — ' : ''}${name}${when}`);
+          const { course, facts } = courseFacts(pick);
+          setPicked({ course, facts });
+          setPrompt((current) => current || course);
           setSourcePanel(null);
         }} /></div>}
+        {picked && <div className="creative-home__picked"><GraduationCap size={15} /><span><b>{picked.course}</b>{picked.facts ? <small>{picked.facts.split('\n').map((line) => line.replace(/^[^:]+:\s*/, '')).join(' · ')}</small> : null}</span><button type="button" onClick={() => setPicked(null)} aria-label={t('Remove the course', 'شيل الدورة')}>×</button></div>}
         <div className="create-ai-templates">
           <span className="u-xs u-muted">{t('Design it like one of these: AI keeps the design and changes all the words and photos (optional):', 'صمّمه على نفس شكل تصميم من دول، والذكاء الاصطناعي يغيّر الكلام والصور كلها (اختياري):')}</span>
           <div className="create-ai-templates__list" role="radiogroup" aria-label={t('Design to follow', 'التصميم اللي يمشي عليه')}>

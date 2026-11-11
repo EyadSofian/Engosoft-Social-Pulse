@@ -84,9 +84,12 @@ export class OpenAIImageProvider implements CreativeImageProvider {
 }
 
 /**
- * The preferred image model, and another when it cannot draw: a server error, no image, a timeout, or a model the
- * account cannot use (403/404, or a 400 about the model). Every call after a fallback goes to the second model, so
- * a design's repairs are drawn by the model that drew it. `model` names the one in use.
+ * The preferred image model, and another when it cannot draw: a server error, no image, a lost connection, or a model
+ * the account cannot use (403/404, or a 400 about the model). Never after a timeout (audit #5): the first model may
+ * well have drawn, and been paid for, an image that arrived too late, so drawing again with another model would pay
+ * twice without the person asking. The timeout is reported and the person decides to try again. Every call after a
+ * fallback goes to the second model, so a design's repairs are drawn by the model that drew it. `model` names the
+ * one in use.
  */
 export class FallbackImageProvider implements CreativeImageProvider {
   readonly name = 'openai';
@@ -100,7 +103,8 @@ export class FallbackImageProvider implements CreativeImageProvider {
     } catch (error) {
       const status = error instanceof ImageProviderError ? error.status : undefined;
       const message = error instanceof Error ? error.message : String(error);
-      const switchModel = status === undefined || status >= 500 || status === 403 || status === 404 || (status === 400 && /model/i.test(message));
+      const timedOut = error instanceof Error && (error.name === 'TimeoutError' || error.name === 'AbortError' || /timed? ?out/i.test(message));
+      const switchModel = !timedOut && (status === undefined || status >= 500 || status === 403 || status === 404 || (status === 400 && /model/i.test(message)));
       if (!switchModel) throw error;
       this.current = this.fallback;
       return call(this.fallback);

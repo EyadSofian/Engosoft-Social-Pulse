@@ -148,6 +148,20 @@ test('the precise model falls back to the fast one when it cannot draw, and stay
   await assert.rejects(strict.generate({ prompt: 'x', size: '16x16', quality: 'high' }), /rejected/);
 });
 
+test('a timeout does not draw again with the other model: the first image may already be paid for (audit #5)', async () => {
+  const png = await sharp({ create: { width: 16, height: 16, channels: 3, background: '#fff' } }).png().toBuffer();
+  const calls: string[] = [];
+  const fake = (model: string, fail?: Error) => ({ name: 'fake', model, generate: async () => { calls.push(model); if (fail) throw fail; return [{ png, model, size: '16x16', quality: 'high' as const, latencyMs: 0 }]; }, edit: async () => { calls.push(model); if (fail) throw fail; return [{ png, model, size: '16x16', quality: 'high' as const, latencyMs: 0 }]; } });
+  const timeout = Object.assign(new Error('The operation was aborted due to timeout'), { name: 'TimeoutError' });
+  const provider = new FallbackImageProvider(fake('sunburst', timeout), fake('flare'));
+  await assert.rejects(provider.edit({ prompt: 'x', size: '16x16', quality: 'high', images: [] }), /timeout/);
+  assert.deepEqual(calls, ['sunburst'], 'one call, no second model');
+  assert.equal(provider.model, 'sunburst');
+  const unavailable = new FallbackImageProvider(fake('sunburst', new ImageProviderError('The model does not exist or you do not have access to it', 404)), fake('flare'));
+  const [image] = await unavailable.generate({ prompt: 'x', size: '16x16', quality: 'high' });
+  assert.equal(image.model, 'flare', 'a model the account cannot use still falls back');
+});
+
 test('a followed design is redrawn from the design itself, a missing price is lettered at its spot, and the stamp goes back exactly', async () => {
   const requestId = '00000000-0000-4000-8000-000000000013';
   const design = (await resolveFollowDesign({ templateId: 'brand-campaign-offer' }, requestId))!;

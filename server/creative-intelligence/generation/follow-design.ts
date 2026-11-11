@@ -12,6 +12,8 @@ import { mediaDir } from '../../paths.js';
 import type { ReferenceImage } from './house-references.js';
 import type { CampaignIdentity } from '../logo-resolution/campaign-stamp.js';
 import type { CopyBlock } from '../typography-validation/copy-check.js';
+import type { BrandKitId } from '../../../src/domain/brand-kits.js';
+import { kitFilePath, placeLogo } from '../brand/place-logo.js';
 
 /** Artwork of a library design placed from its file at its spot (a campaign stamp, a hashtag), never redrawn. */
 export interface FollowArtwork { key: string; path: string; place: { x: number; y: number; width: number; height: number }; says: string }
@@ -25,8 +27,10 @@ export interface FollowDesign {
   /** For a library design: its id, and the artwork placed from files. */
   templateId?: string;
   artworks?: FollowArtwork[];
-  /** The design's own logo (the 50/50 campaign's older lockup), placed instead of the official logo. */
-  logo?: FollowArtwork;
+  /** For a library design: the background picked (light or blue), for paths that lay the template out again. */
+  surface?: BrandSurface;
+  /** The design's own logo kit (the 50/50 campaign's older lockup), placed instead of the official logo. */
+  logo?: FollowArtwork & { kit?: BrandKitId };
 }
 
 export type FollowDesignInput = { templateId: string; surface?: BrandSurface } | { name: string; dataUrl: string };
@@ -47,9 +51,9 @@ export async function resolveFollowDesign(input: FollowDesignInput, requestId: s
       return existsSync(file) ? [{ key: input.key, path: file, place: input.place, says: input.says ?? '' }] : [];
     });
     const blocks = template.inputs.filter((input) => input.type !== 'photo').map((input) => `${input.label.en}: «${input.sample.ar}»`).join('; ');
-    const logoFile = template.logo && resolve(process.cwd(), 'public', template.logo.file.replace(/^\//, ''));
-    const logo = template.logo && logoFile && existsSync(logoFile) ? { key: 'logo', path: logoFile, place: template.logo.place, says: 'ENGO SOFT' } : undefined;
-    return existsSync(path) ? { name: template.name.en, path, structure: `${template.brief} Its text inputs, with the words they hold in the image: ${blocks}.`, templateId: template.id, ...(artworks.length ? { artworks } : {}), ...(logo ? { logo } : {}) } : undefined;
+    const logoFile = template.logo && kitFilePath(template.logo.kit);
+    const logo = template.logo && logoFile && existsSync(logoFile) ? { key: 'logo', path: logoFile, place: template.logo.place, says: 'ENGO SOFT', kit: template.logo.kit } : undefined;
+    return existsSync(path) ? { name: template.name.en, path, surface: input.surface ?? template.surfaces[template.surfaces.length - 1], structure: `${template.brief} Its text inputs, with the words they hold in the image: ${blocks}.`, templateId: template.id, ...(artworks.length ? { artworks } : {}), ...(logo ? { logo } : {}) } : undefined;
   }
   const match = /^data:image\/(png|jpeg|webp);base64,(.+)$/.exec(input.dataUrl);
   if (!match) return undefined;
@@ -236,50 +240,11 @@ export async function clearArtworkSpots(image: Buffer, artworks: FollowArtwork[]
 }
 
 /**
- * The design's own logo (the 50/50 campaign's older «ENGO | SOFT» lockup) placed from its file, instead of the
- * official logo. On a canvas of the design's shape it goes at its measured spot; on another shape, in the same
- * top-left corner at the same share of the canvas width (of a wide canvas's height-based width, as the template
- * does), inside the safe area, and never past 1.25× the file's size, so it never goes soft. Like the campaign post, it gets a soft
- * deep-blue shadow and the fine grain of the background under it, so it sits in the print instead of on top of it.
+ * The design's own logo (the 50/50 campaign's older «ENGO | SOFT» lockup), placed from its kit's file: at its spot on
+ * the design's shape, in the same corner on others, never past the kit's size cap. See `placeLogo` in brand/place-logo.
  */
-export async function placeOwnLogo(image: Buffer, logo: FollowArtwork, opts: { same: boolean; designAspect: number; safe?: { top?: number; left?: number } }): Promise<{ image: Buffer; box: Box } | null> {
+export async function placeOwnLogo(image: Buffer, logo: FollowArtwork & { kit?: BrandKitId }, opts: { same: boolean; designAspect: number; safe?: { top?: number; left?: number } }): Promise<{ image: Buffer; box: Box } | null> {
   if (!existsSync(logo.path)) return null;
-  const { width: W = 0, height: H = 0 } = await sharp(image).metadata();
-  if (!W || !H) return null;
-  const file = await sharp(readFileSync(logo.path)).trim().png().toBuffer({ resolveWithObject: true });
-  const ratio = file.info.width / file.info.height;
-  const basis = W / H > 1.15 ? Math.min(W, Math.round(H * 1.4)) : W;
-  const width = Math.min(logo.place.width * basis, file.info.width * 1.25);
-  const area: Box = opts.same
-    ? { x: logo.place.x * W, y: logo.place.y * H, width: logo.place.width * W, height: logo.place.height * H }
-    : { x: Math.max(logo.place.x * basis, opts.safe?.left ?? 0), y: Math.max(logo.place.y * basis / opts.designAspect, opts.safe?.top ?? 0), width, height: width / ratio };
-  const fitted = await sharp(file.data).resize(Math.max(8, Math.round(area.width)), Math.max(8, Math.round(area.height)), { fit: 'inside', kernel: 'lanczos3', withoutEnlargement: false })
-    .ensureAlpha().raw().toBuffer({ resolveWithObject: true });
-  const w = Math.min(fitted.info.width, W), h = Math.min(fitted.info.height, H);
-  const left = Math.max(0, Math.min(W - w, Math.round(area.x + (area.width - w) / 2)));
-  const top = Math.max(0, Math.min(H - h, Math.round(area.y + (area.height - h) / 2)));
-  // The background's own grain under the logo: its brightness minus a soft blur of it, added to the logo's pixels.
-  const under = sharp(image).extract({ left, top, width: w, height: h }).greyscale();
-  const fine = await under.clone().raw().toBuffer();
-  const smooth = await under.clone().blur(1.5).raw().toBuffer();
-  const px = Buffer.from(fitted.data);
-  for (let i = 0; i < w * h; i++) {
-    if (!px[i * 4 + 3]) continue;
-    const grain = (fine[i] - smooth[i]) * 0.7;
-    for (let c = 0; c < 3; c++) px[i * 4 + c] = Math.max(0, Math.min(255, Math.round(px[i * 4 + c] + grain)));
-  }
-  const mark = await sharp(px, { raw: { width: w, height: h, channels: 4 } }).png().toBuffer();
-  // The shadow: the logo's shape in deep blue at 55%, softened, a little below it.
-  const s = basis / 1080;
-  const pad = Math.min(Math.ceil(9 * s), left, top, W - left - w, H - top - h);
-  if (pad < 1) return { image: await sharp(image).composite([{ input: mark, left, top }]).png().toBuffer(), box: { x: left, y: top, width: w, height: h } };
-  const shade = Buffer.alloc((w + 2 * pad) * (h + 2 * pad) * 4);
-  for (let y = 0; y < h; y++) for (let x = 0; x < w; x++) {
-    const o = ((y + pad) * (w + 2 * pad) + x + pad) * 4;
-    shade[o] = 0x00; shade[o + 1] = 0x15; shade[o + 2] = 0x7a; shade[o + 3] = Math.round(px[(y * w + x) * 4 + 3] * 0.55);
-  }
-  const shadow = await sharp(shade, { raw: { width: w + 2 * pad, height: h + 2 * pad, channels: 4 } }).blur(Math.max(0.5, 3 * s)).png().toBuffer();
-  const shadowTop = Math.min(H - (h + 2 * pad), top - pad + Math.round(3 * s));
-  const out = await sharp(image).composite([{ input: shadow, left: left - pad, top: shadowTop }, { input: mark, left, top }]).png().toBuffer();
-  return { image: out, box: { x: left, y: top, width: w, height: h } };
+  const placed = await placeLogo(image, logo.kit ?? 'engo-soft-old', { kind: 'design-spot', place: logo.place, same: opts.same, designAspect: opts.designAspect, safe: opts.safe, file: logo.path });
+  return placed && { image: placed.image, box: placed.box };
 }

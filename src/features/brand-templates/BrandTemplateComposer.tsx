@@ -9,7 +9,8 @@ import { channelName } from '../../i18n/labels';
 import { api, errorMessage } from '../../lib/api';
 import { useAuth } from '../auth/AuthProvider';
 import { takePostPlan, readPostPlan } from '../content/postPlan';
-import { CoursePicker, runOf } from '../creative-studio/CoursePicker';
+import { CoursePicker } from '../creative-studio/CoursePicker';
+import { courseFacts, fullCreativeBody } from '../creative-studio/creativeRequest';
 import { CREATIVE_PLATFORMS, DEFAULT_SIZES, mainFormat, PLATFORM_FORMATS, slotOf, type CreativePlatform } from '../creative-studio/platforms';
 import { FullCreativeJob } from '../creative-studio/FullCreativeJob';
 import { setActiveCreative } from '../creative-studio/activeCreative';
@@ -193,7 +194,7 @@ export function BrandTemplateComposer({ template, initialPrompt = '', onClose }:
     setBusy('ai'); setDesignError('');
     try {
       const format = mainFormat(platforms, chosenIds);
-      const body = await api<{ jobId: string; requestId?: string }>('/api/ai/full-creative', { body: { prompt: request, format, directions: 1, followDesign: { templateId: template.id, surface }, ...(facts.trim() ? { facts } : {}), ...(asksCourse && course.trim() ? { course: course.trim() } : {}) } });
+      const body = await api<{ jobId: string; requestId?: string }>('/api/ai/full-creative', { body: fullCreativeBody({ prompt: request, format, directions: 1, followDesign: { templateId: template.id, surface }, facts, course: asksCourse ? course : undefined }) });
       setActiveCreative({ jobId: body.jobId, requestId: body.requestId ?? '', prompt: request, platforms, sizes: chosenIds, format, startedAt: new Date().toISOString(), status: 'running' });
       setAiRun({ jobId: body.jobId, requestId: body.requestId ?? '', prompt: request });
     } catch (error) { setDesignError(errorMessage(error, t('Could not start the design.', 'تعذّر بدء التصميم.'))); }
@@ -235,14 +236,9 @@ export function BrandTemplateComposer({ template, initialPrompt = '', onClose }:
     if (alone) setBusy('');
   };
   const pickCourse = (pick: Parameters<Parameters<typeof CoursePicker>[0]['onPick']>[0]) => {
-    const run = runOf(pick);
-    const name = pick.type === 'course' ? pick.course.name : pick.event.title;
-    const start = run ? new Date(run.startsAt) : null;
-    const date = start ? start.toLocaleDateString('ar-EG-u-nu-latn', { weekday: 'long', day: 'numeric', month: 'long', timeZone: 'Africa/Cairo' }) : '';
-    const time = start ? start.toLocaleTimeString('ar-EG-u-nu-latn', { hour: 'numeric', minute: '2-digit', timeZone: 'Africa/Cairo' }) : '';
-    const place = run?.location ?? '';
+    const { course: name, facts: picked, date, time, place } = courseFacts(pick);
     setCourse(name);
-    setFacts([date && `التاريخ: ${date}`, time && `الوقت: ${time}`, place && `المكان: ${place}`, run?.registrationUrl && `رابط التسجيل: ${run.registrationUrl}`].filter(Boolean).join('\n'));
+    setFacts(picked);
     setPrompt((current) => current || name);
     setFilled(false);
     setValues((current) => ({ ...current, ...(template.inputs.some((i) => i.key === 'date') && date ? { date } : {}), ...(template.inputs.some((i) => i.key === 'time') && time ? { time } : {}), ...(template.inputs.some((i) => i.key === 'place') && place ? { place } : {}) }));

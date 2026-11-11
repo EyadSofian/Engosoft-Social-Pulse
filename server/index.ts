@@ -47,7 +47,7 @@ import { registerCalendarPostRoutes } from './calendar-posts.js';
 import { syncGoogleCalendars } from './google/calendar-sync.js';
 
 const app=express();const port=Number(process.env.PORT)||4100;const host=process.env.HOST||'127.0.0.1';
-app.disable('x-powered-by');app.set('trust proxy',1);app.use('/api/ai',express.json({limit:'18mb'}));app.use('/api/studio',express.json({limit:'18mb'}));app.use('/api/svg-templates',express.json({limit:'16mb'}));app.use('/api/uploads',express.json({limit:'16mb'}));app.use(express.json({limit:'1mb'}));
+app.disable('x-powered-by');app.set('trust proxy',1);app.use('/api/ai',express.json({limit:'18mb'}));app.use('/api/studio',express.json({limit:'18mb'}));app.use('/api/svg-templates',express.json({limit:'16mb'}));app.use('/api/uploads',express.json({limit:'16mb'}));app.use('/api/brand-templates/render',express.json({limit:'24mb'}));app.use(express.json({limit:'1mb'}));
 app.get('/api/health',(_req,res)=>res.json({ok:true}));
 registerAuthRoutes(app);
 // Provider callbacks validate state and the initiating user; signed media is narrowly scoped to one expiring asset.
@@ -117,9 +117,9 @@ const fullCreativeRequest=z.object({prompt:z.string().trim().min(5).max(2000),fo
  campaignId:z.string().uuid().optional(),
  // A design to follow: a library design or the user's own file; the post is made as the same design with new words and photos.
  followDesign:z.union([z.object({templateId:z.string().max(60),surface:z.enum(['light','blue']).optional()}),z.object({name:z.string().max(200),dataUrl:z.string().max(8_000_000).regex(/^data:image\/(png|jpeg|webp);base64,/)})]).optional(),
- // Course facts picked on the template screen (course, date, time, place, link): usable on the post, not required.
+ // Facts of a course picked on either screen (date, time, place, link): usable on the post, not required.
  facts:z.string().max(2000).optional(),
- // The course name typed on the template screen: it must show on the post exactly as written.
+ // The course name typed or picked on either screen: it must show on the post exactly as written.
  course:z.string().trim().max(160).optional()});
 const OBJECTIVE_TEXT={course_launch:'Course announcement',course_schedule:'Course schedule',certificate:'Certificate or achievement',education:'Educational content',event:'Event or occasion',general:'General post'} as const;
 const localOnly=(res:express.Response)=>{if(!process.env.OPENAI_API_KEY?.trim()){res.status(503).json({error:'أضف OPENAI_API_KEY على الخادم.'});return true;}return false;};

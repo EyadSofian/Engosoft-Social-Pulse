@@ -16,6 +16,9 @@ import { mediaDir } from '../../paths.js';
 import { flipTransform, originalTextAppearance, textAppearanceKey, rotateTransform, shapeShadow, strokeOf, STUDIO_FILE, STUDIO_VERSION, textShadow, type Box, type ImageLayer, type ShapeLayer, type StudioDoc, type StudioLayer, type TextLayer } from '../../../src/domain/studio.js';
 import { OpenAIImageProvider } from '../generation/provider.js';
 import { compositeLogo, verifyComposite } from '../logo-resolution/compositor.js';
+import { placeLogo } from '../brand/place-logo.js';
+import { sameShape } from '../generation/follow-design.js';
+import type { BrandKitId } from '../../../src/domain/brand-kits.js';
 import { resolveLogo, type Corner } from '../logo-resolution/resolver.js';
 import type { LogoMark } from '../brand/design-language.js';
 import type { ContentZone } from '../logo-resolution/validator.js';
@@ -438,11 +441,23 @@ export function layersSvg(doc: StudioDoc): { svg: string; textHeights: Map<strin
   return { svg: `<svg xmlns="http://www.w3.org/2000/svg" width="${doc.width}" height="${doc.height}"><defs>${defs.join('')}</defs>${body.join('')}</svg>`, textHeights, problems };
 }
 
-/** Final image: background + every layer + the official logo placed on the result's pixels. */
-export async function renderStudio(doc: StudioDoc, safeArea?: { top: number; right: number; bottom: number; left: number }, logoPlan?: { mark: LogoMark; corner: Corner }): Promise<{ file: string; doc: StudioDoc; problems: string[] }> {
+/** The design's own logo kit and where its reference design has it, for designs that do not use the official logo. */
+export interface StudioOwnLogo { kit: BrandKitId; place: { x: number; y: number; width: number; height: number }; designAspect: number; file?: string }
+
+/**
+ * Final image: background + every layer + the design's logo placed on the result's pixels: the official logo where
+ * the resolver finds a clean corner, or the design's own kit (audit #10) at its spot, as the AI designer placed it.
+ */
+export async function renderStudio(doc: StudioDoc, safeArea?: { top: number; right: number; bottom: number; left: number }, logoPlan?: { mark: LogoMark; corner: Corner }, ownLogo?: StudioOwnLogo): Promise<{ file: string; doc: StudioDoc; problems: string[] }> {
   const base = readFileSync(studioPath(doc.baseFile));
   const { svg, textHeights, problems } = layersSvg(doc);
   const composed = await sharp(base).composite([{ input: Buffer.from(svg) }]).png().toBuffer();
+  if (ownLogo && ownLogo.kit !== 'official') {
+    const placed = await placeLogo(composed, ownLogo.kit, { kind: 'design-spot', place: ownLogo.place, same: sameShape(ownLogo.designAspect, doc.width / doc.height), designAspect: ownLogo.designAspect, safe: safeArea, file: ownLogo.file });
+    if (placed) return { file: saveStudioImage(placed.image), doc: { ...doc, logo: null, kit: ownLogo.kit }, problems };
+    problems.push(`Logo: the ${ownLogo.kit} logo file is missing on this server.`);
+    return { file: saveStudioImage(composed), doc: { ...doc, logo: null, kit: ownLogo.kit }, problems };
+  }
   const layerZones: ContentZone[] = doc.layers.filter((l) => !l.hidden && l.opacity > 0).map((l) => ({
     kind: l.kind === 'text' ? 'text' : 'salient',
     box: { x: l.x, y: l.y, width: l.width, height: l.kind === 'text' ? (textHeights.get(l.id) ?? 0) + l.size * 0.3 : l.height },
@@ -455,5 +470,5 @@ export async function renderStudio(doc: StudioDoc, safeArea?: { top: number; rig
   }
   const { image, record } = await compositeLogo(composed, { variantId: logo.variantId, x: logo.placement.x, y: logo.placement.y, width: logo.placement.width });
   problems.push(...(await verifyComposite(composed, image, record)).map((p) => `Logo composite: ${p}`));
-  return { file: saveStudioImage(image), doc: { ...doc, logo: { variantId: logo.variantId, x: record.x, y: record.y, width: record.width } }, problems };
+  return { file: saveStudioImage(image), doc: { ...doc, logo: { variantId: logo.variantId, x: record.x, y: record.y, width: record.width }, kit: 'official' }, problems };
 }
