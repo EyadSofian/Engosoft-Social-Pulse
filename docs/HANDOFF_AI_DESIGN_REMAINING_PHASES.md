@@ -33,7 +33,9 @@ Done on branch `claude/design-foundation` (11 November, not merged or pushed):
 - **3 (#5)** `FallbackImageProvider` no longer switches model after a timeout.
 - Layout fixes found while testing: `fit()` reported the wrapped width after joining lines (headlines ran off the story canvas), the 50/50 story and the offer layout now keep the story's side safe areas, and the offer badge stays on the canvas.
 
-Not done yet: compare the skeleton path with the current redraw on real requests (needs a working key), then make it the default; skeleton for uploaded designs (needs a generic block renderer or phase 3's template from an upload); #9 (the large old-logo file); #13 (remove old paths once the skeleton is the default); template from an uploaded design; Studio re-adding the stamp and hashtag after an edit (it never did).
+Real runs (11 November, Interior on the 50/50 design, `outputs/real-run-2026-11-11/`): with `CREATIVE_PATH=skeleton` the model moved every line 50–140 px, so the stamp sat on the headline. A position check now rejects that, and the exact layout ships. With `CREATIVE_PATH=layered`, the model draws the art under a design with no words, code checks the shapes under the words, then sets the exact words, logo and files on top. Both feed and story passed on the first try, one image each.
+
+Not done yet: more real runs of `layered` (other templates, photo slots) before making it the default; skeleton for uploaded designs (needs a generic block renderer or phase 3's template from an upload); #9 (the large old-logo file); #13 (remove old paths once the skeleton is the default); template from an uploaded design; Studio re-adding the stamp and hashtag after an edit (it never did).
 
 ## How to work here
 

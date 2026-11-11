@@ -223,3 +223,35 @@ test('the fill keeps no currency the person did not write and the design\'s own 
   assert.deepEqual(out.missing, []);
   assert.equal(out.values.subline, 'حوّل شغفك بالتصميم الداخلي لمهارة احترافية مطلوبة في سوق العمل.', 'the person\'s line is not cut to the field\'s 90 characters... or any limit');
 });
+
+test('layered finish: the model draws the art under a design with no words; the exact words and files go on top', async () => {
+  const doc = campaignDoc();
+  const sk = await skeletonFor(doc, FEED);
+  const seen = responses({});
+  const { calls, provider } = fakeModel('echo');
+  const out = await produceSkeleton({ doc, canvas: FEED, provider, quality: 'high', topic: 'x', env: { ...ENV, CREATIVE_PATH: 'layered' } });
+  assert.equal(out.shipped, 'finish');
+  assert.equal(calls.length, 1);
+  assert.match(calls[0].prompt, /words taken out/);
+  assert.match(calls[0].prompt, /NO TEXT/);
+  assert.deepEqual(seen, [], 'no reading: the words were set by code');
+  // An art layer that kept the layout stacks back to the exact design.
+  const a = await sharp(out.image).removeAlpha().raw().toBuffer(), b = await sharp(sk.full).removeAlpha().raw().toBuffer();
+  let off = 0; for (let i = 0; i < a.length; i++) if (Math.abs(a[i] - b[i]) > 24) off++;
+  assert.ok(off / a.length < 0.002, `${off} channels differ`);
+});
+
+test('layered finish: art that moved the shapes or drew letters where the words go is not used', async () => {
+  const doc = campaignDoc();
+  const env = { ...ENV, CREATIVE_PATH: 'layered' } as NodeJS.ProcessEnv;
+  responses({});
+  const moved = await produceSkeleton({ doc, canvas: FEED, provider: fakeModel({ shift: 70 }).provider, quality: 'high', topic: 'x', env });
+  assert.equal(moved.shipped, 'skeleton');
+  assert.match(moved.notes.join(' '), /did not leave room for the words.*moved/);
+  // A model that drew the words itself (the redraw's Image 1 handed back) puts letters under the real ones.
+  const sk = await skeletonFor(doc, FEED);
+  const lettered = { name: 'fake', model: 'fake-image', generate: async () => { throw new Error('unused'); }, edit: async (r: { size: string }) => { const [w, h] = r.size.split('x').map(Number); return [{ png: await sharp(sk.plain).resize(w, h, { fit: 'fill' }).png().toBuffer(), model: 'fake-image', size: r.size, quality: 'high' as const, latencyMs: 1 }]; } };
+  const out = await produceSkeleton({ doc, canvas: FEED, provider: lettered, quality: 'high', topic: 'x', env });
+  assert.equal(out.shipped, 'skeleton');
+  assert.match(out.notes.join(' '), /something was drawn/);
+});
