@@ -55,3 +55,12 @@
 .design-plan__body{display:grid;gap:4px;margin-top:8px}
 .design-plan__block>summary{padding:4px 0;font-weight:700;cursor:pointer}
 .design-plan__block pre{max-height:320px;overflow:auto;margin:4px 0 8px;padding:10px;border-radius:10px;background:var(--surface-subtle);font-family:var(--font-mono);font-size:11px;line-height:1.55;white-space:pre-wrap;word-break:break-word}
+
+/* A course picked from the website: its name goes on the post as written, its run's facts go with the request. */
+.creative-home__picked { display: flex; align-items: center; gap: 10px; padding: 8px 10px; border: 1px solid var(--border); border-radius: 10px; background: var(--surface-subtle); color: var(--text); }
+.creative-home__picked > svg { flex: none; color: var(--brand); }
+.creative-home__picked span { display: grid; gap: 2px; flex: 1; min-width: 0; }
+.creative-home__picked b { font-size: 13px; }
+.creative-home__picked small { color: var(--text-muted); font-size: 12px; overflow-wrap: anywhere; }
+.creative-home__picked button { flex: none; width: 26px; height: 26px; border: 0; border-radius: 8px; background: transparent; color: var(--text-muted); font-size: 17px; cursor: pointer; }
+.creative-home__picked button:hover { background: var(--surface); color: var(--text); }

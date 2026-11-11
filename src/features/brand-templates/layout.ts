@@ -6,7 +6,8 @@
  *
  * Proportions are measured from the brand-pack posts at 1080×1350 (brand/guidelines-2026-11/posts).
  */
-import { BRAND_CONTACT, isRtlText, type BrandSurface, type BrandTemplate } from '../../domain/brand-templates';
+import { BRAND_CONTACT, isRtlText, templateKit, type BrandSurface, type BrandTemplate } from '../../domain/brand-templates';
+import { brandKit, kitFile, maxDrawWidth } from '../../domain/brand-kits';
 
 export interface LayoutCanvas { width: number; height: number; safe?: { top: number; right: number; bottom: number; left: number } }
 /** Width of a string in a CSS font ("800 96px Almarai"), measured with the real fonts. */
@@ -25,14 +26,17 @@ const C = {
   blue: '#0046FF', deep: '#001BB7', navy: '#0A1F8F', orange: '#FF6600', ink: '#1A1A1A', grey: '#404040',
   light: '#F1F4F9', sky: '#D5EDFF', mist: '#E5F0FF', pale: '#B3DDFF', mid: '#56A1FF', bright: '#2F7CFF', white: '#FFFFFF',
 };
+const OFFICIAL = brandKit('official');
 const LOGO = {
-  horizontal: { positive: '/brand/logos/engosoft-horizontal-positive.svg', reversed: '/brand/logos/engosoft-horizontal-reversed.svg', ratio: 266.21 / 68.52 },
-  symbol: { positive: '/brand/logos/engosoft-symbol-positive.svg', reversed: '/brand/logos/engosoft-symbol-reversed.svg', ratio: 19.164 / 25.871 },
-  /**
-   * The older «ENGO | SOFT» lockup the campaign posts use, white on transparent. Cut from the 50/50 campaign post
-   * at its size there (214 px wide on 1080), so it is drawn at about that size to stay sharp.
-   */
-  old: { reversed: '/brand/logos/engosoft-old-lockup-reversed.png', ratio: 214 / 76, width: 214 },
+  horizontal: { positive: kitFile(OFFICIAL, { mark: 'horizontal', onDark: false }).src, reversed: kitFile(OFFICIAL, { mark: 'horizontal', onDark: true }).src, ratio: kitFile(OFFICIAL, { mark: 'horizontal', onDark: true }).ratio },
+  symbol: { positive: kitFile(OFFICIAL, { mark: 'symbol', onDark: false }).src, reversed: kitFile(OFFICIAL, { mark: 'symbol', onDark: true }).src, ratio: kitFile(OFFICIAL, { mark: 'symbol', onDark: true }).ratio },
+};
+/** A template's own kit (the campaign's older «ENGO | SOFT» lockup), or null for the official logo. */
+const ownKit = (template: BrandTemplate) => {
+  const kit = templateKit(template);
+  if (kit.id === 'official') return null;
+  const file = kitFile(kit, { onDark: true });
+  return { src: file.src, ratio: file.ratio, maxWidth: maxDrawWidth(kit, file) };
 };
 
 const esc = (value: string) => value.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;');
@@ -95,7 +99,10 @@ class Ctx {
       const fits = lines.length <= opts.maxLines && widest <= opts.maxWidth + 0.5 && (!opts.maxHeight || height <= opts.maxHeight);
       if (fits || size <= min) {
         const kept = lines.length > opts.maxLines ? [...lines.slice(0, opts.maxLines - 1), lines.slice(opts.maxLines - 1).join(' ')] : lines;
-        return { lines: kept, size, lineHeight: size * leading, height: kept.length ? size * (1 + (kept.length - 1) * leading) : 0, width: widest };
+        // Lines joined to stay within maxLines are wider than any wrapped line: report the width actually drawn, so
+        // a caller that checks it (a headline trying one line before two) sees that it does not fit.
+        const width = kept === lines ? widest : Math.max(0, ...kept.map((line) => this.width(line, style, size)));
+        return { lines: kept, size, lineHeight: size * leading, height: kept.length ? size * (1 + (kept.length - 1) * leading) : 0, width };
       }
       size = Math.max(min, size * 0.94);
     }
@@ -507,7 +514,7 @@ const offer: Builder = (c) => {
     c.text(bf, bs, c.edge(bs, x0, x1), y);
     return c.svg(bg);
   }
-  const x0 = c.m * 1.1, x1 = c.W - c.m * 1.1;
+  const x0 = Math.max(c.m * 1.1, c.safe.left + c.m * 0.4), x1 = c.W - Math.max(c.m * 1.1, c.safe.right + c.m * 0.4);
   const k = c.story ? 1.2 : 1;
   const top = logoBottom + c.m * (c.story ? 1.4 : 0.9), bottom = foot - c.m * 0.2;
   const hf = c.fit(head, hs, { maxWidth: (x1 - x0) * 0.9, maxLines: 2, max: 92 * c.s * k, leading: hs.rtl ? 1.3 : 1.05 });
@@ -524,7 +531,10 @@ const offer: Builder = (c) => {
   wave(py + ph * 0.18, ph * 0.36);
   const clip = wavyFrame(c, px, py, pw, ph);
   c.image(photo, px, py, pw, ph, 'xMidYMin slice', clip);
-  badge(rtl ? px - pw * 0.02 : px + pw * 1.02, py + ph * 0.7, Math.min(ph * 0.25, 125 * c.s * k));
+  // The badge overlaps the frame's edge as in the design, but never leaves the canvas or its safe area.
+  const r = Math.min(ph * 0.25, 125 * c.s * k);
+  const bx = Math.min(c.W - Math.max(c.m * 0.3, c.safe.right) - r, Math.max(Math.max(c.m * 0.3, c.safe.left) + r, rtl ? px - pw * 0.02 : px + pw * 1.02));
+  badge(bx, py + ph * 0.7, r);
   let y = py + ph + c.m * 0.9 + spare * 0.3;
   if (price) { c.text(pf, ps, c.edge(ps, x0, x1), y); y += pf.height + c.m * 0.45; }
   c.text(bf, bs, c.edge(bs, x0, x1), y);
@@ -587,16 +597,17 @@ const campaignOffer: Builder = (c) => {
   // The campaign's own logo (the older lockup) at its place in the design, with the same grain over it as over
   // the background, so it sits in the print instead of on top of it.
   {
-    const width = Math.min(LOGO.old.width * 1.25, Math.round((c.ratio > 1.15 ? Math.min(W, H * 1.4) : W) * 0.2));
-    const height = width / LOGO.old.ratio;
+    const own = ownKit(c.input.template) ?? { ...LOGO.horizontal, src: LOGO.horizontal.reversed, maxWidth: Infinity };
+    const width = Math.min(own.maxWidth, Math.round((c.ratio > 1.15 ? Math.min(W, H * 1.4) : W) * 0.2));
+    const height = width / own.ratio;
     const top = c.story ? Math.max(Math.round(H * 0.06), c.safe.top * 0.4) : Math.max(c.m * 0.85, c.safe.top + c.m * 0.5);
     const x = Math.max(c.m * 0.6, c.safe.left + c.m * 0.5);
     const mask = c.id('logomask');
-    c.defs.push(`<mask id="${mask}" maskUnits="userSpaceOnUse" x="${n(x)}" y="${n(top)}" width="${n(width)}" height="${n(height)}"><image href="${LOGO.old.reversed}" x="${n(x)}" y="${n(top)}" width="${n(width)}" height="${n(height)}" preserveAspectRatio="xMidYMid meet"/></mask>`);
+    c.defs.push(`<mask id="${mask}" maskUnits="userSpaceOnUse" x="${n(x)}" y="${n(top)}" width="${n(width)}" height="${n(height)}"><image href="${own.src}" x="${n(x)}" y="${n(top)}" width="${n(width)}" height="${n(height)}" preserveAspectRatio="xMidYMid meet"/></mask>`);
     // A soft deep-blue shadow under it, as in the campaign post, then a light pass of the background grain.
     const lift = c.id('lift');
     c.defs.push(`<filter id="${lift}" x="-10%" y="-20%" width="120%" height="150%"><feDropShadow dx="0" dy="${n(3 * c.s)}" stdDeviation="${n(3 * c.s)}" flood-color="#00157A" flood-opacity="0.55"/></filter>`);
-    c.body.push(`<image href="${LOGO.old.reversed}" x="${n(x)}" y="${n(top)}" width="${n(width)}" height="${n(height)}" preserveAspectRatio="xMidYMid meet" filter="url(#${lift})"/>`);
+    c.body.push(`<image href="${own.src}" x="${n(x)}" y="${n(top)}" width="${n(width)}" height="${n(height)}" preserveAspectRatio="xMidYMid meet" filter="url(#${lift})"/>`);
     c.body.push(`<rect x="${n(x)}" y="${n(top)}" width="${n(width)}" height="${n(height)}" fill="#0443F2" filter="url(#${grain})" opacity="0.4" mask="url(#${mask})"/>`);
   }
   const footTop = footer(c, true, { motif: 'none' });
@@ -727,10 +738,12 @@ const campaignOffer: Builder = (c) => {
   // no old price a shorter ticket), then the column is scaled to the space and centred in it.
   const top = c.story ? H * 0.1 : H * 0.115, bottom = footTop + c.m * 0.2;
   const band = bottom - top;
-  const cx = W / 2, maxW = W - c.m * 2.4;
+  // Centred, so both sides keep the wider of the two safe margins (a story's platform buttons).
+  const side = Math.max(c.safe.left, c.safe.right);
+  const cx = W / 2, maxW = W - Math.max(c.m * 2.4, 2 * side + c.m * 0.8);
   const column = (f: number) => {
     const st = stamp ? 300 * c.s * f : 0;
-    const hf = fitHead(W - c.m * 1.6, 68 * c.s * f);
+    const hf = fitHead(W - Math.max(c.m * 1.6, 2 * side + c.m * 0.6), 68 * c.s * f);
     const tf = tape ? c.fit(tape, ts, { maxWidth: W * 0.78 * 0.86, maxLines: 1, max: 52 * c.s * f }) : null;
     const tapeH = tf ? tf.size * 1.85 : 0;
     const sf = sub ? c.fit(subFor(maxW, 54 * c.s * f), ss, { maxWidth: maxW, maxLines: 2, max: 54 * c.s * f, leading: 1.3 }) : null;
@@ -770,10 +783,10 @@ const banner: Builder = (c, surface) => {
   const second = pick('subline', 'line2', 'eyebrow', 'tag', 'label');
   const picture = c.input.template.inputs.filter((i) => i.type === 'photo').map((i) => (values[i.key] ?? '').trim()).find(Boolean) ?? '';
   // The campaign template keeps its own (older) lockup on every size.
-  const oldLogo = c.input.template.id === 'brand-campaign-offer';
-  const logoRatio = oldLogo ? LOGO.old.ratio : LOGO.horizontal.ratio;
-  const logoW = Math.min((x1 - x0) * 0.22, bandH * 3.885 * 0.42, oldLogo ? LOGO.old.width * 1.25 : Infinity);
-  c.image(oldLogo ? LOGO.old.reversed : dark ? LOGO.horizontal.reversed : LOGO.horizontal.positive, x0, y0 + (bandH - logoW / logoRatio) / 2, logoW, logoW / logoRatio, 'xMidYMid meet');
+  const own = ownKit(c.input.template);
+  const logoRatio = own ? own.ratio : LOGO.horizontal.ratio;
+  const logoW = Math.min((x1 - x0) * 0.22, bandH * 3.885 * 0.42, own ? own.maxWidth : Infinity);
+  c.image(own ? own.src : dark ? LOGO.horizontal.reversed : LOGO.horizontal.positive, x0, y0 + (bandH - logoW / logoRatio) / 2, logoW, logoW / logoRatio, 'xMidYMid meet');
   const picW = picture ? Math.min(bandH * 1.1, (x1 - x0) * 0.22) : 0;
   if (picture) {
     const clip = roundedClip(c, x1 - picW, y0, picW, bandH, bandH * 0.12);

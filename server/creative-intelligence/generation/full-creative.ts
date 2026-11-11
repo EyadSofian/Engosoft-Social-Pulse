@@ -24,6 +24,10 @@ import { compileBriefPrompt, compileDesignPrompt, DEFAULT_SETTINGS, ENGINE_SKILL
 import { THEMES, type ThemeId } from '../skills/themes.js';
 import { pasteInside, patchRejected } from './patch.js';
 import { houseReferences, referencePrompt } from './house-references.js';
+import { produceSkeleton, skeletonFor, skeletonPathFor, skeletonTemplate, withPhotos } from './skeleton.js';
+import { fillTemplateValues } from './template-fill.js';
+import { designDocFromTemplate, designWords, type DesignDoc } from '../../../src/domain/design-doc.js';
+import type { BrandTemplate } from '../../../src/domain/brand-templates.js';
 import { clearArtworkSpots, followDesignPrompt, followImage, followPrompt, placeArtworks, placeOwnLogo, sameShape, type FollowDesign } from './follow-design.js';
 import { followCaptions, followCopy, planFollowContent } from './follow-content.js';
 import { highlightPhrase, storyLayout, storyZones, TYPESET_VERSION, typesetCreative, type TypesetPlan, type TypesetResult } from '../typography/typeset.js';
@@ -127,6 +131,8 @@ export interface FullCreativeRequest {
   course?: string;
 }
 export interface FullCreativeResult {
+  /** Skeleton path: whether the AI finish passed the line check (`finish`) or the exact layout shipped (`skeleton`). */
+  skeleton?: 'finish' | 'skeleton';
   directionId: string;
   directionName: string;
   status: 'ready' | 'needs_review' | 'failed';
@@ -171,6 +177,8 @@ export interface FullCreativeRun {
   state?: 'running' | 'done' | 'interrupted';
   /** Other sizes being made right now, so a restart can finish what was drawn. */
   pending?: { directionId: string; format: string }[];
+  /** Skeleton path: the design every size is laid out from (the template with the words written from the request). */
+  designDoc?: DesignDoc;
 }
 
 const DIRECTION_TEXT = ['id', 'name', 'concept', 'subject', 'composition', 'palette', 'typography', 'mood'];
@@ -1051,6 +1059,68 @@ export const followQualityFor = (env: NodeJS.ProcessEnv = process.env): ImageQua
 };
 
 /**
+ * The brief of a post on the skeleton path: the library design's own inputs written from the request (the person's
+ * lines verbatim, facts only from them or Odoo), its campaign files kept, as one DesignDoc every size is laid out from.
+ */
+export async function planSkeletonCreative(request: FullCreativeRequest, follow: FollowDesign, template: BrandTemplate, count: number, context: VerifiedCourseContext | undefined, env: NodeJS.ProcessEnv, onDesigning?: () => void): Promise<{ brief: CreativeBriefPlan; doc: DesignDoc; captions: Promise<StrategyDecision['captionWriter'] | null> }> {
+  const facts = [
+    ...(context ? [`Course: ${context.facts.title.value}`, ...factLines(context), ...(context.facts.registrationUrl ? [`Registration: ${context.facts.registrationUrl.value}`] : [])] : []),
+    ...(request.facts ?? '').split('\n').map((line) => line.trim()).filter(Boolean),
+  ];
+  const surface = follow.surface && template.surfaces.includes(follow.surface) ? follow.surface : template.surfaces[template.surfaces.length - 1];
+  const filled = await fillTemplateValues(template, { prompt: request.prompt, facts: facts.join('\n'), course: request.course, surface, careful: true }, env);
+  onDesigning?.();
+  // The design's campaign files (stamp, hashtag) stay as they are.
+  const values = { ...filled.values, ...Object.fromEntries(template.inputs.filter((i) => i.photo?.kind === 'artwork').map((i) => [i.key, i.sample.ar])) };
+  const doc = designDocFromTemplate(template, values, filled.surface);
+  const blocks: CopyBlock[] = doc.layers.flatMap((l) => (l.kind === 'text' && l.text.trim() ? [{ role: l.role, kind: l.block, text: l.text, ...(l.highlight ? { highlight: l.highlight } : {}) }] : []));
+  const notes = [
+    ...filled.missing.map((line) => `Your line «${line}» is not on the post as written.`),
+    ...(request.course?.trim() && !designWords(doc).some((w) => w.text.includes(request.course!.trim())) ? [`The course name «${request.course.trim()}» is not on the post.`] : []),
+  ];
+  const house = houseLogo() ?? { mark: 'lockup' as LogoMark, corner: 'top-left' as Corner };
+  const same = 'As the chosen design';
+  const brief: CreativeBriefPlan = {
+    language: doc.language, objective: request.objective ?? template.name.en, audience: '',
+    canonicalCopy: followCopy(blocks), caption: '',
+    captions: { facebook: '', instagram: '', whatsapp: '', linkedin: '', tiktok: '', snapchat: '', website: '' },
+    directions: Array.from({ length: count }, (_, i) => ({ id: `d${i + 1}`, name: follow.name, concept: `${follow.name}, laid out exactly and finished by AI`, subject: same, composition: same, palette: same, typography: same, mood: same, logoMark: house.mark, logoCorner: house.corner })),
+    follow: { photos: '', notes },
+  };
+  const content = { language: doc.language, objective: brief.objective, audience: '', photos: '', blocks };
+  return { brief, doc, captions: followCaptions({ request: request.prompt, content, facts: [...(request.course?.trim() ? [`Course: ${request.course.trim()}`] : []), ...facts], env }).catch(() => null) };
+}
+
+/** One size of a skeleton design, as a run result: the image on disk, what was checked, what it cost. */
+export async function produceSkeletonDirection(input: { provider: CreativeImageProvider; brief: CreativeBriefPlan; direction: CreativeDirectionPlan & { logoMark?: LogoMark; logoCorner?: Corner }; format: CanvasTarget; quality: ImageQuality; dir: string; env: NodeJS.ProcessEnv; onProgress?: ProgressFn; doc: DesignDoc; topic: string }): Promise<FullCreativeResult> {
+  const { direction, dir, doc } = input;
+  const spec = drawnCanvas(canvasOf(input.format), input.env);
+  const started = Date.now();
+  input.onProgress?.({ stage: 'generating', directionId: direction.id });
+  const rawImagePath = resolve(dir, `${direction.id}-raw.png`);
+  const out = await produceSkeleton({
+    doc, provider: input.provider, quality: input.quality, env: input.env, topic: input.topic,
+    canvas: { width: spec.output.width, height: spec.output.height, safe: spec.safeArea, label: spec.label, generation: spec.generation },
+    // Saved the moment it arrives (as the drawing and as the base until the design is done): a paid image survives
+    // whatever happens after, and a restart finds its photos.
+    onRaw: (png) => { writeFileSync(resolve(dir, `${direction.id}-drawn.png`), png); writeFileSync(rawImagePath, png); },
+  });
+  // The base the Studio edits is what shipped, without its logo and campaign files (placed again on save).
+  writeFileSync(rawImagePath, out.base);
+  const imagePath = resolve(dir, `${direction.id}.png`);
+  writeFileSync(imagePath, out.image);
+  const problems = [...out.problems, ...(input.brief.follow?.notes ?? [])];
+  const copyChecks: CopyCheck[] = out.reads.map((r, i) => ({ field: `line ${i + 1}`, expected: r.text, verdict: out.shipped === 'skeleton' || r.exact ? 'exact' : 'incorrect', critical: /[\d٠-٩]/.test(r.text) }));
+  return {
+    directionId: direction.id, directionName: direction.name, status: problems.length ? 'needs_review' : 'ready', problems, notes: out.notes, imagePath, rawImagePath,
+    logo: { requiresCreativeRepair: true, reason: `Set by the layout from the ${doc.logo.kit === 'official' ? 'official' : 'older ENGO | SOFT'} logo file` },
+    repaired: false, copyChecks,
+    inspection: { texts: out.reads.map((r) => ({ text: r.read, box: { x: 0, y: 0, width: 0, height: 0 } })), faces: [], subjects: [], logosOrWatermarks: [], copyAudit: out.reads.map((r) => ({ expected: r.text, rendered: r.read, exact: r.exact })), defects: [], scores: { design: 0, marketing: 0, imageQuality: 0, brandFit: 0 }, verdict: 'accept', summary: out.shipped === 'finish' ? 'AI finish verified line by line' : 'Exact layout shipped' },
+    prompt: out.prompt, model: out.model, latencyMs: Date.now() - started, textMode: 'typeset', imageCalls: out.imageCalls, skeleton: out.shipped,
+  };
+}
+
+/**
  * The brief of a post made as a picked design: every block of the design filled from the request
  * (follow-content.ts), one direction per requested design (each an attempt at the same redraw), and the captions
  * started alongside the image.
@@ -1092,7 +1162,11 @@ export async function generateFullCreative(request: FullCreativeRequest, env = p
   const attachments = [...(request.attachments ?? []), ...(keyVisual ? [keyVisual] : [])].slice(0, 6);
   // A design to follow has its own short path: its blocks filled from the request, then one exact redraw. The
   // general planning (copywriter, layout, theme) would rewrite the words and fight the design's layout.
-  const followed = follow ? await planFollowCreative(request.prompt, follow, count, context, env, () => onProgress?.({ stage: 'designing' }), request.facts, request.course) : null;
+  // CREATIVE_PATH=skeleton: a library design is laid out by code at each size and only finished by the model.
+  const skeleton = follow && skeletonPathFor(env) ? skeletonTemplate(follow.templateId) : undefined;
+  const planned = skeleton && follow ? await planSkeletonCreative(request, follow, skeleton, count, context, env, () => onProgress?.({ stage: 'designing' })) : null;
+  const followed = planned ?? (follow ? await planFollowCreative(request.prompt, follow, count, context, env, () => onProgress?.({ stage: 'designing' }), request.facts, request.course) : null);
+  const designDoc = planned?.doc;
   const brief = followed ? followed.brief : request.engine === 'legacy'
     ? await planCreative(request.objective ? `${planningPrompt}\nObjective: ${request.objective}` : planningPrompt, format, count, context, env, request.style)
     : await planCreativeWithEngine(planningPrompt, format, count, context, env, request.style, request.settings, () => onProgress?.({ stage: 'designing' }), { objective: request.objective, attachments: attachments.length ? attachments : undefined, campaign });
@@ -1113,8 +1187,10 @@ export async function generateFullCreative(request: FullCreativeRequest, env = p
     : { status: odoo.status, message: 'message' in odoo ? odoo.message : undefined };
   // On disk before the first image is paid for, and after each design: a restart (every deploy) can then hand back
   // what was drawn instead of losing it (`recoverInterruptedRuns`).
-  writeTrace({ requestId, createdAt: new Date().toISOString(), request: savedRequest, brief, results: [], versions: FULL_CREATIVE_VERSIONS, outputDir, context: contextOf(), state: 'running' });
-  const settled = await Promise.allSettled(brief.directions.map((direction) => produceDirection({ provider, brief, direction, format, quality, dir: outputDir, env, onProgress, campaign, follow })
+  writeTrace({ requestId, createdAt: new Date().toISOString(), request: savedRequest, brief, results: [], versions: FULL_CREATIVE_VERSIONS, outputDir, context: contextOf(), state: 'running', ...(designDoc ? { designDoc } : {}) });
+  const settled = await Promise.allSettled(brief.directions.map((direction) => (designDoc
+    ? produceSkeletonDirection({ provider, brief, direction, format, quality, dir: outputDir, env, onProgress, doc: designDoc, topic: request.prompt })
+    : produceDirection({ provider, brief, direction, format, quality, dir: outputDir, env, onProgress, campaign, follow }))
     .then((result) => { updateTrace(requestId, (saved) => { saved.results.push(result); }); return result; })));
   if (followed) {
     // Written while the image was drawn; without them the post's words stand in, so the post can still be captioned in the editor.
@@ -1132,7 +1208,7 @@ export async function generateFullCreative(request: FullCreativeRequest, env = p
     prompt: promptFor(brief, brief.directions[index], format, false, textModeFor(brief, env), promptStyleFor(env)), model: provider.model, latencyMs: 0, textMode: textModeFor(brief, env),
   });
   // Attachments can be megabytes of base64: the trace keeps what was attached, not the files.
-  const run: FullCreativeRun = { requestId, createdAt: new Date().toISOString(), request: savedRequest, brief, results, versions: FULL_CREATIVE_VERSIONS, outputDir, context: contextOf(), state: 'done' };
+  const run: FullCreativeRun = { requestId, createdAt: new Date().toISOString(), request: savedRequest, brief, results, versions: FULL_CREATIVE_VERSIONS, outputDir, context: contextOf(), state: 'done', ...(designDoc ? { designDoc } : {}) };
   writeTrace(run);
   onProgress?.({ stage: 'done' });
   return run;
@@ -1151,7 +1227,11 @@ export async function adaptFullCreative(run: FullCreativeRun, directionId: strin
   // Read and written fresh around the drawing: two sizes made at once must not overwrite each other's result.
   Object.assign(run, updateTrace(run.requestId, (saved) => { saved.pending = [...(saved.pending ?? []), job]; }));
   try {
-    const result = await produceDirection({ provider, brief: run.brief, direction: { ...direction, id: job.directionId }, format, quality, dir: run.outputDir, env, master: raw, onProgress, mode: sizeModeFor(format, source.textMode ?? 'model', run.brief, env), campaign: run.request.campaign, follow: run.request.followDesign });
+    // A skeleton design is laid out again at the new size from its document: the stamp, hashtag and logo keep their
+    // places and every word is exact, with one image call for the finish (audit #7).
+    const result = run.designDoc
+      ? await produceSkeletonDirection({ provider, brief: run.brief, direction: { ...direction, id: job.directionId }, format, quality, dir: run.outputDir, env, onProgress, doc: run.designDoc, topic: run.request.prompt })
+      : await produceDirection({ provider, brief: run.brief, direction: { ...direction, id: job.directionId }, format, quality, dir: run.outputDir, env, master: raw, onProgress, mode: sizeModeFor(format, source.textMode ?? 'model', run.brief, env), campaign: run.request.campaign, follow: run.request.followDesign });
     Object.assign(run, updateTrace(run.requestId, (saved) => { saved.results.push(result); saved.pending = (saved.pending ?? []).filter((p) => p.directionId !== job.directionId); }));
     onProgress?.({ stage: 'done' });
     return result;
@@ -1192,8 +1272,13 @@ export function updateTrace(requestId: string, change: (run: FullCreativeRun) =>
   return run;
 }
 
+let providerForTests: ((model: string) => CreativeImageProvider) | null = null;
+/** Tests hand whole runs a fake image model (no network, no cost); null restores the real one. */
+export const setImageProviderForTests = (make: ((model: string) => CreativeImageProvider) | null) => { providerForTests = make; };
+
 /** The preferred image model with the general one as its fallback (the same pair a new design uses). */
 export function imageProviderFor(env: NodeJS.ProcessEnv, model: string): CreativeImageProvider {
+  if (providerForTests) return providerForTests(model);
   const fallbackModel = env.OPENAI_IMAGE_MODEL?.trim() || 'gpt-image-2.5-flare';
   return model === fallbackModel
     ? new OpenAIImageProvider(env.OPENAI_API_KEY ?? '', model)
@@ -1217,6 +1302,22 @@ export async function recoverInterruptedRuns(env: NodeJS.ProcessEnv = process.en
     const reason = 'The server restarted before this design was finished.';
     const finish = async (direction: CreativeDirectionPlan, format: CanvasTarget, mode: TextMode): Promise<FullCreativeResult | null> => {
       const rawPath = resolve(run.outputDir, `${direction.id}-raw.png`);
+      // A skeleton design comes back as its exact layout, with the drawn photos when the drawing was saved: no
+      // image call, nothing unchecked.
+      if (run.designDoc) {
+        try {
+          const spec = canvasOf(format);
+          const sk = await skeletonFor(run.designDoc, { width: spec.output.width, height: spec.output.height, safe: spec.safeArea });
+          const drawnPath = resolve(run.outputDir, `${direction.id}-drawn.png`);
+          const raw = existsSync(drawnPath) ? readFileSync(drawnPath) : existsSync(rawPath) ? readFileSync(rawPath) : null;
+          if (!raw && sk.slots.length) return null;
+          const image = raw && sk.photoMask ? await withPhotos(sk.full, raw, sk.photoMask, sk.width, sk.height) : sk.full;
+          const imagePath = resolve(run.outputDir, `${direction.id}.png`);
+          writeFileSync(imagePath, image);
+          writeFileSync(rawPath, raw && sk.photoMask ? await withPhotos(sk.plain, raw, sk.photoMask, sk.width, sk.height) : sk.plain);
+          return { directionId: direction.id, directionName: direction.name, status: 'ready', problems: [], notes: [`${reason} The exact layout was kept${raw && sk.slots.length ? ' with the drawn photos' : ''}.`], imagePath, rawImagePath: rawPath, logo: { requiresCreativeRepair: true, reason: 'Set by the layout from the logo file' }, repaired: false, copyChecks: [], inspection: EMPTY_INSPECTION, prompt: '', model: run.results[0]?.model ?? '', latencyMs: 0, textMode: 'typeset', imageCalls: raw ? 1 : 0, skeleton: 'skeleton' };
+        } catch { return null; }
+      }
       if (mode === 'typeset' || !existsSync(rawPath)) return null;
       try {
         return await salvageDirection({ raw: readFileSync(rawPath), format, direction, dir: run.outputDir, env, follow: run.request.followDesign, reason, model: run.results[0]?.model ?? '' });

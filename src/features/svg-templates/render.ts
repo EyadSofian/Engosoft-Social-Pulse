@@ -4,6 +4,8 @@
  * official file. Export rasterises with the brand fonts embedded, so the PNG matches the preview.
  */
 
+import { brandKit, kitFile } from '../../domain/brand-kits';
+
 export type FieldType = 'text' | 'multiline' | 'date' | 'time' | 'url' | 'image';
 export type FieldSource = 'manual' | 'odoo.title' | 'odoo.date' | 'odoo.time' | 'odoo.location' | 'odoo.link' | 'course.objectives' | 'course.audience' | 'course.outcomes';
 export interface TemplateField { key: string; label: string; type: FieldType; source: FieldSource; sample: string; maxChars: number }
@@ -28,11 +30,13 @@ export const FORMAT_LABEL: Record<TemplateFormat, { en: string; ar: string; size
   landscape: { en: 'Website 1.91:1', ar: 'موقع 1.91:1', size: '1200×630' },
 };
 
+/** The template logo variants, from the official kit (one registry for every renderer). */
+const OFFICIAL_KIT = brandKit('official');
 const LOGO_FILES: Record<string, string> = {
-  'lockup-reversed': '/brand/logos/engosoft-lockup-reversed.svg',
-  'lockup-positive': '/brand/logos/engosoft-lockup-positive.svg',
-  'symbol-reversed': '/brand/logos/engosoft-symbol-reversed.svg',
-  'symbol-positive': '/brand/logos/engosoft-symbol-positive.svg',
+  'lockup-reversed': kitFile(OFFICIAL_KIT, { mark: 'lockup', onDark: true }).src,
+  'lockup-positive': kitFile(OFFICIAL_KIT, { mark: 'lockup', onDark: false }).src,
+  'symbol-reversed': kitFile(OFFICIAL_KIT, { mark: 'symbol', onDark: true }).src,
+  'symbol-positive': kitFile(OFFICIAL_KIT, { mark: 'symbol', onDark: false }).src,
 };
 const FONT_FILES = [
   { family: 'Almarai', weight: '400', url: '/brand/fonts/Almarai-Regular.ttf' },

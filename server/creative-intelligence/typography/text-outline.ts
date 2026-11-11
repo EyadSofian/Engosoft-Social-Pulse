@@ -208,3 +208,42 @@ export function outlineText(block: TextBlock): OutlinedText {
   const svg = `<path${block.id ? ` data-layer="${esc(block.id)}"` : ''} data-text="${esc(block.text)}" fill="${esc(style.color)}" d="${paths.join('')}"/>`;
   return { svg, lines: outlined, height: round(height), overflow, missingGlyphs: [...missing] };
 }
+
+/**
+ * One line already broken by a layout (the brand-template renderer), set at a baseline as SVG path data. `x` is
+ * read as SVG reads it: with `anchor: 'start'` it is the left edge of left-to-right text and the right edge of
+ * right-to-left text; `end` the opposite edge; `middle` the centre. `letterSpacing` (px) goes between characters.
+ * `spans` colours parts of the line (an SVG `<tspan fill>`): the line is shaped whole, so bidi and joining are
+ * the same as without colours, and each glyph takes the colour of the span its character came from.
+ */
+export function outlineLine(text: string, style: TextStyle, opts: { direction: 'rtl' | 'ltr'; x: number; baseline: number; anchor: 'start' | 'middle' | 'end'; letterSpacing?: number; spans?: { text: string; fill: string }[] }): { d: string; width: number; missing: string[]; parts: { fill: string; d: string }[] } {
+  const source = opts.spans ? opts.spans.map((span) => span.text).join('') : text;
+  const isolated = isolateNumericSequences(source);
+  const shaped = shapeLine(isolated, opts.direction, style);
+  // Isolation only inserts characters: map each shaped index back to the source character, then to its span.
+  const toSource: number[] = [];
+  for (let i = 0, j = 0; i < isolated.length; i++) { if (j < source.length && isolated[i] === source[j]) toSource[i] = j++; else toSource[i] = -1; }
+  const fillAt: string[] = [];
+  for (const span of opts.spans ?? []) for (let k = 0; k < span.text.length; k++) fillAt.push(span.fill);
+  const spacing = opts.letterSpacing ?? 0;
+  const clusters = new Set(shaped.glyphs.map((g) => g.cluster)).size;
+  const width = shaped.width + spacing * Math.max(0, clusters - 1);
+  const left = opts.anchor === 'middle' ? opts.x - width / 2
+    : (opts.anchor === 'start') === (opts.direction === 'ltr') ? opts.x : opts.x - width;
+  let seen = -1, index = -1;
+  const byFill = new Map<string, string[]>();
+  const all: string[] = [];
+  for (const glyph of shaped.glyphs) {
+    if (glyph.cluster !== seen) { seen = glyph.cluster; index++; }
+    const path = glyphPath(glyph, left + index * spacing, opts.baseline, style.size);
+    all.push(path);
+    const fill = fillAt[toSource[glyph.cluster] ?? -1] ?? '';
+    byFill.set(fill, [...(byFill.get(fill) ?? []), path]);
+  }
+  return { d: all.join(''), width: round(width), missing: shaped.missing, parts: [...byFill].map(([fill, paths]) => ({ fill, d: paths.join('') })) };
+}
+
+/** Width of a line in an exact brand family (no per-character font choice), as a browser canvas measures it. */
+export function measureInFamily(text: string, family: BrandFontFamily, weight: number, size: number): number {
+  return shapeLine(isolateNumericSequences(text), paragraphDirection(text), { family, weight, size, color: '#000' }).width;
+}

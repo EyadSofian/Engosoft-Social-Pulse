@@ -20,6 +20,7 @@ import { BRAND } from './creative-intelligence/brand/registry.js';
 import { measureText, outlineText, type TextStyle } from './creative-intelligence/typography/text-outline.js';
 import { readOdooSchedule, type ScheduleEntry } from './odoo.js';
 import { mediaDir } from './paths.js';
+import { brandKit, kitFile } from '../src/domain/brand-kits.js';
 
 export type ScheduleMode = 'online' | 'offline';
 export interface ScheduleRow { course: string; date: string; time: string; mode: ScheduleMode; city: string }
@@ -294,7 +295,7 @@ export async function renderSchedulePage(input: SchedulePageInput): Promise<Buff
 
   const bg = await sharp(ASSET('schedule-bg.jpg')).extract({ left: 0, top: spec.bgTop, width: W, height: H }).toBuffer();
   const logoH = Math.round(96 * s);
-  const logo = await sharp(readFileSync(resolve(process.cwd(), 'brand/logos/engosoft-lockup-positive.svg')), { density: 600 }).resize({ height: logoH }).png().toBuffer();
+  const logo = await sharp(readFileSync(resolve(process.cwd(), 'public', kitFile(brandKit('official'), { mark: 'lockup', onDark: false }).src.slice(1))), { density: 600 }).resize({ height: logoH }).png().toBuffer();
   const payments = await sharp(ASSET('schedule-payments.png')).resize({ height: Math.round(58 * s) }).png().toBuffer();
   const partners = await sharp(ASSET('schedule-partners.png')).resize({ height: Math.round(112 * s) }).png().toBuffer();
   const pm = await sharp(partners).metadata();
