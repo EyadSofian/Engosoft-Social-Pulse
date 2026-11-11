@@ -24,6 +24,7 @@ import { compileBriefPrompt, compileDesignPrompt, DEFAULT_SETTINGS, ENGINE_SKILL
 import { THEMES, type ThemeId } from '../skills/themes.js';
 import { pasteInside, patchRejected } from './patch.js';
 import { houseReferences, referencePrompt } from './house-references.js';
+import { followDataUrl, followImage, followPlanningNote, followPrompt, type FollowDesign } from './follow-design.js';
 import { highlightPhrase, storyLayout, storyZones, TYPESET_VERSION, typesetCreative, type TypesetPlan, type TypesetResult } from '../typography/typeset.js';
 import { openAIJson, OpenAIImageProvider, type CreativeImageProvider, type ImageQuality } from './provider.js';
 import { canvasBrief, copyDensityOf, coverWindow, describeCanvas, generationSizeFor, publishingPreset } from '../../../src/domain/output-presets.js';
@@ -115,6 +116,8 @@ export interface FullCreativeRequest {
   attachments?: UserReference[];
   /** The campaign the post belongs to: its slogan shapes the copy, its stamp is placed on the design. */
   campaign?: CampaignIdentity;
+  /** A design the user picked: the post is made as the same design with new words and photos (follow-design.ts). */
+  followDesign?: FollowDesign;
 }
 export interface FullCreativeResult {
   directionId: string;
@@ -561,6 +564,8 @@ export async function produceDirection(input: {
   /** Defaults to the run's mode (`textModeFor`). Adaptations pass their master's mode. */
   mode?: TextMode;
   campaign?: CampaignIdentity;
+  /** The design the user picked to follow: it replaces the house references as the base design. */
+  follow?: FollowDesign;
 }): Promise<FullCreativeResult> {
   if ((input.mode ?? textModeFor(input.brief, input.env)) === 'typeset') return produceTypeset(input);
   const { provider, direction, format, quality, dir, env, master } = input;
@@ -575,9 +580,12 @@ export async function produceDirection(input: {
     : promptFor(brief, direction, format, false, 'model', style);
   // Every design, every size, is drawn with the same approved Engosoft posts attached as style references (the
   // same text picks the same set); another size also gets its design as the last, labelled reference.
-  const references = await houseReferences(`${brief.objective} ${brief.audience} ${brief.canonicalCopy.headline} ${direction.concept}`, input.campaign?.keyVisualPath);
-  const images = [...references.map(({ data, mime }) => ({ data, mime })), ...(master ? [{ data: await asReference(master), mime: 'image/jpeg' as const }] : [])];
-  const prompt = `${basePrompt}${stampRoom(input.campaign, logoCanvasOf(format), await stampGeometry(input.campaign))}${referencePrompt(references)}${master ? masterReference(references.length + 1) : ''}`;
+  // A design the user picked to follow takes their place: it is the base design, not a loose style reference.
+  const followed = input.follow ? await followImage(input.follow) : null;
+  const references = followed ? [] : await houseReferences(`${brief.objective} ${brief.audience} ${brief.canonicalCopy.headline} ${direction.concept}`, input.campaign?.keyVisualPath);
+  const images = [...(followed ? [{ data: followed.data, mime: followed.mime }] : []), ...references.map(({ data, mime }) => ({ data, mime })), ...(master ? [{ data: await asReference(master), mime: 'image/jpeg' as const }] : [])];
+  const guide = followed ? followPrompt(followed, spec.output.width / spec.output.height) : referencePrompt(references);
+  const prompt = `${basePrompt}${stampRoom(input.campaign, logoCanvasOf(format), await stampGeometry(input.campaign))}${guide}${master ? masterReference(images.length) : ''}`;
   const problems: string[] = [];
   progress('generating');
   const n = master ? 1 : candidatesFor(env);
@@ -876,9 +884,12 @@ export async function generateFullCreative(request: FullCreativeRequest, env = p
   onProgress?.({ stage: 'planning' });
   // The campaign's slogan shapes the copy; its key visual joins the attachments as a style reference.
   const campaign = request.campaign;
-  const planningPrompt = `${request.prompt}${campaignBrief(campaign)}`;
+  const follow = request.followDesign;
+  const planningPrompt = `${request.prompt}${campaignBrief(campaign)}${follow ? followPlanningNote(follow) : ''}`;
   const keyVisual = campaign?.keyVisualPath ? (() => { try { return { name: `Campaign key visual — ${campaign.name}`, mime: 'image/png', dataUrl: `data:image/png;base64,${readFileSync(campaign.keyVisualPath).toString('base64')}` }; } catch { return null; } })() : null;
-  const attachments = [...(request.attachments ?? []), ...(keyVisual ? [keyVisual] : [])].slice(0, 6);
+  // The copywriter sees the design to follow, so the words fit its blocks.
+  const followFile = follow ? (() => { try { return { name: `Design to follow — ${follow.name}`, mime: 'image/jpeg', dataUrl: followDataUrl(follow) }; } catch { return null; } })() : null;
+  const attachments = [...(followFile ? [followFile] : []), ...(request.attachments ?? []), ...(keyVisual && !follow ? [keyVisual] : [])].slice(0, 6);
   const brief = request.engine === 'legacy'
     ? await planCreative(request.objective ? `${planningPrompt}\nObjective: ${request.objective}` : planningPrompt, format, count, context, env, request.style)
     : await planCreativeWithEngine(planningPrompt, format, count, context, env, request.style, request.settings, () => onProgress?.({ stage: 'designing' }), { objective: request.objective, attachments: attachments.length ? attachments : undefined, campaign });
@@ -889,7 +900,7 @@ export async function generateFullCreative(request: FullCreativeRequest, env = p
   brief.directions = brief.directions.map((d, i) => ({ ...d, id: `d${i + 1}` }));
   onProgress?.({ stage: 'generating', brief });
   const provider = new OpenAIImageProvider(env.OPENAI_API_KEY ?? '', request.model ?? (env.OPENAI_IMAGE_MODEL?.trim() || 'gpt-image-2.5-flare'));
-  const settled = await Promise.allSettled(brief.directions.map((direction) => produceDirection({ provider, brief, direction, format, quality: request.quality ?? imageQualityFor(env), dir: outputDir, env, onProgress, campaign })));
+  const settled = await Promise.allSettled(brief.directions.map((direction) => produceDirection({ provider, brief, direction, format, quality: request.quality ?? imageQualityFor(env), dir: outputDir, env, onProgress, campaign, follow })));
   const results = settled.map((entry, index): FullCreativeResult => entry.status === 'fulfilled' ? entry.value : {
     directionId: brief.directions[index].id, directionName: brief.directions[index].name, status: 'failed',
     problems: [`Generation failed: ${entry.reason instanceof Error ? entry.reason.message : String(entry.reason)}`],
@@ -916,7 +927,7 @@ export async function adaptFullCreative(run: FullCreativeRun, directionId: strin
   if (!direction || !source?.rawImagePath) throw new Error('That direction has no generated image to adapt');
   const provider = new OpenAIImageProvider(env.OPENAI_API_KEY ?? '', source.model);
   const raw = readFileSync(source.rawImagePath);
-  const result = await produceDirection({ provider, brief: run.brief, direction: { ...direction, id: `${direction.id}-${format}` }, format, quality: run.request.quality ?? imageQualityFor(env), dir: run.outputDir, env, master: raw, onProgress, mode: sizeModeFor(format, source.textMode ?? 'model', run.brief, env), campaign: run.request.campaign });
+  const result = await produceDirection({ provider, brief: run.brief, direction: { ...direction, id: `${direction.id}-${format}` }, format, quality: run.request.quality ?? imageQualityFor(env), dir: run.outputDir, env, master: raw, onProgress, mode: sizeModeFor(format, source.textMode ?? 'model', run.brief, env), campaign: run.request.campaign, follow: run.request.followDesign });
   run.results.push(result);
   writeFileSync(resolve(run.outputDir, 'trace.json'), JSON.stringify(run, null, 2));
   onProgress?.({ stage: 'done' });

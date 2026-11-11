@@ -60,8 +60,9 @@ export function LibraryPage() {
       <img src="/post-assets/schedule-preview.jpg" alt="" />
     </Link>}
     {can('design.templates') && <section className="library-section">
-      <div className="library-section__head"><h2><LayoutTemplate size={18} /> {t('Engosoft brand designs', 'تصاميم هوية إنجوسوفت')}</h2><small className="u-muted">{t('From the brand pack. Each asks for what it needs and makes every size.', 'من دليل الهوية. كل قالب بيطلب اللي محتاجه وبيطلع كل المقاسات.')}</small></div>
-      <BrandTemplateGrid onOpen={(template) => navigate(`/?brand=${template.id}`)} />
+      <div className="library-section__head"><h2><LayoutTemplate size={18} /> {t('Engosoft brand designs', 'تصاميم هوية إنجوسوفت')}</h2><small className="u-muted">{can('design.free') ? t('Pick one, write your post, and AI makes it in the same design with your words and new photos.', 'اختار تصميم واكتب المنشور، والذكاء الاصطناعي يعمله بنفس الشكل بكلامك وصور جديدة.') : t('From the brand pack. Each asks for what it needs and makes every size.', 'من دليل الهوية. كل قالب بيطلب اللي محتاجه وبيطلع كل المقاسات.')}</small></div>
+      {/* With AI design rights a design opens as the design to follow: AI redraws it with new words and photos. */}
+      <BrandTemplateGrid follow={can('design.free')} onOpen={(template) => navigate(can('design.free') ? `/?follow=${template.id}` : `/?brand=${template.id}`)} />
     </section>}
     <SvgTemplateSection />
     {can('templates.manage') && <CampaignsPanel />}

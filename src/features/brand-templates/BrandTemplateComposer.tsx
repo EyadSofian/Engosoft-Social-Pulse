@@ -92,7 +92,7 @@ const safeOf = (group: SizeGroup) => group.presets.reduce((acc, p) => ({ top: Ma
 const RATIO: Record<string, string> = { '1080x1350': '4:5', '1080x1080': '1:1', '1080x1920': '9:16', '1080x1440': '3:4', '1200x630': '1.91:1', '1200x627': '1.91:1', '1280x720': '16:9', '1920x1080': '16:9', '1600x900': '16:9' };
 
 /** The brand templates as cards with their reference design. */
-export function BrandTemplateGrid({ onOpen }: { onOpen: (template: BrandTemplate) => void }) {
+export function BrandTemplateGrid({ onOpen, follow = false }: { onOpen: (template: BrandTemplate) => void; follow?: boolean }) {
   const { t } = useI18n();
   return <div className="brand-grid">{BRAND_TEMPLATES.map((template) => {
     const ref = template.references.blue ?? template.references.light!;
@@ -101,7 +101,7 @@ export function BrandTemplateGrid({ onOpen }: { onOpen: (template: BrandTemplate
       <img src={ref} alt="" loading="lazy" />
       <b>{t(template.name.en, template.name.ar)}</b>
       <small>{t(template.description.en, template.description.ar)}</small>
-      <em>{t('Asks for', 'بيطلب')}: {asks.join('، ')}</em>
+      <em>{follow ? t('Design with AI in this look', 'صمّم بالذكاء الاصطناعي على شكله') : <>{t('Asks for', 'بيطلب')}: {asks.join('، ')}</>}</em>
     </button>;
   })}</div>;
 }

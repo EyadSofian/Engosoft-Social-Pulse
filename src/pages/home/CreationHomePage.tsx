@@ -89,6 +89,13 @@ export function CreationHomePage() {
   const free = can('design.free');
   const ways = ([['ai', free], ['template', can('design.templates')], ['upload', can('design.upload')], ['reel', can('design.video')]] as const).filter(([, allowed]) => allowed).map(([way]) => way);
   const upload = useRef<HTMLInputElement>(null);
+  const followUpload = useRef<HTMLInputElement>(null);
+  /** The design to follow: the AI makes the post as the same design, with new words and photos. */
+  const [follow, setFollow] = useState<{ templateId: string; preview: string; name: string } | { dataUrl: string; preview: string; name: string } | null>(() => {
+    const id = new URLSearchParams(window.location.search).get('follow');
+    const entry = id ? brandTemplate(id) : undefined;
+    return entry ? { templateId: entry.id, preview: entry.references.blue ?? entry.references.light ?? '', name: entry.name.ar } : null;
+  });
   const [prompt, setPrompt] = useState(() => getActiveCreative()?.prompt ?? '');
   const [objective, setObjective] = useState<Objective | 'auto'>('auto');
   const [platforms, setPlatforms] = useState<CreativePlatform[]>(() => getActiveCreative()?.platforms ?? ['instagram']);
@@ -108,7 +115,7 @@ export function CreationHomePage() {
   const [creating, setCreating] = useState(false);
   // Coming back while a design is still running reopens it; links that name a template open that template.
   const [mode, setMode] = useState<Mode>(() => {
-    if (free && (query.has('creative') || query.has('template') || getActiveCreative()?.status === 'running')) return 'ai';
+    if (free && (query.has('creative') || query.has('template') || query.has('follow') || getActiveCreative()?.status === 'running')) return 'ai';
     if ((query.has('svgTemplate') || query.has('schedule') || query.has('brand')) && ways.includes('template')) return 'template';
     return ways.length === 1 ? ways[0] : 'choose';
   });
@@ -136,7 +143,7 @@ export function CreationHomePage() {
   }, [query]);
   const [sourcePanel, setSourcePanel] = useState<'course' | 'post' | null>(null);
   // A library design picked from the AI screen: the template opens with the idea already written.
-  const [brandPick, setBrandPick] = useState<{ id: string; prompt: string } | null>(() => (query.get('brand') ? { id: query.get('brand')!, prompt: '' } : null));
+  const [brandPick] = useState<{ id: string; prompt: string } | null>(() => (query.get('brand') ? { id: query.get('brand')!, prompt: '' } : null));
   const { items: pipeline } = usePipeline();
   usePageMeta(t('Create', 'إنشاء'), [{ label: t('Create', 'إنشاء') }]);
   useEffect(() => {
@@ -171,6 +178,14 @@ export function CreationHomePage() {
     setReferences((current) => [...current, ...incoming]);
     if (upload.current) upload.current.value = '';
   };
+  const pickFollowFile = async (file: File | undefined) => {
+    if (followUpload.current) followUpload.current.value = '';
+    if (!file) return;
+    if (!/^image\/(png|jpeg|webp)$/.test(file.type)) { setMessage(t('Use a PNG, JPEG or WebP image.', 'استخدم صورة PNG أو JPEG أو WebP.')); return; }
+    if (file.size > 5_000_000) { setMessage(t('The design is larger than 5 MB.', 'التصميم أكبر من ٥ ميجابايت.')); return; }
+    const dataUrl = await asDataUrl(file);
+    setMessage(''); setFollow({ dataUrl, preview: dataUrl, name: file.name });
+  };
   const startFullCreative = async () => {
     if (prompt.trim().length < 10) { setMessage(t('Describe the post in a little more detail.', 'اكتب وصف المنشور بتفاصيل أكثر.')); return; }
     if (!platforms.length) { setMessage(t('Choose at least one platform.', 'اختر منصة واحدة على الأقل.')); return; }
@@ -179,7 +194,7 @@ export function CreationHomePage() {
       // Both designs are made at the main size; the other ticked shapes are adapted from the one picked.
       const format = main;
       const attachments = references.filter((file) => file.dataUrl).map(({ name, mime, dataUrl }) => ({ name, mime, dataUrl: dataUrl! }));
-      const body = await api<{ jobId: string; requestId?: string }>('/api/ai/full-creative', { body: { prompt, ...(campaignId ? { campaignId } : {}), format, directions: designs, settings: designSettings, ...(objective !== 'auto' ? { objective } : {}), ...(attachments.length ? { attachments } : {}), ...(template ? { templateId: template.id } : {}) } });
+      const body = await api<{ jobId: string; requestId?: string }>('/api/ai/full-creative', { body: { prompt, ...(campaignId ? { campaignId } : {}), format, directions: designs, settings: designSettings, ...(objective !== 'auto' ? { objective } : {}), ...(attachments.length ? { attachments } : {}), ...(template ? { templateId: template.id } : {}), ...(follow ? { followDesign: 'templateId' in follow ? { templateId: follow.templateId } : { name: follow.name, dataUrl: follow.dataUrl } } : {}) } });
       setJobId(body.jobId); setRequestId(body.requestId ?? ''); setStage('generating');
       setActiveCreative({ jobId: body.jobId, requestId: body.requestId ?? '', prompt, platforms, sizes: chosenSizes, format, startedAt: new Date().toISOString(), status: 'running' });
     } catch (error) { setMessage(error instanceof Error ? error.message : String(error)); }
@@ -262,10 +277,23 @@ export function CreationHomePage() {
           setPrompt((current) => `${current}${current ? ' — ' : ''}${name}${when}`);
           setSourcePanel(null);
         }} /></div>}
-        {ways.includes('template') && <div className="create-ai-templates">
-          <span className="u-xs u-muted">{t('Or follow a library design (exact logo, every size, no AI image cost):', 'أو صمّمه على شكل تصميم من المكتبة (الشعار مظبوط، كل المقاسات، من غير تكلفة صور):')}</span>
-          <div className="create-ai-templates__list">{BRAND_TEMPLATES.map((entry) => <button key={entry.id} type="button" onClick={() => { setBrandPick({ id: entry.id, prompt }); setMode('template'); }}><img src={entry.references.blue ?? entry.references.light} alt="" />{t(entry.name.en, entry.name.ar)}</button>)}</div>
-        </div>}
+        <div className="create-ai-templates">
+          <span className="u-xs u-muted">{t('Design it like one of these: AI keeps the design and changes all the words and photos (optional):', 'صمّمه على نفس شكل تصميم من دول، والذكاء الاصطناعي يغيّر الكلام والصور كلها (اختياري):')}</span>
+          <div className="create-ai-templates__list" role="radiogroup" aria-label={t('Design to follow', 'التصميم اللي يمشي عليه')}>
+            {BRAND_TEMPLATES.map((entry) => {
+              const on = Boolean(follow && 'templateId' in follow && follow.templateId === entry.id);
+              const preview = entry.references.blue ?? entry.references.light ?? '';
+              return <button key={entry.id} type="button" role="radio" aria-checked={on} onClick={() => setFollow(on ? null : { templateId: entry.id, preview, name: entry.name.ar })}>{on ? <Check size={14} strokeWidth={3} className="create-ai-templates__check" /> : null}<img src={preview} alt="" />{t(entry.name.en, entry.name.ar)}</button>;
+            })}
+            <input ref={followUpload} hidden type="file" accept="image/png,image/jpeg,image/webp" onChange={(event) => void pickFollowFile(event.target.files?.[0])} />
+            <button type="button" role="radio" aria-checked={Boolean(follow && 'dataUrl' in follow)} onClick={() => followUpload.current?.click()}>{follow && 'dataUrl' in follow ? <img src={follow.preview} alt="" /> : <Upload size={14} />}{follow && 'dataUrl' in follow ? t('Your design', 'تصميمك') : t('Upload your own design', 'ارفع تصميم من عندك')}</button>
+          </div>
+          {follow && <div className="create-follow">
+            <img src={follow.preview} alt="" />
+            <span><b>{t('Same design, new words and photos', 'نفس التصميم، كلام وصور جديدة')}</b><small>{t('Write the whole post in the box above: the course, the offer, the price, the date. AI writes it into this design.', 'اكتب المنشور كله في الخانة اللي فوق: الدورة والعرض والسعر والميعاد، والذكاء الاصطناعي يحطه على التصميم ده.')}</small></span>
+            <button type="button" onClick={() => setFollow(null)} aria-label={t('Remove the design', 'شيل التصميم')}>×</button>
+          </div>}
+        </div>
         {references.length > 0 && <ul className="creative-home__references">{references.map((file, index) => <li key={`${file.name}-${index}`}>{file.mime.startsWith('image/') && file.dataUrl && <img src={file.dataUrl} alt="" />}<span>{file.name}</span><button type="button" onClick={() => setReferences((current) => current.filter((_, i) => i !== index))} aria-label={t(`Remove ${file.name}`, `احذف ${file.name}`)}>×</button></li>)}</ul>}
         <CampaignPicker value={campaignId} onChange={setCampaignId} />
         <div className="creative-home__platforms" role="group" aria-label={t('Platforms', 'المنصات')}>{CREATIVE_PLATFORMS.map((platform) => <button key={platform} type="button" aria-pressed={platforms.includes(platform)} onClick={() => togglePlatform(platform)}><span className="creative-home__platform-icon"><ChannelIcon channel={platform} size={15} /></span>{PLATFORM_FORMATS[platform].label}</button>)}</div>

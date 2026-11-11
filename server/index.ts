@@ -18,6 +18,7 @@ import { generatePostImage, imageRequest } from './post-image.js';
 import { briefRequest, generateCreativeBrief } from './creative-brief.js';
 import { applyCreativeCommand, creativeEditRequest } from './creative-edit.js';
 import { adaptFullCreative, generateFullCreative, isCanvasTarget, loadFullCreativeRun } from './creative-intelligence/generation/full-creative.js';
+import { resolveFollowDesign } from './creative-intelligence/generation/follow-design.js';
 import { canEdit, getContent } from './workspace.js';
 import { THEME_IDS } from '../src/domain/design-engine.js';
 import { getJob, startJob, toPublicRun } from './creative-intelligence/generation/jobs.js';
@@ -113,7 +114,9 @@ const fullCreativeRequest=z.object({prompt:z.string().trim().min(5).max(2000),fo
  // Images, PDFs and text attached on the Create page (up to 6, 2 MB each before base64).
  attachments:z.array(z.object({name:z.string().max(200),mime:z.string().max(100),dataUrl:z.string().max(2_800_000).regex(/^data:[\w.+/-]+;base64,/)})).max(6).optional(),
  // The campaign the post belongs to: its slogan shapes the copy and its stamp is placed on the design.
- campaignId:z.string().uuid().optional()});
+ campaignId:z.string().uuid().optional(),
+ // A design to follow: a library design or the user's own file; the post is made as the same design with new words and photos.
+ followDesign:z.union([z.object({templateId:z.string().max(60),surface:z.enum(['light','blue']).optional()}),z.object({name:z.string().max(200),dataUrl:z.string().max(8_000_000).regex(/^data:image\/(png|jpeg|webp);base64,/)})]).optional()});
 const OBJECTIVE_TEXT={course_launch:'Course announcement',course_schedule:'Course schedule',certificate:'Certificate or achievement',education:'Educational content',event:'Event or occasion',general:'General post'} as const;
 const localOnly=(res:express.Response)=>{if(!process.env.OPENAI_API_KEY?.trim()){res.status(503).json({error:'أضف OPENAI_API_KEY على الخادم.'});return true;}return false;};
 const limited=(req:express.Request,res:express.Response)=>{const who=req.ip||'local';const now=Date.now();const recent=(fullCreativeCalls.get(who)||[]).filter(at=>now-at<10*60_000);if(recent.length>=6){res.status(429).json({error:'بلغت الحد المؤقت: 6 طلبات تصميم خلال 10 دقائق.'});return true;}fullCreativeCalls.set(who,[...recent,now]);return false;};
@@ -125,7 +128,9 @@ app.post('/api/ai/full-creative',requirePermission('design.free'),requireAiBudge
  const campaign=parsed.data.campaignId?await campaignIdentity(parsed.data.campaignId):undefined;
  if(parsed.data.campaignId&&!campaign)return res.status(400).json({error:'الحملة غير موجودة أو مؤرشفة.'});
  const requestId=randomUUID();
- const job=startJob('generate',req.user!.id,(setStage)=>generateFullCreative({...parsed.data,campaign,objective:parsed.data.objective&&OBJECTIVE_TEXT[parsed.data.objective],style:template?.style,requestId,ownerId:req.user!.id},process.env,setStage),requestId);
+ const followDesign=parsed.data.followDesign?await resolveFollowDesign(parsed.data.followDesign,requestId):undefined;
+ if(parsed.data.followDesign&&!followDesign)return res.status(400).json({error:'التصميم اللي اخترته مش موجود أو الملف مش صورة.'});
+ const job=startJob('generate',req.user!.id,(setStage)=>generateFullCreative({...parsed.data,followDesign,campaign,objective:parsed.data.objective&&OBJECTIVE_TEXT[parsed.data.objective],style:template?.style,requestId,ownerId:req.user!.id},process.env,setStage),requestId);
  res.status(202).json({jobId:job.id,requestId});
 });
 app.post('/api/ai/full-creative/:requestId/adapt',requirePermission('design.free'),requireAiBudget,async(req,res)=>{
