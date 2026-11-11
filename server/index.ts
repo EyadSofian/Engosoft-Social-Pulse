@@ -17,7 +17,7 @@ import { readOdooSchedule } from './odoo.js';
 import { generatePostImage, imageRequest } from './post-image.js';
 import { briefRequest, generateCreativeBrief } from './creative-brief.js';
 import { applyCreativeCommand, creativeEditRequest } from './creative-edit.js';
-import { adaptFullCreative, generateFullCreative, isCanvasTarget, loadFullCreativeRun } from './creative-intelligence/generation/full-creative.js';
+import { adaptFullCreative, generateFullCreative, isCanvasTarget, loadFullCreativeRun, recoverInterruptedRuns } from './creative-intelligence/generation/full-creative.js';
 import { resolveFollowDesign, templateCampaign } from './creative-intelligence/generation/follow-design.js';
 import { canEdit, getContent } from './workspace.js';
 import { THEME_IDS } from '../src/domain/design-engine.js';
@@ -232,6 +232,8 @@ await seedCourseCatalog();
 await recoverReferenceJobs();
 const admin=await bootstrapAdmin();if(admin)console.log(`Created first admin ${admin.email}`);
 app.listen(port,host,()=>console.log(`Mobde3 listening on http://${host}:${port} (${db.kind === 'pg' ? 'Postgres' : 'SQLite'})`));
+// Designs a restart cut short (every deploy restarts the server) are finished from what was drawn, never lost.
+void recoverInterruptedRuns().then((n)=>{if(n)console.log(`Recovered ${n} interrupted design run(s)`);}).catch((e)=>console.error('Design recovery failed:',e instanceof Error?e.message:e));
 setTimeout(()=>{void runSync().catch(()=>{});},1500);
 setInterval(()=>{void checkAlerts().catch(()=>{});},60_000).unref();
 // Scheduled Facebook and Instagram publications go out within a minute of their time.

@@ -108,6 +108,7 @@ export function FullCreativeJob({ jobId, requestId, platforms, sizes, format, pr
   const results = run?.results ?? [];
   const masterIds = brief.directions.map((d) => d.id);
   return <div className="creative-job">
+    {run?.state === 'interrupted' && <p role="status" className="creative-home__error">{t('The server restarted while this was being made. What was drawn is below, finished without its checks: read it before publishing.', 'السيرفر اتعمله restart والتصميم شغال. اللي اترسم موجود تحت ومتقفل من غير المراجعة: اقراه كويس قبل النشر.')}</p>}
     <motion.div className="creative-job__summary glass" initial={{ opacity: 0, y: 8 }} animate={{ opacity: 1, y: 0 }}>
       <div>
         {brief.canonicalCopy.blocks?.length
@@ -252,7 +253,9 @@ function Details({ result }: { result: PublicResult }) {
       {result.refinements && result.refinements.length > 0 && <li>{t('Repaired by the critic', 'أصلحه الناقد')}: {result.refinements.join(' · ')}</li>}
       <li>{t('Critic', 'المُقيّم')}: {t('design', 'تصميم')} {result.inspection.scores.design}/10 · {t('marketing', 'تسويق')} {result.inspection.scores.marketing}/10 · {t('image', 'صورة')} {result.inspection.scores.imageQuality}/10 · {t('brand', 'هوية')} {result.inspection.scores.brandFit}/10</li>
       {result.problems.map((problem) => <li key={problem} className="creative-job__problem">{problem}</li>)}
-      <li className="u-muted">{result.model} · {(result.latencyMs / 1000).toFixed(0)}s</li>
+      {/* Advice from the critic and the checks: worth a look, never the reason a post is held back. */}
+      {(result.notes ?? []).map((note) => <li key={note} className="u-muted">{t('Note', 'ملاحظة')}: {note}</li>)}
+      <li className="u-muted">{result.model} · {(result.latencyMs / 1000).toFixed(0)}s{result.imageCalls ? t(` · ${result.imageCalls} AI image(s)`, ` · ${result.imageCalls} صورة ذكاء اصطناعي`) : ''}</li>
     </ul>
   </details>;
 }

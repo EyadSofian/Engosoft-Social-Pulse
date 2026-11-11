@@ -345,9 +345,9 @@ function sizeGroups(platforms: CreativePlatform[]): SizeGroup[] {
  */
 function SizePicker({ platforms, chosen, main, designs, onDesigns, onToggle, onMain }: { platforms: CreativePlatform[]; chosen: string[]; main: CreativeMaster; designs: 1 | 2; onDesigns: (count: 1 | 2) => void; onToggle: (ids: string[], on: boolean) => void; onMain: (format: CreativeMaster) => void }) {
   const { t, tx } = useI18n();
-  const [estimate, setEstimate] = useState<{ usd: number; perDesign: number } | null>(null);
+  const [estimate, setEstimate] = useState<{ usd: number; perDesign: number; repairs: number } | null>(null);
   useEffect(() => {
-    void api<{ averageImageUsd: number | null; imagesPerDesign?: number }>('/api/usage').then((report) => setEstimate({ usd: report.averageImageUsd ?? 0.2, perDesign: report.imagesPerDesign ?? 1 })).catch(() => {});
+    void api<{ averageImageUsd: number | null; imagesPerDesign?: number; repairCallsMax?: number }>('/api/usage').then((report) => setEstimate({ usd: report.averageImageUsd ?? 0.2, perDesign: report.imagesPerDesign ?? 1, repairs: report.repairCallsMax ?? 1 })).catch(() => {});
   }, []);
   const groups = sizeGroups(platforms);
   const covered = coveredByMain(platforms, main);
@@ -399,7 +399,10 @@ function SizePicker({ platforms, chosen, main, designs, onDesigns, onToggle, onM
         {targets.length > 0 && <p className="size-plan__extra"><Layers size={14} /> <span>{t(`Then ${targets.map((x) => ratioOf(x.width, x.height)).join(', ')}: each drawn from scratch for its own shape, with the same idea and words, with one tap under the design you pick.`, `وبعدها ${targets.map((x) => ratioOf(x.width, x.height)).join('، ')}: كل مقاس بيتصمم من الأول لشكله، بنفس الفكرة والكلام، بضغطة تحت التصميم اللي تختاره.`)}</span></p>}
         {estimate && (() => {
           const images = designs * estimate.perDesign + targets.length;
-          return <p className="create-preview__cost"><Coins size={15} /> {t('Expected AI cost', 'التكلفة المتوقعة')}: <b dir="ltr">≈ ${(images * estimate.usd).toFixed(2)}</b> <small>{t(`${images} AI images`, `${images} صورة ذكاء اصطناعي`)}</small></p>;
+          // Each design and each size may take one repair image, only when its words or its logo corner need it.
+          const most = images + (designs + targets.length) * estimate.repairs;
+          const range = most > images ? ` – $${(most * estimate.usd).toFixed(2)}` : '';
+          return <p className="create-preview__cost"><Coins size={15} /> {t('Expected AI cost', 'التكلفة المتوقعة')}: <b dir="ltr">≈ ${(images * estimate.usd).toFixed(2)}{range}</b> <small>{most > images ? t(`${images} AI images, up to ${most} if words or the logo need a repair`, `${images} صورة ذكاء اصطناعي، ولحد ${most} لو الكلام أو اللوجو احتاجوا تصليح`) : t(`${images} AI images`, `${images} صورة ذكاء اصطناعي`)}</small></p>;
         })()}
       </div>
     </>}

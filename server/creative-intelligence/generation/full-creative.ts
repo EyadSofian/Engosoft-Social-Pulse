@@ -5,7 +5,7 @@
  * request → Odoo facts → creative director (copy + directions) → compiled prompt → image model
  *        → resize to platform → inspect (zones, text, defects) → logo resolver (→ masked repair) → composite → copy check
  */
-import { mkdirSync, readFileSync, writeFileSync } from 'node:fs';
+import { existsSync, mkdirSync, readdirSync, readFileSync, renameSync, writeFileSync } from 'node:fs';
 import { mediaDir } from '../../paths.js';
 import { randomUUID } from 'node:crypto';
 import { resolve } from 'node:path';
@@ -150,6 +150,13 @@ export interface FullCreativeResult {
   cleanImagePath?: string;
   /** When several images were drawn: each candidate's score (`candidateScore`), in draw order; the best was kept. */
   candidates?: number[];
+  /**
+   * The critic's and the checks' advice (taste, a watermark-like mark, a repair that did not blend in). Unlike
+   * `problems`, which stop a post (wrong or missing words, no logo, a step that failed), notes leave it ready.
+   */
+  notes?: string[];
+  /** Image-model images this design cost: the drawing plus every repair call. */
+  imageCalls?: number;
 }
 export interface FullCreativeRun {
   requestId: string;
@@ -160,6 +167,10 @@ export interface FullCreativeRun {
   results: FullCreativeResult[];
   versions: typeof FULL_CREATIVE_VERSIONS;
   outputDir: string;
+  /** Saved as the run goes: 'running' until every design is finished; 'interrupted' when a restart cut it short. */
+  state?: 'running' | 'done' | 'interrupted';
+  /** Other sizes being made right now, so a restart can finish what was drawn. */
+  pending?: { directionId: string; format: string }[];
 }
 
 const DIRECTION_TEXT = ['id', 'name', 'concept', 'subject', 'composition', 'palette', 'typography', 'mood'];
@@ -345,16 +356,17 @@ const grow = (b: PxBox, pad: number): PxBox => ({ x: b.x - pad, y: b.y - pad, wi
  * still covers or crowds something, it moves away from what was reported and the result is looked at again.
  * Whatever is still wrong after that is reported for review, never hidden.
  */
-async function finishOverlays(input: { logoImage: Buffer; logo: PxBox; content: PxBox[]; campaign?: CampaignIdentity; spec: Canvas; env: NodeJS.ProcessEnv }): Promise<{ image: Buffer; problems: string[] }> {
+async function finishOverlays(input: { logoImage: Buffer; logo: PxBox; content: PxBox[]; campaign?: CampaignIdentity; spec: Canvas; env: NodeJS.ProcessEnv }): Promise<{ image: Buffer; problems: string[]; notes: string[] }> {
   const { spec, env, campaign } = input;
   const W = spec.output.width, H = spec.output.height;
   const gap = Math.round(0.025 * W);
   const avoid = [...input.content.map((b) => grow(b, gap)), grow(input.logo, gap)];
   const problems: string[] = [];
+  const notes: string[] = [];
   let stamped: { image: Buffer; problem?: string; placement?: PxBox } = campaign ? await stampCampaign(input.logoImage, campaign, avoid, spec.safeArea) : { image: input.logoImage };
   const norm = (b: PxBox) => ({ x: b.x / W, y: b.y / H, width: b.width / W, height: b.height / H });
   const overlays = (placement?: PxBox): Overlay[] => [{ name: 'logo', box: norm(input.logo) }, ...(placement ? [{ name: 'stamp' as const, box: norm(placement) }] : [])];
-  if (!finishCheckOn(env)) return { image: stamped.image, problems: stamped.problem ? [stamped.problem] : [] };
+  if (!finishCheckOn(env)) return { image: stamped.image, problems: stamped.problem ? [stamped.problem] : [], notes };
   let seen: FinishProblem[] = [];
   try {
     seen = await checkFinish(stamped.image, overlays(stamped.placement), env);
@@ -372,11 +384,12 @@ async function finishOverlays(input: { logoImage: Buffer; logo: PxBox; content: 
       }
     }
   } catch (e) {
-    problems.push(`Final layout check could not run: ${e instanceof Error ? e.message : String(e)}`);
+    notes.push(`Final layout check could not run: ${e instanceof Error ? e.message : String(e)}`);
   }
+  // A stamp that could not go anywhere is a missing piece of the post; the layout check's remarks are advice.
   if (stamped.problem) problems.push(stamped.problem);
-  problems.push(...seen.map((p) => `Final layout check (${p.source}): ${p.issue}`));
-  return { image: stamped.image, problems };
+  notes.push(...seen.map((p) => `Final layout check (${p.source}): ${p.issue}`));
+  return { image: stamped.image, problems, notes };
 }
 
 /**
@@ -581,6 +594,53 @@ const withCanvasCopy = (brief: CreativeBriefPlan, format: CanvasTarget): Creativ
 export type ProgressStage = 'context' | 'planning' | 'designing' | 'generating' | 'typesetting' | 'inspecting' | 'refining' | 'repairing' | 'logo' | 'done';
 export type ProgressFn = (event: { stage: ProgressStage; directionId?: string; message?: string; brief?: CreativeBriefPlan }) => void;
 
+/**
+ * How many repair calls (masked re-lettering, the logo corner, the critic's local repairs) one design may make after
+ * it is drawn (CREATIVE_REPAIR_CALLS, 0–4, default 1). Each is a full image at the draw size, so without a cap one
+ * "image" could cost six. Wrong words come first, then the logo corner, then the critic's cosmetic repairs.
+ */
+export const repairBudgetFor = (env: NodeJS.ProcessEnv = process.env): number => {
+  const n = Number(env.CREATIVE_REPAIR_CALLS?.trim() || 1);
+  return Number.isFinite(n) ? Math.min(4, Math.max(0, Math.round(n))) : 1;
+};
+
+/** An inspection with nothing in it, for a design that could not be looked at. */
+export const EMPTY_INSPECTION: CreativeInspection = { texts: [], faces: [], subjects: [], logosOrWatermarks: [], copyAudit: [], defects: [], scores: { design: 0, marketing: 0, imageQuality: 0, brandFit: 0 }, verdict: 'repair', summary: '' };
+
+/**
+ * A drawn design whose later steps failed (the critic timed out, a repair call failed, the server restarted): it is
+ * finished from what was drawn, with no further model calls — its logo (the design's own, or the house logo at its
+ * usual spot) and its campaign artwork — and shown for review. A paid image is never thrown away.
+ */
+export async function salvageDirection(input: {
+  raw: Buffer; format: CanvasTarget; direction: CreativeDirectionPlan; dir: string; env: NodeJS.ProcessEnv; follow?: FollowDesign;
+  reason: string; model: string; prompt?: string; started?: number; imageCalls?: number; textMode?: TextMode; copyChecks?: CopyCheck[];
+}): Promise<FullCreativeResult> {
+  const { raw, format, direction, dir, env, follow } = input;
+  const spec = drawnCanvas(canvasOf(format), env);
+  const plan = logoPlanOf(direction, format);
+  const output = await toOutput(raw, format);
+  const followed = follow ? await followImage(follow) : null;
+  const same = Boolean(followed && sameShape(followed.aspect, spec.output.width / spec.output.height));
+  const own = follow?.logo && followed ? await placeOwnLogo(output, follow.logo, { same, designAspect: followed.aspect, safe: spec.safeArea }) : null;
+  let logo: LogoDecision = await forcedHouseLogo(output, spec, plan);
+  let image: Buffer;
+  if (own) {
+    image = own.image;
+    logo = { ...logo, placement: { ...own.box, anchor: 'top-left' }, reason: 'The design\'s own logo (the older ENGO | SOFT lockup), placed from its file at its spot' };
+  } else image = (await compositeLogo(output, { variantId: logo.variantId, x: logo.placement.x, y: logo.placement.y, width: logo.placement.width })).image;
+  const artworks = same && follow?.artworks?.length ? follow.artworks : [];
+  if (artworks.length) image = (await placeArtworks(await clearArtworkSpots(image, artworks), artworks)).image;
+  const imagePath = resolve(dir, `${direction.id}.png`);
+  writeFileSync(imagePath, image);
+  return {
+    directionId: direction.id, directionName: direction.name, status: 'needs_review',
+    problems: [`${input.reason} The design is shown as it was drawn, without its text check: read every word before publishing.`],
+    notes: [], imagePath, rawImagePath: resolve(dir, `${direction.id}-raw.png`), logo, repaired: false, refinements: [], copyChecks: input.copyChecks ?? [],
+    inspection: EMPTY_INSPECTION, prompt: input.prompt ?? '', model: input.model, latencyMs: input.started ? Date.now() - input.started : 0, textMode: input.textMode ?? 'model', imageCalls: input.imageCalls,
+  };
+}
+
 export async function produceDirection(input: {
   provider: CreativeImageProvider; brief: CreativeBriefPlan; direction: CreativeDirectionPlan; format: CanvasTarget; quality: ImageQuality; dir: string; env: NodeJS.ProcessEnv;
   /**
@@ -614,6 +674,8 @@ export async function produceDirection(input: {
   // The design's campaign artwork goes back at its own spot on the same shape; on another shape the campaign stamp is placed as usual.
   const artworks = following && sameAsDesign ? input.follow?.artworks ?? [] : [];
   const campaign = artworks.length ? undefined : input.campaign;
+  // The design's own logo replaces the official one: no corner has to be found or repaired for the official logo.
+  const ownLogo = Boolean(input.follow?.logo && followed);
   const basePrompt = following
     ? followDesignPrompt({ blocks, photos: brief.follow?.photos ?? '', canvasLabel: spec.label, designAspect: followed!.aspect, canvasAspect, artworks: input.follow?.artworks })
     : master
@@ -626,153 +688,188 @@ export async function produceDirection(input: {
   const guide = following ? '' : followed ? followPrompt(followed, canvasAspect) : referencePrompt(references);
   const prompt = `${basePrompt}${stampRoom(campaign, logoCanvasOf(format), await stampGeometry(campaign))}${guide}${master ? masterReference(images.length) : ''}`;
   const problems: string[] = [];
+  const notes: string[] = [];
   progress('generating');
   const n = master ? 1 : candidatesFor(env);
   const drawn = images.length
     ? await provider.edit({ prompt, size: spec.generation, quality, images, n })
     : await provider.generate({ prompt, size: spec.generation, quality, n });
-  const planned = direction.engine?.design;
-  const context = following
-    ? `Canvas: ${spec.label} A post redrawn from a design the user picked (${direction.name}), with exactly these text blocks: ${blocks.map((b) => `${b.role}: «${b.text}»`).join('; ')}. Arabic right-to-left layout; line breaks within a block are a design choice. The official logo${artworks.length ? ' and the campaign artwork are' : ' is'} added afterwards.`
-    : `Canvas: ${spec.label} ${direction.name}: ${direction.concept} Copy: ${JSON.stringify(brief.canonicalCopy)}. Arabic right-to-left layout: a left-pointing arrow on the CTA is intended. Line breaks within the headline are a design choice.${planned ? ` Planned design — theme ${direction.theme}; first focal point: ${planned.layoutDesigner.primaryFocalPoint}; then ${planned.layoutDesigner.secondaryFocalPoint}; reading path ${planned.layoutDesigner.visualFlow}; headline lines ${JSON.stringify(planned.typographyDirector.headlineLines)}; lighting ${planned.lightingDirector.setup}, key ${planned.lightingDirector.keyDirection}; colour ${planned.colorDirector.harmony}.` : ''}`;
-  progress('inspecting');
-  const approvedCopy = approvedStrings(brief.canonicalCopy);
-  // Every candidate is read by the critic; the rest of the pipeline works on the best one only.
-  const read = await Promise.all(drawn.map(async (candidate, index) => {
-    if (drawn.length > 1) writeFileSync(resolve(dir, `${direction.id}-candidate-${index + 1}.png`), candidate.png);
-    const out = await toOutput(candidate.png, format);
-    const seen = await inspectCreative(out, context, env, approvedCopy);
-    // Only worth the pixel analysis when there is a choice to make.
-    const fits = drawn.length < 2 || !(await resolveLogo({ creative: out, zones: zonesFromInspection(seen, spec.output.width, spec.output.height), preferredCorner: plan.corner, preferredMark: plan.mark, strictCorner: Boolean(houseLogo()), safeArea: spec.safeArea })).requiresCreativeRepair;
-    return { candidate, out, seen, score: candidateScore(seen, checkCopy(brief.canonicalCopy, seen.texts.map((t) => t.text), seen.copyAudit), fits) };
-  }));
-  const best = read.reduce((a, b) => (b.score > a.score ? b : a));
-  const generated = best.candidate;
-  let raw = generated.png;
+  // Saved the moment it arrives: everything after this point may fail, and the paid image must survive it.
+  let raw = drawn[0].png;
+  let model = drawn[0].model;
   writeFileSync(resolve(dir, `${direction.id}-raw.png`), raw);
-  let output = best.out;
-  let inspection = best.seen;
-  // Creative repair: apply the critic's local, non-text repairs in one masked edit, then look again.
-  const refinements: string[] = [];
-  const [gw, gh] = spec.generation.split('x').map(Number);
-  const local = brief.engine && inspection.verdict !== 'accept' ? localRepairs(inspection) : [];
-  if (local.length) {
-    progress('refining');
-    const boxes = local.map((r) => drawnBox(spec, { x: Math.max(0, r.region.x - 0.02), y: Math.max(0, r.region.y - 0.02), width: Math.min(1, r.region.width + 0.04), height: Math.min(1, r.region.height + 0.04) }));
-    const [edited] = await provider.edit({
-      prompt: `Keep the complete existing composition, every piece of text and all typography exactly as they are. Only inside the transparent masked areas: ${local.map((r, i) => `(${i + 1}) ${r.instruction}`).join(' ')} Keep the lighting world, perspective, grain and colour grade consistent with the rest of the image. Preserve every other pixel.`,
-      size: spec.generation, quality, images: [{ data: raw, mime: 'image/png' }], mask: await maskFor(gw, gh, ...boxes),
+  drawn.forEach((candidate, index) => { if (drawn.length > 1) writeFileSync(resolve(dir, `${direction.id}-candidate-${index + 1}.png`), candidate.png); });
+  let imageCalls = drawn.length;
+  let budget = repairBudgetFor(env);
+  /** Takes one repair call from the budget, keeping `reserve` calls for repairs that matter more. */
+  const spend = (reserve = 0) => { if (budget - reserve <= 0) return false; budget--; imageCalls++; return true; };
+  let step = 'The critic';
+  let copyChecks: CopyCheck[] = [];
+  try {
+    const planned = direction.engine?.design;
+    const context = following
+      ? `Canvas: ${spec.label} A post redrawn from a design the user picked (${direction.name}), with exactly these text blocks: ${blocks.map((b) => `${b.role}: «${b.text}»`).join('; ')}. Arabic right-to-left layout; line breaks within a block are a design choice. The official logo${artworks.length ? ' and the campaign artwork are' : ' is'} added afterwards.`
+      : `Canvas: ${spec.label} ${direction.name}: ${direction.concept} Copy: ${JSON.stringify(brief.canonicalCopy)}. Arabic right-to-left layout: a left-pointing arrow on the CTA is intended. Line breaks within the headline are a design choice.${planned ? ` Planned design — theme ${direction.theme}; first focal point: ${planned.layoutDesigner.primaryFocalPoint}; then ${planned.layoutDesigner.secondaryFocalPoint}; reading path ${planned.layoutDesigner.visualFlow}; headline lines ${JSON.stringify(planned.typographyDirector.headlineLines)}; lighting ${planned.lightingDirector.setup}, key ${planned.lightingDirector.keyDirection}; colour ${planned.colorDirector.harmony}.` : ''}`;
+    progress('inspecting');
+    const approvedCopy = approvedStrings(brief.canonicalCopy);
+    const officialLogo = (image: Buffer, seen: CreativeInspection) => resolveLogo({ creative: image, zones: zonesFromInspection(seen, spec.output.width, spec.output.height), preferredCorner: plan.corner, preferredMark: plan.mark, strictCorner: Boolean(houseLogo()), safeArea: spec.safeArea });
+    // Every candidate is read by the critic; the rest of the pipeline works on the best one only.
+    const read = await Promise.all(drawn.map(async (candidate) => {
+      const out = await toOutput(candidate.png, format);
+      const seen = await inspectCreative(out, context, env, approvedCopy);
+      // Only worth the pixel analysis when there is a choice to make.
+      const fits = drawn.length < 2 || ownLogo || !(await officialLogo(out, seen)).requiresCreativeRepair;
+      return { candidate, out, seen, score: candidateScore(seen, checkCopy(brief.canonicalCopy, seen.texts.map((t) => t.text), seen.copyAudit), fits) };
+    }));
+    const best = read.reduce((a, b) => (b.score > a.score ? b : a));
+    raw = best.candidate.png;
+    model = best.candidate.model;
+    writeFileSync(resolve(dir, `${direction.id}-raw.png`), raw);
+    let output = best.out;
+    let inspection = best.seen;
+    const [gw, gh] = spec.generation.split('x').map(Number);
+    const blockFor = (expected: string) => blocks.find((b) => b.text === expected);
+    const textFixes = (seen: CreativeInspection, checks: CopyCheck[]) => checks.flatMap((check) => {
+      if (check.verdict === 'incorrect') { const box = textBoxFor(seen, check.expected); return box ? [{ check, box, missing: undefined as CopyBlock | undefined }] : []; }
+      const block = check.verdict === 'missing' && following && sameAsDesign && !master ? blockFor(check.expected) : undefined;
+      return block?.box ? [{ check, box: block.box, missing: block }] : [];
     });
-    const candidate = await pasteInside(raw, edited.png, boxes);
-    const blank = (await Promise.all(boxes.map((b) => patchRejected(raw, candidate, b)))).some(Boolean);
-    if (!blank) {
-      raw = candidate;
-      refinements.push(...local.map((r) => `${r.operation}: ${r.instruction}`));
-      writeFileSync(resolve(dir, `${direction.id}-refined-raw.png`), raw);
-      output = await toOutput(raw, format);
-      inspection = await inspectCreative(output, context, env, approvedCopy);
-    }
-  }
-  // Text repair: re-letter only the strings the audit found misspelt, in place — and, on a followed design of the
-  // same shape, letter a missing block at the spot it has in that design — then keep it if it is better.
-  let copyChecks = checkCopy(brief.canonicalCopy, inspection.texts.map((t) => t.text), inspection.copyAudit);
-  const blockFor = (expected: string) => blocks.find((b) => b.text === expected);
-  const misspelt = copyChecks.flatMap((check) => {
-    if (check.verdict === 'incorrect') { const box = textBoxFor(inspection, check.expected); return box ? [{ check, box, missing: undefined as CopyBlock | undefined }] : []; }
-    const block = check.verdict === 'missing' && following && sameAsDesign && !master ? blockFor(check.expected) : undefined;
-    return block?.box ? [{ check, box: block.box, missing: block }] : [];
-  });
-  if (misspelt.length) {
-    progress('repairing');
-    const boxes = misspelt.map(({ box }) => drawnBox(spec, { x: Math.max(0, box.x - 0.015), y: Math.max(0, box.y - 0.012), width: Math.min(1 - Math.max(0, box.x - 0.015), box.width + 0.03), height: Math.min(1 - Math.max(0, box.y - 0.012), box.height + 0.024) }));
-    // The model sometimes repaints the hole as a black panel with the text on it: such a patch is refused and
-    // tried once more; after that the original stays and the misspelling is shown for review.
-    let refused = 0;
-    for (let attempt = 0; attempt < 2; attempt++) {
+    // What the budget is kept for, in order: wrong words, then the official logo's corner.
+    copyChecks = checkCopy(brief.canonicalCopy, inspection.texts.map((t) => t.text), inspection.copyAudit);
+    const needsText = textFixes(inspection, copyChecks).length ? 1 : 0;
+    const needsCorner = !ownLogo && (await officialLogo(output, inspection)).requiresCreativeRepair ? 1 : 0;
+    // Creative repair: the critic's local, non-text repairs in one masked edit, only with budget to spare.
+    const refinements: string[] = [];
+    const local = brief.engine && inspection.verdict !== 'accept' ? localRepairs(inspection) : [];
+    if (local.length && spend(needsText + needsCorner)) {
+      step = 'The critic\'s repair';
+      progress('refining');
+      const boxes = local.map((r) => drawnBox(spec, { x: Math.max(0, r.region.x - 0.02), y: Math.max(0, r.region.y - 0.02), width: Math.min(1, r.region.width + 0.04), height: Math.min(1, r.region.height + 0.04) }));
       const [edited] = await provider.edit({
-        prompt: `Re-letter only the text inside the transparent masked areas. ${misspelt.map(({ check, missing }, i) => missing ? `Area ${i + 1} is missing its text: letter «${check.expected}» there, as the ${missing.role} of the design${followed ? ' (Image 2 shows where and how that design sets it)' : ''}.` : `Area ${i + 1} must read exactly «${check.expected}».`).join(' ')} Repaint the background inside each area as a seamless continuation of the pixels around it — the same colours, gradient, texture and any highlight bar or button — never a black, dark or flat panel or a new frame. Keep the same typeface style, weight, size, colour, alignment and line breaks. Every Arabic letter correctly joined and spelled exactly as given: no extra, missing or doubled letters, no extra words. Preserve every other pixel.`,
-        size: spec.generation, quality, images: [{ data: raw, mime: 'image/png' }, ...(followed && misspelt.some((m) => m.missing) ? [{ data: followed.data, mime: followed.mime }] : [])], mask: await maskFor(gw, gh, ...boxes),
+        prompt: `Keep the complete existing composition, every piece of text and all typography exactly as they are. Only inside the transparent masked areas: ${local.map((r, i) => `(${i + 1}) ${r.instruction}`).join(' ')} Keep the lighting world, perspective, grain and colour grade consistent with the rest of the image. Preserve every other pixel.`,
+        size: spec.generation, quality, images: [{ data: raw, mime: 'image/png' }], mask: await maskFor(gw, gh, ...boxes),
       });
       const candidate = await pasteInside(raw, edited.png, boxes);
-      if ((await Promise.all(boxes.map((b) => patchRejected(raw, candidate, b)))).some(Boolean)) { refused++; continue; }
-      const candidateOutput = await toOutput(candidate, format);
-      const candidateInspection = await inspectCreative(candidateOutput, context, env, approvedCopy);
-      const candidateChecks = checkCopy(brief.canonicalCopy, candidateInspection.texts.map((t) => t.text), candidateInspection.copyAudit);
-      const wrong = (checks: CopyCheck[]) => checks.filter((c) => c.verdict === 'incorrect' || c.verdict === 'missing').length;
-      if (wrong(candidateChecks) < wrong(copyChecks)) {
-        raw = candidate; output = candidateOutput; inspection = candidateInspection; copyChecks = candidateChecks;
-        refinements.push(`TEXT_REPAIR: ${misspelt.map(({ check }) => check.field).join(', ')}`);
-        writeFileSync(resolve(dir, `${direction.id}-lettered-raw.png`), raw);
+      const blank = (await Promise.all(boxes.map((b) => patchRejected(raw, candidate, b)))).some(Boolean);
+      if (!blank) {
+        raw = candidate;
+        refinements.push(...local.map((r) => `${r.operation}: ${r.instruction}`));
+        writeFileSync(resolve(dir, `${direction.id}-refined-raw.png`), raw);
+        output = await toOutput(raw, format);
+        inspection = await inspectCreative(output, context, env, approvedCopy);
       }
-      break;
+    } else if (local.length) notes.push(`Critic's repairs not applied (repair budget kept for text and logo): ${local.map((r) => r.instruction).join('; ').slice(0, 300)}`);
+    // Text repair: re-letter only the strings the audit found misspelt, in place — and, on a followed design of the
+    // same shape, letter a missing block at the spot it has in that design — then keep it if it is better.
+    copyChecks = checkCopy(brief.canonicalCopy, inspection.texts.map((t) => t.text), inspection.copyAudit);
+    const misspelt = textFixes(inspection, copyChecks);
+    if (misspelt.length) {
+      step = 'The text repair';
+      progress('repairing');
+      const boxes = misspelt.map(({ box }) => drawnBox(spec, { x: Math.max(0, box.x - 0.015), y: Math.max(0, box.y - 0.012), width: Math.min(1 - Math.max(0, box.x - 0.015), box.width + 0.03), height: Math.min(1 - Math.max(0, box.y - 0.012), box.height + 0.024) }));
+      // The model sometimes repaints the hole as a black panel with the text on it: such a patch is refused and
+      // tried once more; after that the original stays and the misspelling is shown for review.
+      let refused = 0, tried = 0;
+      for (let attempt = 0; attempt < 2 && spend(); attempt++) {
+        tried++;
+        const [edited] = await provider.edit({
+          prompt: `Re-letter only the text inside the transparent masked areas. ${misspelt.map(({ check, missing }, i) => missing ? `Area ${i + 1} is missing its text: letter «${check.expected}» there, as the ${missing.role} of the design${followed ? ' (Image 2 shows where and how that design sets it)' : ''}.` : `Area ${i + 1} must read exactly «${check.expected}».`).join(' ')} Repaint the background inside each area as a seamless continuation of the pixels around it — the same colours, gradient, texture and any highlight bar or button — never a black, dark or flat panel or a new frame. Keep the same typeface style, weight, size, colour, alignment and line breaks. Every Arabic letter correctly joined and spelled exactly as given: no extra, missing or doubled letters, no extra words. Preserve every other pixel.`,
+          size: spec.generation, quality, images: [{ data: raw, mime: 'image/png' }, ...(followed && misspelt.some((m) => m.missing) ? [{ data: followed.data, mime: followed.mime }] : [])], mask: await maskFor(gw, gh, ...boxes),
+        });
+        const candidate = await pasteInside(raw, edited.png, boxes);
+        if ((await Promise.all(boxes.map((b) => patchRejected(raw, candidate, b)))).some(Boolean)) { refused++; continue; }
+        const candidateOutput = await toOutput(candidate, format);
+        const candidateInspection = await inspectCreative(candidateOutput, context, env, approvedCopy);
+        const candidateChecks = checkCopy(brief.canonicalCopy, candidateInspection.texts.map((t) => t.text), candidateInspection.copyAudit);
+        const wrong = (checks: CopyCheck[]) => checks.filter((c) => c.verdict === 'incorrect' || c.verdict === 'missing').length;
+        if (wrong(candidateChecks) < wrong(copyChecks)) {
+          raw = candidate; output = candidateOutput; inspection = candidateInspection; copyChecks = candidateChecks;
+          refinements.push(`TEXT_REPAIR: ${misspelt.map(({ check }) => check.field).join(', ')}`);
+          writeFileSync(resolve(dir, `${direction.id}-lettered-raw.png`), raw);
+        }
+        break;
+      }
+      if (!tried) notes.push('Text repair skipped: no repair calls left in the budget (CREATIVE_REPAIR_CALLS).');
+      else if (refused === tried) notes.push('Text repair: the re-lettering did not blend into the design (a dark or flat panel or a seam); kept the original lettering.');
     }
-    if (refused === 2) problems.push('Spelling repair: both re-letterings did not blend into the design (a dark or flat panel or a seam); kept the original lettering.');
-  }
-  progress('logo');
-  let logo = await resolveLogo({ creative: output, zones: zonesFromInspection(inspection, spec.output.width, spec.output.height), preferredCorner: plan.corner, preferredMark: plan.mark, strictCorner: Boolean(houseLogo()), safeArea: spec.safeArea });
-  let repaired = false;
-  if (logo.requiresCreativeRepair) {
-    // Logo-first repair: repaint only the reserved corner so the official logo has clean space.
-    progress('repairing');
-    const zone = logoRepairZone(spec, plan);
-    const clean = 'Keep the complete existing composition exactly. Change only the transparent masked area: make it a calm, clean, uncluttered continuation of the surrounding background, with no text, faces, objects, logos or graphics. Preserve every other pixel, all typography, subject, lighting and colors.';
-    // Only the corner is taken from the model: an edit may also shift colours elsewhere, and it sometimes
-    // leaves the hole unpainted (flat black). Then retry once, and give up rather than ship a black block.
-    let patched: Buffer | null = null;
-    for (let attempt = 0; attempt < 2 && !patched; attempt++) {
-      const [edited] = await provider.edit({ prompt: clean, size: spec.generation, quality, images: [{ data: raw, mime: 'image/png' }], mask: await maskFor(gw, gh, zone) });
-      const candidate = await pasteInside(raw, edited.png, [zone]);
-      if (!(await patchRejected(raw, candidate, zone))) patched = candidate;
+    progress('logo');
+    // The design's own logo needs no corner: the official logo's search and repair are skipped altogether.
+    let logo: LogoDecision | NoLogoDecision = ownLogo ? await forcedHouseLogo(output, spec, plan) : await officialLogo(output, inspection);
+    let repaired = false;
+    if (logo.requiresCreativeRepair) {
+      // Logo-first repair: repaint only the reserved corner so the official logo has clean space.
+      step = 'The logo corner repair';
+      progress('repairing');
+      const zone = logoRepairZone(spec, plan);
+      const clean = 'Keep the complete existing composition exactly. Change only the transparent masked area: make it a calm, clean, uncluttered continuation of the surrounding background, with no text, faces, objects, logos or graphics. Preserve every other pixel, all typography, subject, lighting and colors.';
+      // Only the corner is taken from the model: an edit may also shift colours elsewhere, and it sometimes
+      // leaves the hole unpainted (flat black). Then retry once, and give up rather than ship a black block.
+      let patched: Buffer | null = null, tried = 0;
+      for (let attempt = 0; attempt < 2 && !patched && spend(); attempt++) {
+        tried++;
+        const [edited] = await provider.edit({ prompt: clean, size: spec.generation, quality, images: [{ data: raw, mime: 'image/png' }], mask: await maskFor(gw, gh, zone) });
+        const candidate = await pasteInside(raw, edited.png, [zone]);
+        if (!(await patchRejected(raw, candidate, zone))) patched = candidate;
+      }
+      if (!patched && tried) notes.push('Logo corner repair: the image model\'s corner did not blend in (blank, a dark or flat panel, or a seam); kept the original.');
+      if (patched) {
+        raw = patched; repaired = true;
+        writeFileSync(resolve(dir, `${direction.id}-repaired-raw.png`), raw);
+        output = await toOutput(raw, format);
+        inspection = await inspectCreative(output, context, env, approvedCopy);
+        logo = await officialLogo(output, inspection);
+      }
     }
-    if (!patched) problems.push('Logo corner repair: the image model\'s corner did not blend in (blank, a dark or flat panel, or a seam) twice; kept the original.');
-    if (patched) {
-      raw = patched; repaired = true;
-      writeFileSync(resolve(dir, `${direction.id}-repaired-raw.png`), raw);
-      output = await toOutput(raw, format);
-      inspection = await inspectCreative(output, context, env, approvedCopy);
+    if (logo.requiresCreativeRepair && houseLogo()) {
+      notes.push(`Logo: ${logo.reason}; placed at its usual spot anyway — check that it reads well.`);
+      logo = await forcedHouseLogo(output, spec, plan);
     }
-    if (patched) logo = await resolveLogo({ creative: output, zones: zonesFromInspection(inspection, spec.output.width, spec.output.height), preferredCorner: plan.corner, preferredMark: plan.mark, strictCorner: Boolean(houseLogo()), safeArea: spec.safeArea });
+    step = 'Finishing the design';
+    copyChecks = checkCopy(brief.canonicalCopy, inspection.texts.map((t) => t.text), inspection.copyAudit);
+    if (!copyPasses(copyChecks)) problems.push(following
+      ? `Text in the image does not match the post's words: ${copyChecks.filter((c) => c.critical && c.verdict !== 'exact' && c.verdict !== 'acceptable').map((c) => `«${c.expected}» ${c.verdict}`).join(', ')}`
+      : `Text in the image does not match the approved copy: ${copyChecks.filter((c) => c.verdict !== 'exact').map((c) => `${c.field} ${c.verdict}`).join(', ')}`);
+    if (following) {
+      problems.push(...(brief.follow?.notes ?? []));
+      // Words of the old design the redraw kept, or words nobody asked for. The logo and the artwork are not ours to check.
+      const allowed = [...approvedCopy, ...(input.follow?.artworks ?? []).map((a) => a.says), 'ENGO SOFT Engosoft www.engosoft.com'];
+      const stray = strayTexts(inspection.texts, allowed);
+      if (stray.length) problems.push(`Words in the image that are not in the post: ${stray.slice(0, 4).map((t) => `«${t.slice(0, 40)}»`).join(', ')}`);
+    }
+    // The critic's taste is advice, not a reason to hold the post back.
+    if (inspection.logosOrWatermarks.length) notes.push(`Generated image contains a logo or watermark: ${inspection.logosOrWatermarks.map((l) => l.description).join('; ')}`);
+    if (inspection.verdict !== 'accept') notes.push(`Critic verdict ${inspection.verdict}: ${inspection.defects.join('; ') || inspection.summary}`);
+    let imagePath: string | undefined;
+    if (logo.requiresCreativeRepair) {
+      problems.unshift(`Logo: ${logo.reason}`);
+    } else {
+      // The followed design's own logo (the 50/50 campaign's older lockup) goes where the design has it, from its
+      // file; otherwise the official logo goes where the resolver found a clean corner.
+      const own = ownLogo ? await placeOwnLogo(output, input.follow!.logo!, { same: sameAsDesign, designAspect: followed!.aspect, safe: spec.safeArea }) : null;
+      const official = own ? null : await compositeLogo(output, { variantId: logo.variantId, x: logo.placement.x, y: logo.placement.y, width: logo.placement.width });
+      const image = own?.image ?? official!.image;
+      const record = own?.box ?? official!.record;
+      if (own) logo = { ...logo, placement: { ...own.box, anchor: 'top-left' }, reason: 'The design\'s own logo (the older ENGO | SOFT lockup), placed from its file at its spot' };
+      const honesty = official ? await verifyComposite(output, official.image, official.record) : [];
+      if (honesty.length) problems.unshift(...honesty.map((p) => `Logo composite: ${p}`));
+      const content = zonesFromInspection(inspection, spec.output.width, spec.output.height).map((z) => z.box);
+      // The design's own campaign artwork goes back at its spot, from its files.
+      const art = artworks.length ? await placeArtworks(await clearArtworkSpots(image, artworks), artworks) : { image };
+      const finished = await finishOverlays({ logoImage: art.image, logo: record, content, campaign, spec, env });
+      problems.push(...finished.problems);
+      notes.push(...finished.notes);
+      imagePath = resolve(dir, `${direction.id}.png`);
+      writeFileSync(imagePath, finished.image);
+    }
+    const status: FullCreativeResult['status'] = !imagePath ? 'failed' : problems.length ? 'needs_review' : 'ready';
+    return { directionId: direction.id, directionName: direction.name, status, problems, notes, imagePath, rawImagePath: resolve(dir, `${direction.id}-raw.png`), logo, repaired, refinements, copyChecks, inspection, prompt, model, latencyMs: Date.now() - started, textMode: 'model', imageCalls, candidates: read.length > 1 ? read.map((r) => Math.round(r.score * 10) / 10) : undefined };
+  } catch (error) {
+    // The image is paid for and on disk: finish it from what was drawn rather than lose it.
+    const message = error instanceof Error ? error.message : String(error);
+    try {
+      return await salvageDirection({ raw, format, direction, dir, env, follow: input.follow, reason: `${step} failed (${message.slice(0, 160)}).`, model, prompt, started, imageCalls, copyChecks });
+    } catch { throw error; }
   }
-  if (logo.requiresCreativeRepair && houseLogo()) {
-    problems.push(`Logo: ${logo.reason}; placed at its usual spot anyway — check that it reads well.`);
-    logo = await forcedHouseLogo(output, spec, plan);
-  }
-  copyChecks = checkCopy(brief.canonicalCopy, inspection.texts.map((t) => t.text), inspection.copyAudit);
-  if (!copyPasses(copyChecks)) problems.push(following
-    ? `Text in the image does not match the post's words: ${copyChecks.filter((c) => c.critical && c.verdict !== 'exact' && c.verdict !== 'acceptable').map((c) => `«${c.expected}» ${c.verdict}`).join(', ')}`
-    : `Text in the image does not match the approved copy: ${copyChecks.filter((c) => c.verdict !== 'exact').map((c) => `${c.field} ${c.verdict}`).join(', ')}`);
-  if (following) {
-    problems.push(...(brief.follow?.notes ?? []));
-    // Words of the old design the redraw kept, or words nobody asked for. The logo and the artwork are not ours to check.
-    const allowed = [...approvedCopy, ...(input.follow?.artworks ?? []).map((a) => a.says), 'ENGO SOFT Engosoft www.engosoft.com'];
-    const stray = strayTexts(inspection.texts, allowed);
-    if (stray.length) problems.push(`Words in the image that are not in the post: ${stray.slice(0, 4).map((t) => `«${t.slice(0, 40)}»`).join(', ')}`);
-  }
-  if (inspection.logosOrWatermarks.length) problems.push(`Generated image contains a logo or watermark: ${inspection.logosOrWatermarks.map((l) => l.description).join('; ')}`);
-  if (inspection.verdict !== 'accept') problems.push(`Critic verdict ${inspection.verdict}: ${inspection.defects.join('; ') || inspection.summary}`);
-  let imagePath: string | undefined;
-  if (logo.requiresCreativeRepair) {
-    problems.unshift(`Logo: ${logo.reason}`);
-  } else {
-    // The followed design's own logo (the 50/50 campaign's older lockup) goes where the design has it, from its
-    // file; otherwise the official logo goes where the resolver found a clean corner.
-    const own = input.follow?.logo && followed ? await placeOwnLogo(output, input.follow.logo, { same: sameAsDesign, designAspect: followed.aspect, safe: spec.safeArea }) : null;
-    const official = own ? null : await compositeLogo(output, { variantId: logo.variantId, x: logo.placement.x, y: logo.placement.y, width: logo.placement.width });
-    const image = own?.image ?? official!.image;
-    const record = own?.box ?? official!.record;
-    if (own) logo = { ...logo, placement: { ...own.box, anchor: 'top-left' }, reason: 'The design\'s own logo (the older ENGO | SOFT lockup), placed from its file at its spot' };
-    const honesty = official ? await verifyComposite(output, official.image, official.record) : [];
-    if (honesty.length) problems.unshift(...honesty.map((p) => `Logo composite: ${p}`));
-    const content = zonesFromInspection(inspection, spec.output.width, spec.output.height).map((z) => z.box);
-    // The design's own campaign artwork goes back at its spot, from its files.
-    const art = artworks.length ? await placeArtworks(await clearArtworkSpots(image, artworks), artworks) : { image };
-    const finished = await finishOverlays({ logoImage: art.image, logo: record, content, campaign, spec, env });
-    problems.push(...finished.problems);
-    imagePath = resolve(dir, `${direction.id}.png`);
-    writeFileSync(imagePath, finished.image);
-  }
-  const status: FullCreativeResult['status'] = !imagePath ? 'failed' : problems.length ? 'needs_review' : 'ready';
-  return { directionId: direction.id, directionName: direction.name, status, problems, imagePath, rawImagePath: resolve(dir, `${direction.id}-raw.png`), logo, repaired, refinements, copyChecks, inspection, prompt, model: generated.model, latencyMs: Date.now() - started, textMode: 'model', candidates: read.length > 1 ? read.map((r) => Math.round(r.score * 10) / 10) : undefined };
 }
 
 /**
@@ -839,6 +936,9 @@ async function produceTypeset(input: Parameters<typeof produceDirection>[0]): Pr
     : promptFor(brief, direction, format, false, 'typeset');
   const prompt = `${basePrompt}${stampRoom(input.campaign, logoCanvasOf(format), await stampGeometry(input.campaign))}${master ? masterReference(1, true) : ''}`;
   const problems: string[] = [];
+  const notes: string[] = [];
+  let imageCalls = 1, budget = repairBudgetFor(env);
+  const spend = () => { if (budget <= 0) return false; budget--; imageCalls++; return true; };
   progress('generating');
   const [generated] = master
     ? await provider.edit({ prompt, size: spec.generation, quality, images: [{ data: await asReference(master), mime: 'image/jpeg' }] })
@@ -862,20 +962,22 @@ async function produceTypeset(input: Parameters<typeof produceDirection>[0]): Pr
   };
   let composed = await compose(raw);
   let repaired = false;
-  if (composed.logo.requiresCreativeRepair) {
+  if (composed.logo.requiresCreativeRepair && spend()) {
     // No corner fits: calm the reserved corner of the visual (it has no text, so nothing else can break) and set again.
     progress('repairing');
     const zone = logoRepairZone(spec, plan);
-    const [edited] = await provider.edit({ prompt: 'Keep the complete existing image exactly. Change only the transparent masked area: make it a calm, clean, uncluttered continuation of the surrounding background, with no text, faces, objects, logos or graphics. Preserve every other pixel, lighting and colour.', size: spec.generation, quality, images: [{ data: raw, mime: 'image/png' }], mask: await maskFor(gw, gh, zone) });
-    const candidate = await pasteInside(raw, edited.png, [zone]);
-    if (!(await patchRejected(raw, candidate, zone))) {
+    // A failed repair call costs only the repair: the drawn picture carries on.
+    const edited = await provider.edit({ prompt: 'Keep the complete existing image exactly. Change only the transparent masked area: make it a calm, clean, uncluttered continuation of the surrounding background, with no text, faces, objects, logos or graphics. Preserve every other pixel, lighting and colour.', size: spec.generation, quality, images: [{ data: raw, mime: 'image/png' }], mask: await maskFor(gw, gh, zone) })
+      .then(([image]) => image, (e) => { notes.push(`Logo corner repair failed (${e instanceof Error ? e.message.slice(0, 120) : String(e)}).`); return null; });
+    const candidate = edited ? await pasteInside(raw, edited.png, [zone]) : raw;
+    if (edited && !(await patchRejected(raw, candidate, zone))) {
       raw = candidate; repaired = true;
       writeFileSync(resolve(dir, `${direction.id}-repaired-raw.png`), raw);
       composed = await compose(raw);
-    } else problems.push('Logo corner repair: the image model\'s corner did not blend in (blank, a dark or flat panel, or a seam); kept the original.');
+    } else if (edited) notes.push('Logo corner repair: the image model\'s corner did not blend in (blank, a dark or flat panel, or a seam); kept the original.');
   }
   if (composed.logo.requiresCreativeRepair && houseLogo()) {
-    problems.push(`Logo: ${composed.logo.reason}; placed at its usual spot anyway — check that it reads well.`);
+    notes.push(`Logo: ${composed.logo.reason}; placed at its usual spot anyway — check that it reads well.`);
     composed = { ...composed, logo: await forcedHouseLogo(composed.ts.png, spec, plan) };
   }
   const finish = async () => {
@@ -885,55 +987,61 @@ async function produceTypeset(input: Parameters<typeof produceDirection>[0]): Pr
     const honesty = await verifyComposite(ts.png, image, record);
     // The campaign stamp goes last, clear of every typeset line, the planned subject and the logo, then the result is checked.
     const finished = await finishOverlays({ logoImage: image, logo: record, content: [...ts.layout.blocks.map((b) => b.box), ...heroZone.map((z) => z.box)], campaign: input.campaign, spec, env });
-    return { image: finished.image, honesty: [...honesty, ...finished.problems] };
+    return { image: finished.image, honesty: [...honesty, ...finished.problems], notes: finished.notes };
   };
   let finished = await finish();
 
   progress('inspecting');
   const approvedCopy = approvedStrings(brief.canonicalCopy);
   const context = `Canvas: ${spec.label} ${direction.name}: ${direction.concept} The copy ${JSON.stringify(approvedCopy)} was typeset by the design system${direction.engine ? `; planned first focal point ${direction.engine.design.layoutDesigner.primaryFocalPoint}, reading path ${direction.engine.design.layoutDesigner.visualFlow}` : ''}.`;
-  // Judged before the official logo is added: the critic treats any logo it sees as one the image model drew.
-  let inspection = await inspectCreative(composed.ts.png, context, env, approvedCopy, { typeset: true });
+  // Judged before the official logo is added: the critic treats any logo it sees as one the image model drew. The
+  // words are exact by construction, so a critic that cannot run only costs its advice, never the design.
+  const look = (png: Buffer) => inspectCreative(png, context, env, approvedCopy, { typeset: true }).catch((e) => {
+    notes.push(`The critic could not look at the design (${e instanceof Error ? e.message.slice(0, 120) : String(e)}).`);
+    return EMPTY_INSPECTION;
+  });
+  let inspection = await look(composed.ts.png);
   const refinements: string[] = [];
   // Only critical, local, non-text repairs run unattended; anything else is shown for review.
   const local = inspection.verdict !== 'accept' ? localRepairs(inspection).filter((r) => r.severity === 'critical') : [];
-  if (local.length) {
+  if (local.length && spend()) {
     progress('refining');
     const boxes = local.map((r) => drawnBox(spec, { x: Math.max(0, r.region.x - 0.02), y: Math.max(0, r.region.y - 0.02), width: Math.min(1, r.region.width + 0.04), height: Math.min(1, r.region.height + 0.04) }));
-    const [edited] = await provider.edit({
+    const edited = await provider.edit({
       prompt: `Keep the complete existing image exactly as it is. Only inside the transparent masked areas: ${local.map((r, i) => `(${i + 1}) ${r.instruction}`).join(' ')} Keep the lighting, perspective, grain and colour grade consistent with the rest. Add no text. Preserve every other pixel.`,
       size: spec.generation, quality, images: [{ data: raw, mime: 'image/png' }], mask: await maskFor(gw, gh, ...boxes),
-    });
-    const candidate = await pasteInside(raw, edited.png, boxes);
-    if (!(await Promise.all(boxes.map((b) => patchRejected(raw, candidate, b)))).some(Boolean)) {
+    }).then(([image]) => image, (e) => { notes.push(`The critic's repair failed (${e instanceof Error ? e.message.slice(0, 120) : String(e)}).`); return null; });
+    const candidate = edited ? await pasteInside(raw, edited.png, boxes) : raw;
+    if (edited && !(await Promise.all(boxes.map((b) => patchRejected(raw, candidate, b)))).some(Boolean)) {
       raw = candidate;
       refinements.push(...local.map((r) => `${r.operation}: ${r.instruction}`));
       writeFileSync(resolve(dir, `${direction.id}-refined-raw.png`), raw);
       composed = await compose(raw);
       finished = await finish();
-      inspection = await inspectCreative(composed.ts.png, context, env, approvedCopy, { typeset: true });
+      inspection = await look(composed.ts.png);
     }
   }
 
   problems.push(...composed.ts.problems);
   const stray = strayTexts(inspection.texts, approvedCopy, composed.ts.layout.blocks.map((b) => b.box), spec.output);
   if (stray.length) problems.push(`The picture contains text the design did not ask for: ${stray.slice(0, 3).map((t) => `«${t.slice(0, 40)}»`).join(', ')}`);
-  if (inspection.logosOrWatermarks.length) problems.push(`Generated image contains a logo or watermark: ${inspection.logosOrWatermarks.map((l) => l.description).join('; ')}`);
-  if (inspection.verdict === 'regenerate') problems.push(`Critic verdict regenerate: ${inspection.defects.join('; ') || inspection.summary}`);
-  else if (inspection.verdict === 'repair' && inspection.defects.length) problems.push(`Critic notes: ${inspection.defects.slice(0, 3).join('; ')}`);
+  if (inspection.logosOrWatermarks.length) notes.push(`Generated image contains a logo or watermark: ${inspection.logosOrWatermarks.map((l) => l.description).join('; ')}`);
+  if (inspection.verdict === 'regenerate') notes.push(`Critic verdict regenerate: ${inspection.defects.join('; ') || inspection.summary}`);
+  else if (inspection.verdict === 'repair' && inspection.defects.length) notes.push(`Critic notes: ${inspection.defects.slice(0, 3).join('; ')}`);
   const cleanImagePath = resolve(dir, `${direction.id}-clean.png`);
   writeFileSync(cleanImagePath, composed.clean);
   let imagePath: string | undefined;
   if (!finished) problems.unshift(`Logo: ${(composed.logo as NoLogoDecision).reason}`);
   else {
     if (finished.honesty.length) problems.unshift(...finished.honesty.map((p) => `Logo composite: ${p}`));
+    notes.push(...finished.notes);
     imagePath = resolve(dir, `${direction.id}.png`);
     writeFileSync(imagePath, finished.image);
   }
   // The copy is exact by construction: every string was set from the canonical copy.
   const copyChecks = checkCopy(brief.canonicalCopy, approvedCopy);
   const status: FullCreativeResult['status'] = !imagePath ? 'failed' : problems.length ? 'needs_review' : 'ready';
-  return { directionId: direction.id, directionName: direction.name, status, problems, imagePath, rawImagePath: rawPath, cleanImagePath, logo: composed.logo, repaired, refinements, copyChecks, inspection, prompt, model: generated.model, latencyMs: Date.now() - started, textMode: 'typeset', typeset: composed.ts.layout };
+  return { directionId: direction.id, directionName: direction.name, status, problems, notes, imagePath, rawImagePath: rawPath, cleanImagePath, logo: composed.logo, repaired, refinements, copyChecks, inspection, prompt, model: generated.model, latencyMs: Date.now() - started, textMode: 'typeset', typeset: composed.ts.layout, imageCalls };
 }
 
 /** Image quality for a post made as a picked design (OPENAI_FOLLOW_IMAGE_QUALITY), else the general setting. */
@@ -996,13 +1104,18 @@ export async function generateFullCreative(request: FullCreativeRequest, env = p
   if (!followed) addHashtag();
   brief.directions = brief.directions.map((d, i) => ({ ...d, id: `d${i + 1}` }));
   onProgress?.({ stage: 'generating', brief });
-  const fallbackModel = env.OPENAI_IMAGE_MODEL?.trim() || 'gpt-image-2.5-flare';
-  const imageModel = request.model ?? (follow ? followModelFor(env) : fallbackModel);
-  const provider: CreativeImageProvider = imageModel === fallbackModel
-    ? new OpenAIImageProvider(env.OPENAI_API_KEY ?? '', imageModel)
-    : new FallbackImageProvider(new OpenAIImageProvider(env.OPENAI_API_KEY ?? '', imageModel), new OpenAIImageProvider(env.OPENAI_API_KEY ?? '', fallbackModel));
+  const imageModel = request.model ?? (follow ? followModelFor(env) : env.OPENAI_IMAGE_MODEL?.trim() || 'gpt-image-2.5-flare');
+  const provider = imageProviderFor(env, imageModel);
   const quality = request.quality ?? (follow ? followQualityFor(env) : imageQualityFor(env));
-  const settled = await Promise.allSettled(brief.directions.map((direction) => produceDirection({ provider, brief, direction, format, quality, dir: outputDir, env, onProgress, campaign, follow })));
+  const savedRequest: FullCreativeRequest = { ...request, attachments: request.attachments?.map(({ name, mime }) => ({ name, mime, dataUrl: '' })) };
+  const contextOf = (): FullCreativeRun['context'] => context
+    ? { status: 'matched', event: { id: context.event.id, title: context.event.title, startsAt: context.event.startsAt }, facts: Object.fromEntries(Object.entries(context.facts).map(([k, v]) => [k, v!.value])) }
+    : { status: odoo.status, message: 'message' in odoo ? odoo.message : undefined };
+  // On disk before the first image is paid for, and after each design: a restart (every deploy) can then hand back
+  // what was drawn instead of losing it (`recoverInterruptedRuns`).
+  writeTrace({ requestId, createdAt: new Date().toISOString(), request: savedRequest, brief, results: [], versions: FULL_CREATIVE_VERSIONS, outputDir, context: contextOf(), state: 'running' });
+  const settled = await Promise.allSettled(brief.directions.map((direction) => produceDirection({ provider, brief, direction, format, quality, dir: outputDir, env, onProgress, campaign, follow })
+    .then((result) => { updateTrace(requestId, (saved) => { saved.results.push(result); }); return result; })));
   if (followed) {
     // Written while the image was drawn; without them the post's words stand in, so the post can still be captioned in the editor.
     const written = await followed.captions;
@@ -1018,14 +1131,9 @@ export async function generateFullCreative(request: FullCreativeRequest, env = p
     inspection: { texts: [], faces: [], subjects: [], logosOrWatermarks: [], copyAudit: [], defects: [], scores: { design: 0, marketing: 0, imageQuality: 0, brandFit: 0 }, verdict: 'regenerate', summary: '' },
     prompt: promptFor(brief, brief.directions[index], format, false, textModeFor(brief, env), promptStyleFor(env)), model: provider.model, latencyMs: 0, textMode: textModeFor(brief, env),
   });
-  const run: FullCreativeRun = {
-    // Attachments can be megabytes of base64: the trace keeps what was attached, not the files.
-    requestId, createdAt: new Date().toISOString(), request: { ...request, attachments: request.attachments?.map(({ name, mime }) => ({ name, mime, dataUrl: '' })) }, brief, results, versions: FULL_CREATIVE_VERSIONS, outputDir,
-    context: context
-      ? { status: 'matched', event: { id: context.event.id, title: context.event.title, startsAt: context.event.startsAt }, facts: Object.fromEntries(Object.entries(context.facts).map(([k, v]) => [k, v!.value])) }
-      : { status: odoo.status, message: 'message' in odoo ? odoo.message : undefined },
-  };
-  writeFileSync(resolve(outputDir, 'trace.json'), JSON.stringify(run, null, 2));
+  // Attachments can be megabytes of base64: the trace keeps what was attached, not the files.
+  const run: FullCreativeRun = { requestId, createdAt: new Date().toISOString(), request: savedRequest, brief, results, versions: FULL_CREATIVE_VERSIONS, outputDir, context: contextOf(), state: 'done' };
+  writeTrace(run);
   onProgress?.({ stage: 'done' });
   return run;
 }
@@ -1035,13 +1143,22 @@ export async function adaptFullCreative(run: FullCreativeRun, directionId: strin
   const direction = run.brief.directions.find((d) => d.id === directionId);
   const source = run.results.find((r) => r.directionId === directionId);
   if (!direction || !source?.rawImagePath) throw new Error('That direction has no generated image to adapt');
-  const provider = new OpenAIImageProvider(env.OPENAI_API_KEY ?? '', source.model);
+  // The model and quality the design was drawn with, and the same fallback: another size is no rougher than its design.
+  const provider = imageProviderFor(env, source.model);
+  const quality = run.request.quality ?? (run.request.followDesign ? followQualityFor(env) : imageQualityFor(env));
   const raw = readFileSync(source.rawImagePath);
-  const result = await produceDirection({ provider, brief: run.brief, direction: { ...direction, id: `${direction.id}-${format}` }, format, quality: run.request.quality ?? imageQualityFor(env), dir: run.outputDir, env, master: raw, onProgress, mode: sizeModeFor(format, source.textMode ?? 'model', run.brief, env), campaign: run.request.campaign, follow: run.request.followDesign });
-  run.results.push(result);
-  writeFileSync(resolve(run.outputDir, 'trace.json'), JSON.stringify(run, null, 2));
-  onProgress?.({ stage: 'done' });
-  return result;
+  const job = { directionId: `${direction.id}-${format}`, format };
+  // Read and written fresh around the drawing: two sizes made at once must not overwrite each other's result.
+  Object.assign(run, updateTrace(run.requestId, (saved) => { saved.pending = [...(saved.pending ?? []), job]; }));
+  try {
+    const result = await produceDirection({ provider, brief: run.brief, direction: { ...direction, id: job.directionId }, format, quality, dir: run.outputDir, env, master: raw, onProgress, mode: sizeModeFor(format, source.textMode ?? 'model', run.brief, env), campaign: run.request.campaign, follow: run.request.followDesign });
+    Object.assign(run, updateTrace(run.requestId, (saved) => { saved.results.push(result); saved.pending = (saved.pending ?? []).filter((p) => p.directionId !== job.directionId); }));
+    onProgress?.({ stage: 'done' });
+    return result;
+  } catch (error) {
+    Object.assign(run, updateTrace(run.requestId, (saved) => { saved.pending = (saved.pending ?? []).filter((p) => p.directionId !== job.directionId); }));
+    throw error;
+  }
 }
 
 /**
@@ -1059,4 +1176,76 @@ export function sizeModeFor(format: CanvasTarget, designMode: TextMode, brief: C
 export function loadFullCreativeRun(requestId: string): FullCreativeRun {
   if (!/^[0-9a-f-]{36}$/.test(requestId)) throw new Error('Invalid request id');
   return JSON.parse(readFileSync(mediaDir('creatives', requestId, 'trace.json'), 'utf8')) as FullCreativeRun;
+}
+
+/** Written to a temporary file and renamed, so a crash mid-write never leaves half a trace. */
+export function writeTrace(run: FullCreativeRun) {
+  const file = resolve(run.outputDir, 'trace.json');
+  writeFileSync(`${file}.tmp`, JSON.stringify(run, null, 2));
+  renameSync(`${file}.tmp`, file);
+}
+/** Reads the trace as it is on disk now, changes it and writes it back in one go (no await in between). */
+export function updateTrace(requestId: string, change: (run: FullCreativeRun) => void): FullCreativeRun {
+  const run = loadFullCreativeRun(requestId);
+  change(run);
+  writeTrace(run);
+  return run;
+}
+
+/** The preferred image model with the general one as its fallback (the same pair a new design uses). */
+export function imageProviderFor(env: NodeJS.ProcessEnv, model: string): CreativeImageProvider {
+  const fallbackModel = env.OPENAI_IMAGE_MODEL?.trim() || 'gpt-image-2.5-flare';
+  return model === fallbackModel
+    ? new OpenAIImageProvider(env.OPENAI_API_KEY ?? '', model)
+    : new FallbackImageProvider(new OpenAIImageProvider(env.OPENAI_API_KEY ?? '', model), new OpenAIImageProvider(env.OPENAI_API_KEY ?? '', fallbackModel));
+}
+
+/**
+ * After a restart, every run that was still being made is finished from what was drawn: a design whose picture is
+ * on disk is completed without model calls (`salvageDirection`) and shown for review; one that was never drawn is
+ * reported. Layered designs (a text-free picture) are not completed, since their words would be missing.
+ * Returns how many runs were recovered.
+ */
+export async function recoverInterruptedRuns(env: NodeJS.ProcessEnv = process.env): Promise<number> {
+  const root = mediaDir('creatives');
+  if (!existsSync(root)) return 0;
+  let recovered = 0;
+  for (const id of readdirSync(root)) {
+    let run: FullCreativeRun;
+    try { run = loadFullCreativeRun(id); } catch { continue; }
+    if (run.state !== 'running' && !run.pending?.length) continue;
+    const reason = 'The server restarted before this design was finished.';
+    const finish = async (direction: CreativeDirectionPlan, format: CanvasTarget, mode: TextMode): Promise<FullCreativeResult | null> => {
+      const rawPath = resolve(run.outputDir, `${direction.id}-raw.png`);
+      if (mode === 'typeset' || !existsSync(rawPath)) return null;
+      try {
+        return await salvageDirection({ raw: readFileSync(rawPath), format, direction, dir: run.outputDir, env, follow: run.request.followDesign, reason, model: run.results[0]?.model ?? '' });
+      } catch { return null; }
+    };
+    const found: FullCreativeResult[] = [];
+    if (run.state === 'running') {
+      const format = run.request.format ?? 'feed';
+      for (const direction of run.brief.directions) {
+        if (run.results.some((r) => r.directionId === direction.id)) continue;
+        found.push(await finish(direction, format, textModeFor(run.brief, env)) ?? {
+          directionId: direction.id, directionName: direction.name, status: 'failed', problems: ['The server restarted before this design was drawn. Start it again.'], notes: [],
+          rawImagePath: '', logo: { requiresCreativeRepair: true, reason: 'No image' }, repaired: false, copyChecks: [], inspection: EMPTY_INSPECTION, prompt: '', model: '', latencyMs: 0,
+        });
+      }
+    }
+    for (const job of run.pending ?? []) {
+      const base = run.brief.directions.find((d) => job.directionId.startsWith(`${d.id}-`));
+      const source = base && run.results.find((r) => r.directionId === base.id);
+      if (!base || !isCanvasTarget(job.format)) continue;
+      const result = await finish({ ...base, id: job.directionId }, job.format, sizeModeFor(job.format, source?.textMode ?? 'model', run.brief, env));
+      if (result) found.push(result);
+    }
+    updateTrace(run.requestId, (saved) => {
+      saved.results.push(...found.filter((r) => !saved.results.some((s) => s.directionId === r.directionId)));
+      if (saved.state === 'running') saved.state = 'interrupted';
+      saved.pending = [];
+    });
+    recovered++;
+  }
+  return recovered;
 }

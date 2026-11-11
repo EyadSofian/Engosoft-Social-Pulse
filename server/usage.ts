@@ -188,6 +188,8 @@ export function registerUsageRoutes(app: express.Express) {
       averageImageUsd: imageCount ? imageRows.reduce((sum, row) => sum + Number(row.cost_usd), 0) / imageCount : null,
       // Images drawn per design (best of N): the Create page multiplies its estimate by this.
       imagesPerDesign: (await import('./creative-intelligence/generation/full-creative.js')).candidatesFor(process.env),
+      // At most this many repair images per design or size, only when its words or logo corner need one.
+      repairCallsMax: (await import('./creative-intelligence/generation/full-creative.js')).repairBudgetFor(process.env),
       byUser: byUser.sort((a, b) => b.spentUsd - a.spentUsd),
       byPurpose: group('purpose').map((entry) => ({ ...entry, name: purposeOf(entry.name) })),
       byModel: group('model'),
