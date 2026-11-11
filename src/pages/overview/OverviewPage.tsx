@@ -29,7 +29,7 @@ const dayTime = (item: PipelineItem) => item.scheduledAt ?? item.plannedFor ?? (
 
 type Stage = 'published' | 'scheduled' | 'approved' | 'work' | 'missing';
 const STAGES: { id: Stage; en: string; ar: string; to: string }[] = [
-  { id: 'published', en: 'Published', ar: 'تم النشر', to: '/analytics?section=posts' },
+  { id: 'published', en: 'Published', ar: 'تم النشر', to: '/analytics' },
   { id: 'scheduled', en: 'Scheduled', ar: 'مجدول', to: '/publish?view=scheduled' },
   { id: 'approved', en: 'Ready to publish', ar: 'جاهز للنشر', to: '/publish' },
   { id: 'work', en: 'Being made or reviewed', ar: 'قيد التنفيذ والمراجعة', to: '/content' },
@@ -260,7 +260,7 @@ function TopPosts({ posts }: { posts: { externalId: string; platform: Channel; a
   const { t } = useI18n();
   const top = [...posts].sort((a, b) => b.interactions - a.interactions).slice(0, 5);
   return <section className="ov-card">
-    <header className="ov-card__head"><div><h2>{t('Best posts this month', 'أفضل منشورات الشهر')}</h2><p>{t('From the connected accounts, by interactions.', 'من الحسابات المربوطة، حسب التفاعل.')}</p></div><Link to="/analytics?section=posts" className="ov-link">{t('All posts', 'كل المنشورات')}</Link></header>
+    <header className="ov-card__head"><div><h2>{t('Best posts this month', 'أفضل منشورات الشهر')}</h2><p>{t('From the connected accounts, by interactions.', 'من الحسابات المربوطة، حسب التفاعل.')}</p></div><Link to="/analytics" className="ov-link">{t('All posts', 'كل المنشورات')}</Link></header>
     {top.length ? <ol className="ov-top">{top.map((post) => <li key={`${post.platform}-${post.externalId}`}>
       {post.thumbnail ? <img src={post.thumbnail} alt="" loading="lazy" /> : <span className="ov-top__thumb"><ChannelIcon channel={post.platform} size={16} /></span>}
       <span className="ov-top__body"><b dir="auto">{post.title || t('Untitled post', 'منشور بلا عنوان')}</b><small><ChannelIcon channel={post.platform} size={11} /> <bdi>{post.accountName}</bdi> · {t('reach', 'وصول')} {compact(post.metrics.reach ?? post.metrics.views)}</small></span>

@@ -30,9 +30,9 @@ export const ROUTES: RouteDef[] = [
   { pattern: '/publish', nav: 'publish', render: () => <PublishPage /> },
   { pattern: '/overview', nav: 'overview', render: () => <OverviewPage /> },
   { pattern: '/analytics', nav: 'analytics', render: () => <AnalyticsHub /> },
-  // Older links to the separate tracking pages open the matching Analytics tab.
-  { pattern: '/tracking', nav: 'analytics', render: () => <AnalyticsHub initial="posts" /> },
-  { pattern: '/performance', nav: 'analytics', render: () => <AnalyticsHub initial="team" /> },
+  // Older links to the separate tracking pages open Analytics.
+  { pattern: '/tracking', nav: 'analytics', render: () => <AnalyticsHub /> },
+  { pattern: '/performance', nav: 'analytics', render: () => <AnalyticsHub /> },
   { pattern: '/courses', nav: 'courses', render: () => <CoursesPage /> },
   { pattern: '/library', nav: 'library', render: () => <LibraryPage /> },
   { pattern: '/library/templates/:id', nav: 'library', render: ({ id }) => <TemplatePage key={id} id={id} /> },

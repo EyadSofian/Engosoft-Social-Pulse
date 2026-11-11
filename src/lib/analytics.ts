@@ -39,6 +39,10 @@ export function normalize(raw: ApiDashboard): Dashboard {
     const local = inZone(ts);
     const dayNum = dayNumber(ts);
     const parts = [post.metrics.likes, post.metrics.comments, post.metrics.shares, post.metrics.saves];
+    // The platform may report one total ("engagement") instead of the breakdown; the server's
+    // engagement rate already prefers it, so the interaction count has to agree or the two disagree.
+    const measured = post.metrics.engagement != null || parts.some((value) => value != null);
+    const interactions = post.metrics.engagement ?? parts.reduce<number>((sum, value) => sum + (value ?? 0), 0);
     return {
       ...post,
       key: `${post.platform}:${post.externalId}`,
@@ -48,8 +52,8 @@ export function normalize(raw: ApiDashboard): Dashboard {
       month: local.toFormat('yyyy-LL'),
       hour: local.hour,
       weekday: local.weekday,
-      measured: parts.some((value) => value != null),
-      interactions: parts.reduce<number>((sum, value) => sum + (value ?? 0), 0),
+      measured,
+      interactions: measured ? interactions : 0,
     };
   });
   const plans: Plan[] = raw.plans.map((plan) => {
@@ -130,16 +134,24 @@ export interface Summary {
   count: number;
   measured: number;
   interactions: number;
-  /** Interactions per measured post. */
+  /** Interactions per measured post — the only interaction figure that survives a change in coverage. */
   average: number | null;
   /** Share of posts that returned interaction metrics, 0–100. */
   coverage: number | null;
+  /** Sum of each post's reach. The same person reached by two posts is counted twice. */
   reach: number;
   reachCount: number;
   views: number;
   viewsCount: number;
+  /** Weighted: interactions ÷ reach over the posts that reported both, 0–100. */
   rate: number | null;
+  /** Reach behind `rate`; shown so the rate is never read as covering every post. */
+  rateBasis: number;
+  ratePosts: number;
 }
+
+/** Reach, or the closest thing the platform gave us. */
+export const reachBasis = (post: Post) => post.metrics.reach ?? post.metrics.views ?? post.metrics.impressions;
 
 export function summarize(posts: Post[]): Summary {
   let measured = 0;
@@ -148,8 +160,9 @@ export function summarize(posts: Post[]): Summary {
   let reachCount = 0;
   let views = 0;
   let viewsCount = 0;
-  let rateSum = 0;
-  let rateCount = 0;
+  let rateBasis = 0;
+  let rateActions = 0;
+  let ratePosts = 0;
   for (const post of posts) {
     if (post.measured) {
       measured++;
@@ -163,9 +176,11 @@ export function summarize(posts: Post[]): Summary {
       views += post.metrics.views;
       viewsCount++;
     }
-    if (post.engagementRate != null) {
-      rateSum += post.engagementRate;
-      rateCount++;
+    const basis = reachBasis(post);
+    if (post.measured && basis != null && basis > 0) {
+      rateBasis += basis;
+      rateActions += post.interactions;
+      ratePosts++;
     }
   }
   return {
@@ -178,7 +193,47 @@ export function summarize(posts: Post[]): Summary {
     reachCount,
     views,
     viewsCount,
-    rate: rateCount ? rateSum / rateCount : null,
+    // One weighted rate for the whole period. Averaging each post's own percentage lets a post
+    // seen by 30 people outweigh one seen by 30,000.
+    rate: rateBasis ? (rateActions / rateBasis) * 100 : null,
+    rateBasis,
+    ratePosts,
+  };
+}
+
+/**
+ * Engagement keeps arriving for days after a post goes out, so the newest posts always look weak.
+ * Interaction figures and their comparisons only count posts that have had this long to settle.
+ */
+export const MATURITY_DAYS = 2;
+export const mature = (posts: Post[], todayNum: number, days = MATURITY_DAYS) =>
+  posts.filter((post) => todayNum - post.dayNum >= days);
+
+/** Two periods can only be compared where they were measured the same way; this says when they were not. */
+export interface Comparison {
+  /** Change in the number of posts published, 0–100 scale percentage. */
+  count: number | null;
+  /** Change in interactions per measured post. */
+  average: number | null;
+  /** Change in the weighted engagement rate, in percentage points. */
+  ratePoints: number | null;
+  /** Measurement coverage moved by more than ten points: totals are not comparable. */
+  coverageShift: boolean;
+  /** Fewer than this many measured posts on either side: treat the engagement change as noise. */
+  thin: boolean;
+}
+
+const THIN_SAMPLE = 5;
+
+export function compare(current: Summary, previous: Summary): Comparison {
+  const shift =
+    current.coverage != null && previous.coverage != null ? Math.abs(current.coverage - previous.coverage) > 10 : false;
+  return {
+    count: change(current.count, previous.count),
+    average: change(current.average, previous.average),
+    ratePoints: current.rate == null || previous.rate == null ? null : current.rate - previous.rate,
+    coverageShift: shift,
+    thin: current.measured < THIN_SAMPLE || previous.measured < THIN_SAMPLE,
   };
 }
 

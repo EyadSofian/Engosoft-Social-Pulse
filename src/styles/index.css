@@ -19,7 +19,6 @@
 @import '../legacy/styles/ui.css';
 @import '../legacy/styles/views.css';
 @import '../legacy/styles/calendar.css';
-@import '../legacy/styles/insights.css';
 
 /* Glass surfaces and the workspace features */
 @import './theme/glass.css';
@@ -49,4 +48,5 @@
 @import './features/publish-composer.css';
 @import './features/planning.css';
 @import './features/campaigns.css';
+@import './features/analytics.css';
 @import './features/schedule.css';

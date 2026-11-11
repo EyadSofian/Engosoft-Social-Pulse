@@ -5,11 +5,8 @@ import { todayNumber, type Filters } from '../lib/analytics';
 import type { Post } from '../types';
 import { AppContext, LEGACY_PATHS, type AppContextValue, type LegacyView, type PlanTarget } from './context';
 import { useRouter } from '../app/router/router';
-import { ContentView } from './content/ContentView';
-import { OverviewView } from './overview/OverviewView';
 import { PlanDrawer } from './calendar/PlanDrawer';
 import { CalendarView } from './calendar/CalendarView';
-import { InsightsView } from './insights/InsightsView';
 import { PostDrawer } from './PostDrawer';
 
 /**
@@ -22,33 +19,6 @@ export function LegacyCalendar() {
   return (
     <LegacyProvider>
       <CalendarView />
-    </LegacyProvider>
-  );
-}
-
-/** The monthly comparison, heatmap and account breakdown from the original dashboard, on the live synced posts. */
-export function LegacyInsights() {
-  return (
-    <LegacyProvider>
-      <InsightsView />
-    </LegacyProvider>
-  );
-}
-
-/** Every published post on every connected page and account, with its numbers, filters, search and CSV export. */
-export function LegacyContent() {
-  return (
-    <LegacyProvider>
-      <ContentView />
-    </LegacyProvider>
-  );
-}
-
-/** The original overview: this period against the last, trend, platform split, upcoming plans and best posts. */
-export function LegacyOverview() {
-  return (
-    <LegacyProvider>
-      <OverviewView />
     </LegacyProvider>
   );
 }

@@ -18,7 +18,7 @@ export const JOURNEY: { id: JourneyStage; statuses: ContentStatus[]; en: string;
   { id: 'review', statuses: ['ready_for_review'], en: 'With the publisher', ar: 'عند المسؤول عن النشر', whoEn: 'The publisher publishes it or returns it', whoAr: 'المسؤول عن النشر ينشره أو يرجّعه', href: '/content?tab=review', icon: <Clock3 size={15} /> },
   { id: 'ready', statuses: ['approved'], en: 'Ready to publish', ar: 'جاهز للنشر', whoEn: 'Publish now or pick a time', whoAr: 'انشره دلوقتي أو حدد ميعاد', href: '/publish?view=ready', icon: <Send size={15} /> },
   { id: 'scheduled', statuses: ['scheduled'], en: 'Scheduled', ar: 'مجدول', whoEn: 'Goes out at its time', whoAr: 'بيتنشر في ميعاده', href: '/publish?view=scheduled', icon: <CalendarClock size={15} /> },
-  { id: 'published', statuses: ['published'], en: 'Published', ar: 'منشور', whoEn: 'Results in Analytics', whoAr: 'النتائج في التحليلات', href: '/analytics?section=posts', icon: <CheckCircle2 size={15} /> },
+  { id: 'published', statuses: ['published'], en: 'Published', ar: 'منشور', whoEn: 'Results in Analytics', whoAr: 'النتائج في التحليلات', href: '/analytics', icon: <CheckCircle2 size={15} /> },
 ];
 
 export const stageOf = (status: ContentStatus): JourneyStage | null => JOURNEY.find((stage) => stage.statuses.includes(status))?.id ?? null;

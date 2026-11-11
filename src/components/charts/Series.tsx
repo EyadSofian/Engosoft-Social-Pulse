@@ -1,29 +1,29 @@
 import { useMemo, useState, type CSSProperties, type KeyboardEvent, type PointerEvent } from 'react';
 import { useElementWidth } from '../../hooks/ui';
-import { num, tick } from '../../lib/format';
+import { useI18n } from '../../i18n/I18nProvider';
+import { tick } from '../../lib/format';
 
 export interface SeriesDatum {
   key: string;
   /** Axis label. */
   label: string;
-  /** Full label for the tooltip and the table view. */
+  /** Full label for the tooltip and the accessible table. */
   title: string;
   value: number;
   note?: string;
-  /** An unfinished bucket (the running month) is drawn lighter. */
+  /** An unfinished bucket (today, or the running month) is drawn lighter and never compared. */
   partial?: boolean;
 }
 
 interface Props {
   data: SeriesDatum[];
   kind: 'area' | 'bars';
-  /** What one unit of the value is, e.g. "تفاعل". */
+  /** What one unit of the value is, e.g. "interaction". */
   unit: string;
   ariaLabel: string;
   height?: number;
   /** Label every category and print the value on each cap — only for a handful of bars. */
   categorical?: boolean;
-  /** Changing it replays the draw-in animation. */
   replayKey?: string;
 }
 
@@ -76,7 +76,9 @@ function barPath(x: number, y: number, width: number, baseline: number) {
   return `M${x},${baseline}V${y + radius}Q${x},${y} ${x + radius},${y}H${x + width - radius}Q${x + width},${y} ${x + width},${y + radius}V${baseline}Z`;
 }
 
-export function SeriesChart({ data, kind, unit, ariaLabel, height = 280, categorical, replayKey }: Props) {
+/** One series over time: hover or arrow keys read a point, and the hidden table carries every value. */
+export function SeriesChart({ data, kind, unit, ariaLabel, height = 260, categorical, replayKey }: Props) {
+  const { t, num } = useI18n();
   const [ref, width] = useElementWidth<HTMLDivElement>();
   const [active, setActive] = useState<number | null>(null);
 
@@ -94,10 +96,7 @@ export function SeriesChart({ data, kind, unit, ariaLabel, height = 280, categor
   }, [data, width, height, categorical]);
 
   const { innerWidth, baseline, band, ticks, x, y, barWidth, every } = geometry;
-  const line = useMemo(
-    () => (kind === 'area' ? smoothPath(data.map((item, index) => [x(index), y(item.value)])) : ''),
-    [kind, data, x, y],
-  );
+  const line = useMemo(() => (kind === 'area' ? smoothPath(data.map((item, index) => [x(index), y(item.value)])) : ''), [kind, data, x, y]);
   const last = data.length - 1;
   const focused = active != null && active <= last ? active : null;
   const current = focused != null ? data[focused] : null;
@@ -111,8 +110,7 @@ export function SeriesChart({ data, kind, unit, ariaLabel, height = 280, categor
   const onKey = (event: KeyboardEvent<HTMLDivElement>) => {
     if (!data.length) return;
     const from = focused ?? last;
-    const next =
-      event.key === 'ArrowRight' ? from + 1 : event.key === 'ArrowLeft' ? from - 1 : event.key === 'Home' ? 0 : event.key === 'End' ? last : null;
+    const next = event.key === 'ArrowRight' ? from + 1 : event.key === 'ArrowLeft' ? from - 1 : event.key === 'Home' ? 0 : event.key === 'End' ? last : null;
     if (next == null) return;
     event.preventDefault();
     setActive(Math.max(0, Math.min(last, next)));
@@ -128,7 +126,7 @@ export function SeriesChart({ data, kind, unit, ariaLabel, height = 280, categor
         className="chart__stage"
         tabIndex={0}
         role="img"
-        aria-label={`${ariaLabel}. استخدم الأسهم للتنقل بين القيم.`}
+        aria-label={`${ariaLabel}. ${t('Use the arrow keys to move between values.', 'استخدم الأسهم للتنقل بين القيم.')}`}
         onPointerMove={onMove}
         onPointerLeave={() => setActive(null)}
         onFocus={() => setActive((value) => value ?? last)}
@@ -153,13 +151,7 @@ export function SeriesChart({ data, kind, unit, ariaLabel, height = 280, categor
             ))}
             {data.map((item, index) =>
               (last - index) % every === 0 ? (
-                <text
-                  key={item.key}
-                  className="chart__label"
-                  x={Math.max(MARGIN.left + 18, Math.min(MARGIN.left + innerWidth - 18, x(index)))}
-                  y={baseline + 20}
-                  textAnchor="middle"
-                >
+                <text key={item.key} className="chart__label" x={Math.max(MARGIN.left + 18, Math.min(MARGIN.left + innerWidth - 18, x(index)))} y={baseline + 20} textAnchor="middle">
                   {item.label}
                 </text>
               ) : null,
@@ -204,12 +196,7 @@ export function SeriesChart({ data, kind, unit, ariaLabel, height = 280, categor
         )}
 
         {current && focused != null && (
-          <div
-            className="chart__tip glass glass--float"
-            data-align={tipAlign}
-            style={{ left: tipLeft, top: Math.max(4, y(current.value) - 14) }}
-            role="status"
-          >
+          <div className="chart__tip" data-align={tipAlign} style={{ left: tipLeft, top: Math.max(4, y(current.value) - 14) }} role="status">
             <strong>
               {num(current.value)} <small>{unit}</small>
             </strong>
@@ -228,7 +215,7 @@ export function SeriesChart({ data, kind, unit, ariaLabel, height = 280, categor
           <caption>{ariaLabel}</caption>
           <thead>
             <tr>
-              <th scope="col">الفترة</th>
+              <th scope="col">{t('Period', 'الفترة')}</th>
               <th scope="col">{unit}</th>
             </tr>
           </thead>
@@ -243,31 +230,5 @@ export function SeriesChart({ data, kind, unit, ariaLabel, height = 280, categor
         </table>
       </div>
     </figure>
-  );
-}
-
-/** A stat tile's trend: the period in a recessive ink, the latest point in the accent. */
-export function Sparkline({ values, height = 38 }: { values: number[]; height?: number }) {
-  const [ref, width] = useElementWidth<HTMLDivElement>();
-  const points = useMemo(() => {
-    if (values.length < 2 || !width) return [];
-    const size = Math.ceil(values.length / 24);
-    const buckets: number[] = [];
-    for (let i = values.length; i > 0; i -= size) buckets.unshift(values.slice(Math.max(0, i - size), i).reduce((sum, value) => sum + value, 0));
-    const top = Math.max(1, ...buckets);
-    const step = (width - 10) / Math.max(1, buckets.length - 1);
-    return buckets.map((value, index): [number, number] => [5 + index * step, height - 6 - (value / top) * (height - 12)]);
-  }, [values, width, height]);
-  const end = points[points.length - 1];
-
-  return (
-    <div ref={ref} className="spark" style={{ height }} dir="ltr" aria-hidden>
-      {points.length > 1 && (
-        <svg width={width} height={height}>
-          <path className="spark__line" d={smoothPath(points)} />
-          <circle className="spark__dot" cx={end[0]} cy={end[1]} r={3.5} />
-        </svg>
-      )}
-    </div>
   );
 }
