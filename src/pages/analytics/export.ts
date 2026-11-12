@@ -1,8 +1,10 @@
-import { download, workbook, type Sheet } from '../../lib/export/xlsx';
+import { download, workbook, type Sheet, type SheetImage } from '../../lib/export/xlsx';
 import { channelName } from '../../i18n/labels';
 import type { I18n } from '../../i18n/I18nProvider';
 import { dayKeyOf, inZone } from '../../lib/format';
+import type { Metrics } from '../../types';
 import type { AnalyticsModel, KpiKey } from './model';
+import type { PostPicture } from './thumbs';
 
 type Text = { en: string; ar: string };
 
@@ -15,7 +17,7 @@ export const KPI_LABEL: Record<KpiKey, Text> = {
   rate: { en: 'Engagement rate', ar: 'معدل التفاعل' },
 };
 
-const round = (value: number | null | undefined, digits = 0) => (value == null || !Number.isFinite(value) ? null : Math.round(value * 10 ** digits) / 10 ** digits);
+export const round = (value: number | null | undefined, digits = 0) => (value == null || !Number.isFinite(value) ? null : Math.round(value * 10 ** digits) / 10 ** digits);
 
 /** "Facebook · Engosoft · 2026-10-13 → 2026-11-11", the same line on every sheet and the PDF. */
 export function scopeLine(model: AnalyticsModel, i18n: I18n) {
@@ -25,7 +27,7 @@ export function scopeLine(model: AnalyticsModel, i18n: I18n) {
   return `${platform} · ${account} · ${dayKeyOf(model.todayNum - model.scope.period + 1)} → ${dayKeyOf(model.todayNum)}`;
 }
 
-function summarySheet(model: AnalyticsModel, i18n: I18n): Sheet {
+export function summarySheet(model: AnalyticsModel, i18n: I18n): Sheet {
   const { t, tx } = i18n;
   return {
     name: t('Summary', 'الملخص'),
@@ -48,7 +50,7 @@ function summarySheet(model: AnalyticsModel, i18n: I18n): Sheet {
   };
 }
 
-function platformsSheet(model: AnalyticsModel, i18n: I18n): Sheet {
+export function platformsSheet(model: AnalyticsModel, i18n: I18n): Sheet {
   const { t } = i18n;
   return {
     name: t('Platforms', 'المنصات'),
@@ -73,42 +75,83 @@ function platformsSheet(model: AnalyticsModel, i18n: I18n): Sheet {
   };
 }
 
-function postsSheet(model: AnalyticsModel, i18n: I18n): Sheet {
-  const { t } = i18n;
+const CONTENT_TYPE: Record<string, Text> = {
+  reel: { en: 'Reel', ar: 'ريل' },
+  reels: { en: 'Reel', ar: 'ريل' },
+  video: { en: 'Video', ar: 'فيديو' },
+  short: { en: 'Short', ar: 'شورت' },
+  image: { en: 'Image', ar: 'صورة' },
+  photo: { en: 'Image', ar: 'صورة' },
+  carousel: { en: 'Carousel', ar: 'كاروسيل' },
+  album: { en: 'Carousel', ar: 'كاروسيل' },
+  carousel_album: { en: 'Carousel', ar: 'كاروسيل' },
+  story: { en: 'Story', ar: 'ستوري' },
+  text: { en: 'Text', ar: 'نص' },
+  status: { en: 'Text', ar: 'نص' },
+  link: { en: 'Link', ar: 'رابط' },
+  article: { en: 'Article', ar: 'مقال' },
+  post: { en: 'Post', ar: 'منشور' },
+};
+
+export const contentTypeLabel = (value: string, i18n: I18n) => {
+  const key = value.trim().toLowerCase();
+  return CONTENT_TYPE[key] ? i18n.tx(CONTENT_TYPE[key]) : value;
+};
+
+/** Every number a platform can return for one post, in the order the report shows them. */
+export const POST_METRICS: { key: keyof Metrics; label: Text }[] = [
+  { key: 'reach', label: { en: 'Reach', ar: 'الوصول' } },
+  { key: 'views', label: { en: 'Views', ar: 'المشاهدات' } },
+  { key: 'impressions', label: { en: 'Impressions', ar: 'مرات الظهور' } },
+  { key: 'likes', label: { en: 'Likes', ar: 'إعجابات' } },
+  { key: 'comments', label: { en: 'Comments', ar: 'تعليقات' } },
+  { key: 'shares', label: { en: 'Shares', ar: 'مشاركات' } },
+  { key: 'saves', label: { en: 'Saves', ar: 'حفظ' } },
+  { key: 'clicks', label: { en: 'Clicks', ar: 'نقرات' } },
+];
+
+const IMAGE_COLUMN = 0;
+
+function postsSheet(model: AnalyticsModel, i18n: I18n, pictures?: Map<string, PostPicture>): Sheet {
+  const { t, tx } = i18n;
+  const withImages = pictures != null;
+  const images: SheetImage[] = [];
+  if (pictures)
+    model.posts.forEach((post, row) => {
+      const picture = pictures.get(post.key);
+      if (picture) images.push({ row, column: IMAGE_COLUMN, ...picture.small });
+    });
+  const lead = withImages ? [{ header: t('Image', 'الصورة'), width: 16 }] : [];
   return {
     name: t('Posts', 'المنشورات'),
     title: t('Every post in the period', 'كل منشورات الفترة'),
     subtitle: scopeLine(model, i18n),
     columns: [
+      ...lead,
       { header: t('Published', 'تاريخ النشر'), width: 18 },
       { header: t('Platform', 'المنصة'), width: 13 },
       { header: t('Account', 'الحساب'), width: 22 },
+      { header: t('Type', 'النوع'), width: 11 },
       { header: t('Post', 'المنشور'), width: 50 },
-      { header: t('Reach', 'الوصول'), width: 12, format: 'int' },
-      { header: t('Views', 'المشاهدات'), width: 12, format: 'int' },
-      { header: t('Likes', 'إعجابات'), width: 11, format: 'int' },
-      { header: t('Comments', 'تعليقات'), width: 11, format: 'int' },
-      { header: t('Shares', 'مشاركات'), width: 11, format: 'int' },
-      { header: t('Saves', 'حفظ'), width: 10, format: 'int' },
+      ...POST_METRICS.map((metric) => ({ header: tx(metric.label), width: 12, format: 'int' as const })),
       { header: t('Interactions', 'التفاعلات'), width: 13, format: 'int' },
       { header: t('Engagement rate %', 'معدل التفاعل %'), width: 16, format: 'percent' },
       { header: t('Link', 'الرابط'), width: 44 },
     ],
     rows: model.posts.map((post) => [
+      ...(withImages ? [pictures?.has(post.key) ? null : t('No image', 'مفيش صورة')] : []),
       inZone(post.ts).toFormat('yyyy-LL-dd HH:mm'),
       channelName[post.platform],
       post.accountName,
+      contentTypeLabel(post.contentType, i18n),
       post.title,
-      post.metrics.reach,
-      post.metrics.views,
-      post.metrics.likes,
-      post.metrics.comments,
-      post.metrics.shares,
-      post.metrics.saves,
+      ...POST_METRICS.map((metric) => post.metrics[metric.key]),
       post.measured ? post.interactions : null,
       round(post.engagementRate, 2),
       post.permalink,
     ]),
+    rowHeight: withImages ? 84 : undefined,
+    images: withImages ? images : undefined,
   };
 }
 
@@ -127,83 +170,12 @@ function activitySheet(model: AnalyticsModel, i18n: I18n): Sheet {
   };
 }
 
-const buildSheets = (model: AnalyticsModel, i18n: I18n): Sheet[] => [summarySheet(model, i18n), platformsSheet(model, i18n), postsSheet(model, i18n), activitySheet(model, i18n)];
+const buildSheets = (model: AnalyticsModel, i18n: I18n, pictures?: Map<string, PostPicture>): Sheet[] => [summarySheet(model, i18n), platformsSheet(model, i18n), postsSheet(model, i18n, pictures), activitySheet(model, i18n)];
 
 const fileName = (model: AnalyticsModel, extension: string) =>
   `analytics-${model.scope.platform === 'all' ? 'all' : model.scope.platform}-${model.scope.period}d-${dayKeyOf(model.todayNum)}.${extension}`;
 
-export function exportWorkbook(model: AnalyticsModel, i18n: I18n) {
-  download(workbook(buildSheets(model, i18n)), fileName(model, 'xlsx'));
-}
-
-/* ── PDF ───────────────────────────────────────────────────────────── */
-
-const escapeHtml = (value: string) => value.replace(/[&<>"]/g, (char) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' })[char] as string);
-
-function tableHtml(sheet: Sheet, skip: number[] = []): string {
-  const columns = sheet.columns.map((column, index) => ({ column, index })).filter(({ index }) => !skip.includes(index));
-  const numeric = (format?: string) => format != null && format !== 'text' && format !== 'date';
-  const cell = (value: string | number | null | undefined, format?: string) => {
-    const text = value == null || value === '' ? '—' : typeof value === 'number' ? `${new Intl.NumberFormat('en-GB', { maximumFractionDigits: 2 }).format(value)}${format === 'percent' ? '%' : ''}` : String(value);
-    return `<td${numeric(format) ? ' class="n"' : ''}>${escapeHtml(text)}</td>`;
-  };
-  const head = columns.map(({ column }) => `<th${numeric(column.format) ? ' class="n"' : ''}>${escapeHtml(column.header)}</th>`).join('');
-  const body = sheet.rows.map((row) => `<tr>${columns.map(({ column, index }) => cell(row[index], column.format)).join('')}</tr>`).join('');
-  const notes = sheet.notes?.length ? `<ul class="notes">${sheet.notes.map((note) => `<li>${escapeHtml(note)}</li>`).join('')}</ul>` : '';
-  return `<section><h2>${escapeHtml(sheet.title ?? sheet.name)}</h2><table><thead><tr>${head}</tr></thead><tbody>${body}</tbody></table>${notes}</section>`;
-}
-
-/**
- * The browser prints the report, since it is the only engine here that shapes Arabic
- * correctly; "Save as PDF" in the print dialog writes the file. It prints from a hidden
- * frame so the page stays where it is.
- */
-export function printReport(model: AnalyticsModel, i18n: I18n) {
-  const { t, dir, lang } = i18n;
-  const title = t('Analytics report', 'تقرير التحليلات');
-  const posts = postsSheet(model, i18n);
-  // The PDF is for reading: the caption is shortened and the link and per-reaction columns are left to Excel.
-  const shortPosts: Sheet = { ...posts, rows: posts.rows.map((row) => row.map((value, index) => (index === 3 && typeof value === 'string' && value.length > 90 ? `${value.slice(0, 90)}…` : value))) };
-  const html = `<!doctype html><html lang="${lang}" dir="${dir}"><head><meta charset="utf-8"><title>${escapeHtml(title)}</title><style>
-    @page { size: A4; margin: 14mm 12mm; }
-    * { box-sizing: border-box; }
-    body { font-family: ${lang === 'ar' ? "'Almarai','IBM Plex Sans Arabic'," : ''}-apple-system, 'Segoe UI', system-ui, sans-serif; color: #0b1324; margin: 0; font-size: 10.5px; line-height: 1.5; }
-    header { border-bottom: 2px solid #0046ff; padding-bottom: 8px; margin-bottom: 16px; }
-    h1 { font-size: 19px; margin: 0 0 2px; }
-    header p { margin: 0; color: #5a6480; font-size: 11px; }
-    section { margin-bottom: 18px; }
-    h2 { font-size: 13px; margin: 0 0 6px; }
-    table { width: 100%; border-collapse: collapse; }
-    th, td { border-bottom: 1px solid #e3e8f2; padding: 4px 6px; text-align: start; vertical-align: top; }
-    th { background: #eef2ff; font-size: 9.5px; }
-    td.n, th.n { text-align: end; font-variant-numeric: tabular-nums; white-space: nowrap; }
-    tbody tr { break-inside: avoid; }
-    thead { display: table-header-group; }
-    .notes { margin: 6px 0 0; padding-inline-start: 16px; color: #6b7280; font-size: 9px; }
-  </style></head><body><header><h1>${escapeHtml(title)}</h1><p>${escapeHtml(scopeLine(model, i18n))}</p></header>${[
-    tableHtml(summarySheet(model, i18n)),
-    tableHtml(platformsSheet(model, i18n)),
-    tableHtml(shortPosts, [6, 7, 8, 9, 12]),
-  ].join('')}</body></html>`;
-
-  const frame = document.createElement('iframe');
-  frame.setAttribute('aria-hidden', 'true');
-  frame.style.cssText = 'position:fixed;inset:auto 0 0 auto;width:0;height:0;border:0;opacity:0';
-  document.body.append(frame);
-  const doc = frame.contentDocument;
-  if (!doc) {
-    frame.remove();
-    return;
-  }
-  doc.open();
-  doc.write(html);
-  doc.close();
-  const run = () => {
-    frame.contentWindow?.focus();
-    frame.contentWindow?.print();
-    // Safari keeps painting the frame while the dialog is open, so it is removed after it closes.
-    setTimeout(() => frame.remove(), 60_000);
-  };
-  if (doc.readyState === 'complete') setTimeout(run, 60);
-  else frame.addEventListener('load', () => setTimeout(run, 60), { once: true });
+/** With pictures, the posts sheet starts with each post's image in its row. */
+export function exportWorkbook(model: AnalyticsModel, i18n: I18n, pictures?: Map<string, PostPicture>) {
+  download(workbook(buildSheets(model, i18n, pictures)), fileName(model, 'xlsx'));
 }
