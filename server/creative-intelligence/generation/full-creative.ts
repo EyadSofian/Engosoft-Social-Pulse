@@ -28,7 +28,8 @@ import { produceSkeleton, skeletonFor, skeletonPathFor, skeletonTemplate, withPh
 import { fillTemplateValues } from './template-fill.js';
 import { designDocFromTemplate, designWords, type DesignDoc } from '../../../src/domain/design-doc.js';
 import type { BrandTemplate } from '../../../src/domain/brand-templates.js';
-import { clearArtworkSpots, followDesignPrompt, followImage, followPrompt, placeArtworks, placeOwnLogo, sameShape, type FollowDesign } from './follow-design.js';
+import { clearArtworkSpots, clearBoxes, followDesignPrompt, followImage, followPhotoImages, followPrompt, placeArtworks, placeOwnLogo, sameShape, type FollowDesign } from './follow-design.js';
+import { evolveDesignPrompt, planArtDirection, type ArtDirection } from './art-direction.js';
 import { followCaptions, followCopy, planFollowContent } from './follow-content.js';
 import { highlightPhrase, storyLayout, storyZones, TYPESET_VERSION, typesetCreative, type TypesetPlan, type TypesetResult } from '../typography/typeset.js';
 import { FallbackImageProvider, openAIJson, OpenAIImageProvider, type CreativeImageProvider, type ImageQuality } from './provider.js';
@@ -96,7 +97,7 @@ export interface CreativeBriefPlan {
   /** Design-engine runs: the strategy decisions, references and skill versions behind the brief. */
   engine?: { version: string; skills: Record<string, string>; settings: EngineSettings; strategy: StrategyDecision; references: ReferenceInput[] };
   /** A post made as a design the user picked: what its new photos show, and what the content step could not place. */
-  follow?: { photos: string; notes: string[] };
+  follow?: { photos: string; notes: string[]; direction?: ArtDirection };
 }
 
 export interface FullCreativeRequest {
@@ -401,6 +402,27 @@ async function finishOverlays(input: { logoImage: Buffer; logo: PxBox; content: 
 }
 
 /**
+ * Any logo, wordmark or tagline the image model drew in the logo's part of the canvas (the top quarter), from the
+ * critic's boxes and the text it read, cleared with clean background. The image is returned unchanged when there is
+ * none, so nothing else is ever touched.
+ */
+export async function clearDrawnLogo(image: Buffer, inspection: Pick<CreativeInspection, 'logosOrWatermarks' | 'texts'>, placement: { x: number; y: number; width: number; height: number }): Promise<Buffer> {
+  const { width: W = 1, height: H = 1 } = await sharp(image).metadata();
+  const near = (b: NormBox) => b.y < 0.25 && b.x < 0.5;
+  const drawn = [
+    ...inspection.logosOrWatermarks.map((l) => l.box),
+    ...inspection.texts.filter((t) => /passion\s+becomes|engo\s*\|?\s*soft/i.test(t.text) && !/\.com|www/i.test(t.text)).map((t) => t.box),
+  ].filter(near);
+  if (!drawn.length) return image;
+  // The drawn copy and the spot the official logo takes, a little larger, as one area.
+  const ours = { x: placement.x / W, y: placement.y / H, width: placement.width / W, height: placement.height / H };
+  const all = [...drawn, ours];
+  const x0 = Math.max(0, Math.min(...all.map((b) => b.x)) - 0.015), y0 = Math.max(0, Math.min(...all.map((b) => b.y)) - 0.012);
+  const x1 = Math.min(1, Math.max(...all.map((b) => b.x + b.width)) + 0.015), y1 = Math.min(1, Math.max(...all.map((b) => b.y + b.height)) + 0.012);
+  return clearBoxes(image, [{ x: x0, y: y0, width: x1 - x0, height: y1 - y0 }]);
+}
+
+/**
  * The house logo when its corner could not be cleaned: placed anyway at its usual spot and size, in the artwork
  * (blue or white) that reads best on what is under it, and reported for review. A design never ships without its
  * logo, and never with a different logo in a different corner.
@@ -679,12 +701,18 @@ export async function produceDirection(input: {
   const following = Boolean(followed && blocks.length);
   const canvasAspect = spec.output.width / spec.output.height;
   const sameAsDesign = Boolean(followed && sameShape(followed.aspect, canvasAspect));
+  // A template that evolves is redrawn from its art direction: its blocks do not keep the template's places.
+  const artPlan = following && input.follow?.evolve ? brief.follow?.direction : undefined;
+  const pinned = sameAsDesign && !artPlan;
+  const given = artPlan && input.follow ? followPhotoImages(input.follow) : [];
   // The design's campaign artwork goes back at its own spot on the same shape; on another shape the campaign stamp is placed as usual.
-  const artworks = following && sameAsDesign ? input.follow?.artworks ?? [] : [];
+  const artworks = following && pinned ? input.follow?.artworks ?? [] : [];
   const campaign = artworks.length ? undefined : input.campaign;
   // The design's own logo replaces the official one: no corner has to be found or repaired for the official logo.
   const ownLogo = Boolean(input.follow?.logo && followed);
-  const basePrompt = following
+  const basePrompt = artPlan
+    ? evolveDesignPrompt({ blocks, direction: artPlan, canvasLabel: spec.label, photoLabels: given.map((p) => p.label), photos: brief.follow?.photos ?? '' })
+    : following
     ? followDesignPrompt({ blocks, photos: brief.follow?.photos ?? '', canvasLabel: spec.label, designAspect: followed!.aspect, canvasAspect, artworks: input.follow?.artworks })
     : master
       ? `${promptFor(brief, direction, format, true, 'model', style)}\n\n${freshSizeBrief(format)}`
@@ -692,7 +720,7 @@ export async function produceDirection(input: {
   // Every design, every size, is drawn with the same approved Engosoft posts attached as style references (the
   // same text picks the same set); another size also gets its design as the last, labelled reference.
   const references = followed ? [] : await houseReferences(`${brief.objective} ${brief.audience} ${brief.canonicalCopy.headline} ${direction.concept}`, input.campaign?.keyVisualPath);
-  const images = [...(followed ? [{ data: followed.data, mime: followed.mime }] : []), ...references.map(({ data, mime }) => ({ data, mime })), ...(master ? [{ data: await asReference(master), mime: 'image/jpeg' as const }] : [])];
+  const images = [...(followed ? [{ data: followed.data, mime: followed.mime }] : []), ...given.map(({ data, mime }) => ({ data, mime })), ...references.map(({ data, mime }) => ({ data, mime })), ...(master ? [{ data: await asReference(master), mime: 'image/jpeg' as const }] : [])];
   const guide = following ? '' : followed ? followPrompt(followed, canvasAspect) : referencePrompt(references);
   const prompt = `${basePrompt}${stampRoom(campaign, logoCanvasOf(format), await stampGeometry(campaign))}${guide}${master ? masterReference(images.length) : ''}`;
   const problems: string[] = [];
@@ -739,7 +767,7 @@ export async function produceDirection(input: {
     const blockFor = (expected: string) => blocks.find((b) => b.text === expected);
     const textFixes = (seen: CreativeInspection, checks: CopyCheck[]) => checks.flatMap((check) => {
       if (check.verdict === 'incorrect') { const box = textBoxFor(seen, check.expected); return box ? [{ check, box, missing: undefined as CopyBlock | undefined }] : []; }
-      const block = check.verdict === 'missing' && following && sameAsDesign && !master ? blockFor(check.expected) : undefined;
+      const block = check.verdict === 'missing' && following && pinned && !master ? blockFor(check.expected) : undefined;
       return block?.box ? [{ check, box: block.box, missing: block }] : [];
     });
     // What the budget is kept for, in order: wrong words, then the official logo's corner.
@@ -834,8 +862,10 @@ export async function produceDirection(input: {
     }
     step = 'Finishing the design';
     copyChecks = checkCopy(brief.canonicalCopy, inspection.texts.map((t) => t.text), inspection.copyAudit);
-    if (!copyPasses(copyChecks)) problems.push(following
-      ? `Text in the image does not match the post's words: ${copyChecks.filter((c) => c.critical && c.verdict !== 'exact' && c.verdict !== 'acceptable').map((c) => `«${c.expected}» ${c.verdict}`).join(', ')}`
+    // On a followed design every line is the person's own (a name, a date line), so any line that is off counts.
+    const off = following ? copyChecks.filter((c) => c.verdict !== 'exact' && c.verdict !== 'acceptable') : [];
+    if (following ? off.length > 0 : !copyPasses(copyChecks)) problems.push(following
+      ? `Text in the image does not match the post's words: ${off.map((c) => `«${c.expected}» ${c.verdict}`).join(', ')}`
       : `Text in the image does not match the approved copy: ${copyChecks.filter((c) => c.verdict !== 'exact').map((c) => `${c.field} ${c.verdict}`).join(', ')}`);
     if (following) {
       problems.push(...(brief.follow?.notes ?? []));
@@ -854,11 +884,15 @@ export async function produceDirection(input: {
       // The followed design's own logo (the 50/50 campaign's older lockup) goes where the design has it, from its
       // file; otherwise the official logo goes where the resolver found a clean corner.
       const own = ownLogo ? await placeOwnLogo(output, input.follow!.logo!, { same: sameAsDesign, designAspect: followed!.aspect, safe: spec.safeArea }) : null;
-      const official = own ? null : await compositeLogo(output, { variantId: logo.variantId, x: logo.placement.x, y: logo.placement.y, width: logo.placement.width });
+      // A template that evolves is drawn from a template that shows the logo, and the model sometimes draws it: that
+      // copy is cleared first, or the official logo would land on top of it and read doubled.
+      const base = artPlan && !own ? await clearDrawnLogo(output, inspection, logo.placement) : output;
+      if (base !== output) notes.push('A logo the image model drew was cleared before the official logo was placed.');
+      const official = own ? null : await compositeLogo(base, { variantId: logo.variantId, x: logo.placement.x, y: logo.placement.y, width: logo.placement.width });
       const image = own?.image ?? official!.image;
       const record = own?.box ?? official!.record;
       if (own) logo = { ...logo, placement: { ...own.box, anchor: 'top-left' }, reason: 'The design\'s own logo (the older ENGO | SOFT lockup), placed from its file at its spot' };
-      const honesty = official ? await verifyComposite(output, official.image, official.record) : [];
+      const honesty = official ? await verifyComposite(base, official.image, official.record) : [];
       if (honesty.length) problems.unshift(...honesty.map((p) => `Logo composite: ${p}`));
       const content = zonesFromInspection(inspection, spec.output.width, spec.output.height).map((z) => z.box);
       // The design's own campaign artwork goes back at its spot, from its files.
@@ -1131,6 +1165,10 @@ export async function planFollowCreative(prompt: string, follow: FollowDesign, c
     ...picked.split('\n').map((line) => line.trim()).filter(Boolean),
   ];
   const { content, notes } = await planFollowContent({ design: follow, request: prompt, facts, env, course });
+  // A template that evolves gets an art director's plan for this content; without one it is redrawn as it is.
+  const direction = follow.evolve
+    ? await planArtDirection({ design: follow, request: prompt, blocks: content.blocks, photos: content.photos, env }).catch((error) => { notes.push(`Art direction could not be planned (${error instanceof Error ? error.message : String(error)}); the template was followed as it is.`); return undefined; })
+    : undefined;
   onDesigning?.();
   const house = houseLogo() ?? { mark: 'lockup' as LogoMark, corner: 'top-left' as Corner };
   const same = 'As the chosen design';
@@ -1139,8 +1177,9 @@ export async function planFollowCreative(prompt: string, follow: FollowDesign, c
     canonicalCopy: followCopy(content.blocks), caption: '',
     captions: { facebook: '', instagram: '', whatsapp: '', linkedin: '', tiktok: '', snapchat: '', website: '' },
     directions: Array.from({ length: count }, (_, i) => ({ id: `d${i + 1}`, name: follow.name, concept: `${follow.name}, redrawn with the new words${content.photos ? ' and photos' : ''}`, subject: content.photos || same, composition: same, palette: same, typography: same, mood: same, logoMark: house.mark, logoCorner: house.corner })),
-    follow: { photos: content.photos, notes },
+    follow: { photos: content.photos, notes, ...(direction ? { direction } : {}) },
   };
+  if (direction) brief.directions = brief.directions.map((d) => ({ ...d, concept: direction.concept, composition: direction.composition, subject: direction.visual, palette: direction.background, mood: direction.details }));
   return { brief, captions: followCaptions({ request: prompt, content, facts: [...(course.trim() ? [`Course: ${course.trim()}`] : []), ...facts], env }).catch(() => null) };
 }
 
@@ -1163,7 +1202,8 @@ export async function generateFullCreative(request: FullCreativeRequest, env = p
   // A design to follow has its own short path: its blocks filled from the request, then one exact redraw. The
   // general planning (copywriter, layout, theme) would rewrite the words and fight the design's layout.
   // CREATIVE_PATH=skeleton: a library design is laid out by code at each size and only finished by the model.
-  const skeleton = follow && skeletonPathFor(env) ? skeletonTemplate(follow.templateId) : undefined;
+  // A template that evolves is planned by an art director and redrawn; only an exact one is laid out by code.
+  const skeleton = follow && !follow.evolve && skeletonPathFor(env) ? skeletonTemplate(follow.templateId) : undefined;
   const planned = skeleton && follow ? await planSkeletonCreative(request, follow, skeleton, count, context, env, () => onProgress?.({ stage: 'designing' })) : null;
   const followed = planned ?? (follow ? await planFollowCreative(request.prompt, follow, count, context, env, () => onProgress?.({ stage: 'designing' }), request.facts, request.course) : null);
   const designDoc = planned?.doc;

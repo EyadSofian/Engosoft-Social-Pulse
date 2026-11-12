@@ -116,7 +116,9 @@ const fullCreativeRequest=z.object({prompt:z.string().trim().min(5).max(2000),fo
  // The campaign the post belongs to: its slogan shapes the copy and its stamp is placed on the design.
  campaignId:z.string().uuid().optional(),
  // A design to follow: a library design or the user's own file; the post is made as the same design with new words and photos.
- followDesign:z.union([z.object({templateId:z.string().max(60),surface:z.enum(['light','blue']).optional()}),z.object({name:z.string().max(200),dataUrl:z.string().max(8_000_000).regex(/^data:image\/(png|jpeg|webp);base64,/)})]).optional(),
+ followDesign:z.union([z.object({templateId:z.string().max(60),surface:z.enum(['light','blue']).optional(),
+  // Photos the person uploaded on the template (an instructor's photo): the AI design uses them as they are.
+  photos:z.array(z.object({label:z.string().max(80),dataUrl:z.string().max(8_000_000).regex(/^data:image\/(png|jpeg|webp);base64,/)})).max(3).optional()}),z.object({name:z.string().max(200),dataUrl:z.string().max(8_000_000).regex(/^data:image\/(png|jpeg|webp);base64,/)})]).optional(),
  // Facts of a course picked on either screen (date, time, place, link): usable on the post, not required.
  facts:z.string().max(2000).optional(),
  // The course name typed or picked on either screen: it must show on the post exactly as written.

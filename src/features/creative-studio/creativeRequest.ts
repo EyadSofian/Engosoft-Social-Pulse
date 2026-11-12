@@ -16,7 +16,7 @@ export function courseFacts(pick: CoursePick): CourseFacts {
   return { course, facts, date, time, place };
 }
 
-export type FollowDesignInput = { templateId: string; surface?: string } | { name: string; dataUrl: string };
+export type FollowDesignInput = { templateId: string; surface?: string; photos?: { label: string; dataUrl: string }[] } | { name: string; dataUrl: string };
 
 export interface FullCreativeInput {
   prompt: string;

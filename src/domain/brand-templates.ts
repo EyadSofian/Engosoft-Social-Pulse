@@ -60,6 +60,11 @@ export interface BrandTemplate {
    * there instead of the official logo (see `brand-kits.ts`).
    */
   logo?: { kit: BrandKitId; place: { x: number; y: number; width: number; height: number } };
+  /**
+   * AI keeps this design exactly (a campaign's fixed look, like the 50/50 offer). Every other template is a starting
+   * point: AI plans a stronger post for the content and redraws it in the same brand world.
+   */
+  exact?: boolean;
 }
 
 const REF = (n: string) => `/brand-references/post-${n}.jpg`;
@@ -153,6 +158,7 @@ export const BRAND_TEMPLATES: BrandTemplate[] = [
     description: t('شعار الحملة في النص، عنوان بكلمة ملونة، شريط الدورة، والسعر الجديد بدل القديم على تذكرة. نفس شكل «عرض الخمسين خمسين» لأي دورة.', 'The campaign stamp in the middle, a headline with a coloured phrase, the course tape and the new price instead of the old one on a ticket. The «50/50 offer» look for any course.'),
     kind: 'course',
     references: { blue: REF('campaign-5050') },
+    exact: true,
     surfaces: ['blue'],
     // Measured on post-campaign-5050.jpg (1080×1350): the lockup is 205×67 px at 34,45, the file's native size.
     logo: { kit: 'engo-soft-old', place: { x: 0.03, y: 0.031, width: 0.193, height: 0.054 } },

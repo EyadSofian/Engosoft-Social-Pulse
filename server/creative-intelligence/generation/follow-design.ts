@@ -31,15 +31,53 @@ export interface FollowDesign {
   surface?: BrandSurface;
   /** The design's own logo kit (the 50/50 campaign's older lockup), placed instead of the official logo. */
   logo?: FollowArtwork & { kit?: BrandKitId };
+  /**
+   * A library design that is a starting point, not a copy (every template except an `exact` one): an art director
+   * plans a stronger post for the content and the image model redraws it in the same brand world.
+   */
+  evolve?: boolean;
+  /** Photos the person uploaded for the design (an instructor's photo), saved beside the run. */
+  photos?: FollowPhoto[];
 }
 
-export type FollowDesignInput = { templateId: string; surface?: BrandSurface } | { name: string; dataUrl: string };
+/** A photo the person gave for the post: what it is (the field's label) and the saved file. */
+export interface FollowPhoto { label: string; path: string }
+export interface FollowPhotoInput { label: string; dataUrl: string }
+
+export type FollowDesignInput = ({ templateId: string; surface?: BrandSurface } | { name: string; dataUrl: string }) & { photos?: FollowPhotoInput[] };
+
+/** The person's photos saved beside the run as JPEGs of at most 1536 px; ones that are not images are skipped. */
+export async function saveFollowPhotos(photos: FollowPhotoInput[] | undefined, requestId: string): Promise<FollowPhoto[]> {
+  const saved: FollowPhoto[] = [];
+  for (const [i, photo] of (photos ?? []).slice(0, 3).entries()) {
+    const match = /^data:image\/(png|jpeg|webp);base64,(.+)$/.exec(photo.dataUrl);
+    if (!match) continue;
+    const dir = mediaDir('creatives', requestId);
+    mkdirSync(dir, { recursive: true });
+    const path = resolve(dir, `photo-${i + 1}.jpg`);
+    try {
+      writeFileSync(path, await sharp(Buffer.from(match[2], 'base64')).rotate().flatten({ background: '#ffffff' }).resize({ width: 1536, height: 1536, fit: 'inside', withoutEnlargement: true }).jpeg({ quality: 92 }).toBuffer());
+      saved.push({ label: photo.label.slice(0, 80) || 'Photo', path });
+    } catch { /* not an image */ }
+  }
+  return saved;
+}
+
+/** The person's photos for the image model, in order (Image 2, 3…). */
+export const followPhotoImages = (design: FollowDesign) => (design.photos ?? []).filter((p) => existsSync(p.path)).map((p) => ({ data: readFileSync(p.path), mime: 'image/jpeg' as const, label: p.label }));
 
 /**
  * The library design's reference image, or the uploaded file saved beside the run as a JPEG of at most 1600 px
  * (the copywriter reads it too). Undefined when it is not valid.
  */
 export async function resolveFollowDesign(input: FollowDesignInput, requestId: string): Promise<FollowDesign | undefined> {
+  const design = await resolveDesign(input, requestId);
+  if (!design) return undefined;
+  const photos = await saveFollowPhotos(input.photos, requestId);
+  return photos.length ? { ...design, photos } : design;
+}
+
+async function resolveDesign(input: FollowDesignInput, requestId: string): Promise<FollowDesign | undefined> {
   if ('templateId' in input) {
     const template = brandTemplate(input.templateId);
     const ref = template && (template.references[input.surface ?? 'blue'] ?? template.references.blue ?? template.references.light);
@@ -53,7 +91,7 @@ export async function resolveFollowDesign(input: FollowDesignInput, requestId: s
     const blocks = template.inputs.filter((input) => input.type !== 'photo').map((input) => `${input.label.en}: «${input.sample.ar}»`).join('; ');
     const logoFile = template.logo && kitFilePath(template.logo.kit);
     const logo = template.logo && logoFile && existsSync(logoFile) ? { key: 'logo', path: logoFile, place: template.logo.place, says: 'ENGO SOFT', kit: template.logo.kit } : undefined;
-    return existsSync(path) ? { name: template.name.en, path, surface: input.surface ?? template.surfaces[template.surfaces.length - 1], structure: `${template.brief} Its text inputs, with the words they hold in the image: ${blocks}.`, templateId: template.id, ...(artworks.length ? { artworks } : {}), ...(logo ? { logo } : {}) } : undefined;
+    return existsSync(path) ? { name: template.name.en, path, surface: input.surface ?? template.surfaces[template.surfaces.length - 1], structure: `${template.brief} Its text inputs, with the words they hold in the image: ${blocks}.`, templateId: template.id, ...(artworks.length ? { artworks } : {}), ...(logo ? { logo } : {}), ...(template.exact ? {} : { evolve: true }) } : undefined;
   }
   const match = /^data:image\/(png|jpeg|webp);base64,(.+)$/.exec(input.dataUrl);
   if (!match) return undefined;
@@ -180,8 +218,19 @@ type Box = { x: number; y: number; width: number; height: number };
  * When no calm area is found the spot is left as drawn.
  */
 export async function clearArtworkSpots(image: Buffer, artworks: FollowArtwork[]): Promise<Buffer> {
+  return clearBoxes(image, artworks.map((art) => {
+    const gx = art.place.width * 0.12, gy = art.place.height * 0.12;
+    return { x: art.place.x - gx, y: art.place.y - gy, width: art.place.width + 2 * gx, height: art.place.height + 2 * gy };
+  }));
+}
+
+/**
+ * Areas (fractions of the image from the top-left) covered with clean background from the calmest free areas of
+ * the image, blended at the edges: a logo or artwork the image model drew where a file goes afterwards.
+ */
+export async function clearBoxes(image: Buffer, boxes: Box[]): Promise<Buffer> {
   const { width: W = 0, height: H = 0 } = await sharp(image).metadata();
-  if (!W || !H || !artworks.length) return image;
+  if (!W || !H || !boxes.length) return image;
   const grey = await sharp(image).greyscale().raw().toBuffer();
   const spread = (b: Box) => {
     let sum = 0, sq = 0, n = 0;
@@ -190,11 +239,10 @@ export async function clearArtworkSpots(image: Buffer, artworks: FollowArtwork[]
     return Math.sqrt(Math.max(0, sq / n - mean * mean));
   };
   const overlaps = (a: Box, b: Box) => a.x < b.x + b.width && b.x < a.x + a.width && a.y < b.y + b.height && b.y < a.y + a.height;
-  const spots = artworks.map((art) => {
-    const gx = art.place.width * 0.12, gy = art.place.height * 0.12;
-    const x = Math.max(0, Math.round((art.place.x - gx) * W)), y = Math.max(0, Math.round((art.place.y - gy) * H));
-    return { x, y, width: Math.min(W - x, Math.round((art.place.width + 2 * gx) * W)), height: Math.min(H - y, Math.round((art.place.height + 2 * gy) * H)) };
-  });
+  const spots = boxes.map((box) => {
+    const x = Math.max(0, Math.round(box.x * W)), y = Math.max(0, Math.round(box.y * H));
+    return { x, y, width: Math.max(4, Math.min(W - x, Math.round((box.x + box.width) * W) - x)), height: Math.max(4, Math.min(H - y, Math.round((box.y + box.height) * H) - y)) };
+  }).filter((b) => b.width > 3 && b.height > 3);
   const meanAt = (b: Box) => { let sum = 0, n = 0; for (let y = b.y; y < b.y + b.height; y += 3) for (let x = b.x; x < b.x + b.width; x += 3) { sum += grey[y * W + x]; n++; } return sum / n; };
   // The calmest place in the image for a piece this size, clear of every spot and close in tone to the spot's surroundings.
   const calmest = (w: number, h: number, tone: number) => {

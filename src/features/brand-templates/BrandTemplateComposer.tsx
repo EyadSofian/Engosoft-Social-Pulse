@@ -194,7 +194,13 @@ export function BrandTemplateComposer({ template, initialPrompt = '', onClose }:
     setBusy('ai'); setDesignError('');
     try {
       const format = mainFormat(platforms, chosenIds);
-      const body = await api<{ jobId: string; requestId?: string }>('/api/ai/full-creative', { body: fullCreativeBody({ prompt: request, format, directions: 1, followDesign: { templateId: template.id, surface }, facts, course: asksCourse ? course : undefined }) });
+      // The person's photos (an instructor's photo) go with the request: the AI design uses them as they are.
+      const photos = (await Promise.all(template.inputs.filter((i) => i.type === 'photo' && i.photo?.kind !== 'artwork' && values[i.key]).map(async (i) => {
+        const src = values[i.key];
+        const dataUrl = src.startsWith('data:') ? src : await fetch(src).then((r) => (r.ok ? r.blob() : Promise.reject(new Error('photo')))).then(asDataUrl).catch(() => '');
+        return /^data:image\/(png|jpeg|webp);base64,/.test(dataUrl) ? { label: i.label.en, dataUrl } : null;
+      }))).filter((p): p is { label: string; dataUrl: string } => p !== null);
+      const body = await api<{ jobId: string; requestId?: string }>('/api/ai/full-creative', { body: fullCreativeBody({ prompt: request, format, directions: 1, followDesign: { templateId: template.id, surface, ...(photos.length ? { photos } : {}) }, facts, course: asksCourse ? course : undefined }) });
       setActiveCreative({ jobId: body.jobId, requestId: body.requestId ?? '', prompt: request, platforms, sizes: chosenIds, format, startedAt: new Date().toISOString(), status: 'running' });
       setAiRun({ jobId: body.jobId, requestId: body.requestId ?? '', prompt: request });
     } catch (error) { setDesignError(errorMessage(error, t('Could not start the design.', 'تعذّر بدء التصميم.'))); }
@@ -334,7 +340,9 @@ export function BrandTemplateComposer({ template, initialPrompt = '', onClose }:
         {lastRequest && !designError && <p className="u-xs u-muted brand-ai__facts" dir="auto">{t('Last request', 'آخر طلب')}: {lastRequest}</p>}
         {coursePanel && <div className="creative-home__source"><CoursePicker autoFocus onPick={pickCourse} /></div>}
         {facts && <p className="u-xs u-muted brand-ai__facts" dir="auto">{facts.split('\n').join(' · ')}</p>}
-        {canDesign && <p className="u-xs u-muted">{t('AI design: it plans the words and the composition and draws a new post in this look, with every size made for its shape. It takes a few minutes. Quick fill only puts the words into the template\'s fixed places.', 'التصميم بالذكاء الاصطناعي بيفكّر في الكلام والتكوين ويرسم بوست جديد على نفس الشكل، وكل مقاس بيتعمل لشكله، وبياخد كام دقيقة. الملء السريع بيحط الكلام في أماكن القالب الثابتة بس.')}</p>}
+        {canDesign && <p className="u-xs u-muted">{template.exact
+          ? t('AI design: it redraws this exact design with your words, and every size is made for its shape. It takes a few minutes. Quick fill only puts the words into the template\'s fixed places.', 'التصميم بالذكاء الاصطناعي بيرسم نفس التصميم ده بالظبط بكلامك، وكل مقاس بيتعمل لشكله، وبياخد كام دقيقة. الملء السريع بيحط الكلام في أماكن القالب الثابتة بس.')
+          : t('AI design: an art director develops this template for your words (what leads, the layout, the visual) and draws a stronger post in the same brand look. Your words and photos stay exactly as they are. It takes a few minutes. Quick fill only puts the words into the template\'s fixed places.', 'التصميم بالذكاء الاصطناعي: مخرج فني بيطوّر القالب لكلامك (إيه اللي يتبرز، الترتيب، الفكرة البصرية) ويرسم بوست أقوى بنفس روح البراند. كلامك وصورك بيفضلوا زي ما هم بالظبط. بياخد كام دقيقة. الملء السريع بيحط الكلام في أماكن القالب الثابتة بس.')}</p>}
         <p className="u-xs u-muted">{t('Names, dates and prices are taken only from what you write or the course, never made up.', 'الأسماء والمواعيد والأسعار بتتاخد من كلامك أو من الدورة بس، عمرها ما تتألف.')}</p>
       </div>
       {photoInputs.length > 0 && <div className="brand-form u-stack">{photoInputs.map(field)}</div>}
