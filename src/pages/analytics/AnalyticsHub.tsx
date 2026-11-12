@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { useRef, useState } from 'react';
 import { ArrowDownRight, ArrowUpRight, FileSpreadsheet, Printer, RefreshCw } from 'lucide-react';
 import { useQueryState } from '../../app/router/router';
 import { useLiveData } from '../../app/providers/LiveDataProvider';
@@ -18,7 +18,9 @@ import { PLATFORMS } from '../../lib/platforms';
 import { PageHeader } from '../../shell/Header';
 import { usePageMeta } from '../../shell/ShellContext';
 import type { Platform } from '../../types';
-import { exportWorkbook, KPI_LABEL, printReport } from './export';
+import { exportWorkbook, KPI_LABEL } from './export';
+import { printDetailedReport } from './report';
+import { loadPictures, type PostPicture } from './thumbs';
 import { useAnalytics, type AnalyticsModel, type Kpi } from './model';
 import { PostsSection } from './PostsSection';
 
@@ -44,6 +46,26 @@ export function AnalyticsHub() {
 
   const setPlatform = (value: Platform | 'all') => setQuery({ platform: value === 'all' ? null : value, account: null });
 
+  const pictures = useRef(new Map<string, PostPicture>());
+  const [preparing, setPreparing] = useState<{ kind: 'excel' | 'pdf'; done: number; total: number } | null>(null);
+
+  /** Fetches the pictures not fetched yet, keeps them for the next export, then writes the file. */
+  const exportWith = async (kind: 'excel' | 'pdf') => {
+    const missing = model.posts.filter((post) => !pictures.current.has(post.key));
+    setPreparing({ kind, done: 0, total: 0 });
+    try {
+      const loaded = await loadPictures(missing, (done, total) => setPreparing({ kind, done, total }));
+      for (const [key, picture] of loaded) pictures.current.set(key, picture);
+      const scoped = new Map(model.posts.flatMap((post) => (pictures.current.has(post.key) ? [[post.key, pictures.current.get(post.key)!] as const] : [])));
+      if (kind === 'excel') exportWorkbook(model, i18n, scoped);
+      else printDetailedReport(model, i18n, scoped);
+    } finally {
+      setPreparing(null);
+    }
+  };
+  const progress = (kind: 'excel' | 'pdf') =>
+    preparing?.kind === kind && preparing.total ? t(`Images ${num(preparing.done)}/${num(preparing.total)}`, `الصور ${num(preparing.done)}/${num(preparing.total)}`) : null;
+
   const sync = async () => {
     setSyncing(true);
     try {
@@ -60,11 +82,11 @@ export function AnalyticsHub() {
         description={t('How the published posts performed on the connected accounts.', 'أداء المنشورات على الحسابات المربوطة.')}
         actions={
           <>
-            <Button icon={<FileSpreadsheet size={15} />} onClick={() => exportWorkbook(model, i18n)} disabled={!model.posts.length}>
-              {t('Export Excel', 'تصدير Excel')}
+            <Button icon={<FileSpreadsheet size={15} />} onClick={() => void exportWith('excel')} busy={preparing?.kind === 'excel'} disabled={!model.posts.length || preparing != null}>
+              {progress('excel') ?? t('Excel with images', 'Excel بالصور')}
             </Button>
-            <Button icon={<Printer size={15} />} onClick={() => printReport(model, i18n)} disabled={!model.posts.length}>
-              {t('PDF', 'PDF')}
+            <Button variant="primary" icon={<Printer size={15} />} onClick={() => void exportWith('pdf')} busy={preparing?.kind === 'pdf'} disabled={!model.posts.length || preparing != null}>
+              {progress('pdf') ?? t('Detailed PDF report', 'تقرير PDF مفصّل')}
             </Button>
           </>
         }

@@ -37,6 +37,7 @@ import { registerSvgTemplateRoutes } from './svg-templates.js';
 import { campaignIdentity, registerCampaignRoutes } from './campaigns.js';
 import { registerScheduleRoutes } from './course-schedule.js';
 import { registerCourseProfileRoutes, seedCourseCatalog, syncFromWebsite } from './course-profiles.js';
+import { registerPostThumbnailRoutes } from './post-thumbnails.js';
 import { seedBuiltinTemplates } from './builtin-templates.js';
 import { recoverReferenceJobs, registerReferenceDesignRoutes } from './reference-designs.js';
 import { registerStorageRoutes } from './storage-routes.js';
@@ -71,6 +72,7 @@ registerSvgTemplateRoutes(app);
 registerReferenceDesignRoutes(app);
 registerBrandTemplateRoutes(app);
 registerCourseProfileRoutes(app);
+registerPostThumbnailRoutes(app);
 app.get('/api/odoo/schedule',async(_req,res)=>{
  const result=await readOdooSchedule();
  res.setHeader('Cache-Control','no-store');
