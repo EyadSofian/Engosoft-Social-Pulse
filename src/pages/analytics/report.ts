@@ -1,15 +1,15 @@
 import type { I18n } from '../../i18n/I18nProvider';
 import { channelName } from '../../i18n/labels';
 import { dateFromKey, dayKeyOf } from '../../lib/format';
-import type { GroupRow, TrendPoint } from '../../lib/analytics';
+import type { TrendPoint } from '../../lib/analytics';
 import type { Platform, Post } from '../../types';
-import { contentTypeLabel, KPI_LABEL, POST_METRICS, scopeLine } from './export';
+import { KPI_LABEL, reportNotes, reportTopPosts, scopeLine } from './export';
 import type { AnalyticsModel, Kpi } from './model';
 import type { PostPicture } from './thumbs';
 
 /**
- * The detailed report: an overview page (headline numbers, activity, platforms), then one
- * card per post with its picture and every number the platform returned for it. The browser
+ * Period-wide analysis (headline numbers, activity, platforms), then brief highlights
+ * for the top five posts, ranked by interactions. The browser
  * prints it, because it is the only engine here that shapes Arabic correctly; "Save as PDF"
  * in the print dialog writes the file.
  */
@@ -29,7 +29,7 @@ const esc = (value: string) => value.replace(/[&<>"']/g, (char) => ({ '&': '&amp
 /** Only links that open a page; anything else is shown as text. */
 const safeHref = (value: string) => (/^https?:\/\//i.test(value) ? value : '');
 
-const CAPTION_LIMIT = 700;
+const CAPTION_LIMIT = 160;
 
 function kpiTile(kpi: Kpi, i18n: I18n) {
   const { t, tx, num, compact, pct } = i18n;
@@ -91,46 +91,27 @@ function platformRows(model: AnalyticsModel, i18n: I18n) {
     .join('');
 }
 
-/** How this post compares with the average post of its platform in the same period. */
-function versusAverage(post: Post, row: GroupRow | undefined, i18n: I18n) {
-  const { t, pct } = i18n;
-  if (!row || row.count < 2) return '';
-  const parts: string[] = [];
-  const add = (label: string, value: number | null | undefined, average: number | null) => {
-    if (value == null || average == null || average <= 0) return;
-    const diff = Math.round(((value - average) / average) * 100);
-    const cls = Math.abs(diff) < 1 ? '' : diff > 0 ? 'up' : 'down';
-    parts.push(`<span class="${cls}">${esc(label)} <bdi dir="ltr">${diff > 0 ? '+' : diff < 0 ? '−' : ''}${esc(pct(Math.abs(diff), 0))}</bdi></span>`);
-  };
-  add(t('Reach', 'الوصول'), post.metrics.reach, row.reachCount ? row.reach / row.reachCount : null);
-  add(t('Views', 'المشاهدات'), post.metrics.views, row.viewsCount ? row.views / row.viewsCount : null);
-  add(t('Interactions', 'التفاعلات'), post.measured ? post.interactions : null, row.average);
-  if (!parts.length) return '';
-  return `<p class="vs"><b>${esc(t(`Against the average ${channelName[post.platform]} post in this period:`, `مقارنةً بمتوسط منشور ${channelName[post.platform]} في الفترة:`))}</b> ${parts.join(' · ')}</p>`;
-}
-
-function postCard(post: Post, index: number, picture: PostPicture | undefined, row: GroupRow | undefined, i18n: I18n) {
-  const { t, tx, num, pct, date } = i18n;
+function postCard(post: Post, index: number, picture: PostPicture | undefined, i18n: I18n) {
+  const { t, num, pct, date } = i18n;
   const color = COLOR[post.platform];
   const image = picture
     ? `<img src="${picture.dataUrl}" alt="">`
     : `<span class="ph" style="color:${color}">${esc(channelName[post.platform])}<small>${esc(t('No image available', 'الصورة مش متاحة'))}</small></span>`;
   const caption = post.title ? (post.title.length > CAPTION_LIMIT ? `${post.title.slice(0, CAPTION_LIMIT)}…` : post.title) : t('(no caption)', '(بدون نص)');
   const figures = [
-    ...POST_METRICS.filter((metric) => post.metrics[metric.key] != null).map((metric) => ({ label: tx(metric.label), value: num(post.metrics[metric.key]), strong: false })),
+    { label: t('Reach', 'الوصول'), value: num(post.metrics.reach), strong: false },
+    { label: t('Views', 'المشاهدات'), value: num(post.metrics.views), strong: false },
     { label: t('Interactions', 'التفاعلات'), value: post.measured ? num(post.interactions) : '—', strong: true },
     { label: t('Engagement rate', 'معدل التفاعل'), value: pct(post.engagementRate, 2), strong: true },
   ];
-  const type = post.contentType ? ` · ${esc(contentTypeLabel(post.contentType, i18n))}` : '';
   const href = safeHref(post.permalink);
   return `<article class="post">
     <div class="post__img">${image}</div>
     <div class="post__body">
-      <div class="post__meta"><span class="no">${esc(num(index + 1))}</span><span class="chip" style="background:${color}">${esc(channelName[post.platform])}</span><span>${esc(post.accountName || '—')} · ${esc(date(post.ts, 'dateTime'))}${type}</span></div>
+      <div class="post__meta"><span class="no">${esc(num(index + 1))}</span><span class="chip" style="background:${color}">${esc(channelName[post.platform])}</span><span>${esc(post.accountName || '—')} · ${esc(date(post.ts, 'dateTime'))}</span></div>
       <p class="post__caption" dir="auto">${esc(caption)}</p>
       <div class="figs">${figures.map((figure) => `<div class="fig${figure.strong ? ' fig--strong' : ''}"><b>${esc(figure.value)}</b><span>${esc(figure.label)}</span></div>`).join('')}</div>
-      ${versusAverage(post, row, i18n)}
-      ${href ? `<a class="link" href="${esc(href)}" dir="ltr">${esc(href.length > 90 ? `${href.slice(0, 90)}…` : href)}</a>` : ''}
+      ${href ? `<a class="link" href="${esc(href)}" dir="ltr">${esc(t('Open post', 'افتح المنشور'))}</a>` : ''}
     </div>
   </article>`;
 }
@@ -166,8 +147,8 @@ const STYLE = (lang: string) => `
   .share { display: inline-block; width: 46px; height: 5px; background: #eef1f7; border-radius: 3px; margin-inline-start: 6px; vertical-align: middle; overflow: hidden; }
   .share i { display: block; height: 100%; }
   .posts-head { break-before: page; }
-  .post { display: grid; grid-template-columns: 44mm 1fr; gap: 12px; border: 1px solid #e3e8f2; border-radius: 10px; padding: 10px; margin-bottom: 9px; break-inside: avoid; }
-  .post__img { width: 44mm; height: 52mm; border-radius: 7px; background: #f3f5fa; display: flex; align-items: center; justify-content: center; overflow: hidden; }
+  .post { display: grid; grid-template-columns: 28mm 1fr; gap: 12px; border: 1px solid #e3e8f2; border-radius: 10px; padding: 10px; margin-bottom: 9px; break-inside: avoid; }
+  .post__img { width: 28mm; height: 28mm; border-radius: 7px; background: #f3f5fa; display: flex; align-items: center; justify-content: center; overflow: hidden; }
   .post__img img { width: 100%; height: 100%; object-fit: contain; }
   .ph { font-weight: 700; font-size: 12px; display: flex; flex-direction: column; align-items: center; gap: 2px; text-align: center; }
   .ph small { color: #6b7280; font-weight: 400; font-size: 9px; }
@@ -175,16 +156,13 @@ const STYLE = (lang: string) => `
   .post__meta { display: flex; align-items: center; gap: 6px; flex-wrap: wrap; color: #5a6480; font-size: 9.5px; }
   .no { background: #0a1b3d; color: #fff; border-radius: 4px; padding: 0 6px; font-weight: 700; font-variant-numeric: tabular-nums; }
   .chip { color: #fff; border-radius: 999px; padding: 0 8px; font-weight: 700; }
-  .post__caption { margin: 0; white-space: pre-line; overflow-wrap: anywhere; font-size: 10px; max-height: 26mm; overflow: hidden; }
-  .figs { display: grid; grid-template-columns: repeat(5, 1fr); gap: 5px; }
+  .post__caption { margin: 0; white-space: pre-line; overflow-wrap: anywhere; font-size: 10px; max-height: 13mm; overflow: hidden; }
+  .figs { display: grid; grid-template-columns: repeat(4, 1fr); gap: 5px; }
   .fig { background: #f6f8fc; border-radius: 6px; padding: 4px 6px; display: flex; flex-direction: column; }
   .fig b { font-size: 12.5px; font-variant-numeric: tabular-nums; }
   .fig span { color: #6b7280; font-size: 8.5px; }
   .fig--strong { background: #e8eeff; }
   .fig--strong b { color: #0035c4; }
-  .vs { margin: 0; font-size: 9px; color: #5a6480; }
-  .vs b { color: #0b1324; font-weight: 600; }
-  .vs span { font-weight: 700; }
   .link { font-size: 8.5px; color: #0046ff; text-decoration: none; overflow-wrap: anywhere; }
   .foot { color: #6b7280; font-size: 9px; margin-top: 4px; }
 `;
@@ -192,7 +170,7 @@ const STYLE = (lang: string) => `
 export function reportHtml(model: AnalyticsModel, i18n: I18n, pictures: Map<string, PostPicture>, generatedAt: number): string {
   const { t, dir, lang, num, date } = i18n;
   const title = t('Analytics report', 'تقرير التحليلات');
-  const byPlatform = new Map(model.platforms.map((row) => [row.platform, row]));
+  const top = reportTopPosts(model);
   const totalInteractions = model.trend.reduce((sum, point) => sum + point.interactions, 0);
   return `<!doctype html><html lang="${lang}" dir="${dir}"><head><meta charset="utf-8"><title>${esc(title)}</title>
   <link rel="preconnect" href="https://fonts.googleapis.com"><link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
@@ -211,8 +189,10 @@ export function reportHtml(model: AnalyticsModel, i18n: I18n, pictures: Map<stri
     <th>${esc(t('Platform', 'المنصة'))}</th><th class="n">${esc(t('Posts', 'المنشورات'))}</th><th class="n">${esc(t('Reach', 'الوصول'))}</th><th class="n">${esc(t('Views', 'المشاهدات'))}</th><th class="n">${esc(t('Interactions', 'التفاعلات'))}</th><th class="n">${esc(t('Interactions per post', 'تفاعل لكل منشور'))}</th><th class="n">${esc(t('Engagement rate', 'معدل التفاعل'))}</th>
   </tr></thead><tbody>${platformRows(model, i18n)}</tbody></table></section>
 
-  <section class="posts-head"><h2>${esc(t(`Every post (${num(model.posts.length)})`, `كل المنشورات (${num(model.posts.length)})`))}</h2>
-  ${model.posts.map((post, index) => postCard(post, index, pictures.get(post.key), byPlatform.get(post.platform), i18n)).join('')}
+  <section><h2>${esc(t('About these numbers', 'عن الأرقام دي'))}</h2>${reportNotes(model, i18n).map((note) => `<p class="foot">${esc(note)}</p>`).join('')}</section>
+
+  <section class="posts-head"><h2>${esc(t(`Top posts by interactions (${num(top.length)})`, `أفضل المنشورات حسب التفاعلات (${num(top.length)})`))}</h2>
+  ${top.length ? top.map((post, index) => postCard(post, index, pictures.get(post.key), i18n)).join('') : `<p class="foot">${esc(t('No interaction data is available to rank posts in this period.', 'مفيش بيانات تفاعل متاحة لترتيب المنشورات في الفترة دي.'))}</p>`}
   </section></body></html>`;
 }
 

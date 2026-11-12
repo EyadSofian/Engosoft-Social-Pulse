@@ -2,7 +2,7 @@ import { download, workbook, type Sheet, type SheetImage } from '../../lib/expor
 import { channelName } from '../../i18n/labels';
 import type { I18n } from '../../i18n/I18nProvider';
 import { dayKeyOf, inZone } from '../../lib/format';
-import type { Metrics } from '../../types';
+import { topPosts } from '../../lib/analytics';
 import type { AnalyticsModel, KpiKey } from './model';
 import type { PostPicture } from './thumbs';
 
@@ -18,6 +18,20 @@ export const KPI_LABEL: Record<KpiKey, Text> = {
 };
 
 export const round = (value: number | null | undefined, digits = 0) => (value == null || !Number.isFinite(value) ? null : Math.round(value * 10 ** digits) / 10 ** digits);
+
+export const REPORT_TOP_LIMIT = 5;
+export const reportTopPosts = (model: AnalyticsModel) => topPosts(model.posts, REPORT_TOP_LIMIT);
+
+export function reportNotes(model: AnalyticsModel, i18n: I18n): string[] {
+  const { t, num, pct } = i18n;
+  return [
+    t(`Interaction metrics are available for ${num(model.summary.measured)} of ${num(model.summary.count)} posts (${pct(model.summary.coverage)}).`, `بيانات التفاعل متاحة لـ ${num(model.summary.measured)} من ${num(model.summary.count)} منشور (${pct(model.summary.coverage)}).`),
+    t('Top posts are ranked by total interactions, newest first when tied. Posts without interaction data are excluded.', 'أفضل المنشورات مرتبة بإجمالي التفاعلات، والأحدث أولًا عند التعادل. المنشورات بدون بيانات تفاعل لا تدخل الترتيب.'),
+    t('Reach is summed across posts; it does not represent unique people across the whole period.', 'الوصول مجموع وصول المنشورات؛ لا يمثل عدد أشخاص فريدين خلال الفترة كلها.'),
+    t('The engagement rate is weighted by reach, falling back to views or impressions when reach is unavailable. Its change is in percentage points.', 'معدل التفاعل موزون بالوصول، أو المشاهدات ثم مرات الظهور عند غياب الوصول. تغييره بالنقاط المئوية.'),
+    t('An empty cell or a dash means the platform did not return that number.', 'الخلية الفاضية أو الشرطة معناها إن المنصة ما رجعتش الرقم ده.'),
+  ];
+}
 
 /** "Facebook · Engosoft · 2026-10-13 → 2026-11-11", the same line on every sheet and the PDF. */
 export function scopeLine(model: AnalyticsModel, i18n: I18n) {
@@ -43,10 +57,7 @@ export function summarySheet(model: AnalyticsModel, i18n: I18n): Sheet {
       const digits = kpi.key === 'rate' ? 2 : 0;
       return [kpi.key === 'rate' ? `${tx(KPI_LABEL.rate)} %` : tx(KPI_LABEL[kpi.key]), round(kpi.value, digits), round(kpi.previous, digits), round(kpi.change, 1)];
     }),
-    notes: [
-      t('The engagement rate is interactions ÷ reach. Its change is in percentage points.', 'معدل التفاعل = التفاعلات ÷ الوصول، وتغييره بالنقاط المئوية.'),
-      t('An empty cell means the platform did not return that number.', 'الخلية الفاضية معناها إن المنصة ما رجعتش الرقم ده.'),
-    ],
+    notes: reportNotes(model, i18n),
   };
 }
 
@@ -62,6 +73,7 @@ export function platformsSheet(model: AnalyticsModel, i18n: I18n): Sheet {
       { header: t('Reach', 'الوصول'), width: 14, format: 'int' },
       { header: t('Views', 'المشاهدات'), width: 14, format: 'int' },
       { header: t('Interactions', 'التفاعلات'), width: 14, format: 'int' },
+      { header: t('Interactions per post', 'تفاعل لكل منشور'), width: 18, format: 'decimal' },
       { header: t('Engagement rate %', 'معدل التفاعل %'), width: 16, format: 'percent' },
     ],
     rows: model.platforms.map((row) => [
@@ -70,88 +82,58 @@ export function platformsSheet(model: AnalyticsModel, i18n: I18n): Sheet {
       row.reachCount ? row.reach : null,
       row.viewsCount ? row.views : null,
       row.measured ? row.interactions : null,
+      round(row.average, 1),
       round(row.rate, 2),
     ]),
   };
 }
 
-const CONTENT_TYPE: Record<string, Text> = {
-  reel: { en: 'Reel', ar: 'ريل' },
-  reels: { en: 'Reel', ar: 'ريل' },
-  video: { en: 'Video', ar: 'فيديو' },
-  short: { en: 'Short', ar: 'شورت' },
-  image: { en: 'Image', ar: 'صورة' },
-  photo: { en: 'Image', ar: 'صورة' },
-  carousel: { en: 'Carousel', ar: 'كاروسيل' },
-  album: { en: 'Carousel', ar: 'كاروسيل' },
-  carousel_album: { en: 'Carousel', ar: 'كاروسيل' },
-  story: { en: 'Story', ar: 'ستوري' },
-  text: { en: 'Text', ar: 'نص' },
-  status: { en: 'Text', ar: 'نص' },
-  link: { en: 'Link', ar: 'رابط' },
-  article: { en: 'Article', ar: 'مقال' },
-  post: { en: 'Post', ar: 'منشور' },
-};
-
-export const contentTypeLabel = (value: string, i18n: I18n) => {
-  const key = value.trim().toLowerCase();
-  return CONTENT_TYPE[key] ? i18n.tx(CONTENT_TYPE[key]) : value;
-};
-
-/** Every number a platform can return for one post, in the order the report shows them. */
-export const POST_METRICS: { key: keyof Metrics; label: Text }[] = [
-  { key: 'reach', label: { en: 'Reach', ar: 'الوصول' } },
-  { key: 'views', label: { en: 'Views', ar: 'المشاهدات' } },
-  { key: 'impressions', label: { en: 'Impressions', ar: 'مرات الظهور' } },
-  { key: 'likes', label: { en: 'Likes', ar: 'إعجابات' } },
-  { key: 'comments', label: { en: 'Comments', ar: 'تعليقات' } },
-  { key: 'shares', label: { en: 'Shares', ar: 'مشاركات' } },
-  { key: 'saves', label: { en: 'Saves', ar: 'حفظ' } },
-  { key: 'clicks', label: { en: 'Clicks', ar: 'نقرات' } },
-];
-
 const IMAGE_COLUMN = 0;
 
-function postsSheet(model: AnalyticsModel, i18n: I18n, pictures?: Map<string, PostPicture>): Sheet {
-  const { t, tx } = i18n;
+function topPostsSheet(model: AnalyticsModel, i18n: I18n, pictures?: Map<string, PostPicture>): Sheet {
+  const { t } = i18n;
+  const posts = reportTopPosts(model);
   const withImages = pictures != null;
   const images: SheetImage[] = [];
   if (pictures)
-    model.posts.forEach((post, row) => {
+    posts.forEach((post, row) => {
       const picture = pictures.get(post.key);
       if (picture) images.push({ row, column: IMAGE_COLUMN, ...picture.small });
     });
   const lead = withImages ? [{ header: t('Image', 'الصورة'), width: 16 }] : [];
   return {
-    name: t('Posts', 'المنشورات'),
-    title: t('Every post in the period', 'كل منشورات الفترة'),
+    name: t('Top posts', 'أفضل المنشورات'),
+    title: t(`Top ${REPORT_TOP_LIMIT} posts by interactions`, `أفضل ${REPORT_TOP_LIMIT} منشورات حسب التفاعلات`),
     subtitle: scopeLine(model, i18n),
     columns: [
       ...lead,
+      { header: t('Rank', 'الترتيب'), width: 10, format: 'int' },
       { header: t('Published', 'تاريخ النشر'), width: 18 },
       { header: t('Platform', 'المنصة'), width: 13 },
       { header: t('Account', 'الحساب'), width: 22 },
-      { header: t('Type', 'النوع'), width: 11 },
       { header: t('Post', 'المنشور'), width: 50 },
-      ...POST_METRICS.map((metric) => ({ header: tx(metric.label), width: 12, format: 'int' as const })),
+      { header: t('Reach', 'الوصول'), width: 14, format: 'int' },
+      { header: t('Views', 'المشاهدات'), width: 14, format: 'int' },
       { header: t('Interactions', 'التفاعلات'), width: 13, format: 'int' },
       { header: t('Engagement rate %', 'معدل التفاعل %'), width: 16, format: 'percent' },
       { header: t('Link', 'الرابط'), width: 44 },
     ],
-    rows: model.posts.map((post) => [
+    rows: posts.map((post, index) => [
       ...(withImages ? [pictures?.has(post.key) ? null : t('No image', 'مفيش صورة')] : []),
+      index + 1,
       inZone(post.ts).toFormat('yyyy-LL-dd HH:mm'),
       channelName[post.platform],
       post.accountName,
-      contentTypeLabel(post.contentType, i18n),
-      post.title,
-      ...POST_METRICS.map((metric) => post.metrics[metric.key]),
+      post.title.length > 160 ? `${post.title.slice(0, 160)}…` : post.title,
+      post.metrics.reach,
+      post.metrics.views,
       post.measured ? post.interactions : null,
       round(post.engagementRate, 2),
       post.permalink,
     ]),
     rowHeight: withImages ? 84 : undefined,
     images: withImages ? images : undefined,
+    notes: posts.length ? [reportNotes(model, i18n)[1]] : [t('No interaction data is available to rank posts in this period.', 'مفيش بيانات تفاعل متاحة لترتيب المنشورات في الفترة دي.')],
   };
 }
 
@@ -170,12 +152,12 @@ function activitySheet(model: AnalyticsModel, i18n: I18n): Sheet {
   };
 }
 
-const buildSheets = (model: AnalyticsModel, i18n: I18n, pictures?: Map<string, PostPicture>): Sheet[] => [summarySheet(model, i18n), platformsSheet(model, i18n), postsSheet(model, i18n, pictures), activitySheet(model, i18n)];
+export const buildSheets = (model: AnalyticsModel, i18n: I18n, pictures?: Map<string, PostPicture>): Sheet[] => [summarySheet(model, i18n), platformsSheet(model, i18n), activitySheet(model, i18n), topPostsSheet(model, i18n, pictures)];
 
 const fileName = (model: AnalyticsModel, extension: string) =>
   `analytics-${model.scope.platform === 'all' ? 'all' : model.scope.platform}-${model.scope.period}d-${dayKeyOf(model.todayNum)}.${extension}`;
 
-/** With pictures, the posts sheet starts with each post's image in its row. */
+/** Period-wide analysis, with pictures and a brief summary for only the top posts. */
 export function exportWorkbook(model: AnalyticsModel, i18n: I18n, pictures?: Map<string, PostPicture>) {
   download(workbook(buildSheets(model, i18n, pictures)), fileName(model, 'xlsx'));
 }

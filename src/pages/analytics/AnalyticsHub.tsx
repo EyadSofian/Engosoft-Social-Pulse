@@ -18,7 +18,7 @@ import { PLATFORMS } from '../../lib/platforms';
 import { PageHeader } from '../../shell/Header';
 import { usePageMeta } from '../../shell/ShellContext';
 import type { Platform } from '../../types';
-import { exportWorkbook, KPI_LABEL } from './export';
+import { exportWorkbook, KPI_LABEL, reportTopPosts } from './export';
 import { printDetailedReport } from './report';
 import { loadPictures, type PostPicture } from './thumbs';
 import { useAnalytics, type AnalyticsModel, type Kpi } from './model';
@@ -28,7 +28,7 @@ const PERIOD_VALUES = PERIODS.map((period) => String(period.value));
 
 /**
  * Analytics on one page: pick a period and a platform, read five numbers, see the activity,
- * compare platforms and go through every post. What is on screen is what Excel and the PDF get.
+ * compare platforms and go through every post. Exports summarize the whole period and highlight the top posts.
  */
 export function AnalyticsHub() {
   const i18n = useI18n();
@@ -51,12 +51,13 @@ export function AnalyticsHub() {
 
   /** Fetches the pictures not fetched yet, keeps them for the next export, then writes the file. */
   const exportWith = async (kind: 'excel' | 'pdf') => {
-    const missing = model.posts.filter((post) => !pictures.current.has(post.key));
+    const top = reportTopPosts(model);
+    const missing = top.filter((post) => !pictures.current.has(post.key));
     setPreparing({ kind, done: 0, total: 0 });
     try {
       const loaded = await loadPictures(missing, (done, total) => setPreparing({ kind, done, total }));
       for (const [key, picture] of loaded) pictures.current.set(key, picture);
-      const scoped = new Map(model.posts.flatMap((post) => (pictures.current.has(post.key) ? [[post.key, pictures.current.get(post.key)!] as const] : [])));
+      const scoped = new Map(top.flatMap((post) => (pictures.current.has(post.key) ? [[post.key, pictures.current.get(post.key)!] as const] : [])));
       if (kind === 'excel') exportWorkbook(model, i18n, scoped);
       else printDetailedReport(model, i18n, scoped);
     } finally {
@@ -79,14 +80,14 @@ export function AnalyticsHub() {
     <div className="u-stack an">
       <PageHeader
         title={t('Analytics', 'التحليلات')}
-        description={t('How the published posts performed on the connected accounts.', 'أداء المنشورات على الحسابات المربوطة.')}
+        description={t('Published post performance. Export a full analysis with the top 5 posts and their images.', 'أداء المنشورات على الحسابات المربوطة. صدّر تحليل شامل مع أفضل 5 منشورات بصورها.')}
         actions={
           <>
             <Button icon={<FileSpreadsheet size={15} />} onClick={() => void exportWith('excel')} busy={preparing?.kind === 'excel'} disabled={!model.posts.length || preparing != null}>
-              {progress('excel') ?? t('Excel with images', 'Excel بالصور')}
+              {progress('excel') ?? t('Export Excel', 'تصدير Excel')}
             </Button>
             <Button variant="primary" icon={<Printer size={15} />} onClick={() => void exportWith('pdf')} busy={preparing?.kind === 'pdf'} disabled={!model.posts.length || preparing != null}>
-              {progress('pdf') ?? t('Detailed PDF report', 'تقرير PDF مفصّل')}
+              {progress('pdf') ?? t('Export PDF', 'تصدير PDF')}
             </Button>
           </>
         }
