@@ -98,13 +98,13 @@ function Demographics({ account }: { account: AudienceAccount }) {
             <ul>
               {group.slices.map((slice) => (
                 <li key={slice.key}>
-                  <span className="an-demo__label" dir={group.key === 'age' ? 'ltr' : undefined}>
+                  <span className="an-demo__label" dir={group.key === 'age' || group.key === 'companySize' ? 'ltr' : undefined} title={sliceLabel(group.key, slice.key, lang)}>
                     {sliceLabel(group.key, slice.key, lang)}
                   </span>
+                  <b className="u-tnum">{pct(slice.value, 0)}</b>
                   <span className="an-time__bar" aria-hidden>
                     <i style={{ inlineSize: `${slice.value}%` }} />
                   </span>
-                  <b className="u-tnum">{pct(slice.value, 0)}</b>
                 </li>
               ))}
             </ul>

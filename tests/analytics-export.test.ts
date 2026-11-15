@@ -8,7 +8,7 @@ import { dayNumber } from '../src/lib/format';
 import { buildSheets, exportPostList } from '../src/pages/analytics/export';
 import { bestAndWorst, buildReports, byHourBlock, byWeekday, interactionMix, median } from '../src/pages/analytics/reports';
 import { buildAudience, shares, sliceLabel } from '../src/pages/analytics/audience';
-import { linkedInFollowers } from '../server/social/linkedin';
+import { linkedInDemographics, linkedInFollowers } from '../server/social/linkedin';
 import type { AudienceDay } from '../src/types';
 import type { AnalyticsModel } from '../src/pages/analytics/model';
 import { reportHtml } from '../src/pages/analytics/report';
@@ -231,4 +231,26 @@ test('LinkedIn follower count is found wherever Zernio puts it', () => {
   assert.equal(linkedInFollowers({ accounts: [{ _id: 'z1' }], stats: { z1: [{ date: '2026-11-01', followers: 10 }, { date: '2026-11-02', followers: 12 }] } }, 'z1'), 12);
   assert.equal(linkedInFollowers({ accounts: [{ _id: 'other', followers: 3 }, { _id: 'x', followers: 4 }] }, 'z1'), null);
   assert.equal(linkedInFollowers({}, 'z1'), null);
+});
+
+test('LinkedIn demographics are read from lists or maps, and labelled', () => {
+  const listed = linkedInDemographics({
+    demographics: {
+      seniority: [{ id: 'urn:li:seniority:4', label: 'Senior', followerCounts: { organicFollowerCount: 900, paidFollowerCount: 100 } }, { id: 'urn:li:seniority:5', label: 'Manager', count: 400 }],
+      industry: [{ label: 'Civil Engineering', followers: 1200 }, { label: 'Construction', value: 800 }],
+      company_size: [{ label: '10001+', count: 50 }, { label: '2-10', count: 70 }],
+      country: [{ id: 'urn:li:geo:106155005', label: 'Egypt', count: 3000 }],
+    },
+  })!;
+  assert.deepEqual(listed.seniority, [{ key: 'Senior', value: 1000 }, { key: 'Manager', value: 400 }]);
+  assert.equal(listed.industry?.[0].key, 'Civil Engineering');
+  assert.deepEqual(shares(listed.companySize, 'companySize').map((slice) => slice.key), ['2-10', '10001+']);
+  assert.equal(listed.country?.[0].key, 'Egypt');
+  assert.equal(sliceLabel('seniority', 'Senior', 'ar'), 'خبير');
+  assert.equal(sliceLabel('industry', 'Civil Engineering', 'ar'), 'Civil Engineering');
+  assert.equal(sliceLabel('country', 'Egypt', 'en'), 'Egypt');
+  const mapped = linkedInDemographics({ demographics: { function: { Engineering: 500, Sales: 20 } } })!;
+  assert.deepEqual(mapped.function, [{ key: 'Engineering', value: 500 }, { key: 'Sales', value: 20 }]);
+  assert.equal(linkedInDemographics({ demographics: {} }), null);
+  assert.equal(linkedInDemographics({}), null);
 });

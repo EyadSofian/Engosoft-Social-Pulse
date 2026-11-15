@@ -1,6 +1,6 @@
 import { randomUUID } from 'node:crypto';
 import { db } from '../db.js';
-import { blankMetrics, type ConnectorResult, type ObservedPost } from '../types.js';
+import { blankMetrics, type AudienceDemographics, type ConnectorResult, type ObservedPost } from '../types.js';
 import { getContent } from '../workspace.js';
 import { listAccounts, loadSecret, putAccount, saveSecret } from './store.js';
 import { publicMediaUrl, type PreparedMedia } from './media.js';
@@ -172,6 +172,32 @@ export function linkedInExternalObserved(row: any, a: SocialAccount) {
 }
 const FOLLOWER_FIELDS = ['currentFollowers', 'followersCount', 'followerCount', 'followers', 'currentFollowerCount', 'totalFollowers'];
 /** The newest follower count for one account in a Zernio follower-stats response, wherever it sits. */
+const LINKEDIN_BREAKDOWNS: Record<string, keyof Omit<AudienceDemographics, 'basis'>> = { function: 'function', seniority: 'seniority', industry: 'industry', company_size: 'companySize', country: 'country', region: 'region' };
+const COUNT_FIELDS = ['count', 'followers', 'followerCount', 'followersCount', 'value', 'total', 'totalFollowers'];
+/** A follower count from one demographics entry, whichever shape Zernio uses (the docs do not show it). */
+function entryCount(entry: any): number | null {
+  if (typeof entry === 'number') return Number.isFinite(entry) ? entry : null;
+  if (!entry || typeof entry !== 'object') return null;
+  for (const field of COUNT_FIELDS) if (typeof entry[field] === 'number' && Number.isFinite(entry[field])) return entry[field];
+  const counts = entry.followerCounts ?? entry;
+  const organic = Number(counts.organicFollowerCount), paid = Number(counts.paidFollowerCount);
+  return Number.isFinite(organic) || Number.isFinite(paid) ? (Number.isFinite(organic) ? organic : 0) + (Number.isFinite(paid) ? paid : 0) : null;
+}
+/** Zernio's LinkedIn follower demographics as slices: industry, job function, seniority, company size, country, region. */
+export function linkedInDemographics(body: any): AudienceDemographics | null {
+  const source = body?.demographics;
+  if (!source || typeof source !== 'object') return null;
+  const output: AudienceDemographics = { basis: 'followers' };
+  for (const [name, key] of Object.entries(LINKEDIN_BREAKDOWNS)) {
+    const raw = source[name] ?? source[key];
+    const entries: [string, unknown][] = Array.isArray(raw)
+      ? raw.map((entry: any) => [String(entry?.label ?? entry?.name ?? entry?.title ?? entry?.range ?? entry?.id ?? ''), entry])
+      : raw && typeof raw === 'object' ? Object.entries(raw) : [];
+    const slices = entries.map(([label, entry]) => ({ key: label, value: entryCount(entry) ?? NaN })).filter((slice) => slice.key && Number.isFinite(slice.value) && slice.value > 0).sort((a, b) => b.value - a.value).slice(0, 20);
+    if (slices.length) output[key] = slices;
+  }
+  return Object.keys(output).length > 1 ? output : null;
+}
 export function linkedInFollowers(body: any, targetId: string): number | null {
   const pick = (value: unknown): number | null => (typeof value === 'number' && Number.isFinite(value) && value >= 0 ? value : null);
   const fromObject = (row: any): number | null => {
@@ -223,9 +249,11 @@ export async function syncLinkedIn(a: SocialAccount): Promise<ConnectorResult> {
     // Follower counts come from Zernio's analytics add-on; its response fields are not documented, so read them defensively.
     let followers: number | null = null;
     if (metricsEnabled) try { followers = linkedInFollowers(await api(key, `/accounts/follower-stats?accountIds=${encodeURIComponent(targetId)}`), targetId); } catch { /* Optional. */ }
+    let demographics: AudienceDemographics | null = null;
+    if (metricsEnabled) try { demographics = linkedInDemographics(await api(key, `/analytics/linkedin/demographics?accountId=${encodeURIComponent(targetId)}&breakdown=function,seniority,industry,company_size,country,region`)); } catch { /* Optional: needs the r_organization_followers scope. */ }
     if ([...posts.keys()].some(id => !measured.has(id))) partial = true;
     await putAccount({ ...a, scopes, status: 'connected', metadata: { ...a.metadata, metricsEnabled, tokenExpiresAt: health.tokenStatus.expiresAt || null }, lastSyncAt: new Date().toISOString(), error: null });
-    return { platform: 'linkedin', audience: [{ platform: 'linkedin', accountId: a.externalId, accountName: a.name, followers }], status: 'connected', partial: partial || !metricsEnabled, message: metricsEnabled ? `LinkedIn via Zernio: ${posts.size} posts in the last 90 days. New connections may need time for Zernio to collect history and metrics.` : 'LinkedIn publishing is connected. Analytics requires the Zernio API-key Analytics group and organization read permission.', posts: [...posts.values()] };
+    return { platform: 'linkedin', audience: [{ platform: 'linkedin', accountId: a.externalId, accountName: a.name, followers, demographics }], status: 'connected', partial: partial || !metricsEnabled, message: metricsEnabled ? `LinkedIn via Zernio: ${posts.size} posts in the last 90 days. New connections may need time for Zernio to collect history and metrics.` : 'LinkedIn publishing is connected. Analytics requires the Zernio API-key Analytics group and organization read permission.', posts: [...posts.values()] };
   } catch {
     await putAccount({ ...a, status: 'sync_failed', error: 'LinkedIn sync could not be verified. Check the selected organization, Zernio key permissions and connection health.' });
     return { platform: 'linkedin', status: 'error', message: 'LinkedIn sync could not be verified. Check Zernio permissions and connection health.', posts: [] };

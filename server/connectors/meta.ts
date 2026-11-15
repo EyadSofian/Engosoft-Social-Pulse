@@ -69,6 +69,30 @@ async function igDemographics(igId:string,token:string):Promise<AudienceDemograp
  }
  return output.age||output.gender||output.country||output.city?output:null;
 }
+type PageInsightsBody={data?:{name:string;values?:{value?:unknown}[]}[]};
+/** The newest object value of a Page insight (e.g. {EG: 1200, SA: 300}) as slices, largest first. */
+function pageSlices(body:PageInsightsBody,name:string):AudienceSlice[]|undefined{
+ const values=body.data?.find(row=>row.name===name)?.values||[];
+ for(let i=values.length-1;i>=0;i--){
+   const value=values[i]?.value;
+   if(value&&typeof value==='object'){
+     const slices=Object.entries(value as Record<string,unknown>).map(([key,count])=>({key,value:Number(count)})).filter(slice=>slice.key&&Number.isFinite(slice.value)&&slice.value>0).sort((a,b)=>b.value-a.value);
+     if(slices.length)return slices.slice(0,20);
+   }
+ }
+ return undefined;
+}
+/**
+ * Facebook Page followers by country and city. Meta retired age and gender for Pages in March 2024, so
+ * these two are all a Page can give; each needs 100+ followers and the read_insights permission.
+ */
+async function pageDemographics(pageId:string,token:string):Promise<AudienceDemographics|null>{
+ const output:AudienceDemographics={basis:'followers'};
+ for(const [metric,key] of [['page_follows_country','country'],['page_follows_city','city']] as const){
+   try{const slices=pageSlices(await graph<PageInsightsBody>(`${pageId}/insights`,token,{metric}),metric);if(slices)output[key]=slices;}catch{/* Optional. */}
+ }
+ return output.country||output.city?output:null;
+}
 export async function syncMeta(options?:{token:string;pageIds?:string[]}):Promise<ConnectorResult[]> {
  const token=options?.token||process.env.META_ACCESS_TOKEN?.trim();
  if(!token) return [
@@ -127,7 +151,7 @@ export async function syncMeta(options?:{token:string;pageIds?:string[]}):Promis
      }catch(e){fbErrors.push(`${page.name}: ${e instanceof Error?e.message:'تعذّر القراءة'}`);}
      if(!fbDisabled)try{
        const info=await graph<{followers_count?:unknown;fan_count?:unknown}>(page.id,pageToken,{fields:'followers_count,fan_count'});
-       fbAudience.push({platform:'facebook',accountId:page.id,accountName:page.name,followers:numberOrNull(info.followers_count)??numberOrNull(info.fan_count)});
+       fbAudience.push({platform:'facebook',accountId:page.id,accountName:page.name,followers:numberOrNull(info.followers_count)??numberOrNull(info.fan_count),demographics:await pageDemographics(page.id,pageToken)});
      }catch{/* The follower count is optional; posts still sync. */}
      try {
        const info=await graph<{instagram_business_account?:{id:string}}>(page.id,pageToken,{fields:'instagram_business_account'});

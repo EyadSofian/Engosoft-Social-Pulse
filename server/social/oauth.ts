@@ -19,7 +19,7 @@ export function oauthScopes(p:SocialProvider,mode:string):string[] {
  const publishing=mode==='publishing'||mode==='publishing-and-draft';
  if(p==='facebook')return ['pages_show_list','pages_read_engagement','read_insights',...(publishing?['pages_manage_posts','publish_video']:[])];
  if(p==='instagram')return ['pages_show_list','pages_read_engagement','instagram_basic','instagram_manage_insights',...(publishing?['instagram_content_publish']:[])];
- if(p==='tiktok')return ['user.info.basic','video.list',...(publishing?['video.publish']:[]),...(['draft','publishing-and-draft'].includes(mode)?['video.upload']:[])];
+ if(p==='tiktok')return ['user.info.basic','video.list',...(process.env.TIKTOK_USER_STATS_APPROVED==='true'?['user.info.stats']:[]),...(publishing?['video.publish']:[]),...(['draft','publishing-and-draft'].includes(mode)?['video.upload']:[])];
  if(p==='snapchat')return ['snapchat-profile-api'];
  return ['https://www.googleapis.com/auth/youtube.readonly','https://www.googleapis.com/auth/yt-analytics.readonly',...(publishing?['https://www.googleapis.com/auth/youtube.upload']:[])];
 }

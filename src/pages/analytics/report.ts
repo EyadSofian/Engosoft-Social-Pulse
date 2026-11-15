@@ -186,7 +186,7 @@ function audienceSection(model: AnalyticsModel, i18n: I18n) {
       const data = account.demographics!;
       const groups = DEMOGRAPHIC_KEYS.map((key) => ({ key, slices: shares(data[key], key) })).filter((group) => group.slices.length);
       const tables = groups
-        .map((group) => `<div><h3 class="sub">${esc(tx(DEMOGRAPHIC_LABEL[group.key]))}</h3><table><tbody>${group.slices.map((slice) => `<tr><td>${group.key === 'age' ? `<bdi dir="ltr">${esc(slice.key)}</bdi>` : esc(sliceLabel(group.key, slice.key, lang))}</td><td class="n">${esc(pct(slice.value, 0))}<span class="share"><i style="width:${slice.value.toFixed(1)}%;background:${COLOR[account.platform]}"></i></span></td></tr>`).join('')}</tbody></table></div>`)
+        .map((group) => `<div><h3 class="sub">${esc(tx(DEMOGRAPHIC_LABEL[group.key]))}</h3><table><tbody>${group.slices.map((slice) => `<tr><td>${group.key === 'age' || group.key === 'companySize' ? `<bdi dir="ltr">${esc(slice.key)}</bdi>` : esc(sliceLabel(group.key, slice.key, lang))}</td><td class="n">${esc(pct(slice.value, 0))}<span class="share"><i style="width:${slice.value.toFixed(1)}%;background:${COLOR[account.platform]}"></i></span></td></tr>`).join('')}</tbody></table></div>`)
         .join('');
       return `<div class="rank"><h3><span class="dot" style="background:${COLOR[account.platform]}"></span>${esc(channelName[account.platform])} · ${esc(account.accountName)}<small>${esc(tx(basisLabel(data)))}</small></h3><div class="demo">${tables}</div></div>`;
     })
@@ -264,6 +264,7 @@ const STYLE = (lang: string) => `
   td small { color: #6b7280; }
   .all-head { break-before: page; }
   .demo { display: grid; grid-template-columns: repeat(4, 1fr); gap: 10px; }
+  .demo td:first-child { overflow-wrap: anywhere; }
   .kpis + .rank { margin-top: 12px; }
 `;
 

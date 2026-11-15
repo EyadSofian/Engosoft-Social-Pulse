@@ -113,6 +113,12 @@ export interface AudienceDemographics {
   gender?: AudienceSlice[];
   country?: AudienceSlice[];
   city?: AudienceSlice[];
+  /** LinkedIn only: where followers work and at what level. */
+  region?: AudienceSlice[];
+  industry?: AudienceSlice[];
+  function?: AudienceSlice[];
+  seniority?: AudienceSlice[];
+  companySize?: AudienceSlice[];
 }
 
 /** An account's audience on one business day. */

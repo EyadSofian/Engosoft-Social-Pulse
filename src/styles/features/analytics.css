@@ -958,8 +958,8 @@
 
 .an-demo__groups {
   display: grid;
-  grid-template-columns: repeat(auto-fit, minmax(min(100%, 210px), 1fr));
-  gap: var(--sp-4) var(--sp-5);
+  grid-template-columns: repeat(auto-fit, minmax(min(100%, 230px), 1fr));
+  gap: var(--sp-4) var(--sp-6, 32px);
 }
 
 .an-demo__group h4 {
@@ -980,19 +980,22 @@
 
 .an-demo__group li {
   display: grid;
-  grid-template-columns: minmax(0, 7.5em) minmax(0, 1fr) 3em;
+  /* Name, its percentage right next to it, then the bar: the number never sits beside the next column's names. */
+  grid-template-columns: minmax(0, 1.3fr) 3.2em minmax(36px, 1fr);
   align-items: center;
   gap: var(--sp-2);
   font-size: var(--fs-sm);
 }
 
 .an-demo__group li > b {
-  text-align: end;
   font-size: var(--fs-xs);
 }
 
+/* Long names (LinkedIn industries) wrap to a second line: an ellipsis would cut English names from the front in Arabic. */
 .an-demo__label {
+  display: -webkit-box;
   overflow: hidden;
-  white-space: nowrap;
-  text-overflow: ellipsis;
+  -webkit-box-orient: vertical;
+  -webkit-line-clamp: 2;
+  line-height: 1.3;
 }

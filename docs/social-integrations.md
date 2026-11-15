@@ -173,6 +173,10 @@ must be SELF_ONLY and TikTok's unaudited account restrictions still apply. Gener
 Direct Post requires audit approval, not merely Display API review. Only set
 `TIKTOK_DIRECT_POST_APPROVED=true` after approval. Verify APP_URL in TikTok URL properties
 and set `TIKTOK_VERIFIED_MEDIA_ORIGINS` to that exact origin before photo publishing.
+Follower count on the Analytics audience card needs the `user.info.stats` scope. Add it to
+the app in the TikTok developer portal and get it approved first; requesting a scope the app
+is not approved for makes TikTok's login fail. Then set `TIKTOK_USER_STATS_APPROVED=true`
+and reconnect TikTok so the account grants it.
 
 **Policy constraint:** TikTok's current Direct Post guidelines exclude utilities
 limited to accounts managed by an internal team. Engosoft's internal-only use cannot

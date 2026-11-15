@@ -32,8 +32,9 @@ export interface PlatformAudience {
   accounts: AudienceAccount[];
 }
 
-export type DemographicKey = 'age' | 'gender' | 'country' | 'city';
-export const DEMOGRAPHIC_KEYS: DemographicKey[] = ['age', 'gender', 'country', 'city'];
+export type DemographicKey = 'age' | 'gender' | 'country' | 'city' | 'region' | 'industry' | 'function' | 'seniority' | 'companySize';
+/** Who they are first, then where they work and at what level (LinkedIn), then where they live. */
+export const DEMOGRAPHIC_KEYS: DemographicKey[] = ['age', 'gender', 'seniority', 'function', 'industry', 'companySize', 'country', 'city', 'region'];
 
 /** Followers and demographics for the accounts in scope, platform by platform. */
 export function buildAudience(rows: AudienceDay[], scope: { platform: Platform | 'all'; account: string }, period: number, todayNum: number): PlatformAudience[] {
@@ -87,12 +88,12 @@ export function buildAudience(rows: AudienceDay[], scope: { platform: Platform |
 }
 
 /** Slices as shares of their total, largest first (ages keep their natural order). */
-export function shares(slices: AudienceSlice[] | undefined, key: DemographicKey, limit = key === 'age' ? 8 : key === 'gender' ? 3 : 6): AudienceSlice[] {
+export function shares(slices: AudienceSlice[] | undefined, key: DemographicKey, limit = key === 'age' || key === 'companySize' ? 9 : key === 'gender' ? 3 : 6): AudienceSlice[] {
   if (!slices?.length) return [];
   const total = slices.reduce((sum, slice) => sum + slice.value, 0);
   if (!total) return [];
   const list = slices.map((slice) => ({ key: slice.key, value: (slice.value / total) * 100 }));
-  if (key === 'age') return list.sort((a, b) => a.key.localeCompare(b.key, 'en', { numeric: true })).slice(0, limit);
+  if (key === 'age' || key === 'companySize') return list.sort((a, b) => a.key.localeCompare(b.key, 'en', { numeric: true })).slice(0, limit);
   return list.sort((a, b) => b.value - a.value).slice(0, limit);
 }
 
@@ -101,6 +102,11 @@ export const DEMOGRAPHIC_LABEL: Record<DemographicKey, Text> = {
   gender: { en: 'Gender', ar: 'النوع' },
   country: { en: 'Top countries', ar: 'أكتر الدول' },
   city: { en: 'Top cities', ar: 'أكتر المدن' },
+  region: { en: 'Top regions', ar: 'أكتر المناطق' },
+  industry: { en: 'Industry', ar: 'المجال' },
+  function: { en: 'Job function', ar: 'الوظيفة' },
+  seniority: { en: 'Seniority', ar: 'المستوى الوظيفي' },
+  companySize: { en: 'Company size', ar: 'حجم الشركة' },
 };
 
 const GENDER: Record<string, Text> = {
@@ -111,6 +117,23 @@ const GENDER: Record<string, Text> = {
   u: { en: 'Not specified', ar: 'غير محدد' },
   user_specified: { en: 'Not specified', ar: 'غير محدد' },
 };
+
+/** LinkedIn's standard seniority and job-function names in Arabic; anything else keeps LinkedIn's English. */
+const LINKEDIN_AR: Record<string, Text> = Object.fromEntries(
+  (
+    [
+      ['Unpaid', 'بدون أجر'], ['Training', 'تدريب'], ['Entry', 'مبتدئ'], ['Senior', 'خبير'], ['Manager', 'مدير'], ['Director', 'مدير إدارة'],
+      ['VP', 'نائب رئيس'], ['CXO', 'إدارة عليا'], ['Partner', 'شريك'], ['Owner', 'مالك'],
+      ['Accounting', 'محاسبة'], ['Administrative', 'إداري'], ['Arts and Design', 'فنون وتصميم'], ['Business Development', 'تطوير أعمال'],
+      ['Community and Social Services', 'خدمات اجتماعية'], ['Consulting', 'استشارات'], ['Education', 'تعليم'], ['Engineering', 'هندسة'],
+      ['Entrepreneurship', 'ريادة أعمال'], ['Finance', 'مالية'], ['Healthcare Services', 'خدمات صحية'], ['Human Resources', 'موارد بشرية'],
+      ['Information Technology', 'تكنولوجيا المعلومات'], ['Legal', 'قانوني'], ['Marketing', 'تسويق'], ['Media and Communication', 'إعلام واتصال'],
+      ['Military and Protective Services', 'خدمات عسكرية وأمنية'], ['Operations', 'عمليات'], ['Product Management', 'إدارة منتجات'],
+      ['Program and Project Management', 'إدارة برامج ومشاريع'], ['Purchasing', 'مشتريات'], ['Quality Assurance', 'ضبط جودة'],
+      ['Real Estate', 'عقارات'], ['Research', 'بحث'], ['Sales', 'مبيعات'], ['Customer Success and Support', 'دعم العملاء'],
+    ] as const
+  ).map(([en, ar]) => [en, { en, ar }]),
+);
 
 const regionNames = new Map<string, Intl.DisplayNames | null>();
 function regionName(code: string, lang: string): string {
@@ -133,6 +156,7 @@ export function sliceLabel(key: DemographicKey, value: string, lang: 'ar' | 'en'
   if (key === 'gender') return GENDER[value.toLowerCase()]?.[lang] ?? value;
   if (key === 'country' && /^[a-z]{2}$/i.test(value)) return regionName(value, lang);
   if (key === 'city') return value.split(',')[0];
+  if (key === 'seniority' || key === 'function' || key === 'industry') return LINKEDIN_AR[value]?.[lang] ?? value;
   return value;
 }
 
