@@ -7,6 +7,7 @@ import { KPI_LABEL, reportNotes, scopeLine, shortCaption, type ExportPosts } fro
 import type { AnalyticsModel, Kpi } from './model';
 import { contentTypeOf, hourBlockLabel, MIX_KEYS, MIX_LABEL, postRate, RANK_LABEL, RANK_PER_PLATFORM, typeLabel, WEEKDAY_LABEL, type Ranked, type Reports, type TimeRow } from './reports';
 import type { PostPicture } from './thumbs';
+import { basisLabel, DEMOGRAPHIC_KEYS, DEMOGRAPHIC_LABEL, shares, sliceLabel } from './audience';
 
 /**
  * Period-wide analysis (headline numbers, activity, platforms), the best and worst posts on
@@ -129,7 +130,10 @@ function rankingSection(reports: Reports, pictures: Map<string, PostPicture>, i1
     entries.length
       ? `<h4 class="list list--${tone}">${esc(title)}</h4>${entries.map((entry, index) => postCard(entry.post, num(index + 1), pictures.get(entry.post.key), i18n, `${esc(by)}: <bdi>${esc(value(entry))}</bdi>${entry.vsMedian == null ? '' : ` · ${times(entry.vsMedian, i18n)}`}`, tone)).join('')}`
       : '';
-  const blocks = reports.rankings
+  const silent = reports.rankBy === 'views' || reports.rankBy === 'reach' ? reports.rankings.filter((row) => row.reported === 0) : [];
+  const silentLine = silent.length ? `<p class="foot">${esc(t(`Not reported here: ${silent.map((row) => channelName[row.platform]).join(', ')}.`, `المنصات دي مش بترجع ${by}: ${silent.map((row) => channelName[row.platform]).join('، ')}.`))}</p>` : '';
+  const blocks = silentLine + reports.rankings
+    .filter((row) => !silent.includes(row))
     .map((row) => {
       const typical = row.median == null ? '' : t(`Typical post: ${reports.rankBy === 'rate' ? pct(row.median, 2) : compact(row.median)}`, `المنشور المعتاد: ${reports.rankBy === 'rate' ? pct(row.median, 2) : compact(row.median)}`);
       const body = row.best.length
@@ -165,6 +169,29 @@ function mixTable(reports: Reports, i18n: I18n) {
   const cell = (total: number | null, rate: number | null) => (total == null ? '—' : `${esc(compact(total))}${rate == null ? '' : `<small> · ${esc(num(Math.round(rate * 100) / 100))}</small>`}`);
   const rows = reports.mix.map((row) => `<tr><td><span class="dot" style="background:${COLOR[row.platform]}"></span>${esc(channelName[row.platform])}</td>${MIX_KEYS.map((key) => `<td class="n">${cell(row.cells[key].total, row.cells[key].rate)}</td>`).join('')}</tr>`).join('');
   return `<section><h2>${esc(t('What people did on each platform', 'الناس عملت إيه على كل منصة'))}</h2><p class="foot">${esc(t('Total, then per 100 people reached.', 'الإجمالي، وبعده لكل 100 وصلهم المنشور.'))}</p><table><thead><tr><th>${esc(t('Platform', 'المنصة'))}</th>${MIX_KEYS.map((key) => `<th class="n">${esc(tx(MIX_LABEL[key]))}</th>`).join('')}</tr></thead><tbody>${rows}</tbody></table></section>`;
+}
+
+function audienceSection(model: AnalyticsModel, i18n: I18n) {
+  const { t, tx, num, compact, pct, lang } = i18n;
+  if (!model.audience.length) return '';
+  const tiles = model.audience
+    .map((row) => {
+      const change = row.change == null ? '' : `<span class="kpi__ch ${row.change > 0 ? 'up' : row.change < 0 ? 'down' : ''}"><bdi dir="ltr">${row.change > 0 ? '+' : row.change < 0 ? '−' : ''}${esc(num(Math.abs(row.change)))}</bdi> ${esc(t(`since ${row.since}`, `من ${row.since}`))}</span>`;
+      return `<div class="kpi"><span class="kpi__label"><span class="dot" style="background:${COLOR[row.platform]}"></span>${esc(channelName[row.platform])}</span><b class="kpi__value">${esc(row.followers == null ? '—' : compact(row.followers))}</b><span class="kpi__ch">${esc(row.platform === 'youtube' ? t('Subscribers', 'المشتركين') : t('Followers', 'المتابعين'))}</span>${change}</div>`;
+    })
+    .join('');
+  const demographics = model.audience
+    .flatMap((row) => row.accounts.filter((account) => account.demographics))
+    .map((account) => {
+      const data = account.demographics!;
+      const groups = DEMOGRAPHIC_KEYS.map((key) => ({ key, slices: shares(data[key], key) })).filter((group) => group.slices.length);
+      const tables = groups
+        .map((group) => `<div><h3 class="sub">${esc(tx(DEMOGRAPHIC_LABEL[group.key]))}</h3><table><tbody>${group.slices.map((slice) => `<tr><td>${group.key === 'age' ? `<bdi dir="ltr">${esc(slice.key)}</bdi>` : esc(sliceLabel(group.key, slice.key, lang))}</td><td class="n">${esc(pct(slice.value, 0))}<span class="share"><i style="width:${slice.value.toFixed(1)}%;background:${COLOR[account.platform]}"></i></span></td></tr>`).join('')}</tbody></table></div>`)
+        .join('');
+      return `<div class="rank"><h3><span class="dot" style="background:${COLOR[account.platform]}"></span>${esc(channelName[account.platform])} · ${esc(account.accountName)}<small>${esc(tx(basisLabel(data)))}</small></h3><div class="demo">${tables}</div></div>`;
+    })
+    .join('');
+  return `<section><h2>${esc(t('Audience', 'الجمهور'))}</h2><div class="kpis">${tiles}</div>${demographics}</section>`;
 }
 
 function accountsTable(reports: Reports, i18n: I18n) {
@@ -236,6 +263,8 @@ const STYLE = (lang: string) => `
   .tag { color: #0f8a4b; font-size: 8.5px; }
   td small { color: #6b7280; }
   .all-head { break-before: page; }
+  .demo { display: grid; grid-template-columns: repeat(4, 1fr); gap: 10px; }
+  .kpis + .rank { margin-top: 12px; }
 `;
 
 export function reportHtml(model: AnalyticsModel, reports: Reports, i18n: I18n, posts: ExportPosts, pictures: Map<string, PostPicture>, generatedAt: number): string {
@@ -258,6 +287,8 @@ export function reportHtml(model: AnalyticsModel, reports: Reports, i18n: I18n, 
   <section><h2>${esc(t('By platform', 'حسب المنصة'))}</h2><table><thead><tr>
     <th>${esc(t('Platform', 'المنصة'))}</th><th class="n">${esc(t('Posts', 'المنشورات'))}</th><th class="n">${esc(t('Reach', 'الوصول'))}</th><th class="n">${esc(t('Views', 'المشاهدات'))}</th><th class="n">${esc(t('Interactions', 'التفاعلات'))}</th><th class="n">${esc(t('Interactions per post', 'تفاعل لكل منشور'))}</th><th class="n">${esc(t('Engagement rate', 'معدل التفاعل'))}</th>
   </tr></thead><tbody>${platformRows(model, i18n)}</tbody></table></section>
+
+  ${audienceSection(model, i18n)}
 
   ${accountsTable(reports, i18n)}
 

@@ -1,6 +1,6 @@
 import { createHash, randomUUID } from 'node:crypto';
 import { db, defineSchema, defineColumn } from './db.js';
-import type { ConnectorResult, ObservedPost, Plan, Platform } from './types.js';
+import type { AudienceDemographics, ConnectorResult, ObservedPost, Plan, Platform } from './types.js';
 
 export { db };
 defineSchema(`
@@ -20,6 +20,7 @@ CREATE TABLE IF NOT EXISTS observed_posts (
 );
 CREATE TABLE IF NOT EXISTS website_daily (date TEXT PRIMARY KEY, views INTEGER NOT NULL, sessions INTEGER NOT NULL, engaged_sessions INTEGER NOT NULL, fetched_at TEXT NOT NULL);
 CREATE TABLE IF NOT EXISTS website_page_daily (date TEXT NOT NULL, path TEXT NOT NULL, title TEXT NOT NULL, views INTEGER NOT NULL, active_users INTEGER NOT NULL, engagement_seconds REAL NOT NULL, fetched_at TEXT NOT NULL, PRIMARY KEY(date,path));
+CREATE TABLE IF NOT EXISTS audience_daily (platform TEXT NOT NULL, account_id TEXT NOT NULL, account_name TEXT NOT NULL, date TEXT NOT NULL, followers INTEGER, demographics_json TEXT NOT NULL DEFAULT '', fetched_at TEXT NOT NULL, PRIMARY KEY(platform,account_id,date));
 CREATE TABLE IF NOT EXISTS connector_status (platform TEXT PRIMARY KEY, status TEXT NOT NULL, message TEXT NOT NULL, checked_at TEXT NOT NULL);
 CREATE TABLE IF NOT EXISTS oauth_tokens (platform TEXT PRIMARY KEY, encrypted_json TEXT NOT NULL, updated_at TEXT NOT NULL);
 CREATE TABLE IF NOT EXISTS oauth_states (state_hash TEXT PRIMARY KEY, expires_at INTEGER NOT NULL, created_at TEXT NOT NULL);
@@ -80,11 +81,28 @@ export async function saveConnectorResult(result: ConnectorResult) {
  ON CONFLICT(platform,external_id) DO UPDATE SET account_id=excluded.account_id,account_name=excluded.account_name,permalink=excluded.permalink,title=excluded.title,published_at=excluded.published_at,content_type=excluded.content_type,thumbnail=excluded.thumbnail,metrics_json=excluded.metrics_json,fetched_at=excluded.fetched_at`, {...post, metricsJson:JSON.stringify(post.metrics), fetchedAt:now});
    for (const day of result.website ?? []) await tx.run('INSERT INTO website_daily (date,views,sessions,engaged_sessions,fetched_at) VALUES (@date,@views,@sessions,@engagedSessions,@fetchedAt) ON CONFLICT(date) DO UPDATE SET views=excluded.views,sessions=excluded.sessions,engaged_sessions=excluded.engaged_sessions,fetched_at=excluded.fetched_at', {...day,fetchedAt:now});
    for (const page of result.websitePages ?? []) await tx.run('INSERT INTO website_page_daily (date,path,title,views,active_users,engagement_seconds,fetched_at) VALUES (@date,@path,@title,@views,@activeUsers,@engagementSeconds,@fetchedAt) ON CONFLICT(date,path) DO UPDATE SET title=excluded.title,views=excluded.views,active_users=excluded.active_users,engagement_seconds=excluded.engagement_seconds,fetched_at=excluded.fetched_at', {...page,fetchedAt:now});
+   // One row per account per business day; a later sync the same day fills in what an earlier one missed.
+   const day=businessDay(new Date());
+   for(const a of result.audience||[]) await tx.run(`INSERT INTO audience_daily (platform,account_id,account_name,date,followers,demographics_json,fetched_at) VALUES (@platform,@accountId,@accountName,@date,@followers,@demographics,@fetchedAt)
+ ON CONFLICT(platform,account_id,date) DO UPDATE SET account_name=excluded.account_name,followers=COALESCE(excluded.followers,audience_daily.followers),demographics_json=CASE WHEN excluded.demographics_json!='' THEN excluded.demographics_json ELSE audience_daily.demographics_json END,fetched_at=excluded.fetched_at`,{platform:a.platform,accountId:a.accountId,accountName:a.accountName,date:day,followers:a.followers,demographics:a.demographics?JSON.stringify(a.demographics):'',fetchedAt:now});
    for(const c of result.checkpoints||[]) await tx.run('INSERT INTO social_checkpoints(account_id,kind,value) VALUES(?,?,?) ON CONFLICT(account_id,kind) DO UPDATE SET value=excluded.value',[c.accountId,c.kind,c.value]);
    await tx.run('INSERT INTO connector_status(platform,status,message,checked_at) VALUES(?,?,?,?) ON CONFLICT(platform) DO UPDATE SET status=excluded.status,message=excluded.message,checked_at=excluded.checked_at',[result.platform,result.status,result.message,now]);
    await tx.run('UPDATE connector_status SET partial=? WHERE platform=?',[result.partial?1:0,result.platform]);
    if(result.status==='connected')await tx.run('UPDATE connector_status SET last_success_at=? WHERE platform=?',[now,result.platform]);
  });
+}
+/** yyyy-MM-dd in the business timezone. */
+export const businessDay = (date: Date) => new Intl.DateTimeFormat('en-CA', { timeZone: process.env.BUSINESS_TIME_ZONE || 'Africa/Cairo', year: 'numeric', month: '2-digit', day: '2-digit' }).format(date);
+export interface AudienceRow { platform: Platform; accountId: string; accountName: string; date: string; followers: number | null; demographics: AudienceDemographics | null }
+/** Daily audience rows for the last two years, oldest first. */
+export async function getAudience(): Promise<AudienceRow[]> {
+  const since = businessDay(new Date(Date.now() - 730 * 86_400_000));
+  const rows = await db.all<Record<string, unknown>>('SELECT platform,account_id,account_name,date,followers,demographics_json FROM audience_daily WHERE date>=? ORDER BY date ASC', [since]);
+  return rows.map((r) => {
+    let demographics: AudienceDemographics | null = null;
+    try { demographics = r.demographics_json ? JSON.parse(String(r.demographics_json)) : null; } catch { demographics = null; }
+    return { platform: r.platform as Platform, accountId: String(r.account_id), accountName: String(r.account_name), date: String(r.date), followers: r.followers == null ? null : Number(r.followers), demographics };
+  });
 }
 export const getConnectorStatuses = () => db.all('SELECT platform,status,message,checked_at AS "checkedAt",last_success_at AS "lastSuccessAt",partial FROM connector_status');
 export const getWebsiteDaily = () => db.all('SELECT date,views,sessions,engaged_sessions AS "engagedSessions" FROM website_daily ORDER BY date ASC');

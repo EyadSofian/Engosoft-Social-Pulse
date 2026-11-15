@@ -50,6 +50,13 @@ export async function syncSnapchat(account?:SocialAccount):Promise<ConnectorResu
      }
      checkpoints.push({accountId:accountId('snapchat',id),kind:`snap_${type}`,value:savedCursor});
    }
-   return {platform:'snapchat',status:'connected',message:`تم جلب ${posts.length} قصة وSpotlight.${process.env.SNAP_PROFILE_REFRESH_TOKEN?' تجديد OAuth مفعّل.':' اضبط refresh token لاستمرار المزامنة بعد انتهاء access token.'}`,posts,checkpoints};
+   // subscriber_count is an optional profile field; Snap may leave it out.
+   let followers:number|null=null;let profileName='Snapchat Public Profile';
+   try{
+     const profile=await json<{public_profiles?:{public_profile?:{subscriber_count?:unknown;display_name?:unknown}}[]}>(`https://businessapi.snapchat.com/v1/public_profiles/${encodeURIComponent(id)}`,{headers:auth});
+     const entry=profile.public_profiles?.[0]?.public_profile;
+     followers=numberOrNull(entry?.subscriber_count);profileName=text(entry?.display_name)||profileName;
+   }catch{/* Optional. */}
+   return {platform:'snapchat',audience:[{platform:'snapchat',accountId:id,accountName:profileName,followers}],status:'connected',message:`تم جلب ${posts.length} قصة وSpotlight.${process.env.SNAP_PROFILE_REFRESH_TOKEN?' تجديد OAuth مفعّل.':' اضبط refresh token لاستمرار المزامنة بعد انتهاء access token.'}`,posts,checkpoints};
  }catch(e){return {platform:'snapchat',status:'error',message:e instanceof ProviderError&&e.status===403?'Snapchat رفض الوصول إلى محتوى Public Profile (HTTP 403). تحقّق من تفعيل التطبيق للـPublic Profile API وصلاحيات Stories/Spotlights لدى Snap؛ وجود صلاحية OAuth وحده لا يؤكد وصول المحتوى.':e instanceof Error?e.message:'تعذّر الاتصال بـSnapchat',posts:[]};}
 }

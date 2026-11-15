@@ -66,14 +66,22 @@ export function ReportsSection({ reports, view, onView, onRankBy }: { reports: R
 
 function Ranking({ reports, onRankBy, onOpen }: { reports: Reports; onRankBy: (by: RankBy) => void; onOpen: (post: Post) => void }) {
   const { t, tx } = useI18n();
+  // Views and reach are not reported everywhere; a platform without them is named once instead of shown empty.
+  const silent = reports.rankBy === 'views' || reports.rankBy === 'reach' ? reports.rankings.filter((row) => row.reported === 0) : [];
+  const shown = reports.rankings.filter((row) => !silent.includes(row));
   return (
     <div className="u-stack">
       <div className="an-rank-bar">
         <Segmented label={t('Rank by', 'رتّب حسب')} value={reports.rankBy} onChange={onRankBy} items={RANK_BY.map((by) => ({ value: by, label: tx(RANK_LABEL[by]) }))} />
       </div>
-      {reports.rankings.some((row) => row.best.length) ? (
+      {silent.length > 0 && (
+        <p className="u-muted u-sm">
+          {t(`Not reported here: ${silent.map((row) => channelName[row.platform]).join(', ')}.`, `المنصات دي مش بترجع ${tx(RANK_LABEL[reports.rankBy])}: ${silent.map((row) => channelName[row.platform]).join('، ')}.`)}
+        </p>
+      )}
+      {shown.some((row) => row.best.length) ? (
         <div className="an-rank-grid">
-          {reports.rankings.map((row) => (
+          {shown.map((row) => (
             <PlatformBlock key={row.platform} row={row} rankBy={reports.rankBy} onOpen={onOpen} />
           ))}
         </div>

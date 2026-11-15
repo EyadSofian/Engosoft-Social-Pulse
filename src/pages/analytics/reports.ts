@@ -9,8 +9,8 @@ import type { Text } from '../../domain/shared';
  * the posts already in scope, so the page and both exports read the same numbers.
  */
 
-export type RankBy = 'rate' | 'interactions' | 'reach';
-export const RANK_BY: RankBy[] = ['rate', 'interactions', 'reach'];
+export type RankBy = 'rate' | 'interactions' | 'reach' | 'views';
+export const RANK_BY: RankBy[] = ['rate', 'interactions', 'reach', 'views'];
 export const isRankBy = (value: string | null): value is RankBy => RANK_BY.includes(value as RankBy);
 
 /** Best and worst posts shown for each platform. */
@@ -38,6 +38,7 @@ export function postRate(post: Post): number | null {
 export function rankValue(post: Post, by: RankBy): number | null {
   if (by === 'interactions') return post.measured ? post.interactions : null;
   if (by === 'reach') return reachBasis(post) ?? null;
+  if (by === 'views') return post.metrics.views ?? null;
   return postRate(post);
 }
 
@@ -53,6 +54,8 @@ export interface PlatformRanking {
   /** The middle post's value among the ranked posts. */
   median: number | null;
   ranked: number;
+  /** Posts the platform gave this number for, settled or not; zero means the platform does not report it. */
+  reported: number;
   /** Posts left out: too new to have settled, no number from the platform, or (for the rate) seen by too few people. */
   unranked: number;
   best: Ranked[];
@@ -86,6 +89,7 @@ export function bestAndWorst(posts: Post[], todayNum: number, by: RankBy, limit 
         platform,
         median: middle,
         ranked: pool.length,
+        reported: own.filter((post) => rankValue(post, by) != null).length,
         unranked: own.length - pool.length,
         best: pool.slice(0, bestCount).map(withMedian),
         worst: pool.slice(pool.length - worstCount).reverse().map(withMedian),
@@ -234,6 +238,7 @@ export const RANK_LABEL: Record<RankBy, Text> = {
   rate: { en: 'Engagement rate', ar: 'معدل التفاعل' },
   interactions: { en: 'Interactions', ar: 'التفاعلات' },
   reach: { en: 'Reach', ar: 'الوصول' },
+  views: { en: 'Views', ar: 'المشاهدات' },
 };
 
 const TYPE_LABEL: Record<string, Text> = {

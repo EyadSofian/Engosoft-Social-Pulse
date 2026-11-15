@@ -6,7 +6,7 @@ import { z } from 'zod';
 import { checkAlerts } from './alerts.js';
 import { parseCalendar } from './calendar.js';
 import { applyPlanPatch, newPlan, isPlanPlatform, missingPublishProof, planState, engagementRate } from './domain.js';
-import { deletePlan, dismissAlert, getAlerts, getConnectorStatuses, getObserved, getPlan, getPlans, getWebsiteDaily, getWebsitePages, saveImportedPlan, savePlan } from './store.js';
+import { deletePlan, dismissAlert, getAlerts, getAudience, getConnectorStatuses, getObserved, getPlan, getPlans, getWebsiteDaily, getWebsitePages, saveImportedPlan, savePlan } from './store.js';
 import { runSync } from './sync.js';
 import { pollPendingJobs } from './social/publishing.js';
 import { registerSocialRoutes } from './social/routes.js';
@@ -180,11 +180,11 @@ app.get('/api/creatives/:requestId/:file',(req,res)=>{
  res.sendFile(mediaDir('creatives',id,file),{headers:{'Cache-Control':'private, max-age=3600'}},(error)=>{if(error&&!res.headersSent)res.status(404).end();});
 });
 app.get('/api/dashboard',async(req,res)=>{
- const now=new Date();const [posts,plans,alerts,connectors,website,websitePages]=await Promise.all([getObserved(),getPlans(),getAlerts(),getConnectorStatuses(),getWebsiteDaily(),getWebsitePages()]);const grace=Number(process.env.ALERT_GRACE_MINUTES)||15;
+ const now=new Date();const [posts,plans,alerts,connectors,website,websitePages,audience]=await Promise.all([getObserved(),getPlans(),getAlerts(),getConnectorStatuses(),getWebsiteDaily(),getWebsitePages(),getAudience()]);const grace=Number(process.env.ALERT_GRACE_MINUTES)||15;
  const enriched=plans.map(plan=>({...plan,computedState:planState(plan,posts,now,grace)}));
  const enrichedPosts=posts.map(post=>({...post,engagementRate:engagementRate(post)}));
  res.setHeader('Cache-Control','no-store');
- res.json({generatedAt:now.toISOString(),timeZone:process.env.BUSINESS_TIME_ZONE||'Africa/Cairo',posts:userCan(req.user!,'analytics.view')?enrichedPosts:[],plans:userCan(req.user!,'plans.view_all')||userCan(req.user!,'content.schedule')||userCan(req.user!,'content.create')?enriched:[],alerts:userCan(req.user!,'analytics.view')?alerts:[],connectors:userCan(req.user!,'analytics.view')||userCan(req.user!,'connections.manage')?connectors:[],website:userCan(req.user!,'analytics.view')?website:[],websitePages:userCan(req.user!,'analytics.view')?websitePages:[]});
+ res.json({generatedAt:now.toISOString(),timeZone:process.env.BUSINESS_TIME_ZONE||'Africa/Cairo',posts:userCan(req.user!,'analytics.view')?enrichedPosts:[],plans:userCan(req.user!,'plans.view_all')||userCan(req.user!,'content.schedule')||userCan(req.user!,'content.create')?enriched:[],alerts:userCan(req.user!,'analytics.view')?alerts:[],connectors:userCan(req.user!,'analytics.view')||userCan(req.user!,'connections.manage')?connectors:[],website:userCan(req.user!,'analytics.view')?website:[],websitePages:userCan(req.user!,'analytics.view')?websitePages:[],audience:userCan(req.user!,'analytics.view')?audience:[]});
 });
 const planStatus=z.enum(['draft','approved','scheduled','published','cancelled']);
 const planSchema=z.object({

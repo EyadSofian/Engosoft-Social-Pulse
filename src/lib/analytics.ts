@@ -70,7 +70,7 @@ export function normalize(raw: ApiDashboard): Dashboard {
         checkedAt: '',
       },
   );
-  return { ...raw, posts, plans, connectors };
+  return { ...raw, posts, plans, connectors, audience: raw.audience ?? [] };
 }
 
 export const EMPTY_DASHBOARD: Dashboard = normalize({

@@ -1,5 +1,5 @@
 import { getAccount, accountId } from '../social/store.js';
-import { blankMetrics, type ConnectorResult, type ObservedPost } from '../types.js';
+import { blankMetrics, type AudienceDemographics, type AudienceSlice, type AudienceSnapshot, type ConnectorResult, type ObservedPost } from '../types.js';
 import { json, numberOrNull, text } from './http.js';
 
 type Page={id:string;name:string;access_token?:string};
@@ -48,6 +48,27 @@ async function mapConcurrent<T,R>(items:T[],limit:number,work:(item:T)=>Promise<
  }));
  return results;
 }
+type DemographicsBody={data?:{total_value?:{breakdowns?:{results?:{dimension_values?:unknown[];value?:unknown}[]}[]}}[]};
+const DEMOGRAPHIC_BREAKDOWNS=['age','gender','country','city'] as const;
+/** Instagram follower demographics (accounts with 100+ followers). Each breakdown is optional; a failure leaves it out. */
+async function igDemographics(igId:string,token:string):Promise<AudienceDemographics|null>{
+ const output:AudienceDemographics={basis:'followers'};
+ for(const breakdown of DEMOGRAPHIC_BREAKDOWNS){
+   // Meta has changed which timeframe this metric needs; try the current month, then none.
+   for(const timeframe of ['this_month','']){
+     try{
+       const body=await graph<DemographicsBody>(`${igId}/insights`,token,{metric:'follower_demographics',period:'lifetime',metric_type:'total_value',breakdown,...(timeframe?{timeframe}:{})});
+       const slices:AudienceSlice[]=(body.data?.[0]?.total_value?.breakdowns?.[0]?.results||[])
+         .map(row=>({key:String(row.dimension_values?.[row.dimension_values.length-1]??''),value:Number(row.value)}))
+         .filter(slice=>slice.key&&Number.isFinite(slice.value)&&slice.value>0)
+         .sort((a,b)=>b.value-a.value);
+       if(slices.length)output[breakdown]=slices.slice(0,20);
+       break;
+     }catch{/* Try the next form, or leave this breakdown out. */}
+   }
+ }
+ return output.age||output.gender||output.country||output.city?output:null;
+}
 export async function syncMeta(options?:{token:string;pageIds?:string[]}):Promise<ConnectorResult[]> {
  const token=options?.token||process.env.META_ACCESS_TOKEN?.trim();
  if(!token) return [
@@ -68,6 +89,7 @@ export async function syncMeta(options?:{token:string;pageIds?:string[]}):Promis
    const facebook:ObservedPost[]=[];const instagram:ObservedPost[]=[];
    let facebookMediaViews=0;let facebookUniqueViewers=0;
    const igErrors:string[]=[];const fbErrors:string[]=[];let fbDetail='';
+   const fbAudience:AudienceSnapshot[]=[];const igAudience:AudienceSnapshot[]=[];
    for(const page of pages){
      const pageToken=page.access_token||token;
      const fbDisabled=(await getAccount(accountId('facebook',page.id)))?.status==='disconnected';
@@ -103,6 +125,10 @@ export async function syncMeta(options?:{token:string;pageIds?:string[]}):Promis
        });
        facebook.push(...pagePosts.filter((post)=>post!==undefined));
      }catch(e){fbErrors.push(`${page.name}: ${e instanceof Error?e.message:'تعذّر القراءة'}`);}
+     if(!fbDisabled)try{
+       const info=await graph<{followers_count?:unknown;fan_count?:unknown}>(page.id,pageToken,{fields:'followers_count,fan_count'});
+       fbAudience.push({platform:'facebook',accountId:page.id,accountName:page.name,followers:numberOrNull(info.followers_count)??numberOrNull(info.fan_count)});
+     }catch{/* The follower count is optional; posts still sync. */}
      try {
        const info=await graph<{instagram_business_account?:{id:string}}>(page.id,pageToken,{fields:'instagram_business_account'});
        const igId=info.instagram_business_account?.id;
@@ -122,11 +148,15 @@ export async function syncMeta(options?:{token:string;pageIds?:string[]}):Promis
          return {platform:'instagram' as const,accountId:igId,accountName:page.name,externalId:id,permalink:text(p.permalink),title:text(p.caption).slice(0,220)||'Instagram post',publishedAt:text(p.timestamp),contentType:text(p.media_type).toLowerCase()||'post',thumbnail:text(p.thumbnail_url)||text(p.media_url),metrics:m};
        });
        instagram.push(...pagePosts.filter((post)=>post!==undefined));
+       let followers:number|null=null;
+       try{followers=numberOrNull((await graph<{followers_count?:unknown}>(igId,pageToken,{fields:'followers_count'})).followers_count);}catch{/* Optional. */}
+       const demographics=canReadIgInsights?await igDemographics(igId,token):null;
+       igAudience.push({platform:'instagram',accountId:igId,accountName:page.name,followers,demographics});
      }catch(e){const message=e instanceof Error?e.message:'تعذّر القراءة';igErrors.push(`${page.name}: ${message.includes('code 10')?'صلاحية instagram_basic/instagram_manage_insights غير متاحة لهذا التوكن.':message}`);}
    }
    return [
-     {platform:'facebook',partial:fbErrors.length>0&&facebook.length>0,status:fbErrors.length&&!facebook.length?'error':'connected',message:fbErrors.join(' ')||`تم جلب ${facebook.length} منشور. مشاهدات المحتوى متاحة لـ ${facebookMediaViews} منشور، والمشاهدون الفريدون لـ ${facebookUniqueViewers} منشور. ${fbDetail}`,posts:facebook},
-     {platform:'instagram',partial:igErrors.length>0&&instagram.length>0,status:igErrors.length&&!instagram.length?'error':'connected',message:igErrors.join(' ')||`تم جلب ${instagram.length} منشور.${canReadIgInsights?'':' reach/views/saves تحتاج صلاحية instagram_manage_insights.'}`,posts:instagram}
+     {platform:'facebook',partial:fbErrors.length>0&&facebook.length>0,status:fbErrors.length&&!facebook.length?'error':'connected',message:fbErrors.join(' ')||`تم جلب ${facebook.length} منشور. مشاهدات المحتوى متاحة لـ ${facebookMediaViews} منشور، والمشاهدون الفريدون لـ ${facebookUniqueViewers} منشور. ${fbDetail}`,posts:facebook,audience:fbAudience},
+     {platform:'instagram',partial:igErrors.length>0&&instagram.length>0,status:igErrors.length&&!instagram.length?'error':'connected',message:igErrors.join(' ')||`تم جلب ${instagram.length} منشور.${canReadIgInsights?'':' reach/views/saves تحتاج صلاحية instagram_manage_insights.'}`,posts:instagram,audience:igAudience}
    ];
  }catch(e){const message=e instanceof Error?e.message:'تعذّر الاتصال بـMeta';return [{platform:'facebook',status:'error',message,posts:[]},{platform:'instagram',status:'error',message,posts:[]}];}
 }

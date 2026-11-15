@@ -170,6 +170,23 @@ export function linkedInExternalObserved(row: any, a: SocialAccount) {
   if (row.platform !== 'linkedin') return;
   return linkedInObserved({ ...row, status: 'published', syncStatus: 'pending', platformAnalytics: undefined }, a);
 }
+const FOLLOWER_FIELDS = ['currentFollowers', 'followersCount', 'followerCount', 'followers', 'currentFollowerCount', 'totalFollowers'];
+/** The newest follower count for one account in a Zernio follower-stats response, wherever it sits. */
+export function linkedInFollowers(body: any, targetId: string): number | null {
+  const pick = (value: unknown): number | null => (typeof value === 'number' && Number.isFinite(value) && value >= 0 ? value : null);
+  const fromObject = (row: any): number | null => {
+    if (!row || typeof row !== 'object') return null;
+    for (const field of FOLLOWER_FIELDS) { const value = pick(row[field]); if (value != null) return value; }
+    return null;
+  };
+  const accounts: any[] = Array.isArray(body?.accounts) ? body.accounts : [];
+  const own = accounts.find((row) => [row?._id, row?.id, row?.accountId].map(String).includes(targetId)) ?? (accounts.length === 1 ? accounts[0] : undefined);
+  const direct = fromObject(own) ?? fromObject(own?.stats);
+  if (direct != null) return direct;
+  const history: any[] = Array.isArray(body?.stats?.[targetId]) ? body.stats[targetId] : Array.isArray(own?.history) ? own.history : [];
+  for (let i = history.length - 1; i >= 0; i--) { const value = fromObject(history[i]); if (value != null) return value; }
+  return null;
+}
 export async function syncLinkedIn(a: SocialAccount): Promise<ConnectorResult> {
   try {
     const key = await keyFor(a.credentialSource), targetId = String(a.metadata.zernioAccountId || '');
@@ -203,9 +220,12 @@ export async function syncLinkedIn(a: SocialAccount): Promise<ConnectorResult> {
         metricsEnabled = false;
       }
     }
+    // Follower counts come from Zernio's analytics add-on; its response fields are not documented, so read them defensively.
+    let followers: number | null = null;
+    if (metricsEnabled) try { followers = linkedInFollowers(await api(key, `/accounts/follower-stats?accountIds=${encodeURIComponent(targetId)}`), targetId); } catch { /* Optional. */ }
     if ([...posts.keys()].some(id => !measured.has(id))) partial = true;
     await putAccount({ ...a, scopes, status: 'connected', metadata: { ...a.metadata, metricsEnabled, tokenExpiresAt: health.tokenStatus.expiresAt || null }, lastSyncAt: new Date().toISOString(), error: null });
-    return { platform: 'linkedin', status: 'connected', partial: partial || !metricsEnabled, message: metricsEnabled ? `LinkedIn via Zernio: ${posts.size} posts in the last 90 days. New connections may need time for Zernio to collect history and metrics.` : 'LinkedIn publishing is connected. Analytics requires the Zernio API-key Analytics group and organization read permission.', posts: [...posts.values()] };
+    return { platform: 'linkedin', audience: [{ platform: 'linkedin', accountId: a.externalId, accountName: a.name, followers }], status: 'connected', partial: partial || !metricsEnabled, message: metricsEnabled ? `LinkedIn via Zernio: ${posts.size} posts in the last 90 days. New connections may need time for Zernio to collect history and metrics.` : 'LinkedIn publishing is connected. Analytics requires the Zernio API-key Analytics group and organization read permission.', posts: [...posts.values()] };
   } catch {
     await putAccount({ ...a, status: 'sync_failed', error: 'LinkedIn sync could not be verified. Check the selected organization, Zernio key permissions and connection health.' });
     return { platform: 'linkedin', status: 'error', message: 'LinkedIn sync could not be verified. Check Zernio permissions and connection health.', posts: [] };

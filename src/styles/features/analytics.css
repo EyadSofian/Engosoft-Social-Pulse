@@ -859,3 +859,140 @@
   overflow-x: auto;
   scrollbar-width: none;
 }
+
+/* ── Audience ──────────────────────────────────────────────────────── */
+
+.an-aud-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(min(100%, 180px), 1fr));
+  gap: var(--sp-3);
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+.an-aud {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  height: 100%;
+  padding: var(--sp-3) var(--sp-4);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-lg);
+}
+
+.an-aud__head {
+  display: flex;
+  align-items: center;
+  gap: var(--sp-2);
+}
+
+.an-aud__head h3 {
+  margin: 0;
+  font-size: var(--fs-sm);
+  font-weight: 650;
+}
+
+.an-aud__value {
+  margin: var(--sp-1) 0 0;
+  font-size: 26px;
+  font-weight: 650;
+  line-height: 1.2;
+}
+
+.an-aud__label {
+  margin: 0;
+  font-size: var(--fs-xs);
+  color: var(--text-muted);
+}
+
+.an-aud__accounts {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  margin: var(--sp-2) 0 0;
+  padding: var(--sp-2) 0 0;
+  border-top: 1px solid var(--border);
+  list-style: none;
+  font-size: var(--fs-xs);
+}
+
+.an-aud__accounts li {
+  display: flex;
+  justify-content: space-between;
+  gap: var(--sp-2);
+  min-width: 0;
+}
+
+.an-demo-list {
+  display: flex;
+  flex-direction: column;
+  gap: var(--sp-3);
+}
+
+.an-demo {
+  padding: var(--sp-3) var(--sp-4);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-lg);
+}
+
+.an-demo__head {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: var(--sp-2);
+  margin-bottom: var(--sp-3);
+}
+
+.an-demo__head h3 {
+  margin: 0;
+  font-size: var(--fs-sm);
+  font-weight: 650;
+}
+
+.an-demo__basis {
+  margin-inline-start: auto;
+  font-size: var(--fs-xs);
+  color: var(--text-subtle);
+}
+
+.an-demo__groups {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(min(100%, 210px), 1fr));
+  gap: var(--sp-4) var(--sp-5);
+}
+
+.an-demo__group h4 {
+  margin: 0 0 var(--sp-2);
+  font-size: var(--fs-xs);
+  font-weight: 700;
+  color: var(--text-muted);
+}
+
+.an-demo__group ul {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+.an-demo__group li {
+  display: grid;
+  grid-template-columns: minmax(0, 7.5em) minmax(0, 1fr) 3em;
+  align-items: center;
+  gap: var(--sp-2);
+  font-size: var(--fs-sm);
+}
+
+.an-demo__group li > b {
+  text-align: end;
+  font-size: var(--fs-xs);
+}
+
+.an-demo__label {
+  overflow: hidden;
+  white-space: nowrap;
+  text-overflow: ellipsis;
+}

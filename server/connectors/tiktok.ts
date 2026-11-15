@@ -63,6 +63,12 @@ export async function syncTikTok(account?:SocialAccount):Promise<ConnectorResult
    }
    const refreshEnabled=Boolean(process.env.TIKTOK_DISPLAY_REFRESH_TOKEN||(await hasSavedOAuthToken('tiktok')));
    const accountName=text(user?.display_name).trim()||'TikTok';
-   return {platform:'tiktok',partial:pageError,status:'connected',message:`الحساب المرتبط: ${accountName}. تم تحديث ${posts.length} فيديو.${pageError?' تعذّر جلب بعض الفيديوهات الأقدم مؤقتًا؛ سنحاول في المزامنة التالية.':hasMore&&historyCursor!=='complete'?' سيُستكمل جلب الفيديوهات الأقدم في المزامنة التالية.':''}${refreshEnabled?' تجديد OAuth مفعّل.':' اضبط refresh token لاستمرار المزامنة بعد انتهاء access token.'}`,posts,checkpoints:historyCursor?[{accountId:accountId('tiktok',user.open_id),kind:'tiktok_history',value:historyCursor}]:[]};
+   // The follower count needs the user.info.stats scope; without it the sync carries on without one.
+   let followers:number|null=null;
+   try{
+     const stats=await json<{data?:{user?:{follower_count?:unknown}};error?:{code?:string}}>('https://open.tiktokapis.com/v2/user/info/?fields=follower_count',{headers:{Authorization:`Bearer ${token}`}});
+     if(!stats.error?.code||stats.error.code==='ok')followers=numberOrNull(stats.data?.user?.follower_count);
+   }catch{/* Optional. */}
+   return {platform:'tiktok',audience:[{platform:'tiktok',accountId:user.open_id,accountName,followers}],partial:pageError,status:'connected',message:`الحساب المرتبط: ${accountName}. تم تحديث ${posts.length} فيديو.${pageError?' تعذّر جلب بعض الفيديوهات الأقدم مؤقتًا؛ سنحاول في المزامنة التالية.':hasMore&&historyCursor!=='complete'?' سيُستكمل جلب الفيديوهات الأقدم في المزامنة التالية.':''}${refreshEnabled?' تجديد OAuth مفعّل.':' اضبط refresh token لاستمرار المزامنة بعد انتهاء access token.'}`,posts,checkpoints:historyCursor?[{accountId:accountId('tiktok',user.open_id),kind:'tiktok_history',value:historyCursor}]:[]};
  }catch(e){return {platform:'tiktok',status:'error',message:e instanceof Error?e.message:'تعذّر الاتصال بـTikTok',posts:[]};}
 }

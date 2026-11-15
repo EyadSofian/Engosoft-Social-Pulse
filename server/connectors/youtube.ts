@@ -1,4 +1,4 @@
-import { blankMetrics, type ConnectorResult, type ObservedPost } from '../types.js';
+import { blankMetrics, type AudienceDemographics, type AudienceSlice, type ConnectorResult, type ObservedPost } from '../types.js';
 import { numberOrNull } from './http.js';
 import { accessToken } from '../social/credentials.js';
 import { checkpoint } from '../social/store.js';
@@ -46,11 +46,33 @@ export async function youtubeInsights(account: SocialAccount, startDate: string,
     }),
   };
 }
+/**
+ * Who watched the channel in the last 90 days: age and gender (percent of views) and the top countries (views).
+ * YouTube reports viewers, not subscribers. Needs the yt-analytics.readonly consent; without it this returns null.
+ */
+async function youtubeDemographics(account:SocialAccount,auth:RequestInit):Promise<AudienceDemographics|null>{
+ const day=(offset:number)=>new Date(Date.now()-offset*86_400_000).toISOString().slice(0,10);
+ const report=(params:Record<string,string>)=>request(`https://youtubeanalytics.googleapis.com/v2/reports?${new URLSearchParams({ids:`channel==${account.externalId}`,startDate:day(90),endDate:day(1),...params})}`,auth,true) as Promise<Report>;
+ const output:AudienceDemographics={basis:'viewers'};
+ try{
+  const rows=rowsOf(await report({metrics:'viewerPercentage',dimensions:'ageGroup,gender'}));
+  const age=new Map<string,number>(),gender=new Map<string,number>();
+  for(const r of rows){const share=metric(r.viewerPercentage)??0;const group=String(r.ageGroup).replace(/^age/,'');age.set(group,(age.get(group)??0)+share);gender.set(String(r.gender),(gender.get(String(r.gender))??0)+share);}
+  const slices=(map:Map<string,number>):AudienceSlice[]=>[...map].map(([key,value])=>({key,value:Math.round(value*100)/100})).filter(s=>s.value>0);
+  if(age.size){output.age=slices(age).sort((a,b)=>a.key.localeCompare(b.key));output.gender=slices(gender).sort((a,b)=>b.value-a.value);}
+ }catch{/* Optional. */}
+ try{
+  const rows=rowsOf(await report({metrics:'views',dimensions:'country',sort:'-views',maxResults:'20'}));
+  const countries=rows.map(r=>({key:String(r.country),value:metric(r.views)??0})).filter(s=>s.key&&s.value>0);
+  if(countries.length)output.country=countries;
+ }catch{/* Optional. */}
+ return output.age||output.country?output:null;
+}
 export async function syncYouTube(account:SocialAccount):Promise<ConnectorResult> {
  const posts:ObservedPost[]=[];
  try {
   const token=await accessToken(account),auth={headers:headers(token)};
-  const channel=await request(`${base}channels?part=id,snippet,contentDetails&mine=true`,auth,true);
+  const channel=await request(`${base}channels?part=id,snippet,contentDetails,statistics&mine=true`,auth,true);
   const mine=channel.items?.find((x:any)=>x.id===account.externalId);
   if(!mine)throw new Error('Authorized channel identity changed. Reconnect YouTube.');
   const playlist=mine.contentDetails?.relatedPlaylists?.uploads;
@@ -72,6 +94,8 @@ export async function syncYouTube(account:SocialAccount):Promise<ConnectorResult
    if(page>=2)historyNext=next||'complete';
    if(!next) {historyNext='complete';break;}
   }
-  return {platform:'youtube',status:'connected',message:`${mine.snippet.title}: ${posts.length} videos synchronized.`,posts,checkpoints:[{accountId:account.id,kind:'youtube_history',value:historyNext}]};
+  const subscribers=mine.statistics?.hiddenSubscriberCount?null:numberOrNull(mine.statistics?.subscriberCount);
+  const demographics=await youtubeDemographics(account,auth);
+  return {platform:'youtube',audience:[{platform:'youtube',accountId:account.externalId,accountName:mine.snippet.title,followers:subscribers,demographics}],status:'connected',message:`${mine.snippet.title}: ${posts.length} videos synchronized.`,posts,checkpoints:[{accountId:account.id,kind:'youtube_history',value:historyNext}]};
  }catch {return {platform:'youtube',status:'error',message:'YouTube synchronization failed. Check channel consent, API enablement and quota.',posts};}
 }

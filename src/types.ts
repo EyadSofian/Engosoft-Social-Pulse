@@ -96,6 +96,34 @@ export interface ApiDashboard {
   connectors: Connector[];
   website: WebsiteDay[];
   websitePages: WebsitePageDay[];
+  /** Missing from older servers. */
+  audience?: AudienceDay[];
+}
+
+/** One slice of an audience breakdown: an age group, gender, country or city, and its count or percentage. */
+export interface AudienceSlice {
+  key: string;
+  value: number;
+}
+
+export interface AudienceDemographics {
+  /** Followers (Instagram) or viewers in the last 90 days (YouTube). */
+  basis: 'followers' | 'viewers';
+  age?: AudienceSlice[];
+  gender?: AudienceSlice[];
+  country?: AudienceSlice[];
+  city?: AudienceSlice[];
+}
+
+/** An account's audience on one business day. */
+export interface AudienceDay {
+  platform: Platform;
+  accountId: string;
+  accountName: string;
+  /** yyyy-MM-dd in the business timezone. */
+  date: string;
+  followers: number | null;
+  demographics: AudienceDemographics | null;
 }
 
 export interface SyncResult {
@@ -153,4 +181,5 @@ export interface Dashboard {
   connectors: Connector[];
   website: WebsiteDay[];
   websitePages: WebsitePageDay[];
+  audience: AudienceDay[];
 }

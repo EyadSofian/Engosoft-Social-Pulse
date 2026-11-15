@@ -26,6 +26,7 @@ import { REPORT_VIEWS, ReportsSection, type ReportView } from './ReportsSection'
 import { loadPictures, type PostPicture } from './thumbs';
 import { useAnalytics, type AnalyticsModel, type Kpi } from './model';
 import { PostsSection } from './PostsSection';
+import { AudienceSection } from './AudienceSection';
 
 const PERIOD_VALUES = PERIODS.map((period) => String(period.value));
 
@@ -138,10 +139,12 @@ export function AnalyticsHub() {
           <>
             <Activity model={model} />
             <PlatformTable model={model} onPick={setPlatform} />
+            <AudienceSection audience={model.audience} />
             <ReportsSection reports={reports} view={view} onView={(next) => setQuery({ report: next === 'ranking' ? null : next })} onRankBy={(next) => setQuery({ rank: next === 'rate' ? null : next })} />
             <PostsSection posts={model.posts} />
           </>
         ) : (
+          <>
           <Card>
             <CardBody>
               <EmptyState
@@ -151,6 +154,8 @@ export function AnalyticsHub() {
               />
             </CardBody>
           </Card>
+          <AudienceSection audience={model.audience} />
+          </>
         )}
       </LiveGate>
 

@@ -7,6 +7,9 @@ import { workbook } from '../src/lib/export/xlsx';
 import { dayNumber } from '../src/lib/format';
 import { buildSheets, exportPostList } from '../src/pages/analytics/export';
 import { bestAndWorst, buildReports, byHourBlock, byWeekday, interactionMix, median } from '../src/pages/analytics/reports';
+import { buildAudience, shares, sliceLabel } from '../src/pages/analytics/audience';
+import { linkedInFollowers } from '../server/social/linkedin';
+import type { AudienceDay } from '../src/types';
 import type { AnalyticsModel } from '../src/pages/analytics/model';
 import { reportHtml } from '../src/pages/analytics/report';
 import type { PostPicture } from '../src/pages/analytics/thumbs';
@@ -31,7 +34,7 @@ function modelFor(source: Post[] = posts): AnalyticsModel {
   return {
     now, todayNum: dayNumber(now), scope: { period: 30, platform: 'all', account: 'all' },
     posts: source, summary, trend: buildTrend(source, 30, dayNumber(now)), weekly: false,
-    platforms: byPlatform(source).filter((row) => row.count), accountOptions: [], lastCheck: now,
+    platforms: byPlatform(source).filter((row) => row.count), accountOptions: [], audience: [], lastCheck: now,
     kpis: [
       { key: 'posts', value: source.length, previous: 4, change: 100 },
       { key: 'reach', value: summary.reach, previous: 4000, change: 100 },
@@ -162,4 +165,70 @@ test('nothing to rank still gives a valid export', () => {
   const noImages = reportHtml(modelFor([posts[0]]), buildReports([posts[0]], dayNumber(settledNow), 'interactions'), language('ar'), 'all', new Map(), now);
   assert.match(noImages, /الصورة مش متاحة/);
   assert.ok(!noImages.includes('undefined'));
+});
+
+test('views ranking only uses posts that report views, and names platforms without them', () => {
+  const today = dayNumber(settledNow);
+  const withViews = posts.map((post, index) => (post.platform === 'facebook' ? { ...post, metrics: { ...post.metrics, views: null } } : { ...post, metrics: { ...post.metrics, views: 100 * index } }));
+  const ranking = bestAndWorst(withViews, today, 'views');
+  const facebook = ranking.find((row) => row.platform === 'facebook')!;
+  assert.equal(facebook.reported, 0);
+  assert.equal(facebook.best.length, 0);
+  const instagram = ranking.find((row) => row.platform === 'instagram')!;
+  assert.equal(instagram.best[0].post.externalId, '7');
+  assert.equal(instagram.best[0].value, 700);
+  const html = reportHtml({ ...modelFor(withViews), todayNum: today }, buildReports(withViews, today, 'views'), language('en'), 'ranked', pictures, now);
+  assert.match(html, /Not reported here: Facebook/);
+});
+
+test('audience: latest followers, change since the period start, demographics shares', () => {
+  const todayNum = dayNumber(Date.parse('2026-11-15T12:00:00Z'));
+  const day = (date: string, followers: number | null, extra: Partial<AudienceDay> = {}): AudienceDay => ({ platform: 'instagram', accountId: 'ig', accountName: 'engosoft', date, followers, demographics: null, ...extra });
+  const rows: AudienceDay[] = [
+    day('2026-10-10', 900),
+    day('2026-10-16', 1000),
+    day('2026-11-10', 1100, { demographics: { basis: 'followers', gender: [{ key: 'M', value: 300 }, { key: 'F', value: 100 }], age: [{ key: '25-34', value: 50 }, { key: '18-24', value: 50 }] } }),
+    day('2026-11-15', 1150),
+    { platform: 'facebook', accountId: 'fb', accountName: 'Engosoft', date: '2026-11-15', followers: null, demographics: null },
+    { platform: 'youtube', accountId: 'yt', accountName: 'Engosoft', date: '2026-11-14', followers: 40, demographics: null },
+    { platform: 'youtube', accountId: 'yt', accountName: 'Engosoft', date: '2026-11-15', followers: 42, demographics: null },
+  ];
+  const audience = buildAudience(rows, { platform: 'all', account: 'all' }, 30, todayNum);
+  assert.deepEqual(audience.map((row) => row.platform), ['facebook', 'instagram', 'youtube']);
+  const instagram = audience.find((row) => row.platform === 'instagram')!;
+  // The period starts 2026-10-17; the last count before it is 1000 on 2026-10-16.
+  assert.equal(instagram.followers, 1150);
+  assert.equal(instagram.change, 150);
+  assert.equal(instagram.since, '2026-10-16');
+  assert.equal(instagram.accounts[0].demographicsDate, '2026-11-10');
+  assert.equal(audience.find((row) => row.platform === 'facebook')!.followers, null);
+  // Tracking began inside the period: the change counts from the first day counted.
+  const youtube = audience.find((row) => row.platform === 'youtube')!;
+  assert.equal(youtube.change, 2);
+  assert.equal(youtube.since, '2026-11-14');
+  // One day only: no change yet.
+  assert.equal(buildAudience([rows[3]], { platform: 'all', account: 'all' }, 30, todayNum)[0].change, null);
+  assert.deepEqual(buildAudience(rows, { platform: 'youtube', account: 'all' }, 30, todayNum).map((row) => row.platform), ['youtube']);
+  const gender = shares(instagram.accounts[0].demographics!.gender, 'gender');
+  assert.deepEqual(gender.map((slice) => [slice.key, slice.value]), [['M', 75], ['F', 25]]);
+  assert.deepEqual(shares(instagram.accounts[0].demographics!.age, 'age').map((slice) => slice.key), ['18-24', '25-34']);
+  assert.equal(sliceLabel('gender', 'M', 'en'), 'Men');
+  assert.equal(sliceLabel('country', 'EG', 'en'), 'Egypt');
+
+  const model = { ...modelFor(), audience };
+  const sheets = buildSheets(model, buildReports(model.posts, todayNum, 'rate'), language('ar'), 'ranked');
+  const audienceSheet = sheets.find((sheet) => sheet.name === 'الجمهور')!;
+  assert.deepEqual(audienceSheet.rows.find((row) => row[0] === 'Instagram')!.slice(2, 5), [1150, 150, '2026-10-16']);
+  assert.ok(sheets.some((sheet) => sheet.name === 'تركيبة الجمهور'));
+  const html = reportHtml(model, buildReports(model.posts, todayNum, 'rate'), language('en'), 'ranked', pictures, now);
+  assert.match(html, /<h2>Audience<\/h2>/);
+  assert.match(html, /Men/);
+});
+
+test('LinkedIn follower count is found wherever Zernio puts it', () => {
+  assert.equal(linkedInFollowers({ accounts: [{ _id: 'z1', currentFollowers: 512 }] }, 'z1'), 512);
+  assert.equal(linkedInFollowers({ accounts: [{ _id: 'z1', stats: { followersCount: 7 } }] }, 'z1'), 7);
+  assert.equal(linkedInFollowers({ accounts: [{ _id: 'z1' }], stats: { z1: [{ date: '2026-11-01', followers: 10 }, { date: '2026-11-02', followers: 12 }] } }, 'z1'), 12);
+  assert.equal(linkedInFollowers({ accounts: [{ _id: 'other', followers: 3 }, { _id: 'x', followers: 4 }] }, 'z1'), null);
+  assert.equal(linkedInFollowers({}, 'z1'), null);
 });

@@ -17,6 +17,7 @@ import {
 } from '../../lib/analytics';
 import { dayNumber } from '../../lib/format';
 import type { Platform, Post } from '../../types';
+import { buildAudience, type PlatformAudience } from './audience';
 
 export interface Scope {
   period: Period;
@@ -49,6 +50,8 @@ export interface AnalyticsModel {
   /** Platforms that published in the window, busiest first. */
   platforms: GroupRow[];
   accountOptions: AccountOption[];
+  /** Followers and demographics for the platforms and accounts in scope. */
+  audience: PlatformAudience[];
   lastCheck: number;
 }
 
@@ -94,6 +97,7 @@ export function useAnalytics(scope: Scope): AnalyticsModel {
         .filter((row) => row.count > 0)
         .sort((a, b) => b.count - a.count),
       accountOptions: accountsOf(data.posts, scope.platform),
+      audience: buildAudience(data.audience, scope, scope.period, todayNum),
       lastCheck: data.connectors.reduce((latest, entry) => Math.max(latest, entry.checkedAt ? Date.parse(entry.checkedAt) : 0), 0),
     };
     // The scope object is rebuilt on every render; its three fields are the real dependencies.

@@ -21,6 +21,7 @@ import {
   type TimeRow,
 } from './reports';
 import type { PostPicture } from './thumbs';
+import { basisLabel, DEMOGRAPHIC_KEYS, DEMOGRAPHIC_LABEL, shares, sliceLabel } from './audience';
 
 /** Shared with the page, so a tile on screen and its row in the file carry the same name. */
 export const KPI_LABEL: Record<KpiKey, Text> = {
@@ -281,6 +282,52 @@ function accountsSheet(model: AnalyticsModel, reports: Reports, i18n: I18n): She
   };
 }
 
+function audienceSheet(model: AnalyticsModel, i18n: I18n): Sheet {
+  const { t } = i18n;
+  return {
+    name: t('Audience', 'الجمهور'),
+    title: t('Followers on each account', 'المتابعين على كل حساب'),
+    subtitle: scopeLine(model, i18n),
+    columns: [
+      { header: t('Platform', 'المنصة'), width: 14 },
+      { header: t('Account', 'الحساب'), width: 24 },
+      { header: t('Followers', 'المتابعين'), width: 14, format: 'int' },
+      { header: t('Change', 'التغيير'), width: 12, format: 'int' },
+      { header: t('Since', 'من يوم'), width: 13 },
+      { header: t('Counted on', 'اتعدّ يوم'), width: 13 },
+    ],
+    rows: model.audience.flatMap((row) => row.accounts.map((account) => [channelName[account.platform], account.accountName, account.followers, account.change, account.since ?? '', account.date ?? ''])),
+    notes: [t('Followers are read once a day with the sync; the change compares with the count at the start of the period, or the first day counted.', 'المتابعين بيتقروا مرة في اليوم مع المزامنة؛ التغيير مقارنة بعددهم في أول الفترة، أو بأول يوم اتعدّوا فيه.')],
+  };
+}
+
+function demographicsSheet(model: AnalyticsModel, i18n: I18n): Sheet {
+  const { t, tx, lang } = i18n;
+  const rows = model.audience.flatMap((row) =>
+    row.accounts.flatMap((account) =>
+      account.demographics
+        ? DEMOGRAPHIC_KEYS.flatMap((key) =>
+            shares(account.demographics![key], key, 50).map((slice) => [channelName[account.platform], account.accountName, tx(basisLabel(account.demographics!)), tx(DEMOGRAPHIC_LABEL[key]), sliceLabel(key, slice.key, lang), round(slice.value, 1)]),
+          )
+        : [],
+    ),
+  );
+  return {
+    name: t('Demographics', 'تركيبة الجمهور'),
+    title: t('Who the audience is', 'الجمهور مين'),
+    subtitle: scopeLine(model, i18n),
+    columns: [
+      { header: t('Platform', 'المنصة'), width: 14 },
+      { header: t('Account', 'الحساب'), width: 22 },
+      { header: t('Who', 'مين'), width: 22 },
+      { header: t('Breakdown', 'التقسيم'), width: 14 },
+      { header: t('Group', 'الفئة'), width: 22 },
+      { header: t('Share %', 'النسبة %'), width: 11, format: 'percent' },
+    ],
+    rows,
+  };
+}
+
 /** Interactions on each platform's middle post, so every post can be read against it. */
 export function typicalByPlatform(posts: Post[]): Map<string, number | null> {
   const typical = new Map<string, number | null>();
@@ -350,6 +397,8 @@ export function buildSheets(model: AnalyticsModel, reports: Reports, i18n: I18n,
     timeSheet(t('Hours', 'الساعات'), t('Results by time of day', 'النتائج حسب وقت النشر'), t('Time', 'الوقت'), reports.hours, (row) => hourBlockLabel(row.key), model, i18n),
     mixSheet(model, reports, i18n),
     ...(reports.accounts.length ? [accountsSheet(model, reports, i18n)] : []),
+    ...(model.audience.length ? [audienceSheet(model, i18n)] : []),
+    ...(model.audience.some((row) => row.accounts.some((account) => account.demographics)) ? [demographicsSheet(model, i18n)] : []),
     ...(posts === 'all' ? [postsSheet(model, i18n, pictures)] : []),
   ];
 }
