@@ -5,7 +5,8 @@ import type { I18n, Lang } from '../src/i18n/I18nProvider';
 import { buildTrend, byPlatform, normalize, summarize } from '../src/lib/analytics';
 import { workbook } from '../src/lib/export/xlsx';
 import { dayNumber } from '../src/lib/format';
-import { buildSheets, reportTopPosts } from '../src/pages/analytics/export';
+import { buildSheets, exportPostList } from '../src/pages/analytics/export';
+import { bestAndWorst, buildReports, byHourBlock, byWeekday, interactionMix, median } from '../src/pages/analytics/reports';
 import type { AnalyticsModel } from '../src/pages/analytics/model';
 import { reportHtml } from '../src/pages/analytics/report';
 import type { PostPicture } from '../src/pages/analytics/thumbs';
@@ -53,58 +54,112 @@ function language(lang: Lang): I18n {
 const picture: PostPicture = { dataUrl: 'data:image/jpeg;base64,/9j/2Q==', small: { data: new Uint8Array([255, 216, 255, 217]), width: 1, height: 1 }, width: 1, height: 1 };
 const pictures = new Map(posts.map((post) => [post.key, picture]));
 
-test('both reports summarize all scoped posts but include only the five highest interaction posts', async () => {
-  const model = modelFor();
-  const originalOrder = [...posts];
-  assert.deepEqual(reportTopPosts(model).map((post) => post.externalId), ['6', '5', '4', '3', '2']);
-  assert.deepEqual(posts, originalOrder);
+const settledNow = Date.parse('2026-11-20T12:00:00Z');
+
+test('best and worst are ranked within each platform, never overlap, and skip unmeasured or fresh posts', () => {
+  const today = dayNumber(settledNow);
+  const ranking = bestAndWorst(posts, today, 'interactions');
+  assert.deepEqual(ranking.map((row) => row.platform), ['facebook', 'instagram']);
+  const facebook = ranking[0];
+  // Facebook has posts 0, 2, 4, 6 (interactions 0, 20, 40, 60).
+  assert.deepEqual(facebook.best.map((entry) => entry.post.externalId), ['6', '4']);
+  assert.deepEqual(facebook.worst.map((entry) => entry.post.externalId), ['0', '2']);
+  assert.equal(facebook.median, 30);
+  assert.equal(facebook.best[0].vsMedian, 2);
+  // Instagram's post 7 has no interaction data: it is counted as unranked, not as a zero.
+  const instagram = ranking[1];
+  assert.equal(instagram.unranked, 1);
+  assert.ok(![...instagram.best, ...instagram.worst].some((entry) => entry.post.externalId === '7'));
+  // Posts younger than two days wait.
+  const fresh = bestAndWorst(posts, dayNumber(Date.parse('2026-11-08T12:00:00Z')), 'interactions');
+  assert.ok(fresh.flatMap((row) => [...row.best, ...row.worst]).every((entry) => entry.post.dayNum <= dayNumber(Date.parse('2026-11-06T12:00:00Z'))));
+  // A single rankable post is a best, never also a worst.
+  const one = bestAndWorst([posts[2]], today, 'interactions')[0];
+  assert.equal(one.best.length, 1);
+  assert.equal(one.worst.length, 0);
+});
+
+test('the rate ranking ignores posts seen by too few people', () => {
+  const today = dayNumber(settledNow);
+  const tiny = { ...posts[1], key: 'instagram:tiny', externalId: 'tiny', metrics: { ...posts[1].metrics, reach: 10, likes: 9 }, interactions: 9 };
+  const ranking = bestAndWorst([...posts, tiny], today, 'rate');
+  const instagram = ranking.find((row) => row.platform === 'instagram')!;
+  assert.ok(![...instagram.best, ...instagram.worst].some((entry) => entry.post.externalId === 'tiny'));
+  assert.equal(instagram.best[0].post.externalId, '5');
+});
+
+test('timing, mix and median reports add up', () => {
+  const days = byWeekday(posts);
+  assert.equal(days.reduce((sum, row) => sum + row.count, 0), 8);
+  assert.ok(days.filter((row) => row.best).length <= 1);
+  const hours = byHourBlock(posts);
+  assert.equal(hours.length, 6);
+  assert.equal(hours.reduce((sum, row) => sum + row.count, 0), 8);
+  const mix = interactionMix(posts);
+  const facebook = mix.find((row) => row.platform === 'facebook')!;
+  assert.equal(facebook.cells.likes.total, 120);
+  assert.equal(facebook.cells.likes.rate, 3);
+  assert.equal(facebook.cells.comments.total, null);
+  assert.equal(median([3, 1, 2]), 2);
+  assert.equal(median([4, 1, 3, 2]), 2.5);
+  assert.equal(median([]), null);
+});
+
+test('exports carry every report, the ranked posts with pictures, and every post only when asked', async () => {
+  const model = { ...modelFor(), todayNum: dayNumber(settledNow) };
+  const reports = buildReports(model.posts, model.todayNum, 'interactions');
+  const ranked = exportPostList(model, reports, 'ranked');
+  assert.equal(ranked.length, 7);
+  assert.equal(exportPostList(model, reports, 'all').length, 8);
   for (const lang of ['ar', 'en'] as const) {
     const i18n = language(lang);
-    const sheets = buildSheets(model, i18n, pictures);
-    assert.equal(sheets.length, 4);
+    const sheets = buildSheets(model, reports, i18n, 'ranked', pictures);
+    // Two accounts (one per platform) publish here, so the accounts sheet is included.
+    assert.equal(sheets.length, 9);
     assert.equal(sheets[0].rows[0][1], 8);
     assert.equal(sheets[0].rows[1][1], 8000);
     assert.equal(sheets[0].rows[3][1], 210);
     assert.equal(sheets[1].rows.reduce((sum, row) => sum + Number(row[1]), 0), 8);
-    assert.equal(sheets[2].rows.reduce((sum, row) => sum + Number(row[1]), 0), 8);
-    const top = sheets[3];
-    assert.equal(top.rows.length, 5);
-    assert.equal(top.images?.length, 5);
-    assert.ok(!top.rows.flat().some((value) => String(value).includes('Post-0')));
-    assert.ok(String(top.rows[0][5]).length <= 161);
-    const file = Buffer.from(await workbook(sheets).arrayBuffer());
-    const parsed = await readSheet(file, top.name);
-    assert.equal(parsed[4][1], 1);
-    assert.equal(parsed[8][1], 5);
-    const html = reportHtml(model, i18n, pictures, now);
-    assert.equal((html.match(/<article class="post">/g) ?? []).length, 5);
-    assert.equal((html.match(/<img /g) ?? []).length, 5);
+    const rankingSheet = sheets[3];
+    assert.equal(rankingSheet.rows.length, 7);
+    assert.equal(rankingSheet.images?.length, 7);
+    assert.ok(String(rankingSheet.rows[0][7]).length <= 161);
+    const all = buildSheets(model, reports, i18n, 'all', pictures);
+    assert.equal(all.length, 10);
+    assert.equal(all[9].rows.length, 8);
+    assert.equal(all[9].images?.length, 8);
+    const file = Buffer.from(await workbook(all).arrayBuffer());
+    const parsed = await readSheet(file, rankingSheet.name);
+    assert.equal(parsed[4][3], 1);
+
+    const html = reportHtml(model, reports, i18n, 'ranked', pictures, now);
+    assert.equal((html.match(/<article class="post/g) ?? []).length, 7);
     assert.ok(html.includes('Post-6'));
-    assert.ok(!html.includes('Post-0'));
     assert.ok(!html.includes('Post-7'));
     assert.ok(!html.includes('<script>'));
     assert.ok(!html.includes('href="javascript:'));
     assert.ok(!html.includes('caption '.repeat(60)));
     assert.ok(html.includes(`dir="${i18n.dir}"`));
     assert.ok(html.includes(i18n.t('Overview', 'نظرة عامة')));
-    assert.ok(html.includes(i18n.t('By platform', 'حسب المنصة')));
-    assert.ok(html.includes('8,000') || html.includes('8000'));
+    assert.ok(html.includes(i18n.t('Results by content type', 'النتائج حسب نوع المحتوى')));
+    assert.ok(html.includes(i18n.t('When posts did best', 'المنشورات نجحت إمتى')));
+    const everything = reportHtml(model, reports, i18n, 'all', pictures, now);
+    assert.equal((everything.match(/<article class="post/g) ?? []).length, 15);
+    assert.ok(everything.includes('Post-7'));
   }
 });
 
-test('missing interaction data stays unranked; measured zero counts and ties prefer the newer post', () => {
-  const unknown = modelFor(posts.filter((post) => !post.measured));
-  assert.deepEqual(reportTopPosts(unknown), []);
-  const sheets = buildSheets(unknown, language('en'), pictures);
-  assert.equal(sheets[0].rows[0][1], 1);
+test('nothing to rank still gives a valid export', () => {
+  const unknown = { ...modelFor(posts.filter((post) => !post.measured)), todayNum: dayNumber(settledNow) };
+  const reports = buildReports(unknown.posts, unknown.todayNum, 'rate');
+  assert.deepEqual(exportPostList(unknown, reports, 'ranked'), []);
+  const sheets = buildSheets(unknown, reports, language('en'), 'ranked', pictures);
   assert.equal(sheets[3].rows.length, 0);
   assert.equal(sheets[3].images?.length, 0);
-  assert.match(reportHtml(unknown, language('en'), pictures, now), /No interaction data/);
-  assert.equal(buildSheets(modelFor([]), language('ar'))[3].rows.length, 0);
-  assert.deepEqual(reportTopPosts(modelFor([posts[0]])).map((post) => post.externalId), ['0']);
-  const tied = posts.slice(0, 3).map((post) => ({ ...post, interactions: 10 }));
-  assert.deepEqual(reportTopPosts(modelFor(tied)).map((post) => post.externalId), ['2', '1', '0']);
-  const noImages = reportHtml(modelFor([posts[0]]), language('ar'), new Map(), now);
+  assert.match(reportHtml(unknown, reports, language('en'), 'ranked', pictures, now), /No post here has the numbers/);
+  const empty = modelFor([]);
+  assert.equal(buildSheets(empty, buildReports([], empty.todayNum, 'rate'), language('ar'), 'all')[3].rows.length, 0);
+  const noImages = reportHtml(modelFor([posts[0]]), buildReports([posts[0]], dayNumber(settledNow), 'interactions'), language('ar'), 'all', new Map(), now);
   assert.match(noImages, /الصورة مش متاحة/);
   assert.ok(!noImages.includes('undefined'));
 });

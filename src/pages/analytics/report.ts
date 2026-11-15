@@ -3,13 +3,14 @@ import { channelName } from '../../i18n/labels';
 import { dateFromKey, dayKeyOf } from '../../lib/format';
 import type { TrendPoint } from '../../lib/analytics';
 import type { Platform, Post } from '../../types';
-import { KPI_LABEL, reportNotes, reportTopPosts, scopeLine } from './export';
+import { KPI_LABEL, reportNotes, scopeLine, shortCaption, type ExportPosts } from './export';
 import type { AnalyticsModel, Kpi } from './model';
+import { contentTypeOf, hourBlockLabel, MIX_KEYS, MIX_LABEL, postRate, RANK_LABEL, RANK_PER_PLATFORM, typeLabel, WEEKDAY_LABEL, type Ranked, type Reports, type TimeRow } from './reports';
 import type { PostPicture } from './thumbs';
 
 /**
- * Period-wide analysis (headline numbers, activity, platforms), then brief highlights
- * for the top five posts, ranked by interactions. The browser
+ * Period-wide analysis (headline numbers, activity, platforms), the best and worst posts on
+ * each platform, the content-type, timing and interaction reports, and every post when asked. The browser
  * prints it, because it is the only engine here that shapes Arabic correctly; "Save as PDF"
  * in the print dialog writes the file.
  */
@@ -91,29 +92,86 @@ function platformRows(model: AnalyticsModel, i18n: I18n) {
     .join('');
 }
 
-function postCard(post: Post, index: number, picture: PostPicture | undefined, i18n: I18n) {
-  const { t, num, pct, date } = i18n;
+/** `extraHtml` must already be escaped. */
+function postCard(post: Post, badge: string, picture: PostPicture | undefined, i18n: I18n, extraHtml = '', tone: 'best' | 'worst' | '' = '') {
+  const { t, num, pct, date, tx } = i18n;
   const color = COLOR[post.platform];
   const image = picture
     ? `<img src="${picture.dataUrl}" alt="">`
     : `<span class="ph" style="color:${color}">${esc(channelName[post.platform])}<small>${esc(t('No image available', 'الصورة مش متاحة'))}</small></span>`;
-  const caption = post.title ? (post.title.length > CAPTION_LIMIT ? `${post.title.slice(0, CAPTION_LIMIT)}…` : post.title) : t('(no caption)', '(بدون نص)');
+  const caption = post.title ? shortCaption(post, CAPTION_LIMIT) : t('(no caption)', '(بدون نص)');
   const figures = [
     { label: t('Reach', 'الوصول'), value: num(post.metrics.reach), strong: false },
     { label: t('Views', 'المشاهدات'), value: num(post.metrics.views), strong: false },
     { label: t('Interactions', 'التفاعلات'), value: post.measured ? num(post.interactions) : '—', strong: true },
-    { label: t('Engagement rate', 'معدل التفاعل'), value: pct(post.engagementRate, 2), strong: true },
+    { label: t('Engagement rate', 'معدل التفاعل'), value: pct(postRate(post), 2), strong: true },
   ];
   const href = safeHref(post.permalink);
-  return `<article class="post">
+  return `<article class="post${tone ? ` post--${tone}` : ''}">
     <div class="post__img">${image}</div>
     <div class="post__body">
-      <div class="post__meta"><span class="no">${esc(num(index + 1))}</span><span class="chip" style="background:${color}">${esc(channelName[post.platform])}</span><span>${esc(post.accountName || '—')} · ${esc(date(post.ts, 'dateTime'))}</span></div>
+      <div class="post__meta"><span class="no">${esc(badge)}</span><span class="chip" style="background:${color}">${esc(channelName[post.platform])}</span><span>${esc(tx(typeLabel(contentTypeOf(post))))} · ${esc(post.accountName || '—')} · ${esc(date(post.ts, 'dateTime'))}</span>${extraHtml ? `<span class="vs">${extraHtml}</span>` : ''}</div>
       <p class="post__caption" dir="auto">${esc(caption)}</p>
       <div class="figs">${figures.map((figure) => `<div class="fig${figure.strong ? ' fig--strong' : ''}"><b>${esc(figure.value)}</b><span>${esc(figure.label)}</span></div>`).join('')}</div>
       ${href ? `<a class="link" href="${esc(href)}" dir="ltr">${esc(t('Open post', 'افتح المنشور'))}</a>` : ''}
     </div>
   </article>`;
+}
+
+/** Already escaped: the ratio keeps left-to-right order inside Arabic text. */
+const times = (value: number | null, i18n: I18n) => (value == null ? '' : `<bdi dir="ltr">${esc(i18n.num(Math.round(value * 10) / 10))}×</bdi> ${esc(i18n.t('typical', 'المعتاد'))}`);
+
+function rankingSection(reports: Reports, pictures: Map<string, PostPicture>, i18n: I18n) {
+  const { t, tx, num, pct, compact } = i18n;
+  const by = tx(RANK_LABEL[reports.rankBy]);
+  const value = (entry: Ranked) => (reports.rankBy === 'rate' ? pct(entry.value, 2) : compact(entry.value));
+  const list = (title: string, entries: Ranked[], tone: 'best' | 'worst') =>
+    entries.length
+      ? `<h4 class="list list--${tone}">${esc(title)}</h4>${entries.map((entry, index) => postCard(entry.post, num(index + 1), pictures.get(entry.post.key), i18n, `${esc(by)}: <bdi>${esc(value(entry))}</bdi>${entry.vsMedian == null ? '' : ` · ${times(entry.vsMedian, i18n)}`}`, tone)).join('')}`
+      : '';
+  const blocks = reports.rankings
+    .map((row) => {
+      const typical = row.median == null ? '' : t(`Typical post: ${reports.rankBy === 'rate' ? pct(row.median, 2) : compact(row.median)}`, `المنشور المعتاد: ${reports.rankBy === 'rate' ? pct(row.median, 2) : compact(row.median)}`);
+      const body = row.best.length
+        ? `${list(t('Best', 'الأفضل'), row.best, 'best')}${list(t('Worst', 'الأسوأ'), row.worst, 'worst')}`
+        : `<p class="foot">${esc(t('No post here has the numbers needed to rank it yet.', 'مفيش منشور هنا عنده الأرقام اللازمة لترتيبه لسه.'))}</p>`;
+      return `<div class="rank"><h3><span class="dot" style="background:${COLOR[row.platform]}"></span>${esc(channelName[row.platform])}<small>${esc(typical)}${row.unranked ? esc(t(` · ${num(row.unranked)} not ranked`, ` · ${num(row.unranked)} مش داخلين الترتيب`)) : ''}</small></h3>${body}</div>`;
+    })
+    .join('');
+  return `<section class="posts-head"><h2>${esc(t(`Best and worst ${RANK_PER_PLATFORM} posts on each platform, by ${by.toLowerCase()}`, `أفضل وأسوأ ${RANK_PER_PLATFORM} منشورات على كل منصة حسب ${by}`))}</h2>${blocks || `<p class="foot">${esc(t('No post in this period has the numbers needed to rank it yet.', 'مفيش منشور في الفترة دي عنده الأرقام اللازمة لترتيبه لسه.'))}</p>`}</section>`;
+}
+
+function typesTable(reports: Reports, i18n: I18n) {
+  const { t, tx, num, compact, pct } = i18n;
+  if (!reports.types.length) return '';
+  const rows = reports.types
+    .map((row) => `<tr><td><span class="dot" style="background:${COLOR[row.platform]}"></span>${esc(channelName[row.platform])}</td><td>${esc(tx(typeLabel(row.type)))}</td><td class="n">${esc(num(row.count))}</td><td class="n">${esc(row.reachCount ? compact(row.reach) : '—')}</td><td class="n">${esc(row.average == null ? '—' : num(Math.round(row.average)))}</td><td class="n">${esc(row.medianInteractions == null ? '—' : num(Math.round(row.medianInteractions)))}</td><td class="n">${esc(pct(row.rate, 2))}</td></tr>`)
+    .join('');
+  return `<section><h2>${esc(t('Results by content type', 'النتائج حسب نوع المحتوى'))}</h2><table><thead><tr><th>${esc(t('Platform', 'المنصة'))}</th><th>${esc(t('Type', 'النوع'))}</th><th class="n">${esc(t('Posts', 'المنشورات'))}</th><th class="n">${esc(t('Reach', 'الوصول'))}</th><th class="n">${esc(t('Interactions per post', 'تفاعل لكل منشور'))}</th><th class="n">${esc(t('Typical post', 'المنشور المعتاد'))}</th><th class="n">${esc(t('Engagement rate', 'معدل التفاعل'))}</th></tr></thead><tbody>${rows}</tbody></table></section>`;
+}
+
+function timeTable(title: string, head: string, rows: TimeRow[], label: (row: TimeRow) => string, i18n: I18n, ltr = false) {
+  const { t, num, pct } = i18n;
+  const max = Math.max(1, ...rows.map((row) => row.average ?? 0));
+  const body = rows
+    .map((row) => `<tr${row.best ? ' class="best"' : ''}><td>${ltr ? `<bdi dir="ltr">${esc(label(row))}</bdi>` : esc(label(row))}${row.best ? ` <b class="tag">${esc(t('Best', 'الأفضل'))}</b>` : ''}</td><td class="n">${esc(num(row.count))}</td><td class="n">${esc(row.average == null ? '—' : num(Math.round(row.average)))}<span class="share"><i style="width:${(((row.average ?? 0) / max) * 100).toFixed(1)}%;background:#0f8a4b"></i></span></td><td class="n">${esc(pct(row.rate, 2))}</td></tr>`)
+    .join('');
+  return `<div><h3 class="sub">${esc(title)}</h3><table><thead><tr><th>${esc(head)}</th><th class="n">${esc(t('Posts', 'المنشورات'))}</th><th class="n">${esc(t('Per post', 'لكل منشور'))}</th><th class="n">${esc(t('Rate', 'المعدل'))}</th></tr></thead><tbody>${body}</tbody></table></div>`;
+}
+
+function mixTable(reports: Reports, i18n: I18n) {
+  const { t, tx, compact, num } = i18n;
+  if (!reports.mix.length) return '';
+  const cell = (total: number | null, rate: number | null) => (total == null ? '—' : `${esc(compact(total))}${rate == null ? '' : `<small> · ${esc(num(Math.round(rate * 100) / 100))}</small>`}`);
+  const rows = reports.mix.map((row) => `<tr><td><span class="dot" style="background:${COLOR[row.platform]}"></span>${esc(channelName[row.platform])}</td>${MIX_KEYS.map((key) => `<td class="n">${cell(row.cells[key].total, row.cells[key].rate)}</td>`).join('')}</tr>`).join('');
+  return `<section><h2>${esc(t('What people did on each platform', 'الناس عملت إيه على كل منصة'))}</h2><p class="foot">${esc(t('Total, then per 100 people reached.', 'الإجمالي، وبعده لكل 100 وصلهم المنشور.'))}</p><table><thead><tr><th>${esc(t('Platform', 'المنصة'))}</th>${MIX_KEYS.map((key) => `<th class="n">${esc(tx(MIX_LABEL[key]))}</th>`).join('')}</tr></thead><tbody>${rows}</tbody></table></section>`;
+}
+
+function accountsTable(reports: Reports, i18n: I18n) {
+  const { t, num, compact, pct } = i18n;
+  if (!reports.accounts.length) return '';
+  const rows = reports.accounts.map((row) => `<tr><td><span class="dot" style="background:${COLOR[row.platform]}"></span>${esc(row.name)} <small>· ${esc(channelName[row.platform])}</small></td><td class="n">${esc(num(row.count))}</td><td class="n">${esc(row.reachCount ? compact(row.reach) : '—')}</td><td class="n">${esc(row.measured ? compact(row.interactions) : '—')}</td><td class="n">${esc(row.average == null ? '—' : num(Math.round(row.average)))}</td><td class="n">${esc(pct(row.rate, 2))}</td></tr>`).join('');
+  return `<section><h2>${esc(t('By account', 'حسب الحساب'))}</h2><table><thead><tr><th>${esc(t('Account', 'الحساب'))}</th><th class="n">${esc(t('Posts', 'المنشورات'))}</th><th class="n">${esc(t('Reach', 'الوصول'))}</th><th class="n">${esc(t('Interactions', 'التفاعلات'))}</th><th class="n">${esc(t('Per post', 'لكل منشور'))}</th><th class="n">${esc(t('Engagement rate', 'معدل التفاعل'))}</th></tr></thead><tbody>${rows}</tbody></table></section>`;
 }
 
 const STYLE = (lang: string) => `
@@ -165,12 +223,24 @@ const STYLE = (lang: string) => `
   .fig--strong b { color: #0035c4; }
   .link { font-size: 8.5px; color: #0046ff; text-decoration: none; overflow-wrap: anywhere; }
   .foot { color: #6b7280; font-size: 9px; margin-top: 4px; }
+  .rank { margin-bottom: 12px; }
+  .rank h3 { font-size: 12.5px; margin: 6px 0 6px; display: flex; align-items: center; gap: 2px; }
+  .rank h3 small { color: #6b7280; font-weight: 400; font-size: 9.5px; margin-inline-start: 8px; }
+  .list { font-size: 10.5px; margin: 6px 0 5px; }
+  .list--best { color: #0f8a4b; } .list--worst { color: #c2341d; }
+  .post--best { border-inline-start: 3px solid #0f8a4b; } .post--worst { border-inline-start: 3px solid #c2341d; }
+  .vs { margin-inline-start: auto; font-weight: 700; color: #0b1324; }
+  .sub { font-size: 11px; margin: 0 0 6px; }
+  .split { display: grid; grid-template-columns: 1fr 1fr; gap: 12px; }
+  tr.best td { background: #ecf8f1; }
+  .tag { color: #0f8a4b; font-size: 8.5px; }
+  td small { color: #6b7280; }
+  .all-head { break-before: page; }
 `;
 
-export function reportHtml(model: AnalyticsModel, i18n: I18n, pictures: Map<string, PostPicture>, generatedAt: number): string {
-  const { t, dir, lang, num, date } = i18n;
+export function reportHtml(model: AnalyticsModel, reports: Reports, i18n: I18n, posts: ExportPosts, pictures: Map<string, PostPicture>, generatedAt: number): string {
+  const { t, tx, dir, lang, num, date } = i18n;
   const title = t('Analytics report', 'تقرير التحليلات');
-  const top = reportTopPosts(model);
   const totalInteractions = model.trend.reduce((sum, point) => sum + point.interactions, 0);
   return `<!doctype html><html lang="${lang}" dir="${dir}"><head><meta charset="utf-8"><title>${esc(title)}</title>
   <link rel="preconnect" href="https://fonts.googleapis.com"><link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
@@ -189,16 +259,28 @@ export function reportHtml(model: AnalyticsModel, i18n: I18n, pictures: Map<stri
     <th>${esc(t('Platform', 'المنصة'))}</th><th class="n">${esc(t('Posts', 'المنشورات'))}</th><th class="n">${esc(t('Reach', 'الوصول'))}</th><th class="n">${esc(t('Views', 'المشاهدات'))}</th><th class="n">${esc(t('Interactions', 'التفاعلات'))}</th><th class="n">${esc(t('Interactions per post', 'تفاعل لكل منشور'))}</th><th class="n">${esc(t('Engagement rate', 'معدل التفاعل'))}</th>
   </tr></thead><tbody>${platformRows(model, i18n)}</tbody></table></section>
 
-  <section><h2>${esc(t('About these numbers', 'عن الأرقام دي'))}</h2>${reportNotes(model, i18n).map((note) => `<p class="foot">${esc(note)}</p>`).join('')}</section>
+  ${accountsTable(reports, i18n)}
 
-  <section class="posts-head"><h2>${esc(t(`Top posts by interactions (${num(top.length)})`, `أفضل المنشورات حسب التفاعلات (${num(top.length)})`))}</h2>
-  ${top.length ? top.map((post, index) => postCard(post, index, pictures.get(post.key), i18n)).join('') : `<p class="foot">${esc(t('No interaction data is available to rank posts in this period.', 'مفيش بيانات تفاعل متاحة لترتيب المنشورات في الفترة دي.'))}</p>`}
-  </section></body></html>`;
+  ${rankingSection(reports, pictures, i18n)}
+
+  ${typesTable(reports, i18n)}
+
+  <section><h2>${esc(t('When posts did best', 'المنشورات نجحت إمتى'))}</h2><div class="split">
+    ${timeTable(t('Day of the week', 'يوم الأسبوع'), t('Day', 'اليوم'), reports.weekdays, (row) => tx(WEEKDAY_LABEL[row.key]), i18n)}
+    ${timeTable(t('Time of day', 'وقت النشر'), t('Time', 'الوقت'), reports.hours, (row) => hourBlockLabel(row.key), i18n, true)}
+  </div></section>
+
+  ${mixTable(reports, i18n)}
+
+  <section><h2>${esc(t('About these numbers', 'عن الأرقام دي'))}</h2>${reportNotes(model, reports, i18n).map((note) => `<p class="foot">${esc(note)}</p>`).join('')}</section>
+
+  ${posts === 'all' ? `<section class="all-head"><h2>${esc(t(`Every post (${num(model.posts.length)})`, `كل المنشورات (${num(model.posts.length)})`))}</h2>${model.posts.map((post, index) => postCard(post, num(index + 1), pictures.get(post.key), i18n)).join('')}</section>` : ''}
+  </body></html>`;
 }
 
 /** Prints the report from a hidden frame, so the page stays where it is. */
-export function printDetailedReport(model: AnalyticsModel, i18n: I18n, pictures: Map<string, PostPicture>) {
-  const html = reportHtml(model, i18n, pictures, Date.now());
+export function printDetailedReport(model: AnalyticsModel, reports: Reports, i18n: I18n, posts: ExportPosts, pictures: Map<string, PostPicture>) {
+  const html = reportHtml(model, reports, i18n, posts, pictures, Date.now());
   const frame = document.createElement('iframe');
   frame.setAttribute('aria-hidden', 'true');
   frame.style.cssText = 'position:fixed;inset:auto 0 0 auto;width:0;height:0;border:0;opacity:0';

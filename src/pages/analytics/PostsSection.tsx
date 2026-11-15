@@ -102,7 +102,7 @@ export function PostsSection({ posts }: { posts: Post[] }) {
 }
 
 /** The post's own picture, or the platform's mark when it has none or the link has expired. */
-function Thumb({ post, large }: { post: Post; large?: boolean }) {
+export function Thumb({ post, large }: { post: Post; large?: boolean }) {
   const [failed, setFailed] = useState('');
   if (!post.thumbnail || failed === post.thumbnail)
     return (
@@ -161,7 +161,7 @@ const METRICS: { key: keyof Metrics; en: string; ar: string }[] = [
   { key: 'clicks', en: 'Clicks', ar: 'نقرات' },
 ];
 
-function PostDialog({ post, onClose }: { post: Post | null; onClose: () => void }) {
+export function PostDialog({ post, onClose }: { post: Post | null; onClose: () => void }) {
   const { t, num, pct, date } = useI18n();
   // Keep the last post on screen while the dialog animates out.
   const last = useRef(post);

@@ -1,5 +1,5 @@
-import { useRef, useState } from 'react';
-import { ArrowDownRight, ArrowUpRight, FileSpreadsheet, Printer, RefreshCw } from 'lucide-react';
+import { useMemo, useRef, useState } from 'react';
+import { ArrowDownRight, ArrowUpRight, Download, FileSpreadsheet, Printer, RefreshCw } from 'lucide-react';
 import { useQueryState } from '../../app/router/router';
 import { useLiveData } from '../../app/providers/LiveDataProvider';
 import { SeriesChart, type SeriesDatum } from '../../components/charts/Series';
@@ -7,6 +7,7 @@ import { ChannelIcon } from '../../components/data-display/ChannelIcon';
 import { EmptyState } from '../../components/feedback/States';
 import { LiveGate } from '../../components/feedback/LiveGate';
 import { FilterSelect } from '../../components/forms/Field';
+import { Dialog } from '../../components/overlay/Overlay';
 import { Button } from '../../components/ui/Button';
 import { Card, CardBody, CardHeader } from '../../components/ui/Card';
 import { Segmented } from '../../components/ui/Tabs';
@@ -18,17 +19,22 @@ import { PLATFORMS } from '../../lib/platforms';
 import { PageHeader } from '../../shell/Header';
 import { usePageMeta } from '../../shell/ShellContext';
 import type { Platform } from '../../types';
-import { exportWorkbook, KPI_LABEL, reportTopPosts } from './export';
+import { exportPostList, exportWorkbook, KPI_LABEL, type ExportPosts } from './export';
 import { printDetailedReport } from './report';
+import { buildReports, isRankBy, RANK_LABEL, RANK_PER_PLATFORM, type Reports } from './reports';
+import { REPORT_VIEWS, ReportsSection, type ReportView } from './ReportsSection';
 import { loadPictures, type PostPicture } from './thumbs';
 import { useAnalytics, type AnalyticsModel, type Kpi } from './model';
 import { PostsSection } from './PostsSection';
 
 const PERIOD_VALUES = PERIODS.map((period) => String(period.value));
 
+type ExportFormat = 'excel' | 'pdf';
+
 /**
  * Analytics on one page: pick a period and a platform, read five numbers, see the activity,
- * compare platforms and go through every post. Exports summarize the whole period and highlight the top posts.
+ * compare platforms, read the reports (best and worst posts, content type, timing, interaction type)
+ * and go through every post. The export carries all the reports, with the best and worst posts or every post.
  */
 export function AnalyticsHub() {
   const i18n = useI18n();
@@ -40,32 +46,35 @@ export function AnalyticsHub() {
   const period = (PERIOD_VALUES.includes(query.get('period') ?? '') ? Number(query.get('period')) : 30) as Period;
   const platform = (PLATFORMS as string[]).includes(query.get('platform') ?? '') ? (query.get('platform') as Platform) : 'all';
   const account = query.get('account') ?? 'all';
+  const rankBy = isRankBy(query.get('rank')) ? (query.get('rank') as Reports['rankBy']) : 'rate';
+  const view = (REPORT_VIEWS as string[]).includes(query.get('report') ?? '') ? (query.get('report') as ReportView) : 'ranking';
 
   usePageMeta(t('Analytics', 'التحليلات'), [{ label: t('Analytics', 'التحليلات') }]);
   const model = useAnalytics({ period, platform, account });
+  const reports = useMemo(() => buildReports(model.posts, model.todayNum, rankBy), [model.posts, model.todayNum, rankBy]);
 
   const setPlatform = (value: Platform | 'all') => setQuery({ platform: value === 'all' ? null : value, account: null });
 
   const pictures = useRef(new Map<string, PostPicture>());
-  const [preparing, setPreparing] = useState<{ kind: 'excel' | 'pdf'; done: number; total: number } | null>(null);
+  const [exporting, setExporting] = useState(false);
+  const [preparing, setPreparing] = useState<{ done: number; total: number } | null>(null);
 
   /** Fetches the pictures not fetched yet, keeps them for the next export, then writes the file. */
-  const exportWith = async (kind: 'excel' | 'pdf') => {
-    const top = reportTopPosts(model);
-    const missing = top.filter((post) => !pictures.current.has(post.key));
-    setPreparing({ kind, done: 0, total: 0 });
+  const exportWith = async (format: ExportFormat, posts: ExportPosts) => {
+    const needed = exportPostList(model, reports, posts);
+    const missing = needed.filter((post) => !pictures.current.has(post.key));
+    setPreparing({ done: 0, total: 0 });
     try {
-      const loaded = await loadPictures(missing, (done, total) => setPreparing({ kind, done, total }));
+      const loaded = await loadPictures(missing, (done, total) => setPreparing({ done, total }));
       for (const [key, picture] of loaded) pictures.current.set(key, picture);
-      const scoped = new Map(top.flatMap((post) => (pictures.current.has(post.key) ? [[post.key, pictures.current.get(post.key)!] as const] : [])));
-      if (kind === 'excel') exportWorkbook(model, i18n, scoped);
-      else printDetailedReport(model, i18n, scoped);
+      const scoped = new Map(needed.flatMap((post) => (pictures.current.has(post.key) ? [[post.key, pictures.current.get(post.key)!] as const] : [])));
+      if (format === 'excel') exportWorkbook(model, reports, i18n, posts, scoped);
+      else printDetailedReport(model, reports, i18n, posts, scoped);
+      setExporting(false);
     } finally {
       setPreparing(null);
     }
   };
-  const progress = (kind: 'excel' | 'pdf') =>
-    preparing?.kind === kind && preparing.total ? t(`Images ${num(preparing.done)}/${num(preparing.total)}`, `الصور ${num(preparing.done)}/${num(preparing.total)}`) : null;
 
   const sync = async () => {
     setSyncing(true);
@@ -80,16 +89,11 @@ export function AnalyticsHub() {
     <div className="u-stack an">
       <PageHeader
         title={t('Analytics', 'التحليلات')}
-        description={t('Published post performance. Export a full analysis with the top 5 posts and their images.', 'أداء المنشورات على الحسابات المربوطة. صدّر تحليل شامل مع أفضل 5 منشورات بصورها.')}
+        description={t('Published post performance, with reports on the best and worst posts, content types and timing.', 'أداء المنشورات على الحسابات المربوطة، مع تقارير لأفضل وأسوأ المنشورات وأنواع المحتوى والمواعيد.')}
         actions={
-          <>
-            <Button icon={<FileSpreadsheet size={15} />} onClick={() => void exportWith('excel')} busy={preparing?.kind === 'excel'} disabled={!model.posts.length || preparing != null}>
-              {progress('excel') ?? t('Export Excel', 'تصدير Excel')}
-            </Button>
-            <Button variant="primary" icon={<Printer size={15} />} onClick={() => void exportWith('pdf')} busy={preparing?.kind === 'pdf'} disabled={!model.posts.length || preparing != null}>
-              {progress('pdf') ?? t('Export PDF', 'تصدير PDF')}
-            </Button>
-          </>
+          <Button variant="primary" icon={<Download size={15} />} onClick={() => setExporting(true)} disabled={!model.posts.length}>
+            {t('Export report', 'تصدير التقرير')}
+          </Button>
         }
       />
 
@@ -134,6 +138,7 @@ export function AnalyticsHub() {
           <>
             <Activity model={model} />
             <PlatformTable model={model} onPick={setPlatform} />
+            <ReportsSection reports={reports} view={view} onView={(next) => setQuery({ report: next === 'ranking' ? null : next })} onRankBy={(next) => setQuery({ rank: next === 'rate' ? null : next })} />
             <PostsSection posts={model.posts} />
           </>
         ) : (
@@ -148,7 +153,91 @@ export function AnalyticsHub() {
           </Card>
         )}
       </LiveGate>
+
+      <ExportDialog open={exporting} onClose={() => preparing == null && setExporting(false)} model={model} reports={reports} preparing={preparing} onExport={(format, posts) => void exportWith(format, posts)} />
     </div>
+  );
+}
+
+function ExportDialog({
+  open,
+  onClose,
+  model,
+  reports,
+  preparing,
+  onExport,
+}: {
+  open: boolean;
+  onClose: () => void;
+  model: AnalyticsModel;
+  reports: Reports;
+  preparing: { done: number; total: number } | null;
+  onExport: (format: ExportFormat, posts: ExportPosts) => void;
+}) {
+  const { t, tx, num } = useI18n();
+  const [format, setFormat] = useState<ExportFormat>('pdf');
+  const [posts, setPosts] = useState<ExportPosts>('ranked');
+  const ranked = reports.rankings.reduce((sum, row) => sum + row.best.length + row.worst.length, 0);
+  const busy = preparing != null;
+  const choices: { value: ExportPosts; title: string; text: string }[] = [
+    {
+      value: 'ranked',
+      title: t('Best & worst posts', 'أفضل وأسوأ المنشورات'),
+      text: t(
+        `Every report, plus the best and worst ${RANK_PER_PLATFORM} on each platform by ${tx(RANK_LABEL[reports.rankBy]).toLowerCase()} (${num(ranked)} posts) with their pictures.`,
+        `كل التقارير، ومعاها أفضل وأسوأ ${RANK_PER_PLATFORM} على كل منصة حسب ${tx(RANK_LABEL[reports.rankBy])} (${num(ranked)} منشور) بصورهم.`,
+      ),
+    },
+    {
+      value: 'all',
+      title: t('Every post', 'كل المنشورات'),
+      text: t(`Every report, plus all ${num(model.posts.length)} posts in the period with their pictures and every number.`, `كل التقارير، ومعاها الـ${num(model.posts.length)} منشور كلهم بصورهم وكل أرقامهم.`),
+    },
+  ];
+  return (
+    <Dialog
+      open={open}
+      onClose={onClose}
+      title={t('Export report', 'تصدير التقرير')}
+      description={t('Summary, platforms, activity, best and worst, content types, days and hours, interaction type and accounts.', 'الملخص، المنصات، النشاط، الأفضل والأسوأ، أنواع المحتوى، الأيام والساعات، نوع التفاعل والحسابات.')}
+      footer={
+        <>
+          <Button variant="ghost" onClick={onClose} disabled={busy}>
+            {t('Cancel', 'إلغاء')}
+          </Button>
+          <Button variant="primary" icon={format === 'excel' ? <FileSpreadsheet size={15} /> : <Printer size={15} />} busy={busy} onClick={() => onExport(format, posts)}>
+            {busy && preparing.total ? t(`Images ${num(preparing.done)}/${num(preparing.total)}`, `الصور ${num(preparing.done)}/${num(preparing.total)}`) : format === 'excel' ? t('Download Excel', 'تنزيل Excel') : t('Create PDF', 'اعمل PDF')}
+          </Button>
+        </>
+      }
+    >
+      <div className="u-stack">
+        <div className="an-export-row">
+          <span className="an-export-label">{t('Format', 'الصيغة')}</span>
+          <Segmented
+            label={t('Format', 'الصيغة')}
+            value={format}
+            onChange={setFormat}
+            items={[
+              { value: 'pdf', label: 'PDF', icon: <Printer size={15} /> },
+              { value: 'excel', label: 'Excel', icon: <FileSpreadsheet size={15} /> },
+            ]}
+          />
+        </div>
+        <fieldset className="an-choices">
+          <legend className="an-export-label">{t('Posts in the file', 'المنشورات في الملف')}</legend>
+          {choices.map((choice) => (
+            <label key={choice.value} className="an-choice">
+              <input type="radio" name="export-posts" value={choice.value} checked={posts === choice.value} onChange={() => setPosts(choice.value)} />
+              <span>
+                <b>{choice.title}</b>
+                <small>{choice.text}</small>
+              </span>
+            </label>
+          ))}
+        </fieldset>
+      </div>
+    </Dialog>
   );
 }
 
