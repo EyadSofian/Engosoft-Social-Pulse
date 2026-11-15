@@ -133,8 +133,14 @@ export function designDocFromTemplate(template: BrandTemplate, values: Record<st
 /** The template values a template document holds, for the template renderer (the inverse of `designDocFromTemplate`). */
 export function templateValuesOf(doc: DesignDoc): { template: BrandTemplate; values: Record<string, string>; surface: BrandSurface } | null {
   if (doc.source.kind !== 'template') return null;
-  const template = brandTemplate(doc.source.templateId);
-  if (!template) return null;
+  const found = brandTemplate(doc.source.templateId);
+  if (!found) return null;
+  // The document's logo kit wins over the template's own (the logo picked on the Create page): the layout draws the
+  // kit the template carries, at the template's logo spot.
+  const kit = doc.logo?.kit;
+  const template: BrandTemplate = !kit || kit === templateKit(found).id ? found
+    : kit === 'official' ? { ...found, logo: undefined }
+    : { ...found, logo: { kit, place: found.logo?.place ?? doc.logo.place ?? { x: 0, y: 0, width: 0, height: 0 } } };
   const values: Record<string, string> = {};
   for (const layer of doc.layers) {
     if (layer.kind === 'text') { values[layer.id] = layer.text; if (layer.highlight) values.highlight = layer.highlight; }

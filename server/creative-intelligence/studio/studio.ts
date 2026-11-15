@@ -442,7 +442,7 @@ export function layersSvg(doc: StudioDoc): { svg: string; textHeights: Map<strin
 }
 
 /** The design's own logo kit and where its reference design has it, for designs that do not use the official logo. */
-export interface StudioOwnLogo { kit: BrandKitId; place: { x: number; y: number; width: number; height: number }; designAspect: number; file?: string }
+export interface StudioOwnLogo { kit: BrandKitId; place: { x: number; y: number; width: number; height: number }; designAspect: number; file?: string; onDark?: boolean }
 
 /**
  * Final image: background + every layer + the design's logo placed on the result's pixels: the official logo where
@@ -453,7 +453,7 @@ export async function renderStudio(doc: StudioDoc, safeArea?: { top: number; rig
   const { svg, textHeights, problems } = layersSvg(doc);
   const composed = await sharp(base).composite([{ input: Buffer.from(svg) }]).png().toBuffer();
   if (ownLogo && ownLogo.kit !== 'official') {
-    const placed = await placeLogo(composed, ownLogo.kit, { kind: 'design-spot', place: ownLogo.place, same: sameShape(ownLogo.designAspect, doc.width / doc.height), designAspect: ownLogo.designAspect, safe: safeArea, file: ownLogo.file });
+    const placed = await placeLogo(composed, ownLogo.kit, { kind: 'design-spot', place: ownLogo.place, same: sameShape(ownLogo.designAspect, doc.width / doc.height), designAspect: ownLogo.designAspect, safe: safeArea, file: ownLogo.file, onDark: ownLogo.onDark });
     if (placed) return { file: saveStudioImage(placed.image), doc: { ...doc, logo: null, kit: ownLogo.kit }, problems };
     problems.push(`Logo: the ${ownLogo.kit} logo file is missing on this server.`);
     return { file: saveStudioImage(composed), doc: { ...doc, logo: null, kit: ownLogo.kit }, problems };

@@ -291,8 +291,12 @@ export async function clearBoxes(image: Buffer, boxes: Box[]): Promise<Buffer> {
  * The design's own logo (the 50/50 campaign's older «ENGO | SOFT» lockup), placed from its kit's file: at its spot on
  * the design's shape, in the same corner on others, never past the kit's size cap. See `placeLogo` in brand/place-logo.
  */
-export async function placeOwnLogo(image: Buffer, logo: FollowArtwork & { kit?: BrandKitId }, opts: { same: boolean; designAspect: number; safe?: { top?: number; left?: number } }): Promise<{ image: Buffer; box: Box } | null> {
-  if (!existsSync(logo.path)) return null;
-  const placed = await placeLogo(image, logo.kit ?? 'engo-soft-old', { kind: 'design-spot', place: logo.place, same: opts.same, designAspect: opts.designAspect, safe: opts.safe, file: logo.path });
+export async function placeOwnLogo(image: Buffer, logo: FollowArtwork & { kit?: BrandKitId }, opts: { same: boolean; designAspect: number; safe?: { top?: number; left?: number }; kit?: BrandKitId }): Promise<{ image: Buffer; box: Box } | null> {
+  const own = logo.kit ?? 'engo-soft-old';
+  // The person picked the other logo on the Create page: that kit's own file goes at the design's logo spot (light
+  // artwork, as the design has a light logo there).
+  const kit = opts.kit ?? own;
+  if (kit === own && !existsSync(logo.path)) return null;
+  const placed = await placeLogo(image, kit, { kind: 'design-spot', place: logo.place, same: opts.same, designAspect: opts.designAspect, safe: opts.safe, ...(kit === own ? { file: logo.path } : {}) });
   return placed && { image: placed.image, box: placed.box };
 }

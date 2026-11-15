@@ -124,7 +124,9 @@ const fullCreativeRequest=z.object({prompt:z.string().trim().min(5).max(2000),fo
  // Facts of a course picked on either screen (date, time, place, link): usable on the post, not required.
  facts:z.string().max(2000).optional(),
  // The course name typed or picked on either screen: it must show on the post exactly as written.
- course:z.string().trim().max(160).optional()});
+ course:z.string().trim().max(160).optional(),
+ // The logo picked on the Create page for every size: the official logo or the older «ENGO | SOFT» lockup.
+ logoKit:z.enum(['official','engo-soft-old']).optional()});
 const OBJECTIVE_TEXT={course_launch:'Course announcement',course_schedule:'Course schedule',certificate:'Certificate or achievement',education:'Educational content',event:'Event or occasion',general:'General post'} as const;
 const localOnly=(res:express.Response)=>{if(!process.env.OPENAI_API_KEY?.trim()){res.status(503).json({error:'أضف OPENAI_API_KEY على الخادم.'});return true;}return false;};
 const limited=(req:express.Request,res:express.Response)=>{const who=req.ip||'local';const now=Date.now();const recent=(fullCreativeCalls.get(who)||[]).filter(at=>now-at<10*60_000);if(recent.length>=6){res.status(429).json({error:'بلغت الحد المؤقت: 6 طلبات تصميم خلال 10 دقائق.'});return true;}fullCreativeCalls.set(who,[...recent,now]);return false;};

@@ -1,6 +1,7 @@
 import { randomUUID } from 'node:crypto';
 import express from 'express';
 import { z } from 'zod';
+import sharp from 'sharp';
 import { requirePermission, requireUser } from './auth.js';
 import { requireAiBudget } from './usage.js';
 import { loadFullCreativeRun } from './creative-intelligence/generation/full-creative.js';
@@ -90,13 +91,28 @@ function logoPlanFor(doc: StudioDoc, requestId: string, directionId: string): { 
  * Studio save keeps that logo instead of switching to the official one (audit #10). Runs from before kits were
  * named only ever had the older lockup as an own logo.
  */
-async function ownLogoFor(requestId: string): Promise<StudioOwnLogo | undefined> {
+async function ownLogoFor(requestId: string, directionId: string): Promise<StudioOwnLogo | undefined> {
   try {
-    const follow = loadFullCreativeRun(requestId).request.followDesign;
-    if (!follow?.logo) return undefined;
-    const image = await followImage(follow);
-    if (!image) return undefined;
-    return { kit: follow.logo.kit ?? 'engo-soft-old', place: follow.logo.place, designAspect: image.aspect, file: follow.logo.path };
+    const run = loadFullCreativeRun(requestId);
+    const follow = run.request.followDesign;
+    const picked = run.request.logoKit;
+    if (follow?.logo) {
+      // The official logo picked over the design's own: the Studio places it like any official logo.
+      if (picked === 'official') return undefined;
+      const image = await followImage(follow);
+      if (!image) return undefined;
+      return { kit: follow.logo.kit ?? 'engo-soft-old', place: follow.logo.place, designAspect: image.aspect, file: follow.logo.path };
+    }
+    // The older lockup picked on the Create page: it goes back where the AI designer put it on this size.
+    if (!picked || picked === 'official') return undefined;
+    const result = run.results.find((r) => r.directionId === directionId);
+    const logo = result?.logo;
+    if (!result?.imagePath || !logo || logo.requiresCreativeRepair) return undefined;
+    const { width: w = 0, height: h = 0 } = await sharp(result.imagePath).metadata();
+    if (!w || !h) return undefined;
+    const size = { width: w, height: h };
+    const { x, y, width, height } = logo.placement;
+    return { kit: picked, place: { x: x / size.width, y: y / size.height, width: width / size.width, height: height / size.height }, designAspect: size.width / size.height, onDark: logo.variantId.endsWith('-reversed') };
   } catch { return undefined; }
 }
 
@@ -177,7 +193,7 @@ export function registerStudioRoutes(app: express.Express) {
     const parsed = z.object({ doc, note: z.string().max(200).default('Studio edit') }).safeParse(req.body);
     if (!parsed.success) return res.status(400).json({ error: 'بيانات الطبقات غير صالحة.' });
     try {
-      const result = await renderStudio(parsed.data.doc as StudioDoc, safeAreaOf(formatOf(item.creative!.directionId, item.creative!.requestId)), logoPlanFor(parsed.data.doc as StudioDoc, item.creative!.requestId, item.creative!.directionId), await ownLogoFor(item.creative!.requestId));
+      const result = await renderStudio(parsed.data.doc as StudioDoc, safeAreaOf(formatOf(item.creative!.directionId, item.creative!.requestId)), logoPlanFor(parsed.data.doc as StudioDoc, item.creative!.requestId, item.creative!.directionId), await ownLogoFor(item.creative!.requestId, item.creative!.directionId));
       if (result.problems.some((p) => p.startsWith('Logo'))) return res.status(422).json({ error: result.problems.join(' '), problems: result.problems, previewUrl: studioUrl(result.file) });
       const version = await addVersion(req.user!, item.id, { imageUrl: studioUrl(result.file), storyUrl: item.creative!.storyUrl ?? null, studio: result.doc, note: parsed.data.note });
       res.json({ version, problems: result.problems });

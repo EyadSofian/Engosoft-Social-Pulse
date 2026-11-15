@@ -34,6 +34,7 @@ import { usePageMeta } from '../../shell/ShellContext';
 import { DesignSettings } from '../../features/creative-studio/DesignSettings';
 import { DEFAULT_ENGINE_SETTINGS, type EngineSettings } from '../../domain/design-engine';
 import { BRAND_TEMPLATES, brandTemplate } from '../../domain/brand-templates';
+import { brandKit, kitFile, type BrandKitId } from '../../domain/brand-kits';
 import { BrandTemplateComposer, BrandTemplateGrid } from '../../features/brand-templates/BrandTemplateComposer';
 
 type Stage = 'compose' | 'generating';
@@ -85,7 +86,7 @@ export function CreationHomePage() {
   const { t } = useI18n();
   const { query } = useRouter();
   const { state } = useWorkspace();
-  const { can } = useAuth();
+  const { can, user } = useAuth();
   // Each way of creating is its own permission; a person with one way goes straight to it.
   const free = can('design.free');
   const ways = ([['ai', free], ['template', can('design.templates')], ['upload', can('design.upload')], ['reel', can('design.video')]] as const).filter(([, allowed]) => allowed).map(([way]) => way);
@@ -97,6 +98,18 @@ export function CreationHomePage() {
     const entry = id ? brandTemplate(id) : undefined;
     return entry ? { templateId: entry.id, preview: entry.references.blue ?? entry.references.light ?? '', name: entry.name.ar } : null;
   });
+  /**
+   * The logo on every size of the AI design: the official logo, or the older «ENGO | SOFT» lockup. Each person's
+   * last pick is remembered on this browser; a library design with its own logo (the 50/50 campaign) starts on it.
+   */
+  const logoKey = `social-pulse.logo-kit.${user?.id ?? ''}`;
+  const savedLogo = (): BrandKitId => { try { return localStorage.getItem(logoKey) === 'engo-soft-old' ? 'engo-soft-old' : 'official'; } catch { return 'official'; } };
+  const designLogo = (id: string | undefined) => (id ? brandTemplate(id)?.logo?.kit : undefined);
+  const [logoKit, setLogoKit] = useState<BrandKitId>(() => designLogo(follow && 'templateId' in follow ? follow.templateId : undefined) ?? savedLogo());
+  const followedId = follow && 'templateId' in follow ? follow.templateId : undefined;
+  // Picking or dropping a design puts the switch back on that design's own logo, else on the person's last pick.
+  useEffect(() => { setLogoKit(designLogo(followedId) ?? savedLogo()); }, [followedId]);
+  const pickLogo = (kit: BrandKitId) => { setLogoKit(kit); try { localStorage.setItem(logoKey, kit); } catch { /* storage blocked: the pick holds for this visit */ } };
   const [prompt, setPrompt] = useState(() => getActiveCreative()?.prompt ?? '');
   const [objective, setObjective] = useState<Objective | 'auto'>('auto');
   const [platforms, setPlatforms] = useState<CreativePlatform[]>(() => getActiveCreative()?.platforms ?? ['instagram']);
@@ -197,7 +210,7 @@ export function CreationHomePage() {
       // Both designs are made at the main size; the other ticked shapes are adapted from the one picked.
       const format = main;
       const attachments = references.filter((file) => file.dataUrl).map(({ name, mime, dataUrl }) => ({ name, mime, dataUrl: dataUrl! }));
-      const body = await api<{ jobId: string; requestId?: string }>('/api/ai/full-creative', { body: fullCreativeBody({ prompt, campaignId: campaignId || undefined, format, directions: designs, settings: designSettings, objective, attachments, templateId: template?.id, followDesign: follow ? ('templateId' in follow ? { templateId: follow.templateId } : { name: follow.name, dataUrl: follow.dataUrl }) : undefined, course: picked?.course, facts: picked?.facts }) });
+      const body = await api<{ jobId: string; requestId?: string }>('/api/ai/full-creative', { body: fullCreativeBody({ prompt, campaignId: campaignId || undefined, format, directions: designs, settings: designSettings, objective, attachments, templateId: template?.id, followDesign: follow ? ('templateId' in follow ? { templateId: follow.templateId } : { name: follow.name, dataUrl: follow.dataUrl }) : undefined, course: picked?.course, facts: picked?.facts, logoKit }) });
       setJobId(body.jobId); setRequestId(body.requestId ?? ''); setStage('generating');
       setActiveCreative({ jobId: body.jobId, requestId: body.requestId ?? '', prompt, platforms, sizes: chosenSizes, format, startedAt: new Date().toISOString(), status: 'running' });
     } catch (error) { setMessage(error instanceof Error ? error.message : String(error)); }
@@ -212,7 +225,7 @@ export function CreationHomePage() {
   };
   const lead: Record<Mode, [string, string]> = {
     choose: ['Pick one way. You can come back and change it any time.', 'اختر طريقة واحدة، ويمكنك الرجوع وتغييرها في أي وقت.'],
-    ai: ['Write the idea in your own words. We check Odoo, write the copy, design the post and place the official logo.', 'اكتب الفكرة بكلماتك. نراجع بيانات Odoo ونكتب النص ونصمّم المنشور ونضع الشعار الرسمي.'],
+    ai: ['Write the idea in your own words. We check Odoo, write the copy, design the post and place the logo you pick.', 'اكتب الفكرة بكلماتك. نراجع بيانات Odoo ونكتب النص ونصمّم المنشور ونحط اللوجو اللي تختاره.'],
     template: ['Pick a template, change its text and photos, then send it for approval. No AI cost.', 'اختر قالبًا، غيّر نصوصه وصوره، ثم أرسله للاعتماد. بدون تكلفة ذكاء اصطناعي.'],
     upload: ['Already designed it? Upload the image, pick the platforms, write the caption and publish, all on this screen.', 'صمّمته بالفعل؟ ارفع الصورة، اختار المنصات، اكتب النص وانشر، كله من الشاشة دي.'],
     reel: ['Upload the finished video, check it fits each platform, pick a cover, and write the caption yourself or with AI from the idea or the script.', 'ارفع الفيديو الجاهز، اتأكد إنه مناسب لكل منصة، اختار غلاف، واكتب الكلام بإيدك أو بالذكاء الاصطناعي من الفكرة أو السكريبت.'],
@@ -298,6 +311,7 @@ export function CreationHomePage() {
           </div>}
         </div>
         {references.length > 0 && <ul className="creative-home__references">{references.map((file, index) => <li key={`${file.name}-${index}`}>{file.mime.startsWith('image/') && file.dataUrl && <img src={file.dataUrl} alt="" />}<span>{file.name}</span><button type="button" onClick={() => setReferences((current) => current.filter((_, i) => i !== index))} aria-label={t(`Remove ${file.name}`, `احذف ${file.name}`)}>×</button></li>)}</ul>}
+        <LogoChoice value={logoKit} onChange={pickLogo} />
         <CampaignPicker value={campaignId} onChange={setCampaignId} />
         <div className="creative-home__platforms" role="group" aria-label={t('Platforms', 'المنصات')}>{CREATIVE_PLATFORMS.map((platform) => <button key={platform} type="button" aria-pressed={platforms.includes(platform)} onClick={() => togglePlatform(platform)}><span className="creative-home__platform-icon"><ChannelIcon channel={platform} size={15} /></span>{PLATFORM_FORMATS[platform].label}</button>)}</div>
         <details className="create-advanced">
@@ -313,6 +327,26 @@ export function CreationHomePage() {
     {stage === 'compose' && <SizePicker platforms={platforms} chosen={chosenSizes} main={main} designs={designs} onDesigns={setDesigns} onToggle={(ids, on) => setSizeChoice((current) => ({ ...current, ...Object.fromEntries(ids.map((id) => [id, on])) }))} onMain={setMainPick} />}
     </div>}
     <RecentContent />
+  </div>;
+}
+
+const LOGO_CHOICES: { kit: BrandKitId; label: [string, string] }[] = [
+  { kit: 'official', label: ['New logo', 'اللوجو الجديد'] },
+  { kit: 'engo-soft-old', label: ['Old logo', 'اللوجو القديم'] },
+];
+
+/** Which Engosoft logo goes on the design: placed from its own file on every size, never drawn by the AI. */
+function LogoChoice({ value, onChange }: { value: BrandKitId; onChange: (kit: BrandKitId) => void }) {
+  const { t } = useI18n();
+  return <div className="create-logo">
+    <span className="u-xs u-muted">{t('Logo on the design (placed from its file on every size):', 'اللوجو على التصميم (بيتحط من الملف نفسه في كل المقاسات):')}</span>
+    <div className="create-logo__options" role="radiogroup" aria-label={t('Logo', 'اللوجو')}>
+      {LOGO_CHOICES.map((choice) => <button key={choice.kit} type="button" role="radio" aria-checked={value === choice.kit} onClick={() => onChange(choice.kit)}>
+        <span className="create-logo__mark"><img src={kitFile(brandKit(choice.kit), { onDark: true }).src} alt="" /></span>
+        <span>{t(...choice.label)}</span>
+        {value === choice.kit && <Check size={14} strokeWidth={3} className="create-logo__check" />}
+      </button>)}
+    </div>
   </div>;
 }
 

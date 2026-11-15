@@ -279,3 +279,12 @@
 /* Upload and publish on one screen: a caption box with room to write, and the actions side by side. */
 .create-upload__captions .caps__text { min-height: 240px; }
 .create-upload__actions { display: flex; flex-wrap: wrap; gap: 10px; align-items: center; }
+
+/* Which logo goes on the AI design: each option shows its own file on the brand blue it is made for. */
+.create-logo { display: grid; gap: 6px; }
+.create-logo__options { display: flex; flex-wrap: wrap; gap: 8px; }
+.create-logo__options button { position: relative; display: inline-flex; align-items: center; gap: 9px; padding-block: 6px; padding-inline: 6px 12px; border: 1px solid var(--border); border-radius: 12px; background: var(--surface); color: var(--text); font: inherit; font-size: 13px; font-weight: 700; cursor: pointer; }
+.create-logo__options button[aria-checked='true'] { border-color: var(--brand); box-shadow: 0 0 0 1px var(--brand); color: var(--brand); }
+.create-logo__mark { display: grid; place-items: center; width: 84px; height: 34px; border-radius: 8px; background: #0443F2; }
+.create-logo__mark img { max-width: 70px; max-height: 24px; }
+.create-logo__check { color: var(--brand); }

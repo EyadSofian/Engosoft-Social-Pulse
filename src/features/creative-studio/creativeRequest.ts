@@ -32,6 +32,8 @@ export interface FullCreativeInput {
   objective?: string;
   attachments?: { name: string; mime: string; dataUrl: string }[];
   templateId?: string;
+  /** The logo on every size: the official logo or the older «ENGO | SOFT» lockup. Unset keeps the design's own. */
+  logoKit?: 'official' | 'engo-soft-old';
 }
 
 /**
@@ -53,5 +55,6 @@ export function fullCreativeBody(input: FullCreativeInput): Record<string, unkno
     ...(input.followDesign ? { followDesign: input.followDesign } : {}),
     ...(course ? { course: course.slice(0, 160) } : {}),
     ...(facts ? { facts: facts.slice(0, 2000) } : {}),
+    ...(input.logoKit ? { logoKit: input.logoKit } : {}),
   };
 }

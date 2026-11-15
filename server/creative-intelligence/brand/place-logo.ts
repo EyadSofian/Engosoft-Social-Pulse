@@ -60,6 +60,10 @@ export async function placeLogo(image: Buffer, kitId: BrandKitId, spot: LogoSpot
   const top = Math.max(0, Math.min(H - h, Math.round(area.y + (area.height - h) / 2)));
   const box = { x: left, y: top, width: w, height: h };
   const px = Buffer.from(fitted.data);
+  // A kit drawn only in white (the older lockup) on a light background: the same artwork in the house navy, so it
+  // reads; its shape is untouched.
+  const tinted = !(spot.onDark ?? true) && kf.tone === 'reversed';
+  if (tinted) for (let i = 0; i < w * h; i++) { px[i * 4] = 0x03; px[i * 4 + 1] = 0x10; px[i * 4 + 2] = 0x40; }
   if (kit.treatment === 'flat') {
     const mark = await sharp(px, { raw: { width: w, height: h, channels: 4 } }).png().toBuffer();
     return { image: await sharp(image).composite([{ input: mark, left, top }]).png().toBuffer(), box, kit: kit.id };
@@ -77,7 +81,8 @@ export async function placeLogo(image: Buffer, kitId: BrandKitId, spot: LogoSpot
   // The shadow: the logo's shape in deep blue at 55%, softened, a little below it.
   const s = basis / 1080;
   const pad = Math.min(Math.ceil(9 * s), left, top, W - left - w, H - top - h);
-  if (pad < 1) return { image: await sharp(image).composite([{ input: mark, left, top }]).png().toBuffer(), box, kit: kit.id };
+  // A deep-blue shadow is for white artwork on blue; a navy mark on a light background stands without it.
+  if (pad < 1 || tinted) return { image: await sharp(image).composite([{ input: mark, left, top }]).png().toBuffer(), box, kit: kit.id };
   const shade = Buffer.alloc((w + 2 * pad) * (h + 2 * pad) * 4);
   for (let y = 0; y < h; y++) for (let x = 0; x < w; x++) {
     const o = ((y + pad) * (w + 2 * pad) + x + pad) * 4;
@@ -87,4 +92,23 @@ export async function placeLogo(image: Buffer, kitId: BrandKitId, spot: LogoSpot
   const shadowTop = Math.min(H - (h + 2 * pad), top - pad + Math.round(3 * s));
   const out = await sharp(image).composite([{ input: shadow, left: left - pad, top: shadowTop }, { input: mark, left, top }]).png().toBuffer();
   return { image: out, box, kit: kit.id };
+}
+
+/**
+ * A kit other than the official one in the box the resolver measured for the official logo (a clean corner): the
+ * kit's file at its own shape, held to the box's corner, never wider than the box or the kit's size cap. `onDark`
+ * follows the artwork the resolver picked for that corner (`…-reversed` is light artwork on a dark background).
+ */
+export async function placeKitInBox(image: Buffer, kitId: BrandKitId, box: Box & { anchor?: string }, onDark: boolean): Promise<PlacedLogo | null> {
+  const { width: W = 0, height: H = 0 } = await sharp(image).metadata();
+  if (!W || !H) return null;
+  const kit = brandKit(kitId);
+  const kf = kitFile(kit, { onDark });
+  let width = Math.min(box.width, maxDrawWidth(kit, kf));
+  let height = width / kf.ratio;
+  if (height > box.height) { height = box.height; width = height * kf.ratio; }
+  const right = box.anchor?.endsWith('right'), bottom = box.anchor?.startsWith('bottom');
+  const x = right ? box.x + box.width - width : box.x;
+  const y = bottom ? box.y + box.height - height : box.y;
+  return placeLogo(image, kitId, { kind: 'design-spot', place: { x: x / W, y: y / H, width: width / W, height: height / H }, same: true, designAspect: W / H, onDark });
 }

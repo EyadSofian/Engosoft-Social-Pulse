@@ -14,7 +14,9 @@ import { DESIGN_AVOID, DESIGN_LANGUAGE_VERSION, DESIGN_STANDARD, DIRECTION_ARCHE
 import { BRAND } from '../brand/registry.js';
 import { resolveOdooContext, type VerifiedCourseContext } from '../context/odoo-context.js';
 import { inspectCreative, zonesFromInspection, type CreativeInspection } from '../criticism/inspect.js';
-import { compositeLogo, verifyComposite } from '../logo-resolution/compositor.js';
+import { compositeLogo, verifyComposite, type CompositedLogo } from '../logo-resolution/compositor.js';
+import { placeKitInBox } from '../brand/place-logo.js';
+import type { BrandKitId } from '../../../src/domain/brand-kits.js';
 import { applyCampaignStamp, campaignBrief, stampGeometry, stampRoom, stampText, stampZone, textStamp, withHashtag, type CampaignIdentity } from '../logo-resolution/campaign-stamp.js';
 import { checkFinish, finishCheckOn, type FinishProblem, type Overlay } from '../criticism/finish-check.js';
 import { plannedLogoBox, resolveLogo, type Corner, type LogoDecision, type NoLogoDecision } from '../logo-resolution/resolver.js';
@@ -130,6 +132,11 @@ export interface FullCreativeRequest {
   facts?: string;
   /** The course name the person typed: on a followed design it must show on the post exactly as written. */
   course?: string;
+  /**
+   * The logo picked on the Create page, for every size of this run: the official logo or the older «ENGO | SOFT»
+   * lockup. Unset keeps each design's own (the official logo, or a followed design's own logo).
+   */
+  logoKit?: BrandKitId;
 }
 export interface FullCreativeResult {
   /** Skeleton path: whether the AI finish passed the line check (`finish`) or the exact layout shipped (`skeleton`). */
@@ -356,6 +363,24 @@ async function stampCampaign(image: Buffer, campaign: CampaignIdentity, avoid: P
 }
 
 type PxBox = { x: number; y: number; width: number; height: number };
+
+/**
+ * The logo in the corner the resolver found for it: the official logo (verified pixel for pixel), or the older
+ * «ENGO | SOFT» lockup the person picked, at its own shape in that corner (`placeKitInBox`). Its file missing on the
+ * server falls back to the official logo, with a note.
+ */
+const ownLogoReason = (own: BrandKitId | undefined, picked: BrandKitId | undefined) => (picked ?? own ?? 'engo-soft-old') === 'official'
+  ? 'The official logo picked on the Create page, at the design\'s logo spot'
+  : 'The design\'s own logo (the older ENGO | SOFT lockup), placed from its file at its spot';
+
+export async function placeChosenLogo(image: Buffer, logo: LogoDecision, kit: BrandKitId | undefined): Promise<{ image: Buffer; box: PxBox; logo: LogoDecision; official?: CompositedLogo; note?: string }> {
+  if (kit && kit !== 'official') {
+    const placed = await placeKitInBox(image, kit, logo.placement, logo.variantId.endsWith('-reversed'));
+    if (placed) return { image: placed.image, box: placed.box, logo: { ...logo, placement: { ...placed.box, anchor: logo.placement.anchor }, reason: `The older ENGO | SOFT logo picked on the Create page, in the logo's corner (${logo.reason})` } };
+  }
+  const { image: out, record } = await compositeLogo(image, { variantId: logo.variantId, x: logo.placement.x, y: logo.placement.y, width: logo.placement.width });
+  return { image: out, box: record, logo, official: record, ...(kit && kit !== 'official' ? { note: 'The older logo file is missing on this server: the official logo was placed instead.' } : {}) };
+}
 const grow = (b: PxBox, pad: number): PxBox => ({ x: b.x - pad, y: b.y - pad, width: b.width + 2 * pad, height: b.height + 2 * pad });
 
 /**
@@ -643,7 +668,7 @@ export const EMPTY_INSPECTION: CreativeInspection = { texts: [], faces: [], subj
  * usual spot) and its campaign artwork — and shown for review. A paid image is never thrown away.
  */
 export async function salvageDirection(input: {
-  raw: Buffer; format: CanvasTarget; direction: CreativeDirectionPlan; dir: string; env: NodeJS.ProcessEnv; follow?: FollowDesign;
+  raw: Buffer; format: CanvasTarget; direction: CreativeDirectionPlan; dir: string; env: NodeJS.ProcessEnv; follow?: FollowDesign; logoKit?: BrandKitId;
   reason: string; model: string; prompt?: string; started?: number; imageCalls?: number; textMode?: TextMode; copyChecks?: CopyCheck[];
 }): Promise<FullCreativeResult> {
   const { raw, format, direction, dir, env, follow } = input;
@@ -652,13 +677,13 @@ export async function salvageDirection(input: {
   const output = await toOutput(raw, format);
   const followed = follow ? await followImage(follow) : null;
   const same = Boolean(followed && sameShape(followed.aspect, spec.output.width / spec.output.height));
-  const own = follow?.logo && followed ? await placeOwnLogo(output, follow.logo, { same, designAspect: followed.aspect, safe: spec.safeArea }) : null;
+  const own = follow?.logo && followed ? await placeOwnLogo(output, follow.logo, { same, designAspect: followed.aspect, safe: spec.safeArea, kit: input.logoKit }) : null;
   let logo: LogoDecision = await forcedHouseLogo(output, spec, plan);
   let image: Buffer;
   if (own) {
     image = own.image;
-    logo = { ...logo, placement: { ...own.box, anchor: 'top-left' }, reason: 'The design\'s own logo (the older ENGO | SOFT lockup), placed from its file at its spot' };
-  } else image = (await compositeLogo(output, { variantId: logo.variantId, x: logo.placement.x, y: logo.placement.y, width: logo.placement.width })).image;
+    logo = { ...logo, placement: { ...own.box, anchor: 'top-left' }, reason: ownLogoReason(follow!.logo!.kit, input.logoKit) };
+  } else ({ image, logo } = await placeChosenLogo(output, logo, input.logoKit));
   const artworks = same && follow?.artworks?.length ? follow.artworks : [];
   if (artworks.length) image = (await placeArtworks(await clearArtworkSpots(image, artworks), artworks)).image;
   const imagePath = resolve(dir, `${direction.id}.png`);
@@ -685,6 +710,8 @@ export async function produceDirection(input: {
   campaign?: CampaignIdentity;
   /** The design the user picked to follow: it replaces the house references as the base design. */
   follow?: FollowDesign;
+  /** The logo picked on the Create page (FullCreativeRequest.logoKit). */
+  logoKit?: BrandKitId;
 }): Promise<FullCreativeResult> {
   if ((input.mode ?? textModeFor(input.brief, input.env)) === 'typeset') return produceTypeset(input);
   const { provider, direction, format, quality, dir, env, master } = input;
@@ -883,16 +910,18 @@ export async function produceDirection(input: {
     } else {
       // The followed design's own logo (the 50/50 campaign's older lockup) goes where the design has it, from its
       // file; otherwise the official logo goes where the resolver found a clean corner.
-      const own = ownLogo ? await placeOwnLogo(output, input.follow!.logo!, { same: sameAsDesign, designAspect: followed!.aspect, safe: spec.safeArea }) : null;
+      const own = ownLogo ? await placeOwnLogo(output, input.follow!.logo!, { same: sameAsDesign, designAspect: followed!.aspect, safe: spec.safeArea, kit: input.logoKit }) : null;
       // A template that evolves is drawn from a template that shows the logo, and the model sometimes draws it: that
       // copy is cleared first, or the official logo would land on top of it and read doubled.
       const base = artPlan && !own ? await clearDrawnLogo(output, inspection, logo.placement) : output;
       if (base !== output) notes.push('A logo the image model drew was cleared before the official logo was placed.');
-      const official = own ? null : await compositeLogo(base, { variantId: logo.variantId, x: logo.placement.x, y: logo.placement.y, width: logo.placement.width });
-      const image = own?.image ?? official!.image;
-      const record = own?.box ?? official!.record;
-      if (own) logo = { ...logo, placement: { ...own.box, anchor: 'top-left' }, reason: 'The design\'s own logo (the older ENGO | SOFT lockup), placed from its file at its spot' };
-      const honesty = official ? await verifyComposite(base, official.image, official.record) : [];
+      const chosen = own ? null : await placeChosenLogo(base, logo, input.logoKit);
+      if (chosen?.note) notes.push(chosen.note);
+      const image = own?.image ?? chosen!.image;
+      const record = own?.box ?? chosen!.box;
+      if (own) logo = { ...logo, placement: { ...own.box, anchor: 'top-left' }, reason: ownLogoReason(input.follow!.logo!.kit, input.logoKit) };
+      else logo = chosen!.logo;
+      const honesty = chosen?.official ? await verifyComposite(base, chosen.image, chosen.official) : [];
       if (honesty.length) problems.unshift(...honesty.map((p) => `Logo composite: ${p}`));
       const content = zonesFromInspection(inspection, spec.output.width, spec.output.height).map((z) => z.box);
       // The design's own campaign artwork goes back at its spot, from its files.
@@ -909,7 +938,7 @@ export async function produceDirection(input: {
     // The image is paid for and on disk: finish it from what was drawn rather than lose it.
     const message = error instanceof Error ? error.message : String(error);
     try {
-      return await salvageDirection({ raw, format, direction, dir, env, follow: input.follow, reason: `${step} failed (${message.slice(0, 160)}).`, model, prompt, started, imageCalls, copyChecks });
+      return await salvageDirection({ raw, format, direction, dir, env, follow: input.follow, logoKit: input.logoKit, reason: `${step} failed (${message.slice(0, 160)}).`, model, prompt, started, imageCalls, copyChecks });
     } catch { throw error; }
   }
 }
@@ -1025,11 +1054,12 @@ async function produceTypeset(input: Parameters<typeof produceDirection>[0]): Pr
   const finish = async () => {
     const { ts, logo } = composed;
     if (logo.requiresCreativeRepair) return undefined;
-    const { image, record } = await compositeLogo(ts.png, { variantId: logo.variantId, x: logo.placement.x, y: logo.placement.y, width: logo.placement.width });
-    const honesty = await verifyComposite(ts.png, image, record);
+    const chosen = await placeChosenLogo(ts.png, logo, input.logoKit);
+    const { image, box: record } = chosen;
+    const honesty = [...(chosen.official ? await verifyComposite(ts.png, image, chosen.official) : []), ...(chosen.note ? [chosen.note] : [])];
     // The campaign stamp goes last, clear of every typeset line, the planned subject and the logo, then the result is checked.
     const finished = await finishOverlays({ logoImage: image, logo: record, content: [...ts.layout.blocks.map((b) => b.box), ...heroZone.map((z) => z.box)], campaign: input.campaign, spec, env });
-    return { image: finished.image, honesty: [...honesty, ...finished.problems], notes: finished.notes };
+    return { image: finished.image, honesty: [...honesty, ...finished.problems], notes: finished.notes, logo: chosen.logo };
   };
   let finished = await finish();
 
@@ -1083,7 +1113,7 @@ async function produceTypeset(input: Parameters<typeof produceDirection>[0]): Pr
   // The copy is exact by construction: every string was set from the canonical copy.
   const copyChecks = checkCopy(brief.canonicalCopy, approvedCopy);
   const status: FullCreativeResult['status'] = !imagePath ? 'failed' : problems.length ? 'needs_review' : 'ready';
-  return { directionId: direction.id, directionName: direction.name, status, problems, notes, imagePath, rawImagePath: rawPath, cleanImagePath, logo: composed.logo, repaired, refinements, copyChecks, inspection, prompt, model: generated.model, latencyMs: Date.now() - started, textMode: 'typeset', typeset: composed.ts.layout, imageCalls };
+  return { directionId: direction.id, directionName: direction.name, status, problems, notes, imagePath, rawImagePath: rawPath, cleanImagePath, logo: finished?.logo ?? composed.logo, repaired, refinements, copyChecks, inspection, prompt, model: generated.model, latencyMs: Date.now() - started, textMode: 'typeset', typeset: composed.ts.layout, imageCalls };
 }
 
 /** Image quality for a post made as a picked design (OPENAI_FOLLOW_IMAGE_QUALITY), else the general setting. */
@@ -1106,7 +1136,9 @@ export async function planSkeletonCreative(request: FullCreativeRequest, follow:
   onDesigning?.();
   // The design's campaign files (stamp, hashtag) stay as they are.
   const values = { ...filled.values, ...Object.fromEntries(template.inputs.filter((i) => i.photo?.kind === 'artwork').map((i) => [i.key, i.sample.ar])) };
-  const doc = designDocFromTemplate(template, values, filled.surface);
+  const designed = designDocFromTemplate(template, values, filled.surface);
+  // The logo picked on the Create page replaces the design's own on every size.
+  const doc: DesignDoc = request.logoKit ? { ...designed, logo: { ...designed.logo, kit: request.logoKit } } : designed;
   const blocks: CopyBlock[] = doc.layers.flatMap((l) => (l.kind === 'text' && l.text.trim() ? [{ role: l.role, kind: l.block, text: l.text, ...(l.highlight ? { highlight: l.highlight } : {}) }] : []));
   const notes = [
     ...filled.missing.map((line) => `Your line «${line}» is not on the post as written.`),
@@ -1230,7 +1262,7 @@ export async function generateFullCreative(request: FullCreativeRequest, env = p
   writeTrace({ requestId, createdAt: new Date().toISOString(), request: savedRequest, brief, results: [], versions: FULL_CREATIVE_VERSIONS, outputDir, context: contextOf(), state: 'running', ...(designDoc ? { designDoc } : {}) });
   const settled = await Promise.allSettled(brief.directions.map((direction) => (designDoc
     ? produceSkeletonDirection({ provider, brief, direction, format, quality, dir: outputDir, env, onProgress, doc: designDoc, topic: request.prompt })
-    : produceDirection({ provider, brief, direction, format, quality, dir: outputDir, env, onProgress, campaign, follow }))
+    : produceDirection({ provider, brief, direction, format, quality, dir: outputDir, env, onProgress, campaign, follow, logoKit: request.logoKit }))
     .then((result) => { updateTrace(requestId, (saved) => { saved.results.push(result); }); return result; })));
   if (followed) {
     // Written while the image was drawn; without them the post's words stand in, so the post can still be captioned in the editor.
@@ -1271,7 +1303,7 @@ export async function adaptFullCreative(run: FullCreativeRun, directionId: strin
     // places and every word is exact, with one image call for the finish (audit #7).
     const result = run.designDoc
       ? await produceSkeletonDirection({ provider, brief: run.brief, direction: { ...direction, id: job.directionId }, format, quality, dir: run.outputDir, env, onProgress, doc: run.designDoc, topic: run.request.prompt })
-      : await produceDirection({ provider, brief: run.brief, direction: { ...direction, id: job.directionId }, format, quality, dir: run.outputDir, env, master: raw, onProgress, mode: sizeModeFor(format, source.textMode ?? 'model', run.brief, env), campaign: run.request.campaign, follow: run.request.followDesign });
+      : await produceDirection({ provider, brief: run.brief, direction: { ...direction, id: job.directionId }, format, quality, dir: run.outputDir, env, master: raw, onProgress, mode: sizeModeFor(format, source.textMode ?? 'model', run.brief, env), campaign: run.request.campaign, follow: run.request.followDesign, logoKit: run.request.logoKit });
     Object.assign(run, updateTrace(run.requestId, (saved) => { saved.results.push(result); saved.pending = (saved.pending ?? []).filter((p) => p.directionId !== job.directionId); }));
     onProgress?.({ stage: 'done' });
     return result;
@@ -1360,7 +1392,7 @@ export async function recoverInterruptedRuns(env: NodeJS.ProcessEnv = process.en
       }
       if (mode === 'typeset' || !existsSync(rawPath)) return null;
       try {
-        return await salvageDirection({ raw: readFileSync(rawPath), format, direction, dir: run.outputDir, env, follow: run.request.followDesign, reason, model: run.results[0]?.model ?? '' });
+        return await salvageDirection({ raw: readFileSync(rawPath), format, direction, dir: run.outputDir, env, follow: run.request.followDesign, logoKit: run.request.logoKit, reason, model: run.results[0]?.model ?? '' });
       } catch { return null; }
     };
     const found: FullCreativeResult[] = [];
