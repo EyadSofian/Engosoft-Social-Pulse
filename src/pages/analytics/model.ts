@@ -16,14 +16,21 @@ import {
   type TrendPoint,
 } from '../../lib/analytics';
 import { dayNumber } from '../../lib/format';
-import type { Platform, Post } from '../../types';
+import type { Platform, Post, Reach } from '../../types';
 import { buildAudience, type PlatformAudience } from './audience';
+import { buildReachSplit, inScope, type ReachSplit } from './reach';
+import { contentTypeOf } from './reports';
 
 export interface Scope {
   period: Period;
   platform: Platform | 'all';
   account: string;
+  /** Organic posts, paid posts, or both. */
+  reach: Reach | 'all';
+  /** A content type from contentTypeOf (post, video, reel…), or 'all'. */
+  type: string;
 }
+
 
 /** The five headline numbers, each with its change against the period before. */
 export type KpiKey = 'posts' | 'reach' | 'views' | 'interactions' | 'rate';
@@ -50,6 +57,10 @@ export interface AnalyticsModel {
   /** Platforms that published in the window, busiest first. */
   platforms: GroupRow[];
   accountOptions: AccountOption[];
+  /** Content types published on the platforms and accounts in scope, most used first. */
+  typeOptions: string[];
+  /** Organic against paid, over every post the other filters keep (the organic/paid filter itself is ignored here). */
+  split: ReachSplit;
   /** Followers and demographics for the platforms and accounts in scope. */
   audience: PlatformAudience[];
   lastCheck: number;
@@ -82,8 +93,12 @@ export function useAnalytics(scope: Scope): AnalyticsModel {
   const todayNum = dayNumber(now);
 
   const model = useMemo(() => {
-    const scoped = scopePosts(data.posts, scope).filter((post) => post.platform !== 'website');
+    const inPlatform = scopePosts(data.posts, scope).filter((post) => post.platform !== 'website');
+    const scoped = inPlatform.filter((post) => inScope(post, scope));
     const { current, previous } = splitByPeriod(scoped, scope.period, todayNum);
+    const bothKinds = splitByPeriod(inPlatform.filter((post) => inScope(post, { reach: 'all', type: scope.type })), scope.period, todayNum).current;
+    const typeCounts = new Map<string, number>();
+    for (const post of inPlatform) typeCounts.set(contentTypeOf(post), (typeCounts.get(contentTypeOf(post)) ?? 0) + 1);
     const summary = summarize(current);
     return {
       todayNum,
@@ -97,12 +112,14 @@ export function useAnalytics(scope: Scope): AnalyticsModel {
         .filter((row) => row.count > 0)
         .sort((a, b) => b.count - a.count),
       accountOptions: accountsOf(data.posts, scope.platform),
+      typeOptions: [...typeCounts.entries()].filter(([type]) => type).sort((a, b) => b[1] - a[1]).map(([type]) => type),
+      split: buildReachSplit(bothKinds),
       audience: buildAudience(data.audience, scope, scope.period, todayNum),
       lastCheck: data.connectors.reduce((latest, entry) => Math.max(latest, entry.checkedAt ? Date.parse(entry.checkedAt) : 0), 0),
     };
-    // The scope object is rebuilt on every render; its three fields are the real dependencies.
+    // The scope object is rebuilt on every render; its fields are the real dependencies.
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [data, scope.period, scope.platform, scope.account, todayNum]);
+  }, [data, scope.period, scope.platform, scope.account, scope.reach, scope.type, todayNum]);
 
   return { ...model, now };
 }

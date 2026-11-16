@@ -22,6 +22,7 @@ import {
 } from './reports';
 import type { PostPicture } from './thumbs';
 import { basisLabel, DEMOGRAPHIC_KEYS, DEMOGRAPHIC_LABEL, shares, sliceLabel } from './audience';
+import { REACH_KINDS, REACH_LABEL, type ReachGroup } from './reach';
 
 /** Shared with the page, so a tile on screen and its row in the file carry the same name. */
 export const KPI_LABEL: Record<KpiKey, Text> = {
@@ -50,15 +51,88 @@ export function reportNotes(model: AnalyticsModel, reports: Reports, i18n: I18n)
     t('Reach is summed across posts; it does not represent unique people across the whole period.', 'الوصول مجموع وصول المنشورات؛ لا يمثل عدد أشخاص فريدين خلال الفترة كلها.'),
     t('The engagement rate is weighted by reach, falling back to views or impressions when reach is unavailable. Its change is in percentage points.', 'معدل التفاعل موزون بالوصول، أو المشاهدات ثم مرات الظهور عند غياب الوصول. تغييره بالنقاط المئوية.'),
     t('An empty cell or a dash means the platform did not return that number.', 'الخلية الفاضية أو الشرطة معناها إن المنصة ما رجعتش الرقم ده.'),
+    ...reachNotes(model, i18n),
   ];
 }
 
-/** "Facebook · Engosoft · 2026-10-13 → 2026-11-11", the same line on every sheet and the PDF. */
+/** How organic and paid are told apart; written once in the notes instead of under every number on screen. */
+export function reachNotes(model: AnalyticsModel, i18n: I18n): string[] {
+  const { t, num } = i18n;
+  return [
+    t(
+      'Paid = a boost or an ad ran on the post. Facebook says so through the views that came from ads; Instagram through the ads running on the post; both through the ads accounts when ads access is granted. A post can also be marked paid or organic by hand.',
+      'ممول = اتعمل للمنشور بوست أو إعلان. فيسبوك بيقول ده من المشاهدات اللي جت من الإعلانات، وإنستجرام من الإعلانات الشغالة على المنشور، والاتنين من حسابات الإعلانات لما صلاحية الإعلانات تكون متاحة. وممكن تحدد أي منشور ممول أو أورجانيك يدويًا.',
+    ),
+    t(
+      'A paid post’s reach and views are the platform’s totals for that post. "Reach from ads", "Views from ads", clicks and spend are what the ads using the post delivered, summed over those ads.',
+      'الوصول والمشاهدات للمنشور الممول هي إجمالي المنصة للمنشور. "الوصول من الإعلانات" و"المشاهدات من الإعلانات" والنقرات والصرف هي اللي الإعلانات اللي استخدمت المنشور جابتها، مجموعة على الإعلانات دي.',
+    ),
+    ...(model.split.unknown
+      ? [t(`${num(model.split.unknown)} posts are on platforms that do not say whether money was spent (TikTok, YouTube, Snapchat, LinkedIn, or Meta without the needed access); they count as organic unless marked by hand.`, `${num(model.split.unknown)} منشور على منصات مش بتقول لو اتصرف عليهم فلوس (تيك توك، يوتيوب، سناب شات، لينكدإن، أو ميتا من غير الصلاحية المطلوبة)؛ محسوبين أورجانيك إلا لو اتحددوا يدويًا.`)]
+      : []),
+  ];
+}
+
+/** "Facebook · Engosoft · Paid · Video · 2026-10-13 → 2026-11-11", the same line on every sheet and the PDF. */
 export function scopeLine(model: AnalyticsModel, i18n: I18n) {
-  const { t } = i18n;
+  const { t, tx } = i18n;
   const platform = model.scope.platform === 'all' ? t('All platforms', 'كل المنصات') : channelName[model.scope.platform];
   const account = model.scope.account === 'all' ? t('All accounts', 'كل الحسابات') : (model.accountOptions.find((option) => option.id === model.scope.account)?.name ?? model.scope.account);
-  return `${platform} · ${account} · ${dayKeyOf(model.todayNum - model.scope.period + 1)} → ${dayKeyOf(model.todayNum)}`;
+  const kind = model.scope.reach === 'all' ? t('Organic and paid', 'أورجانيك وممول') : tx(REACH_LABEL[model.scope.reach]);
+  const type = model.scope.type === 'all' ? [] : [tx(typeLabel(model.scope.type))];
+  return [platform, account, kind, ...type, `${dayKeyOf(model.todayNum - model.scope.period + 1)} → ${dayKeyOf(model.todayNum)}`].join(' · ');
+}
+
+/** "Organic", "Paid", with who decided when it was a person. */
+export function kindCell(post: Post, i18n: I18n) {
+  const { t, tx } = i18n;
+  const label = tx(REACH_LABEL[post.reachKind]);
+  return post.reachKindBy === 'manual' ? `${label} (${t('by hand', 'يدوي')})` : post.reachKindBy === 'unknown' ? `${label} (${t('not reported', 'غير مذكور')})` : label;
+}
+
+const reachRow = (label: string, kind: string, group: ReachGroup) => [
+  label,
+  kind,
+  group.count,
+  group.reachCount ? group.reach : null,
+  group.viewsCount ? group.views : null,
+  group.measured ? group.interactions : null,
+  round(group.rate, 2),
+  group.adReach,
+  group.paidViews,
+  group.adClicks,
+  round(group.spend, 2),
+  group.currency === 'mixed' ? '' : group.currency,
+];
+
+/** Organic against paid: all platforms, then each platform. */
+export function reachSheet(model: AnalyticsModel, i18n: I18n): Sheet {
+  const { t, tx } = i18n;
+  const all = t('All platforms', 'كل المنصات');
+  return {
+    name: t('Organic vs paid', 'أورجانيك وممول'),
+    title: t('Organic posts against paid posts', 'المنشورات الأورجانيك قدام الممولة'),
+    subtitle: scopeLine(model, i18n),
+    columns: [
+      { header: t('Platform', 'المنصة'), width: 16 },
+      { header: t('Organic / paid', 'أورجانيك / ممول'), width: 14 },
+      { header: t('Posts', 'المنشورات'), width: 11, format: 'int' },
+      { header: t('Reach', 'الوصول'), width: 13, format: 'int' },
+      { header: t('Views', 'المشاهدات'), width: 13, format: 'int' },
+      { header: t('Interactions', 'التفاعلات'), width: 13, format: 'int' },
+      { header: t('Engagement rate %', 'معدل التفاعل %'), width: 16, format: 'percent' },
+      { header: t('Reach from ads', 'الوصول من الإعلانات'), width: 16, format: 'int' },
+      { header: t('Views from ads', 'المشاهدات من الإعلانات'), width: 17, format: 'int' },
+      { header: t('Ad clicks', 'نقرات الإعلان'), width: 13, format: 'int' },
+      { header: t('Spend', 'الصرف'), width: 12, format: 'decimal' },
+      { header: t('Currency', 'العملة'), width: 10 },
+    ],
+    rows: [
+      ...REACH_KINDS.map((kind) => reachRow(all, tx(REACH_LABEL[kind]), model.split[kind])),
+      ...model.split.platforms.flatMap((row) => REACH_KINDS.map((kind) => reachRow(channelName[row.platform], tx(REACH_LABEL[kind]), row[kind]))),
+    ],
+    notes: reachNotes(model, i18n),
+  };
 }
 
 export const shortCaption = (post: Post, limit = 160) => (post.title.length > limit ? `${post.title.slice(0, limit)}…` : post.title);
@@ -167,6 +241,7 @@ export function rankingSheet(model: AnalyticsModel, reports: Reports, i18n: I18n
       { header: t('Published', 'تاريخ النشر'), width: 17 },
       { header: t('Account', 'الحساب'), width: 20 },
       { header: t('Type', 'النوع'), width: 11 },
+      { header: t('Organic / paid', 'أورجانيك / ممول'), width: 14 },
       { header: t('Post', 'المنشور'), width: 46 },
       { header: t('Reach', 'الوصول'), width: 12, format: 'int' as const },
       { header: t('Views', 'المشاهدات'), width: 12, format: 'int' as const },
@@ -183,6 +258,7 @@ export function rankingSheet(model: AnalyticsModel, reports: Reports, i18n: I18n
       inZone(entry.post.ts).toFormat('yyyy-LL-dd HH:mm'),
       entry.post.accountName,
       tx(typeLabel(contentTypeOf(entry.post))),
+      kindCell(entry.post, i18n),
       shortCaption(entry.post),
       entry.post.metrics.reach,
       entry.post.metrics.views,
@@ -351,10 +427,17 @@ export function postsSheet(model: AnalyticsModel, i18n: I18n, pictures?: Map<str
       { header: t('Platform', 'المنصة'), width: 13 },
       { header: t('Account', 'الحساب'), width: 20 },
       { header: t('Type', 'النوع'), width: 11 },
+      { header: t('Organic / paid', 'أورجانيك / ممول'), width: 14 },
       { header: t('Post', 'المنشور'), width: 46 },
       { header: t('Reach', 'الوصول'), width: 12, format: 'int' as const },
       { header: t('Views', 'المشاهدات'), width: 12, format: 'int' as const },
       { header: t('Impressions', 'مرات الظهور'), width: 12, format: 'int' as const },
+      { header: t('Organic views', 'مشاهدات أورجانيك'), width: 14, format: 'int' as const },
+      { header: t('Views from ads', 'المشاهدات من الإعلانات'), width: 16, format: 'int' as const },
+      { header: t('Reach from ads', 'الوصول من الإعلانات'), width: 15, format: 'int' as const },
+      { header: t('Ad clicks', 'نقرات الإعلان'), width: 12, format: 'int' as const },
+      { header: t('Spend', 'الصرف'), width: 11, format: 'decimal' as const },
+      { header: t('Currency', 'العملة'), width: 9 },
       ...MIX_KEYS.map((key) => ({ header: tx(MIX_LABEL[key]), width: 10, format: 'int' as const })),
       { header: t('Interactions', 'التفاعلات'), width: 12, format: 'int' as const },
       { header: t('Engagement rate %', 'معدل التفاعل %'), width: 15, format: 'percent' as const },
@@ -369,10 +452,17 @@ export function postsSheet(model: AnalyticsModel, i18n: I18n, pictures?: Map<str
         channelName[post.platform],
         post.accountName,
         tx(typeLabel(contentTypeOf(post))),
+        kindCell(post, i18n),
         shortCaption(post),
         post.metrics.reach,
         post.metrics.views,
         post.metrics.impressions,
+        post.promotion?.organicViews ?? null,
+        post.promotion?.paidViews ?? null,
+        post.promotion?.adReach ?? null,
+        post.promotion?.adClicks ?? null,
+        round(post.promotion?.spend, 2),
+        post.promotion?.spend != null ? post.promotion.currency : '',
         ...MIX_KEYS.map((key) => post.metrics[key]),
         post.measured ? post.interactions : null,
         round(postRate(post), 2),
@@ -389,6 +479,7 @@ export function buildSheets(model: AnalyticsModel, reports: Reports, i18n: I18n,
   const { t, tx } = i18n;
   return [
     summarySheet(model, reports, i18n),
+    reachSheet(model, i18n),
     platformsSheet(model, i18n),
     activitySheet(model, i18n),
     rankingSheet(model, reports, i18n, pictures),
@@ -411,7 +502,7 @@ export function exportPostList(model: AnalyticsModel, reports: Reports, posts: E
 }
 
 const fileName = (model: AnalyticsModel, posts: ExportPosts, extension: string) =>
-  `analytics-${model.scope.platform === 'all' ? 'all' : model.scope.platform}-${model.scope.period}d-${posts === 'all' ? 'all-posts' : 'best-worst'}-${dayKeyOf(model.todayNum)}.${extension}`;
+  `analytics-${model.scope.platform === 'all' ? 'all' : model.scope.platform}${model.scope.reach === 'all' ? '' : `-${model.scope.reach}`}${model.scope.type === 'all' ? '' : `-${model.scope.type.replace(/[^a-z0-9]+/gi, '')}`}-${model.scope.period}d-${posts === 'all' ? 'all-posts' : 'best-worst'}-${dayKeyOf(model.todayNum)}.${extension}`;
 
 export function exportWorkbook(model: AnalyticsModel, reports: Reports, i18n: I18n, posts: ExportPosts, pictures?: Map<string, PostPicture>) {
   download(workbook(buildSheets(model, reports, i18n, posts, pictures)), fileName(model, posts, 'xlsx'));

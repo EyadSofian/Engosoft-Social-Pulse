@@ -3,7 +3,22 @@ export type Platform = 'facebook' | 'instagram' | 'tiktok' | 'snapchat' | 'youtu
 export type PlanPlatform = Platform | 'x';
 export type PlanStatus = 'draft' | 'approved' | 'scheduled' | 'published' | 'cancelled';
 export interface Metrics { views: number | null; reach: number | null; impressions: number | null; likes: number | null; comments: number | null; shares: number | null; saves: number | null; clicks: number | null; engagement: number | null; }
-export interface ObservedPost { platform: Platform; accountId: string; accountName: string; externalId: string; permalink: string; title: string; publishedAt: string; contentType: string; thumbnail: string; metrics: Metrics; }
+/**
+ * Whether money was spent on a post, and what the organic and paid parts of its numbers were.
+ * Every number is null when the platform or the ads account did not give it.
+ */
+export interface Promotion {
+ /** true: an ad or boost ran on the post; false: checked and none ran; null: the platform cannot tell. */
+ paid: boolean | null;
+ /** Where `paid` came from: the post's own insights, the ads account, or a person marking it by hand. */
+ source: 'insights' | 'ads' | 'manual' | '';
+ organicViews: number | null; paidViews: number | null;
+ /** What the ads that used this post delivered, summed over those ads, lifetime. */
+ adReach: number | null; adImpressions: number | null; adClicks: number | null; adEngagement: number | null;
+ spend: number | null; currency: string; ads: number;
+}
+export const blankPromotion = (): Promotion => ({ paid:null, source:'', organicViews:null, paidViews:null, adReach:null, adImpressions:null, adClicks:null, adEngagement:null, spend:null, currency:'', ads:0 });
+export interface ObservedPost { platform: Platform; accountId: string; accountName: string; externalId: string; permalink: string; title: string; publishedAt: string; contentType: string; thumbnail: string; metrics: Metrics; promotion?: Promotion; }
 export interface WebsitePageDay { date: string; path: string; title: string; views: number; activeUsers: number; engagementSeconds: number; }
 export interface Plan { id: string; platform: PlanPlatform; accountId: string; title: string; caption: string; scheduledAt: string; status: PlanStatus; permalink: string; externalId: string; owner: string; contentType: string; goal: string; campaign: string; notes: string; sourceKey: string; createdAt: string; updatedAt: string; }
 /** One slice of an audience breakdown: an age group, a gender, a country or a city, and its count or percentage. */
