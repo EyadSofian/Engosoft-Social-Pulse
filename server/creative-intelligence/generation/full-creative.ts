@@ -32,6 +32,7 @@ import { designDocFromTemplate, designWords, type DesignDoc } from '../../../src
 import type { BrandTemplate } from '../../../src/domain/brand-templates.js';
 import { clearArtworkSpots, clearBoxes, followDesignPrompt, followImage, followPhotoImages, followPrompt, placeArtworks, placeOwnLogo, sameShape, type FollowDesign } from './follow-design.js';
 import { evolveDesignPrompt, planArtDirection, type ArtDirection } from './art-direction.js';
+import { TYPE_HIERARCHY, typeStyle } from './type-hierarchy.js';
 import { followCaptions, followCopy, planFollowContent } from './follow-content.js';
 import { highlightPhrase, storyLayout, storyZones, TYPESET_VERSION, typesetCreative, type TypesetPlan, type TypesetResult } from '../typography/typeset.js';
 import { FallbackImageProvider, openAIJson, OpenAIImageProvider, type CreativeImageProvider, type ImageQuality } from './provider.js';
@@ -325,10 +326,10 @@ export function compileFullCreativePrompt(brief: CreativeBriefPlan, direction: C
   const f = canvasOf(format);
   const copy = brief.canonicalCopy;
   const text = [
-    `Headline: «${copy.headline}»`,
-    copy.subheadline ? `Supporting line: «${copy.subheadline}»` : '',
-    ...(copy.facts ?? []).map((fact, i) => `Fact line ${i + 1} (in a clean info bar or badge): «${fact}»`),
-    copy.cta ? `Call-to-action button: «${copy.cta}»` : '',
+    `Headline: «${copy.headline}» (${typeStyle('headline')})`,
+    copy.subheadline ? `Supporting line: «${copy.subheadline}» (${typeStyle('support')})` : '',
+    ...(copy.facts ?? []).map((fact, i) => `Fact line ${i + 1} (in a clean info bar or badge; ${typeStyle('detail')}): «${fact}»`),
+    copy.cta ? `Call-to-action button: «${copy.cta}» (${typeStyle('cta')})` : '',
   ].filter(Boolean).map((line, i) => `${i + 1}. ${line}`).join('\n');
   const { mark, corner } = logoPlanOf(direction, format);
   const top = Math.round((f.safeArea.top / f.output.height) * 100), bottom = Math.round((f.safeArea.bottom / f.output.height) * 100);
@@ -342,7 +343,7 @@ export function compileFullCreativePrompt(brief: CreativeBriefPlan, direction: C
     `COMPOSITION\n${direction.composition}`,
     `PALETTE AND MOOD\n${direction.palette}. Mood: ${direction.mood}. Engosoft identity: brand blue ${BRAND.colors.core.brandBlue.hex} and orange ${BRAND.colors.core.brandOrange.hex} as confident accents.`,
     `ART DIRECTION STANDARD\n${DESIGN_STANDARD.join(' ')}`,
-    `TYPOGRAPHY\n${direction.typography}. Arabic set right-to-left in a bold, modern geometric Arabic sans-serif (similar to Almarai); Latin in a clean geometric sans (similar to Plus Jakarta Sans). Clear hierarchy, generous margins, readable on a phone.`,
+    `TYPOGRAPHY\n${direction.typography}. Arabic set right-to-left in a modern geometric Arabic sans-serif (similar to Almarai) used in several weights; Latin in a clean geometric sans (similar to Plus Jakarta Sans). Readable on a phone.\n${TYPE_HIERARCHY}`,
     `TEXT — render exactly these strings, verbatim, each once, and no other text:\n${text}\nSpell Arabic exactly with correctly joined letters. Copy digits exactly as written (Western digits).`,
     `LOGO RESERVATION\n${logoReservation(mark, corner, logoCanvasOf(format))}`,
     `RIGHT-TO-LEFT\nThe layout reads right to left: arrows and directional cues on buttons point left.`,

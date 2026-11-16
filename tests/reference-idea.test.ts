@@ -141,3 +141,31 @@ test('without a logo pick the prompt keeps the official logo\'s reserved corner,
   assert.match(prompt, /exact official logo will be composited/);
   assert.match(referencePrompt(byFile('automotive-hero.jpg'), { title: 'دورة' }, 'feed', '', undefined, { logoKit: 'engo-soft-old' }), /reference's own logo file will be composited/);
 });
+
+test('reference designs: each line carries its weight and size, and the offer in the idea must reach the post', async () => {
+  const { missingNumbers } = await import('../server/creative-intelligence/generation/reference-copy');
+  const prompt = referencePrompt(byFile('support.jpg'), { title: 'طوّر مهاراتك', subtitle: 'PMP 8th Edition', body: '3 دورات متكاملة', cta: 'سجّل الحين' }, 'feed', '');
+  assert.doesNotMatch(prompt, /glyph weight/);
+  assert.match(prompt, /"text":"طوّر مهاراتك","type":"headline: the ONLY heavy line/);
+  assert.match(prompt, /"text":"PMP 8th Edition","type":"supporting line: Medium weight \(500\), NOT bold/);
+  assert.match(prompt, /"text":"3 دورات متكاملة","type":"body text: Regular weight \(400\)/);
+  assert.match(prompt, /TYPE HIERARCHY/);
+
+  const idea = 'دورات PMP 8th Edition و Primavera P6\nخصم 50% + كاش باك 50% دورات مسجلة\nقسط مع تابي وتمارا';
+  assert.deepEqual(missingNumbers(idea, { title: 'طوّر مهاراتك', subtitle: 'PMP 8th Edition + Primavera P6' }), ['50']);
+  assert.deepEqual(missingNumbers(idea, { title: 'خصم 50% + كاش باك 50%', subtitle: 'PMP 8th Edition + Primavera P6' }), []);
+  // «150» is not «50».
+  assert.deepEqual(missingNumbers('خصم 50%', { title: 'وفّر 150 ريال' }), ['50']);
+
+  const calls: string[] = [];
+  globalThis.fetch = (async (_url: string | URL, init?: RequestInit) => {
+    const body = JSON.parse(String(init?.body));
+    calls.push(body.input[0].content[0].text);
+    const title = calls.length === 1 ? 'طوّر مهاراتك مع المسار الاحترافي' : 'خصم 50% + كاش باك 50%';
+    return reply({ values: { title, subtitle: 'PMP 8th Edition + Primavera P6', body: 'قسّطها مع تابي وتمارا', date: '', time: '', objectives: '', cta: 'سجّل الحين' }, caption: 'سجّل الحين.', scene: 'A project manager at a desk.' });
+  }) as typeof fetch;
+  const out = await writeReferenceCopy(byFile('support.jpg'), { idea }, { OPENAI_API_KEY: 'test' });
+  assert.equal(calls.length, 2, 'the dropped offer is asked for once more');
+  assert.match(calls[1], /the number 50 from the idea/);
+  assert.equal(out.values.title, 'خصم 50% + كاش باك 50%');
+});

@@ -22,7 +22,7 @@ export interface ReferenceCopy {
 }
 
 /** Room per role: a reference headline is a few words, a button two. Fields of other keys keep their own limit. */
-const LIMITS: Record<string, number> = { title: 45, subtitle: 80, body: 180, objectives: 180, cta: 24, date: 40, time: 30 };
+const LIMITS: Record<string, number> = { title: 45, subtitle: 80, body: 100, objectives: 100, cta: 24, date: 40, time: 30 };
 export const limitOf = (field: TemplateField) => Math.min(LIMITS[field.key] ?? field.maxChars ?? 120, field.maxChars ?? 2000);
 /** Fields that only ever hold a fact the person gave (a date, a time, a link). */
 export const isFactField = (field: TemplateField) => ['date', 'time'].includes(field.key) || ['odoo.date', 'odoo.time', 'odoo.link'].includes(field.source);
@@ -34,6 +34,12 @@ const digitsOf = (text: string) => text.replace(/[٠-٩]/g, (d) => String(d.char
 export const inventedNumbers = (value: string, given: string) => {
   const source = digitsOf(given);
   return (digitsOf(value).match(/\d+/g) ?? []).filter((n) => !source.includes(n));
+};
+
+/** The numbers the person wrote in the idea (an offer, a price, a date) that are on no line of the post. */
+export const missingNumbers = (idea: string, values: Record<string, string>) => {
+  const post = digitsOf(Object.values(values).join(' '));
+  return [...new Set(digitsOf(idea).match(/\d+/g) ?? [])].filter((n) => !new RegExp(`(^|\\D)${n}(\\D|$)`).test(post));
 };
 
 /**
@@ -64,7 +70,10 @@ export function referenceCopyInstructions(template: Pick<SvgTemplate, 'name' | '
     'You write the words of one Engosoft social-media post. Engosoft is an engineering and professional training company in Saudi Arabia and Egypt (PMP, CFM, Primavera, Revit, MEP, HR, finance, automotive and more).',
     'The person gave only the idea of the post. The post will be drawn in the look of the attached reference design: same typography, same content zones, same amount of text. You write every line it needs.',
     `Reference design: ${template.name}. How its text is laid out: ${template.sourcePrompt}`,
-    'Look at the reference image and count its text: how many lines, how long the headline is, whether it has a supporting line, a paragraph, a button, a date or time panel. Fill only the fields that match a text zone the reference really has, at the same length; return an empty string for a field the design has no place for. A short, strong headline beats a long one.',
+    'Look at the reference image and count its text: how many lines, how long the headline is, whether it has a supporting line, a paragraph, a button, a date or time panel. Fill only the fields that match a text zone the reference really has, at the same length or shorter; return an empty string for a field the design has no place for.',
+    'Less text reads better and leaves the design room to breathe: a headline of 2 to 7 words, one supporting line, a short button. Write a body only when the reference has a paragraph zone, as one short sentence; leave objectives empty unless the idea lists them.',
+    'What the idea sells comes first: a discount, price, cashback, instalment or payment option (for example «خصم 50% + كاش باك 50%» or «قسّطها مع تابي وتمارا») must be on the post, in the headline, the supporting line or the body, in short form. Never drop it to make room for general wording.',
+    'Arabic numbers agree with what they count: 3 to 10 take the plural («3 دورات», «5 أيام»), 11 and above the singular («12 دورة»).',
     'Never reuse a word from the reference image: its text belongs to another post. Never write a logo, brand name lockup or website unless the idea asks for it.',
     `Write in ${language === 'ar' ? 'Arabic: natural, warm marketing Arabic, short and punchy (course codes and English course names such as PMP or Revit MEP stay in Latin letters)' : 'English'}.`,
     `Fields:\n${fields}`,
@@ -116,6 +125,7 @@ export async function writeReferenceCopy(template: SvgTemplate, input: { idea: s
   const order = fields.map((f) => f.key);
   const problems = (written: typeof out) => [
     ...missingLines(lines, written.values, order).map((l) => `this line of the person is missing or changed: «${l}»`),
+    ...missingNumbers(idea, written.values).map((n) => `the number ${n} from the idea (an offer, price or fact the person gave) is on no line of the post`),
     ...fields.flatMap((f) => inventedNumbers(String(written.values[f.key] ?? ''), `${idea}\n${facts}`).map((n) => `${f.key} has the number ${n}, which nobody gave`)),
   ];
   const first = problems(out);

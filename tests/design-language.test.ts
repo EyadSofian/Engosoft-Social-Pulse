@@ -80,3 +80,13 @@ test('the house logo never moves corner or turns into the symbol: a busy corner 
   const light = await resolveLogo({ creative: await flat('#F1F4F9'), zones: [], preferredCorner: 'top-left', preferredMark: 'horizontal', strictCorner: true });
   assert.ok(!light.requiresCreativeRepair && light.variantId === 'horizontal-positive');
 });
+
+test('the AI Create prompt sets only the headline heavy: each line has its own weight and size, never all bold', () => {
+  const prompt = compileFullCreativePrompt({ ...brief, canonicalCopy: { headline: 'عنوان', subheadline: 'سطر مساند', facts: ['يبدأ 5 ديسمبر'], cta: 'سجّل الآن' } }, direction(), 'feed');
+  assert.doesNotMatch(prompt, /in a bold, modern/);
+  assert.match(prompt, /Headline: «عنوان» \(headline: the ONLY heavy line/);
+  assert.match(prompt, /Supporting line: «سطر مساند» \(supporting line: Medium weight \(500\), NOT bold/);
+  assert.match(prompt, /Call-to-action button: «سجّل الآن» \(call to action: SemiBold/);
+  assert.match(prompt, /TYPE HIERARCHY: a clear contrast of weight and size, never every line bold/);
+  assert.match(prompt, /at least 40% of the canvas free of text/);
+});

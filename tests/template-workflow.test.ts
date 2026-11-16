@@ -106,7 +106,9 @@ test('reference generation uses the actual image, original typography language a
   const prompt = referencePrompt(template, { title: 'صيانة السيارات الكهربائية' }, 'feed', 'تدريب على السيارات الكهربائية');
   assert.match(prompt, /VISUAL|visual|art-direction/);
   assert.match(prompt, /NEW Engosoft/);
-  assert.match(prompt, /glyph weight/);
+  assert.match(prompt, /kashida/);
+  assert.match(prompt, /TYPE HIERARCHY/);
+  assert.match(prompt, /ONLY heavy line/);
   assert.match(prompt, /CREATE FRESH ARTWORK/);
   assert.match(prompt, /صيانة السيارات الكهربائية/);
   assert.equal(prompt.includes('نفخر بخريجينا'), false);
