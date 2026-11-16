@@ -34,7 +34,8 @@ import { usePageMeta } from '../../shell/ShellContext';
 import { DesignSettings } from '../../features/creative-studio/DesignSettings';
 import { DEFAULT_ENGINE_SETTINGS, type EngineSettings } from '../../domain/design-engine';
 import { BRAND_TEMPLATES, brandTemplate } from '../../domain/brand-templates';
-import { brandKit, kitFile, type BrandKitId } from '../../domain/brand-kits';
+import type { BrandKitId } from '../../domain/brand-kits';
+import { LogoChoice } from '../../features/creative-studio/LogoChoice';
 import { BrandTemplateComposer, BrandTemplateGrid } from '../../features/brand-templates/BrandTemplateComposer';
 
 type Stage = 'compose' | 'generating';
@@ -327,26 +328,6 @@ export function CreationHomePage() {
     {stage === 'compose' && <SizePicker platforms={platforms} chosen={chosenSizes} main={main} designs={designs} onDesigns={setDesigns} onToggle={(ids, on) => setSizeChoice((current) => ({ ...current, ...Object.fromEntries(ids.map((id) => [id, on])) }))} onMain={setMainPick} />}
     </div>}
     <RecentContent />
-  </div>;
-}
-
-const LOGO_CHOICES: { kit: BrandKitId; label: [string, string] }[] = [
-  { kit: 'official', label: ['New logo', 'اللوجو الجديد'] },
-  { kit: 'engo-soft-old', label: ['Old logo', 'اللوجو القديم'] },
-];
-
-/** Which Engosoft logo goes on the design: placed from its own file on every size, never drawn by the AI. */
-function LogoChoice({ value, onChange }: { value: BrandKitId; onChange: (kit: BrandKitId) => void }) {
-  const { t } = useI18n();
-  return <div className="create-logo">
-    <span className="u-xs u-muted">{t('Logo on the design (placed from its file on every size):', 'اللوجو على التصميم (بيتحط من الملف نفسه في كل المقاسات):')}</span>
-    <div className="create-logo__options" role="radiogroup" aria-label={t('Logo', 'اللوجو')}>
-      {LOGO_CHOICES.map((choice) => <button key={choice.kit} type="button" role="radio" aria-checked={value === choice.kit} onClick={() => onChange(choice.kit)}>
-        <span className="create-logo__mark"><img src={kitFile(brandKit(choice.kit), { onDark: true }).src} alt="" /></span>
-        <span>{t(...choice.label)}</span>
-        {value === choice.kit && <Check size={14} strokeWidth={3} className="create-logo__check" />}
-      </button>)}
-    </div>
   </div>;
 }
 

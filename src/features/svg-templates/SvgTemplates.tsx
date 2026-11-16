@@ -1,7 +1,7 @@
 import { DialectPicker, usePreferredDialect } from '../content/ContentCopilot';
 import { useEffect, useId, useMemo, useRef, useState } from 'react';
 import { AnimatePresence, motion } from 'motion/react';
-import { CalendarClock, Code2, FileText, ImagePlus, Loader2, Save, Search, Send, Sparkles, Trash2, Wand2, X } from 'lucide-react';
+import { CalendarClock, Code2, FileText, GraduationCap, ImagePlus, Loader2, PenLine, Save, Search, Send, Sparkles, Trash2, Wand2, X } from 'lucide-react';
 import { useRouter } from '../../app/router/router';
 import { ChannelIcon } from '../../components/data-display/ChannelIcon';
 import { Button } from '../../components/ui/Button';
@@ -17,6 +17,10 @@ import { publishingPreset } from '../../domain/output-presets';
 import { PublishingPresetPicker } from '../publishing/PublishingPresetPicker';
 import { useAuth } from '../auth/AuthProvider';
 import { PublishHere } from '../publishing/PublishHere';
+import { courseFacts } from '../creative-studio/creativeRequest';
+import { LogoChoice } from '../creative-studio/LogoChoice';
+import { referenceLogoOf } from '../../domain/reference-logos';
+import type { BrandKitId } from '../../domain/brand-kits';
 
 /** The platforms of the plan row a post is being made for, when there is one. */
 const plannedChannels = (): CreativePlatform[] | undefined => {
@@ -220,7 +224,7 @@ export function TemplateGrid({ items, onOpen }: { items: SvgTemplate[]; onOpen: 
           <span className="tpl-card__meta">
             <b dir="auto">{template.name}</b>
             <KindChip kind={template.kind} />
-            <small>{template.sourceImage ? t('Visual reference · new artwork each time', 'مرجع بصري · تصميم جديد كل مرة') : t(FORMAT_LABEL[template.format].en, FORMAT_LABEL[template.format].ar)}</small>
+            <small>{template.sourceImage ? t('Write the idea · same look and logo', 'اكتب الفكرة بس · نفس الشكل واللوجو') : t(FORMAT_LABEL[template.format].en, FORMAT_LABEL[template.format].ar)}</small>
           </span>
         </button>
       ))}
@@ -291,50 +295,95 @@ const storedValues = (template: SvgTemplate, values: Record<string, string>) =>
  * Template → post: fill the fields, pick platforms, get captions, export the PNG in the browser and send the post
  * into the pipeline. With `contentId`, saves a new version of an existing template post instead.
  */
-interface ComposerProps { template: SvgTemplate; initialValues?: Record<string, string>; contentId?: string; initialChannels?: CreativePlatform[]; initialImageUrl?: string; initialFormat?: TemplateFormat; initialContext?: string; initialPreset?: string; onClose?: () => void }
+interface ComposerProps { template: SvgTemplate; initialValues?: Record<string, string>; contentId?: string; initialChannels?: CreativePlatform[]; initialImageUrl?: string; initialFormat?: TemplateFormat; initialContext?: string; initialPreset?: string; initialIdea?: string; initialLogoKit?: BrandKitId; onClose?: () => void }
 export function TemplateComposer(props: ComposerProps) {
   return props.template.sourceImage ? <ReferenceComposer {...props} /> : <SvgTemplateComposer {...props} />;
 }
 
-function ReferenceComposer({ template, initialValues, contentId, initialChannels, initialImageUrl, initialFormat, initialContext, initialPreset, onClose }: ComposerProps) {
+/** An example idea per kind of post, in the words a marketer would type. */
+const IDEA_EXAMPLES: Record<TemplateKind, [string, string]> = {
+  course: ['e.g. Electric vehicle maintenance course, starts 5 December online, for engineers and technicians', 'مثال: كورس صيانة العربيات الكهربائية، بيبدأ 5 ديسمبر أونلاين، للمهندسين والفنيين'],
+  graduation: ['e.g. Congratulations to the October cohort of the Interior Design Diploma', 'مثال: تهنئة لخريجي دبلومة التصميم الداخلي دفعة أكتوبر'],
+  event: ['e.g. A contest for the best trainee design; the prize is a free course', 'مثال: مسابقة لأحسن تصميم من المتدربين، والجايزة كورس مجاني'],
+  announcement: ['e.g. Why project managers need the PMP certificate', 'مثال: بوست توعوي عن أهمية شهادة PMP لمديري المشاريع'],
+  general: ['e.g. What the post is about, for whom, and what they should do', 'مثال: البوست عن إيه، لمين، وعايزهم يعملوا إيه'],
+};
+type ReferenceJob = { status: string; result?: { imageUrl: string; values?: Record<string, string>; caption?: string; logoKit?: BrandKitId }; error?: string };
+/** What a design request was made from, kept until its job comes back so the result is matched to it. */
+interface PendingRender { idea: string; fresh: boolean; values: Record<string, string>; format: TemplateFormat; presetId: string }
+const signatureOf = (input: { idea: string; values: Record<string, string>; format: TemplateFormat; presetId: string }) => JSON.stringify({ idea: input.idea.trim(), values: input.values, format: input.format, presetId: input.presetId });
+
+/**
+ * A post in the look of a library reference design, from one idea: the AI writes every line the design needs (and
+ * the caption), draws new artwork in the reference's look, and the logo is placed from its file: the reference's own
+ * logo by default, or the other one. The written words fold under "edit by hand"; a later design uses them as they
+ * are until the idea changes.
+ */
+function ReferenceComposer({ template, initialValues, contentId, initialChannels, initialImageUrl, initialFormat, initialContext, initialPreset, initialIdea, initialLogoKit, onClose }: ComposerProps) {
   const { t } = useI18n();
   const publisher = useAuth().can('content.publish');
   const [publishing, setPublishing] = useState<string | null>(null);
   const { user } = useAuth();
   const { navigate } = useRouter();
-  const draftKey = `engosoft-reference-draft:${user.id}:${template.id}:${contentId ?? 'new'}`;
+  const draftKey = `engosoft-reference-draft:v2:${user.id}:${template.id}:${contentId ?? 'new'}`;
   const saved = useMemo(() => { try { const data = JSON.parse(sessionStorage.getItem(draftKey) || '{}'); return data && typeof data === 'object' ? data : {}; } catch { return {}; } }, [draftKey]);
-  const [values, setValues] = useState<Record<string, string>>(saved.values ?? initialValues ?? sampleValues(template.fields));
-  const [context, setContext] = useState<string>(saved.context ?? initialContext ?? '');
+  const startIdea = initialIdea ?? initialContext ?? '';
+  const [idea, setIdea] = useState<string>(saved.idea ?? startIdea);
+  /** The idea the words on screen were written from: the same idea again keeps them, a new one writes new words. */
+  const [writtenFor, setWrittenFor] = useState<string>(saved.writtenFor ?? (initialValues ? startIdea.trim() : ''));
+  const [values, setValues] = useState<Record<string, string>>(saved.values ?? initialValues ?? {});
+  const [course, setCourse] = useState<{ name: string; facts: string } | null>(saved.course ?? null);
+  const [coursePanel, setCoursePanel] = useState(false);
+  /** The reference's own logo: a new design starts on it; a saved post keeps the one it was made with. */
+  const ownLogo = referenceLogoOf(template.sourceImage)?.kit;
+  const [logoKit, setLogoKit] = useState<BrandKitId>(saved.logoKit ?? initialLogoKit ?? (contentId ? 'official' : ownLogo ?? 'official'));
   const [format, setFormat] = useState<TemplateFormat>(saved.format ?? initialFormat ?? template.format);
   const [channels, setChannels] = useState<CreativePlatform[]>(initialChannels ?? plannedChannels() ?? saved.channels ?? ['instagram', 'facebook']);
   const [presetId, setPresetId] = useState<string>(saved.presetId ?? initialPreset ?? '');
   const preset = publishingPreset(presetId);
   const [caption, setCaption] = useState<string>(saved.caption ?? '');
+  /** The last caption the AI wrote: a new one replaces it, never a caption the person typed. */
+  const aiCaption = useRef<string>(saved.aiCaption ?? '');
   const [imageUrl, setImageUrl] = useState<string>(saved.imageUrl ?? initialImageUrl ?? '');
   const [jobId, setJobId] = useState<string>(saved.jobId ?? '');
   const [createdId, setCreatedId] = useState<string>(contentId ?? saved.createdId ?? '');
   /** Every image made for the current content (generated or edited), newest last; any of them can be saved. */
   const [versions, setVersions] = useState<string[]>(saved.versions ?? (initialImageUrl ? [initialImageUrl] : []));
   const [jobKind, setJobKind] = useState<'generate' | 'edit'>(saved.jobKind ?? 'generate');
+  const pending = useRef<PendingRender | null>(saved.pending ?? null);
   const [change, setChange] = useState('');
   const savedSignature = useRef<string>(saved.savedSignature ?? '');
-  const [renderedFor, setRenderedFor] = useState<string>(saved.renderedFor ?? (initialImageUrl ? JSON.stringify({ values: initialValues, format: initialFormat ?? template.format, context: initialContext ?? '', presetId: initialPreset ?? '' }) : ''));
+  const [renderedFor, setRenderedFor] = useState<string>(saved.renderedFor ?? (initialImageUrl ? signatureOf({ idea: startIdea, values: initialValues ?? {}, format: initialFormat ?? template.format, presetId: initialPreset ?? '' }) : ''));
   const [busy, setBusy] = useState('');
   const [error, setError] = useState('');
-  const signature = JSON.stringify({ values, format, context, presetId });
+  const signature = signatureOf({ idea, values, format, presetId });
   const current = Boolean(imageUrl && renderedFor === signature);
-  useEffect(() => { try { sessionStorage.setItem(draftKey, JSON.stringify({ values, format, context, presetId, channels, caption, imageUrl, jobId, jobKind, versions, renderedFor, createdId, savedSignature: savedSignature.current })); } catch { /* Private storage: the current session still works. */ } }, [draftKey, values, format, context, presetId, channels, caption, imageUrl, jobId, jobKind, versions, renderedFor, createdId]);
+  /** A changed idea writes new words; the same idea keeps the words on screen (the person may have edited them). */
+  const fresh = idea.trim().length > 0 && idea.trim() !== writtenFor;
+  const ready = fresh ? idea.trim().length >= 8 : Boolean(values.title?.trim()) || idea.trim().length >= 8;
+  useEffect(() => { try { sessionStorage.setItem(draftKey, JSON.stringify({ idea, writtenFor, values, course, logoKit, format, presetId, channels, caption, aiCaption: aiCaption.current, imageUrl, jobId, jobKind, pending: pending.current, versions, renderedFor, createdId, savedSignature: savedSignature.current })); } catch { /* Private storage: the current session still works. */ } }, [draftKey, idea, writtenFor, values, course, logoKit, format, presetId, channels, caption, imageUrl, jobId, jobKind, versions, renderedFor, createdId]);
   useEffect(() => {
     if (!jobId) return;
     let alive = true;
     let timer: ReturnType<typeof setTimeout>;
     const poll = async () => {
       try {
-        const job = await api<{ status: string; result?: { imageUrl: string }; error?: string }>(`/api/reference-design/jobs/${jobId}`);
+        const job = await api<ReferenceJob>(`/api/reference-design/jobs/${jobId}`);
         if (!alive) return;
-        if (job.status === 'done' && job.result) { const url = job.result.imageUrl; setImageUrl(url); setVersions((list) => [...list.filter((v) => v !== url), url].slice(-8)); setJobId(''); }
-        else if (job.status === 'failed') { setError(job.error ?? t('Could not generate the design.', 'تعذّر توليد التصميم.')); setJobId(''); }
+        if (job.status === 'done' && job.result) {
+          const { imageUrl: url, values: words, caption: written } = job.result;
+          setImageUrl(url); setVersions((list) => [...list.filter((v) => v !== url), url].slice(-8)); setJobId('');
+          const request = pending.current;
+          if (request) {
+            const next = words ?? request.values;
+            setValues(next);
+            if (request.fresh) setWrittenFor(request.idea);
+            setRenderedFor(signatureOf({ idea: request.idea, values: next, format: request.format, presetId: request.presetId }));
+            pending.current = null;
+          }
+          if (written) setCaption((now) => { if (now.trim() && now !== aiCaption.current) return now; aiCaption.current = written; return written; });
+        }
+        else if (job.status === 'failed') { setError(job.error ?? t('Could not generate the design.', 'تعذّر توليد التصميم.')); setJobId(''); pending.current = null; }
         else timer = setTimeout(poll, 2500);
       } catch (e) { if (alive) { setError(errorMessage(e, '')); setJobId(''); } }
     };
@@ -342,19 +391,41 @@ function ReferenceComposer({ template, initialValues, contentId, initialChannels
     return () => { alive = false; clearTimeout(timer); };
   }, [jobId, t]);
   const generate = async () => {
+    if (!ready) { setError(t('Write the idea of the post in a sentence or two.', 'اكتب فكرة المنشور في جملة أو اتنين.')); return; }
     setBusy('generate'); setError('');
     try {
-      const result = await api<{ jobId: string }>(`/api/svg-templates/${template.id}/render`, { body: { values, context, format, ...(presetId ? { outputPreset: presetId } : {}) } });
-      setRenderedFor(signature); setImageUrl(''); setVersions([]); setJobKind('generate'); setJobId(result.jobId);
+      const request: PendingRender = { idea: idea.trim(), fresh, values: fresh ? {} : values, format, presetId };
+      const facts = course ? [`الدورة: ${course.name}`, course.facts].filter(Boolean).join('\n') : '';
+      const body = fresh
+        ? { idea: request.idea, facts, values: {}, format, logoKit, ...(presetId ? { outputPreset: presetId } : {}) }
+        : { values, context: request.idea.slice(0, 800), format, logoKit, ...(presetId ? { outputPreset: presetId } : {}) };
+      const result = await api<{ jobId: string }>(`/api/svg-templates/${template.id}/render`, { body });
+      pending.current = request;
+      // A new design starts a new set of versions: an older one may carry other words.
+      setJobKind('generate'); setJobId(result.jobId); setVersions([]);
     } catch (e) { setError(errorMessage(e, '')); }
     setBusy('');
   };
+  /** The other logo on the design on screen: placed again on its logo-free original, no new image. */
+  const pickLogo = async (kit: BrandKitId) => {
+    if (kit === logoKit || busy || jobId) return;
+    const was = logoKit;
+    setLogoKit(kit);
+    if (!imageUrl) return;
+    setBusy('logo'); setError('');
+    try {
+      const out = await api<{ imageUrl: string }>(`/api/svg-templates/${template.id}/logo`, { body: { imageUrl, logoKit: kit, format, ...(presetId ? { outputPreset: presetId } : {}) } });
+      setImageUrl(out.imageUrl); setVersions((list) => list.map((v) => (v === imageUrl ? out.imageUrl : v)));
+    } catch (e) { setLogoKit(was); setError(errorMessage(e, '')); }
+    setBusy('');
+  };
   /** One change to the current design; the layout, the copy and the logo placement stay. */
-  const applyChange = async (request = change) => {
-    if (!current || request.trim().length < 3 || busy || jobId) return;
+  const applyChange = async (instruction = change) => {
+    if (!current || instruction.trim().length < 3 || busy || jobId) return;
     setBusy('edit'); setError('');
     try {
-      const result = await api<{ jobId: string }>(`/api/svg-templates/${template.id}/edit`, { body: { imageUrl, instruction: request.trim(), values, format, ...(presetId ? { outputPreset: presetId } : {}) } });
+      const result = await api<{ jobId: string }>(`/api/svg-templates/${template.id}/edit`, { body: { imageUrl, instruction: instruction.trim(), values, format, logoKit, ...(presetId ? { outputPreset: presetId } : {}) } });
+      pending.current = null;
       setJobKind('edit'); setJobId(result.jobId); setChange('');
     } catch (e) { setError(errorMessage(e, '')); }
     setBusy('');
@@ -369,18 +440,19 @@ function ReferenceComposer({ template, initialValues, contentId, initialChannels
     if (!current || busy || jobId) return;
     setBusy(send ? 'send' : 'save'); setError('');
     try {
-      const svgTemplate = { id: template.id, values, format, context, ...(presetId ? { outputPreset: presetId } : {}) };
+      const svgTemplate = { id: template.id, values, format, context: idea.trim().slice(0, 800), idea: idea.trim().slice(0, 2000), logoKit, ...(presetId ? { outputPreset: presetId } : {}) };
+      const title = (values.title || idea.trim() || template.name).slice(0, 300);
+      const stamp = `${signature}|${imageUrl}`;
       let id = createdId;
-      if (id && savedSignature.current !== signature) await api(`/api/content/${id}/versions`, { body: { imageUrl, studio: { svgTemplate }, note: t('New design from the approved reference', 'تصميم جديد من المرجع المعتمد') } });
-      if (id) await api(`/api/content/${id}`, { method: 'PATCH', body: { title: values.title.slice(0, 300), ...(!contentId ? { channels, captions: Object.fromEntries(channels.map((c) => [c, caption])) } : {}) } });
+      if (id && savedSignature.current !== stamp) await api(`/api/content/${id}/versions`, { body: { imageUrl, studio: { svgTemplate }, note: t('New design from the approved reference', 'تصميم جديد من المرجع المعتمد') } });
+      if (id) await api(`/api/content/${id}`, { method: 'PATCH', body: { title, ...(!contentId ? { channels, captions: Object.fromEntries(channels.map((c) => [c, caption])) } : {}) } });
       if (!id) {
-        const item = await api<{ id: string }>('/api/content', { body: { ...takePostPlan(), title: values.title.slice(0, 300), channels, captions: Object.fromEntries(channels.map((c) => [c, caption])), creative: { requestId: 'reference-design', directionId: format, imageUrl, model: 'reference-guided', directionName: template.name, svgTemplate } } });
+        const item = await api<{ id: string }>('/api/content', { body: { ...takePostPlan(), title, channels, captions: Object.fromEntries(channels.map((c) => [c, caption])), creative: { requestId: 'reference-design', directionId: format, imageUrl, model: 'reference-guided', directionName: template.name, svgTemplate } } });
         id = item.id;
         setCreatedId(id);
         void api(`/api/svg-templates/${template.id}/used`, { body: {} }).catch(() => {});
       }
-      savedSignature.current = signature;
-      try { sessionStorage.setItem(draftKey, JSON.stringify({ values, format, context, presetId, channels, caption, imageUrl, renderedFor, createdId: id, savedSignature: signature })); } catch { /* Continue saving without browser storage. */ }
+      savedSignature.current = stamp;
       if (send && !publisher) await api(`/api/content/${id}/transition`, { body: { to: 'ready_for_review' } });
       try { sessionStorage.removeItem(draftKey); } catch { /* Storage may be disabled. */ }
       // The publisher publishes right here (their publish is the approval); the publish window opens on this page.
@@ -389,41 +461,72 @@ function ReferenceComposer({ template, initialValues, contentId, initialChannels
     } catch (e) { setError(errorMessage(e, '')); }
     setBusy('');
   };
+  const wordFields = template.fields.filter((field) => field.type !== 'image');
+  const hasWords = wordFields.some((field) => values[field.key]?.trim());
+  const working = Boolean(jobId || busy);
   return <div className="tpl-composer">
     <div className="tpl-composer__stage">
       <span className="tpl-reference-label">{imageUrl ? t('Your generated design', 'تصميمك المولّد') : t('Visual reference', 'المرجع البصري')}</span>
       <TemplatePreview template={imageUrl ? { ...template, sourceImage: imageUrl, width: preset?.width ?? (format === 'landscape' ? 1200 : 1080), height: preset?.height ?? (format === 'story' ? 1920 : format === 'square' ? 1080 : format === 'landscape' ? 630 : 1350) } : template} className="tpl-composer__preview" />
       {imageUrl && <a href={template.sourceImage} target="_blank" rel="noreferrer" className="ui-link">{t('Compare with the reference', 'قارن بالمرجع')}</a>}
-      {jobId && <p role="status"><Loader2 size={15} className="creative-job__spin" /> {jobKind === 'edit' ? t('Applying your change; the layout and copy stay…', 'جارٍ تنفيذ التعديل مع الحفاظ على التوزيع والنص…') : t('Creating new artwork in this visual family…', 'جارٍ توليد تصميم جديد من نفس العائلة البصرية…')}</p>}
+      {jobId && <p role="status"><Loader2 size={15} className="creative-job__spin" /> {jobKind === 'edit' ? t('Applying your change; the layout and copy stay…', 'جارٍ تنفيذ التعديل مع الحفاظ على التوزيع والنص…') : pending.current?.fresh ? t('Writing the words from your idea, then drawing the design in this look…', 'بيكتب الكلام من فكرتك، وبعدين بيرسم التصميم بنفس الشكل ده…') : t('Creating new artwork in this visual family…', 'جارٍ توليد تصميم جديد من نفس العائلة البصرية…')}</p>}
       {versions.length > 1 && <div className="tpl-versions" role="radiogroup" aria-label={t('Versions', 'النسخ')}>
-        {versions.map((url, i) => <button key={url} type="button" role="radio" aria-checked={imageUrl === url} disabled={Boolean(jobId)} onClick={() => setImageUrl(url)}><img src={url} alt="" /><small>{i === 0 ? t('First', 'الأولى') : t(`Edit ${i}`, `تعديل ${i}`)}</small></button>)}
+        {versions.map((url, i) => <button key={url} type="button" role="radio" aria-checked={imageUrl === url} disabled={Boolean(jobId)} onClick={() => setImageUrl(url)}><img src={url} alt="" /><small>{i === 0 ? t('First', 'الأولى') : t(`Version ${i + 1}`, `نسخة ${i + 1}`)}</small></button>)}
       </div>}
     </div>
     <div className="tpl-composer__panel glass">
       <div className="tpl-composer__title"><h3>{template.name}</h3>{onClose && <button type="button" className="content-drawer__close" aria-label={t('Close', 'إغلاق')} onClick={onClose}><X size={16} /></button>}</div>
-      <p className="u-sm u-muted">{t('New imagery for your topic, with the reference’s typography, content zones and visual treatment.', 'صورة وفكرة جديدتان لموضوعك، بنفس طابع الخطوط وتوزيع المحتوى والمعالجة البصرية للمرجع.')}</p>
-      <fieldset disabled={Boolean(jobId || busy)} className="tpl-reference-fields">
-        <FieldsForm template={template} values={values} onChange={setValues} onCourseCopy={(copy, profile) => { setCaption(copy.caption); setContext((profile?.description || profile?.courseName || '').slice(0, 800)); }} />
-        <label className="tpl-fields__field">{t('Subject and scene details', 'الموضوع وتفاصيل المشهد')}<textarea value={context} onChange={(e) => setContext(e.target.value)} maxLength={800} rows={3} placeholder={t('What is the new course or event about?', 'ما موضوع الدورة أو الفعالية؟ وأي تفاصيل تحب تظهر في الصورة؟')} /></label>
+      <p className="u-sm u-muted">{t('Write the idea only. AI writes every line the design needs and the caption, draws new artwork in this look, and places the logo you pick from its file.', 'اكتب فكرة المنشور بس. الذكاء الاصطناعي بيكتب كل الكلام اللي التصميم محتاجه والكابشن، ويرسم تصميم جديد بنفس شكل وهوية المرجع ده، ويحط اللوجو اللي تختاره من ملفه.')}</p>
+      <fieldset disabled={working} className="tpl-reference-fields">
+        <label className="tpl-fields__field">{t('Idea of the post', 'فكرة المنشور')}
+          {/* Empty, the box follows the page's direction so the Arabic example reads right to left. */}
+          <textarea dir={idea ? 'auto' : undefined} rows={4} maxLength={2000} value={idea} onChange={(e) => { setIdea(e.target.value); if (error) setError(''); }}
+            onKeyDown={(e) => { if (e.key === 'Enter' && (e.metaKey || e.ctrlKey)) { e.preventDefault(); void generate(); } }}
+            placeholder={t(...IDEA_EXAMPLES[template.kind] ?? IDEA_EXAMPLES.general)} />
+          <small className="tpl-field__hint">{t('Dates, prices and names come only from what you write or the course you pick. Lines you write one per line go on the design as they are.', 'المواعيد والأسعار والأسماء بتتاخد من كلامك أو من الدورة اللي تختارها بس. ولو كتبت سطور (كل سطر لوحده) هتتحط على التصميم زي ما هي.')}</small>
+        </label>
+        <div className="tpl-idea__course">
+          {course
+            ? <span className="tpl-idea__picked"><GraduationCap size={14} /><bdi>{course.name}</bdi>{course.facts && <small>{course.facts.split('\n').map((line) => line.replace(/^[^:]+:\s*/, '')).join(' · ')}</small>}<button type="button" aria-label={t('Remove the course', 'شيل الدورة')} onClick={() => setCourse(null)}><X size={13} /></button></span>
+            : <Button variant="ghost" size="sm" icon={<GraduationCap size={14} />} onClick={() => setCoursePanel(!coursePanel)}>{t('From a course (optional)', 'من دورة (اختياري)')}</Button>}
+        </div>
+        {coursePanel && !course && <div className="creative-home__source"><CoursePicker autoFocus onPick={(pick) => {
+          const picked = courseFacts(pick);
+          setCourse({ name: picked.course, facts: picked.facts });
+          setIdea((now) => now.trim() ? now : picked.course);
+          setCoursePanel(false);
+        }} /></div>}
+        <LogoChoice value={logoKit} own={ownLogo} onChange={(kit) => void pickLogo(kit)} disabled={working} />
         <PublishingPresetPicker value={presetId} format={format} onFormatChange={setFormat} onChange={id => {
           setPresetId(id);
           const next = publishingPreset(id);
           if (next) { setFormat(next.format); setChannels(old => old.includes(next.channel as CreativePlatform) ? old : [...old, next.channel as CreativePlatform]); }
         }} />
       </fieldset>
-      <Button variant="primary" busy={Boolean(jobId) || busy === 'generate'} disabled={Boolean(jobId || busy) || !values.title?.trim()} onClick={() => void generate()}><Sparkles size={16} />{imageUrl ? t('Generate another design', 'ولّد تصميمًا آخر') : t('Generate a new design', 'ولّد تصميمًا جديدًا')}</Button>
-      {!contentId && <><div className="creative-home__platforms tpl-composer__platforms">{CREATIVE_PLATFORMS.map((channel) => <button key={channel} type="button" aria-pressed={channels.includes(channel)} onClick={() => setChannels((c) => c.includes(channel) ? c.filter((p) => p !== channel) : [...c, channel])}><ChannelIcon channel={channel} size={14} />{PLATFORM_FORMATS[channel].label}</button>)}</div><label className="tpl-fields__field">{t('Caption', 'النص المرافق')}<textarea rows={3} value={caption} onChange={(e) => setCaption(e.target.value)} /></label></>}
+      <Button variant="primary" busy={Boolean(jobId) || busy === 'generate'} disabled={working || !ready} onClick={() => void generate()}><Sparkles size={16} />{imageUrl ? t('Design another version (1 image)', 'صمّم نسخة تانية (صورة واحدة)') : t('Design the post (1 image)', 'صمّم المنشور (صورة واحدة)')}</Button>
+      {hasWords && <details className="tpl-words">
+        <summary><PenLine size={14} /> {t('The words on the design: edit them by hand', 'الكلام اللي على التصميم: عدّله بإيدك')}</summary>
+        <fieldset disabled={working} className="tpl-reference-fields">
+          {wordFields.map((field) => <label key={field.key} className="tpl-fields__field">{field.label}
+            {field.type === 'multiline'
+              ? <textarea dir="auto" rows={2} maxLength={field.maxChars} value={values[field.key] ?? ''} onChange={(e) => setValues({ ...values, [field.key]: e.target.value })} />
+              : <input dir="auto" maxLength={field.maxChars} value={values[field.key] ?? ''} onChange={(e) => setValues({ ...values, [field.key]: e.target.value })} />}
+          </label>)}
+          <small className="tpl-field__hint">{t('After an edit, design it again: it keeps your words exactly. Change the idea to have new words written.', 'بعد ما تعدّل، صمّمه تاني وهيستخدم كلامك بالظبط. غيّر الفكرة لو عايز كلام جديد يتكتب.')}</small>
+        </fieldset>
+      </details>}
+      {!contentId && <><div className="creative-home__platforms tpl-composer__platforms">{CREATIVE_PLATFORMS.map((channel) => <button key={channel} type="button" aria-pressed={channels.includes(channel)} onClick={() => setChannels((c) => c.includes(channel) ? c.filter((p) => p !== channel) : [...c, channel])}><ChannelIcon channel={channel} size={14} />{PLATFORM_FORMATS[channel].label}</button>)}</div><label className="tpl-fields__field">{t('Caption', 'النص المرافق')}<textarea dir="auto" rows={3} value={caption} placeholder={t('Written by AI with the design; you can change it.', 'بيتكتب بالذكاء الاصطناعي مع التصميم، وتقدر تغيّره.')} onChange={(e) => setCaption(e.target.value)} /></label></>}
       {current && <div className="tpl-change">
         <label className="tpl-fields__field">{t('Change something in this design', 'عدّل شيئًا في هذا التصميم')}
-          <textarea rows={2} dir="auto" maxLength={600} value={change} disabled={Boolean(jobId || busy)} onChange={(e) => setChange(e.target.value)} onKeyDown={(e) => { if (e.key === 'Enter' && (e.metaKey || e.ctrlKey)) { e.preventDefault(); void applyChange(); } }}
+          <textarea rows={2} dir="auto" maxLength={600} value={change} disabled={working} onChange={(e) => setChange(e.target.value)} onKeyDown={(e) => { if (e.key === 'Enter' && (e.metaKey || e.ctrlKey)) { e.preventDefault(); void applyChange(); } }}
             placeholder={t('e.g. make the engineer wear a helmet, fix the spelling of the headline', 'مثلًا: خلّي المهندس لابس خوذة، صحّح كتابة العنوان')} />
         </label>
-        <div className="tpl-change__chips">{quickChanges.map((q) => <button key={q} type="button" disabled={Boolean(jobId || busy)} onClick={() => void applyChange(q)}>{q}</button>)}</div>
-        <Button variant="secondary" icon={<Wand2 size={15} />} disabled={change.trim().length < 3 || Boolean(jobId || busy)} busy={busy === 'edit'} onClick={() => void applyChange()}>{t('Apply the change', 'نفّذ التعديل')}</Button>
+        <div className="tpl-change__chips">{quickChanges.map((q) => <button key={q} type="button" disabled={working} onClick={() => void applyChange(q)}>{q}</button>)}</div>
+        <Button variant="secondary" icon={<Wand2 size={15} />} disabled={change.trim().length < 3 || working} busy={busy === 'edit'} onClick={() => void applyChange()}>{t('Apply the change', 'نفّذ التعديل')}</Button>
         <small className="u-muted">{t('Keeps the layout, your copy and the logo; changes only what you ask. Each change uses one image. Earlier versions stay above to pick from.', 'يحافظ على التوزيع ونصك والشعار، ويغيّر ما تطلبه فقط. كل تعديل يستهلك صورة واحدة، والنسخ السابقة تبقى فوق للاختيار.')}</small>
       </div>}
-      {imageUrl && !current && <p className="u-sm u-muted">{t('The content changed. Generate the updated design before saving.', 'تغيّرت البيانات؛ ولّد التصميم بالتحديثات قبل الحفظ.')}</p>}
-      <div className="tpl-composer__actions"><Button variant="primary" disabled={!current || Boolean(busy || jobId) || !channels.length} busy={busy === 'send'} onClick={() => void save(!contentId)}><Send size={15} />{contentId ? t('Save a new version', 'احفظ نسخة جديدة') : publisher ? t('Save and publish', 'احفظ وانشر') : t('Send to the publisher', 'ابعته للمسؤول عن النشر')}</Button>{!contentId && <Button variant="secondary" disabled={!current || Boolean(busy || jobId) || !channels.length} onClick={() => void save(false)}>{t('Save draft', 'احفظ مسودة')}</Button>}{current && <a href={imageUrl} download className="ui-link">PNG</a>}</div>
+      {imageUrl && !current && !jobId && <p className="u-sm u-muted">{t('The idea or the words changed. Design it again before saving.', 'الفكرة أو الكلام اتغيّر؛ صمّمه تاني قبل الحفظ.')}</p>}
+      <div className="tpl-composer__actions"><Button variant="primary" disabled={!current || working || !channels.length} busy={busy === 'send'} onClick={() => void save(!contentId)}><Send size={15} />{contentId ? t('Save a new version', 'احفظ نسخة جديدة') : publisher ? t('Save and publish', 'احفظ وانشر') : t('Send to the publisher', 'ابعته للمسؤول عن النشر')}</Button>{!contentId && <Button variant="secondary" disabled={!current || working || !channels.length} onClick={() => void save(false)}>{t('Save draft', 'احفظ مسودة')}</Button>}{current && <a href={imageUrl} download className="ui-link">PNG</a>}</div>
       {error && <p role="alert" className="creative-home__error">{error}</p>}
       <PublishHere contentId={publishing} onClose={() => setPublishing(null)} />
     </div>

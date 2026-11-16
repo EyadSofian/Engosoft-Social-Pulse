@@ -63,9 +63,11 @@ const OFFICIAL: BrandKit = {
 };
 
 /**
- * The older «ENGO | SOFT» lockup the campaign posts use, white on transparent. Today it is a 214 px raster cut from
- * the 50/50 campaign post (audit #9): it is capped at 1.25× its width until a vector or a ≥1000 px file replaces it.
- * Swapping the file only needs `src`, `ratio`, `nativeWidth` (and `vector: true` for an SVG) changed here.
+ * The older «ENGO | SOFT» lockup the campaign posts and the library's reference designs use. The white file is a
+ * 214 px raster cut from the 50/50 campaign post (audit #9); the full-colour file (blue «e», navy ENGO, blue SOFT, for
+ * light backgrounds) is a 533 px raster cut from the graduation reference design. Each is capped at 1.25× its width
+ * until a vector or a ≥1000 px file replaces it. Swapping a file only needs `src`, `ratio`, `nativeWidth` (and
+ * `vector: true` for an SVG) changed here.
  */
 const ENGO_SOFT_OLD: BrandKit = {
   id: 'engo-soft-old',
@@ -76,6 +78,7 @@ const ENGO_SOFT_OLD: BrandKit = {
   files: {
     horizontal: {
       reversed: { src: '/brand/logos/engosoft-old-lockup-reversed.png', vector: false, ratio: 214 / 76, nativeWidth: 214, tone: 'reversed' },
+      positive: { src: '/brand/logos/engosoft-old-lockup-positive.png', vector: false, ratio: 533 / 182, nativeWidth: 533, tone: 'positive' },
     },
   },
 };

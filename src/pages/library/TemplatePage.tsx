@@ -10,6 +10,7 @@ import { useI18n } from '../../i18n/I18nProvider';
 import { api, errorMessage } from '../../lib/api';
 import { usePageMeta } from '../../shell/ShellContext';
 import type { CreativePlatform } from '../../features/creative-studio/platforms';
+import type { BrandKitId } from '../../domain/brand-kits';
 
 /** One SVG template: make a post from it, change it with AI, or edit its code. `?content=` edits an existing template post. */
 export function TemplatePage({ id }: { id: string }) {
@@ -24,6 +25,8 @@ export function TemplatePage({ id }: { id: string }) {
   const [format, setFormat] = useState<TemplateFormat>();
   const [context, setContext] = useState<string>();
   const [preset, setPreset] = useState<string>();
+  const [idea, setIdea] = useState<string>();
+  const [logoKit, setLogoKit] = useState<BrandKitId>();
   const [ready, setReady] = useState(!contentId);
   const [error, setError] = useState('');
   usePageMeta(template?.name ?? t('Template', 'قالب'), [{ label: t('Library', 'المكتبة'), to: '/library' }, { label: template?.name ?? t('Template', 'قالب') }]);
@@ -44,6 +47,8 @@ export function TemplatePage({ id }: { id: string }) {
         setChannels(item?.channels);
         setContext(item?.creative?.svgTemplate?.context);
         setPreset(item?.creative?.svgTemplate?.outputPreset);
+        setIdea(item?.creative?.svgTemplate?.idea);
+        setLogoKit(item?.creative?.svgTemplate?.logoKit);
         const format = item?.creative?.svgTemplate?.format ?? item?.creative?.directionId;
         setFormat(format && ['feed', 'square', 'story', 'landscape'].includes(format) ? format as TemplateFormat : undefined);
         setReady(true);
@@ -59,7 +64,7 @@ export function TemplatePage({ id }: { id: string }) {
       <Link to={contentId ? `/content/${contentId}` : '/library'} className="tpl-back"><ArrowRight size={15} className="u-flip" /> {contentId ? t('Back to the post', 'العودة إلى المنشور') : t('Library', 'المكتبة')}</Link>
       {can('design.free') && !template.sourceImage
         ? <TemplateEditor template={template} contentId={contentId} initialValues={values} onDeleted={() => navigate('/library')} />
-        : <TemplateComposer key={`${template.id}:${contentId ?? 'new'}`} template={template} contentId={contentId} initialValues={values} initialImageUrl={imageUrl} initialChannels={channels} initialFormat={format} initialContext={context} initialPreset={preset} />}
+        : <TemplateComposer key={`${template.id}:${contentId ?? 'new'}`} template={template} contentId={contentId} initialValues={values} initialImageUrl={imageUrl} initialChannels={channels} initialFormat={format} initialContext={context} initialPreset={preset} initialIdea={idea} initialLogoKit={logoKit} />}
     </div>
   );
 }

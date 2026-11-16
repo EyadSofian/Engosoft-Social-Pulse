@@ -21,7 +21,7 @@ import { getTemplate } from './svg-templates.js';
 
 const CHANNELS = ['facebook', 'instagram', 'whatsapp', 'linkedin', 'x', 'tiktok', 'snapchat', 'youtube', 'website'] as const;
 const creativeUrl = z.string().regex(/^\/api\/creatives\/[0-9a-f-]{36}\/[a-z0-9.-]+\.png$|^\/api\/studio\/[0-9a-f-]{36}\.png$|^\/api\/uploads\/[0-9a-f-]{36}\.png$/);
-const svgTemplateRef = z.object({ id: z.string().uuid(), values: z.record(z.string().max(40), z.string().max(2000)), format: z.enum(['feed', 'square', 'story', 'landscape']).optional(), context: z.string().max(800).optional(), outputPreset: z.string().max(80).optional() });
+const svgTemplateRef = z.object({ id: z.string().uuid(), values: z.record(z.string().max(40), z.string().max(2000)), format: z.enum(['feed', 'square', 'story', 'landscape']).optional(), context: z.string().max(800).optional(), outputPreset: z.string().max(80).optional(), idea: z.string().max(2000).optional(), logoKit: z.enum(['official', 'engo-soft-old']).optional() });
 const scheduleRef = z.object({ title: z.string().max(60), highlight: z.string().max(40), defaultCity: z.string().max(40), rows: z.array(z.object({ course: z.string().max(120), date: z.string().max(10), time: z.string().max(5), mode: z.enum(['online', 'offline']), city: z.string().max(40) })).max(80) });
 const reelCover = z.object({ url: creativeUrl, timestampMs: z.number().int().min(0).max(3_600_000).optional() });
 const reelCovers = z.partialRecord(z.enum(CHANNELS), reelCover);

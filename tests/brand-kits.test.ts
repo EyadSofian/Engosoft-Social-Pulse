@@ -36,8 +36,11 @@ test('the old lockup is a raster capped at 1.25× its width; official files are 
   const file = kitFile(old, { onDark: true });
   assert.equal(file.vector, false);
   assert.equal(maxDrawWidth(old, file), 214 * 1.25);
-  // White only: a light background still gets the white lockup rather than nothing.
-  assert.equal(kitFile(old, { onDark: false }).src, file.src);
+  // A light background gets the full-colour file cut from the reference designs, capped at its own width too.
+  const colour = kitFile(old, { onDark: false });
+  assert.equal(colour.tone, 'positive');
+  assert.match(colour.src, /engosoft-old-lockup-positive\.png$/);
+  assert.equal(maxDrawWidth(old, colour), 533 * 1.25);
   assert.equal(maxDrawWidth(brandKit('official'), kitFile(brandKit('official'), { onDark: true })), Infinity);
   assert.equal(brandKit(undefined).id, 'official');
   assert.equal(brandKit('nonsense' as never).id, 'official');

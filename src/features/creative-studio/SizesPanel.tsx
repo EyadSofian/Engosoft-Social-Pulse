@@ -11,11 +11,11 @@ import { useAuth } from '../auth/AuthProvider';
 import type { PipelineDetail } from '../content-pipeline/types';
 
 /** Which AI path rebuilds this post's design at another size: the pipeline that made it, or a recreation from the finished image. */
-type Source = { kind: 'full'; requestId: string; directionId: string } | { kind: 'reference'; templateId: string; values: Record<string, string> } | { kind: 'fixed' };
+type Source = { kind: 'full'; requestId: string; directionId: string } | { kind: 'reference'; templateId: string; values: Record<string, string>; logoKit?: 'official' | 'engo-soft-old' } | { kind: 'fixed' };
 
 function sourceOf(item: PipelineDetail): Source {
   const creative = item.creative!;
-  if (creative.requestId === 'reference-design' && creative.svgTemplate) return { kind: 'reference', templateId: creative.svgTemplate.id, values: creative.svgTemplate.values };
+  if (creative.requestId === 'reference-design' && creative.svgTemplate) return { kind: 'reference', templateId: creative.svgTemplate.id, values: creative.svgTemplate.values, logoKit: creative.svgTemplate.logoKit };
   const base = creative.directionId.match(/^d\d/)?.[0];
   if (/^[0-9a-f-]{36}$/.test(creative.requestId) && base) return { kind: 'full', requestId: creative.requestId, directionId: base };
   return { kind: 'fixed' };
@@ -84,7 +84,7 @@ export function SizesPanel({ item, onChanged }: { item: PipelineDetail; onChange
           (job) => job.status === 'done' ? [...(job.run?.results ?? [])].reverse().find((r) => r.directionId === key)?.imageUrl ?? null : null,
           (job) => job.status === 'failed' ? job.error ?? t('Could not make this size.', 'تعذّر تجهيز المقاس.') : job.status === 'done' ? t('The design came back without an image; try again.', 'رجع التصميم من غير صورة؛ حاول تاني.') : null);
       } else if (source.kind === 'reference') {
-        const { jobId } = await api<{ jobId: string }>(`/api/svg-templates/${source.templateId}/adapt`, { body: { imageUrl: creative.imageUrl, values: source.values, outputPreset: preset.id } });
+        const { jobId } = await api<{ jobId: string }>(`/api/svg-templates/${source.templateId}/adapt`, { body: { imageUrl: creative.imageUrl, values: source.values, outputPreset: preset.id, ...(source.logoKit ? { logoKit: source.logoKit } : {}) } });
         url = await poll<ReferenceJob>(`/api/reference-design/jobs/${jobId}`, referenceDone, referenceFailed);
       } else {
         // Templates, uploads and studio edits: the finished design is rebuilt at this size from scratch.

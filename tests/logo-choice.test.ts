@@ -47,14 +47,16 @@ test('the old lockup sits in the corner found for the logo, at its own shape, ne
   assert.ok(Math.abs(right.box.x + right.box.width - 1020) <= 2, `held to the right edge, got ${JSON.stringify(right.box)}`);
 });
 
-test('on a light background the white-only old lockup is drawn in navy, without the blue shadow', async () => {
+test('on a light background the old lockup is its full-colour file (blue and navy), without the blue shadow', async () => {
   const canvas = await plain(1080, 1350, '#F4F6FA');
   const placed = (await placeKitInBox(canvas, 'engo-soft-old', { x: 60, y: 50, width: 260, height: 100, anchor: 'top-left' }, false))!;
   const [r, g, b] = await statsAt(placed.image, placed.box);
-  assert.ok(r.mean < 200 && b.mean < 220, `dark strokes on the light corner, got ${r.mean}/${g.mean}/${b.mean}`);
+  assert.ok(r.mean < 200, `dark strokes on the light corner, got ${r.mean}/${g.mean}/${b.mean}`);
+  // Full colour, not a flat navy tint: the blue «e» and «SOFT» make blue clearly stronger than red.
+  assert.ok(b.mean - r.mean > 25, `blue artwork, got ${r.mean}/${g.mean}/${b.mean}`);
   // Nothing outside the logo's box changed: no shadow below it.
   const below = await statsAt(placed.image, { x: placed.box.x, y: placed.box.y + placed.box.height, width: placed.box.width, height: 12 });
-  assert.ok(below[0].min >= 0xF0, 'no shadow under a navy mark');
+  assert.ok(below[0].min >= 0xF0, 'no shadow under a full-colour mark');
 });
 
 test('placeChosenLogo: the official logo is the verified compositor; the old one replaces it in the same corner', async () => {

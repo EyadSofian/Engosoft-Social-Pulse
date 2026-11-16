@@ -81,8 +81,8 @@ export async function placeLogo(image: Buffer, kitId: BrandKitId, spot: LogoSpot
   // The shadow: the logo's shape in deep blue at 55%, softened, a little below it.
   const s = basis / 1080;
   const pad = Math.min(Math.ceil(9 * s), left, top, W - left - w, H - top - h);
-  // A deep-blue shadow is for white artwork on blue; a navy mark on a light background stands without it.
-  if (pad < 1 || tinted) return { image: await sharp(image).composite([{ input: mark, left, top }]).png().toBuffer(), box, kit: kit.id };
+  // A deep-blue shadow is for white artwork on blue; a navy or full-colour mark on a light background stands without it.
+  if (pad < 1 || tinted || kf.tone === 'positive') return { image: await sharp(image).composite([{ input: mark, left, top }]).png().toBuffer(), box, kit: kit.id };
   const shade = Buffer.alloc((w + 2 * pad) * (h + 2 * pad) * 4);
   for (let y = 0; y < h; y++) for (let x = 0; x < w; x++) {
     const o = ((y + pad) * (w + 2 * pad) + x + pad) * 4;

@@ -288,3 +288,5 @@
 .create-logo__mark { display: grid; place-items: center; width: 84px; height: 34px; border-radius: 8px; background: #0443F2; }
 .create-logo__mark img { max-width: 70px; max-height: 24px; }
 .create-logo__check { color: var(--brand); }
+.create-logo__options button:disabled { cursor: default; opacity: .6; }
+.create-logo__own { display: block; font-size: 11px; font-weight: 600; color: var(--text-muted); }
