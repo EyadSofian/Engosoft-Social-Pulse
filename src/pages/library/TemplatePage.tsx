@@ -26,6 +26,7 @@ export function TemplatePage({ id }: { id: string }) {
   const [context, setContext] = useState<string>();
   const [preset, setPreset] = useState<string>();
   const [idea, setIdea] = useState<string>();
+  const [direction, setDirection] = useState<string>();
   const [logoKit, setLogoKit] = useState<BrandKitId>();
   const [ready, setReady] = useState(!contentId);
   const [error, setError] = useState('');
@@ -48,6 +49,7 @@ export function TemplatePage({ id }: { id: string }) {
         setContext(item?.creative?.svgTemplate?.context);
         setPreset(item?.creative?.svgTemplate?.outputPreset);
         setIdea(item?.creative?.svgTemplate?.idea);
+        setDirection(item?.creative?.svgTemplate?.direction);
         setLogoKit(item?.creative?.svgTemplate?.logoKit);
         const format = item?.creative?.svgTemplate?.format ?? item?.creative?.directionId;
         setFormat(format && ['feed', 'square', 'story', 'landscape'].includes(format) ? format as TemplateFormat : undefined);
@@ -64,7 +66,7 @@ export function TemplatePage({ id }: { id: string }) {
       <Link to={contentId ? `/content/${contentId}` : '/library'} className="tpl-back"><ArrowRight size={15} className="u-flip" /> {contentId ? t('Back to the post', 'العودة إلى المنشور') : t('Library', 'المكتبة')}</Link>
       {can('design.free') && !template.sourceImage
         ? <TemplateEditor template={template} contentId={contentId} initialValues={values} onDeleted={() => navigate('/library')} />
-        : <TemplateComposer key={`${template.id}:${contentId ?? 'new'}`} template={template} contentId={contentId} initialValues={values} initialImageUrl={imageUrl} initialChannels={channels} initialFormat={format} initialContext={context} initialPreset={preset} initialIdea={idea} initialLogoKit={logoKit} />}
+        : <TemplateComposer key={`${template.id}:${contentId ?? 'new'}`} template={template} contentId={contentId} initialValues={values} initialImageUrl={imageUrl} initialChannels={channels} initialFormat={format} initialContext={context} initialPreset={preset} initialIdea={idea} initialDirection={direction} initialLogoKit={logoKit} />}
     </div>
   );
 }

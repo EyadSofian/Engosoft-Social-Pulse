@@ -196,3 +196,19 @@ test('a logo the image model copied into the design is cleared first: the logo i
   // A plain spot is left exactly as it is.
   assert.ok((await clearReferenceLogoSpot(plain, template, size, 'feed', undefined)).equals(plain));
 });
+
+test('the person\'s design instructions reach the image prompt and the copywriter; without them nothing is added', async () => {
+  const direction = 'الكلام صغير وهادي، الصورة هي البطل';
+  const prompt = referencePrompt(byFile('support.jpg'), { title: 'إحنا معاك' }, 'feed', '', undefined, { direction });
+  assert.match(prompt, /DESIGN DIRECTION FROM THE PERSON[^\n]*الكلام صغير وهادي، الصورة هي البطل/);
+  assert.match(prompt, /never adds, removes or changes words/);
+  assert.doesNotMatch(referencePrompt(byFile('support.jpg'), { title: 'إحنا معاك' }, 'feed', ''), /DESIGN DIRECTION/);
+  assert.match(prompt, /letters about 5% of the canvas width tall/);
+  let sent = '';
+  globalThis.fetch = (async (_url: string | URL, init?: RequestInit) => {
+    sent = JSON.parse(String(init?.body)).input[0].content[0].text;
+    return reply({ values: { title: 'إحنا معاك', subtitle: '', body: '', date: '', time: '', objectives: '', cta: '' }, caption: '', scene: '' });
+  }) as typeof fetch;
+  await writeReferenceCopy(byFile('support.jpg'), { idea: 'بوست عن الدعم الفني للمتدربين', direction: 'عنوان في سطر واحد' }, { OPENAI_API_KEY: 'test' });
+  assert.match(sent, /How the person wants it designed[^\n]*عنوان في سطر واحد/);
+});

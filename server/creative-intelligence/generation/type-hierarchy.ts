@@ -7,12 +7,16 @@
 
 export type TypeRole = 'headline' | 'support' | 'body' | 'cta' | 'detail';
 
+/**
+ * Sizes are given as a share of the canvas width (and in pixels for a 1080 px wide canvas), because "the largest" or
+ * "half the headline" alone let the model blow the headline up to fill the space and everything else with it.
+ */
 const STYLE: Record<TypeRole, string> = {
-  headline: 'headline: the ONLY heavy line, ExtraBold/Black display weight, the largest type on the post; it may take two lines',
-  support: 'supporting line: Medium weight (500), NOT bold, about half the headline size',
-  body: 'body text: Regular weight (400), about a third of the headline size, line spacing about 1.5, at most two lines',
-  cta: 'call to action: SemiBold (600) inside its button or bar, about 40% of the headline size',
-  detail: 'detail (date, time, place, link): Medium weight, about a third of the headline size, in a quiet info line or panel',
+  headline: 'headline: the ONLY heavy line, ExtraBold display weight, letters about 5% of the canvas width tall (about 50–60 px on a 1080 px canvas), each line no wider than about 75% of the canvas, at most two lines',
+  support: 'supporting line: Medium weight (500), NOT bold, letters about 2.5% of the canvas width tall (about 26–30 px on 1080 px)',
+  body: 'body text: Regular weight (400), letters about 2% of the canvas width tall (about 20–24 px on 1080 px), line spacing about 1.5, at most two lines',
+  cta: 'call to action: SemiBold (600) inside a compact button or bar, letters about 2.2% of the canvas width tall (about 22–26 px on 1080 px)',
+  detail: 'detail (date, time, place, link): Medium weight, letters about 2% of the canvas width tall (about 20–24 px on 1080 px), in a quiet info line or panel',
 };
 
 /** The weight and size of one line, in words the image model follows. */
@@ -29,8 +33,9 @@ export function roleOfField(key: string): TypeRole {
 
 /** The rule every such prompt carries, after its list of lines. */
 export const TYPE_HIERARCHY = [
-  'TYPE HIERARCHY: a clear contrast of weight and size, never every line bold.',
-  'Heavy weight belongs to the headline alone (and a highlighted word inside it); supporting lines are Medium, body text Regular, the button SemiBold, each smaller than the headline as listed for it.',
-  'At most three weights on the post. Generous white space: margins of at least 7% of the canvas width on each side, clear gaps between groups of text, and at least 40% of the canvas free of text.',
+  'TYPE HIERARCHY: a clear contrast of weight and size, never every line bold, never oversized.',
+  'Heavy weight belongs to the headline alone (and a highlighted word inside it); supporting lines are Medium, body text Regular, the button SemiBold, at the sizes listed for each.',
+  'Never enlarge text to fill empty space: empty space is part of the design. All the text together covers at most about a third of the canvas; the picture and white space carry the rest.',
+  'At most three weights on the post. Margins of at least 7% of the canvas width on each side and clear gaps between groups of text.',
   'When lines do not fit comfortably, make the supporting and body lines smaller and lighter, never heavier, tighter or squeezed.',
 ].join(' ');

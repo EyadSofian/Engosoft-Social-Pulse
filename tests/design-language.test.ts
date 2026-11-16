@@ -87,6 +87,7 @@ test('the AI Create prompt sets only the headline heavy: each line has its own w
   assert.match(prompt, /Headline: «عنوان» \(headline: the ONLY heavy line/);
   assert.match(prompt, /Supporting line: «سطر مساند» \(supporting line: Medium weight \(500\), NOT bold/);
   assert.match(prompt, /Call-to-action button: «سجّل الآن» \(call to action: SemiBold/);
-  assert.match(prompt, /TYPE HIERARCHY: a clear contrast of weight and size, never every line bold/);
-  assert.match(prompt, /at least 40% of the canvas free of text/);
+  assert.match(prompt, /TYPE HIERARCHY: a clear contrast of weight and size, never every line bold, never oversized/);
+  assert.match(prompt, /Never enlarge text to fill empty space/);
+  assert.match(prompt, /about 50–60 px on a 1080 px canvas/);
 });

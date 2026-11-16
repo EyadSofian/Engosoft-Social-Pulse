@@ -96,7 +96,7 @@ async function referenceDataUrl(sourceImage: string): Promise<string> {
  * person's own lines, when they wrote the post line by line, go on it word for word; a line that did not make it is
  * asked for once more by name.
  */
-export async function writeReferenceCopy(template: SvgTemplate, input: { idea: string; facts?: string }, env: NodeJS.ProcessEnv = process.env): Promise<ReferenceCopy> {
+export async function writeReferenceCopy(template: SvgTemplate, input: { idea: string; facts?: string; direction?: string }, env: NodeJS.ProcessEnv = process.env): Promise<ReferenceCopy> {
   const idea = input.idea.trim();
   const facts = input.facts?.trim() ?? '';
   const language = /[a-z]/i.test(idea) && !/[؀-ۿ]/.test(idea) ? 'en' : 'ar';
@@ -118,7 +118,7 @@ export async function writeReferenceCopy(template: SvgTemplate, input: { idea: s
     apiKey: env.OPENAI_API_KEY ?? '', model: env.OPENAI_CREATIVE_TEXT_MODEL?.trim() || 'gpt-5.5', reasoning: 'low',
     schemaName: 'engosoft_reference_copy', schema, instructions,
     content: [
-      { type: 'input_text', text: [`Idea of the post: ${idea}`, `Course facts (verified): ${facts || 'none'}`, note].filter(Boolean).join('\n') },
+      { type: 'input_text', text: [`Idea of the post: ${idea}`, `Course facts (verified): ${facts || 'none'}`, input.direction?.trim() ? `How the person wants it designed (follow what concerns the words, such as a one-line headline or less text): ${input.direction.trim()}` : '', note].filter(Boolean).join('\n') },
       ...(image ? [{ type: 'input_image' as const, image_url: image, detail: 'high' as const }] : []),
     ],
   });

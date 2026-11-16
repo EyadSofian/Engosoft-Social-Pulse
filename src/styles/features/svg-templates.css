@@ -165,3 +165,6 @@
 .tpl-words summary { display: flex; align-items: center; gap: 6px; font-size: 13px; font-weight: 700; color: var(--text-muted); cursor: pointer; }
 .tpl-words[open] summary { margin-bottom: 12px; }
 .tpl-reference-fields .tpl-field__hint { font-weight: 500; line-height: 1.6; }
+.tpl-direction__picks { display: flex; flex-wrap: wrap; gap: 6px; }
+.tpl-direction__picks button { padding: 5px 10px; border: 1px solid var(--border); border-radius: 999px; background: var(--surface); color: var(--text); font: inherit; font-size: 12px; font-weight: 600; cursor: pointer; }
+.tpl-direction__picks button[aria-pressed='true'] { border-color: var(--brand); background: var(--brand); color: #fff; }

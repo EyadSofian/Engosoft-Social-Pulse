@@ -295,7 +295,7 @@ const storedValues = (template: SvgTemplate, values: Record<string, string>) =>
  * Template → post: fill the fields, pick platforms, get captions, export the PNG in the browser and send the post
  * into the pipeline. With `contentId`, saves a new version of an existing template post instead.
  */
-interface ComposerProps { template: SvgTemplate; initialValues?: Record<string, string>; contentId?: string; initialChannels?: CreativePlatform[]; initialImageUrl?: string; initialFormat?: TemplateFormat; initialContext?: string; initialPreset?: string; initialIdea?: string; initialLogoKit?: BrandKitId; onClose?: () => void }
+interface ComposerProps { template: SvgTemplate; initialValues?: Record<string, string>; contentId?: string; initialChannels?: CreativePlatform[]; initialImageUrl?: string; initialFormat?: TemplateFormat; initialContext?: string; initialPreset?: string; initialIdea?: string; initialDirection?: string; initialLogoKit?: BrandKitId; onClose?: () => void }
 export function TemplateComposer(props: ComposerProps) {
   return props.template.sourceImage ? <ReferenceComposer {...props} /> : <SvgTemplateComposer {...props} />;
 }
@@ -308,10 +308,19 @@ const IDEA_EXAMPLES: Record<TemplateKind, [string, string]> = {
   announcement: ['e.g. Why project managers need the PMP certificate', 'مثال: بوست توعوي عن أهمية شهادة PMP لمديري المشاريع'],
   general: ['e.g. What the post is about, for whom, and what they should do', 'مثال: البوست عن إيه، لمين، وعايزهم يعملوا إيه'],
 };
+/** One-click design notes, added to the "how should it look" box. */
+const DIRECTION_PICKS: [string, string][] = [
+  ['Smaller, calmer text', 'كلام أصغر وهادي'],
+  ['More empty space', 'مساحة فاضية أكتر'],
+  ['The picture bigger than the text', 'الصورة أكبر من الكلام'],
+  ['A one-line headline', 'عنوان في سطر واحد'],
+  ['Light background', 'خلفية فاتحة'],
+  ['Blue background', 'خلفية زرقا'],
+];
 type ReferenceJob = { status: string; result?: { imageUrl: string; values?: Record<string, string>; caption?: string; logoKit?: BrandKitId }; error?: string };
 /** What a design request was made from, kept until its job comes back so the result is matched to it. */
-interface PendingRender { idea: string; fresh: boolean; values: Record<string, string>; format: TemplateFormat; presetId: string }
-const signatureOf = (input: { idea: string; values: Record<string, string>; format: TemplateFormat; presetId: string }) => JSON.stringify({ idea: input.idea.trim(), values: input.values, format: input.format, presetId: input.presetId });
+interface PendingRender { idea: string; direction: string; fresh: boolean; values: Record<string, string>; format: TemplateFormat; presetId: string }
+const signatureOf = (input: { idea: string; direction: string; values: Record<string, string>; format: TemplateFormat; presetId: string }) => JSON.stringify({ idea: input.idea.trim(), direction: input.direction.trim(), values: input.values, format: input.format, presetId: input.presetId });
 
 /**
  * A post in the look of a library reference design, from one idea: the AI writes every line the design needs (and
@@ -319,7 +328,7 @@ const signatureOf = (input: { idea: string; values: Record<string, string>; form
  * logo by default, or the other one. The written words fold under "edit by hand"; a later design uses them as they
  * are until the idea changes.
  */
-function ReferenceComposer({ template, initialValues, contentId, initialChannels, initialImageUrl, initialFormat, initialContext, initialPreset, initialIdea, initialLogoKit, onClose }: ComposerProps) {
+function ReferenceComposer({ template, initialValues, contentId, initialChannels, initialImageUrl, initialFormat, initialContext, initialPreset, initialIdea, initialDirection, initialLogoKit, onClose }: ComposerProps) {
   const { t } = useI18n();
   const publisher = useAuth().can('content.publish');
   const [publishing, setPublishing] = useState<string | null>(null);
@@ -329,6 +338,8 @@ function ReferenceComposer({ template, initialValues, contentId, initialChannels
   const saved = useMemo(() => { try { const data = JSON.parse(sessionStorage.getItem(draftKey) || '{}'); return data && typeof data === 'object' ? data : {}; } catch { return {}; } }, [draftKey]);
   const startIdea = initialIdea ?? initialContext ?? '';
   const [idea, setIdea] = useState<string>(saved.idea ?? startIdea);
+  /** How the person wants it designed (layout, text size, colours, picture): it steers the image, not the facts. */
+  const [direction, setDirection] = useState<string>(saved.direction ?? initialDirection ?? '');
   /** The idea the words on screen were written from: the same idea again keeps them, a new one writes new words. */
   const [writtenFor, setWrittenFor] = useState<string>(saved.writtenFor ?? (initialValues ? startIdea.trim() : ''));
   const [values, setValues] = useState<Record<string, string>>(saved.values ?? initialValues ?? {});
@@ -353,15 +364,15 @@ function ReferenceComposer({ template, initialValues, contentId, initialChannels
   const pending = useRef<PendingRender | null>(saved.pending ?? null);
   const [change, setChange] = useState('');
   const savedSignature = useRef<string>(saved.savedSignature ?? '');
-  const [renderedFor, setRenderedFor] = useState<string>(saved.renderedFor ?? (initialImageUrl ? signatureOf({ idea: startIdea, values: initialValues ?? {}, format: initialFormat ?? template.format, presetId: initialPreset ?? '' }) : ''));
+  const [renderedFor, setRenderedFor] = useState<string>(saved.renderedFor ?? (initialImageUrl ? signatureOf({ idea: startIdea, direction: initialDirection ?? '', values: initialValues ?? {}, format: initialFormat ?? template.format, presetId: initialPreset ?? '' }) : ''));
   const [busy, setBusy] = useState('');
   const [error, setError] = useState('');
-  const signature = signatureOf({ idea, values, format, presetId });
+  const signature = signatureOf({ idea, direction, values, format, presetId });
   const current = Boolean(imageUrl && renderedFor === signature);
   /** A changed idea writes new words; the same idea keeps the words on screen (the person may have edited them). */
   const fresh = idea.trim().length > 0 && idea.trim() !== writtenFor;
   const ready = fresh ? idea.trim().length >= 8 : Boolean(values.title?.trim()) || idea.trim().length >= 8;
-  useEffect(() => { try { sessionStorage.setItem(draftKey, JSON.stringify({ idea, writtenFor, values, course, logoKit, format, presetId, channels, caption, aiCaption: aiCaption.current, imageUrl, jobId, jobKind, pending: pending.current, versions, renderedFor, createdId, savedSignature: savedSignature.current })); } catch { /* Private storage: the current session still works. */ } }, [draftKey, idea, writtenFor, values, course, logoKit, format, presetId, channels, caption, imageUrl, jobId, jobKind, versions, renderedFor, createdId]);
+  useEffect(() => { try { sessionStorage.setItem(draftKey, JSON.stringify({ idea, direction, writtenFor, values, course, logoKit, format, presetId, channels, caption, aiCaption: aiCaption.current, imageUrl, jobId, jobKind, pending: pending.current, versions, renderedFor, createdId, savedSignature: savedSignature.current })); } catch { /* Private storage: the current session still works. */ } }, [draftKey, idea, direction, writtenFor, values, course, logoKit, format, presetId, channels, caption, imageUrl, jobId, jobKind, versions, renderedFor, createdId]);
   useEffect(() => {
     if (!jobId) return;
     let alive = true;
@@ -378,7 +389,7 @@ function ReferenceComposer({ template, initialValues, contentId, initialChannels
             const next = words ?? request.values;
             setValues(next);
             if (request.fresh) setWrittenFor(request.idea);
-            setRenderedFor(signatureOf({ idea: request.idea, values: next, format: request.format, presetId: request.presetId }));
+            setRenderedFor(signatureOf({ idea: request.idea, direction: request.direction, values: next, format: request.format, presetId: request.presetId }));
             pending.current = null;
           }
           if (written) setCaption((now) => { if (now.trim() && now !== aiCaption.current) return now; aiCaption.current = written; return written; });
@@ -394,11 +405,11 @@ function ReferenceComposer({ template, initialValues, contentId, initialChannels
     if (!ready) { setError(t('Write the idea of the post in a sentence or two.', 'اكتب فكرة المنشور في جملة أو اتنين.')); return; }
     setBusy('generate'); setError('');
     try {
-      const request: PendingRender = { idea: idea.trim(), fresh, values: fresh ? {} : values, format, presetId };
+      const request: PendingRender = { idea: idea.trim(), direction: direction.trim(), fresh, values: fresh ? {} : values, format, presetId };
       const facts = course ? [`الدورة: ${course.name}`, course.facts].filter(Boolean).join('\n') : '';
       const body = fresh
-        ? { idea: request.idea, facts, values: {}, format, logoKit, ...(presetId ? { outputPreset: presetId } : {}) }
-        : { values, context: request.idea.slice(0, 800), format, logoKit, ...(presetId ? { outputPreset: presetId } : {}) };
+        ? { idea: request.idea, facts, values: {}, direction: request.direction, format, logoKit, ...(presetId ? { outputPreset: presetId } : {}) }
+        : { values, context: request.idea.slice(0, 800), direction: request.direction, format, logoKit, ...(presetId ? { outputPreset: presetId } : {}) };
       const result = await api<{ jobId: string }>(`/api/svg-templates/${template.id}/render`, { body });
       pending.current = request;
       // A new design starts a new set of versions: an older one may carry other words.
@@ -440,7 +451,7 @@ function ReferenceComposer({ template, initialValues, contentId, initialChannels
     if (!current || busy || jobId) return;
     setBusy(send ? 'send' : 'save'); setError('');
     try {
-      const svgTemplate = { id: template.id, values, format, context: idea.trim().slice(0, 800), idea: idea.trim().slice(0, 2000), logoKit, ...(presetId ? { outputPreset: presetId } : {}) };
+      const svgTemplate = { id: template.id, values, format, context: idea.trim().slice(0, 800), idea: idea.trim().slice(0, 2000), ...(direction.trim() ? { direction: direction.trim().slice(0, 1000) } : {}), logoKit, ...(presetId ? { outputPreset: presetId } : {}) };
       const title = (values.title || idea.trim() || template.name).slice(0, 300);
       const stamp = `${signature}|${imageUrl}`;
       let id = createdId;
@@ -484,6 +495,14 @@ function ReferenceComposer({ template, initialValues, contentId, initialChannels
             onKeyDown={(e) => { if (e.key === 'Enter' && (e.metaKey || e.ctrlKey)) { e.preventDefault(); void generate(); } }}
             placeholder={t(...IDEA_EXAMPLES[template.kind] ?? IDEA_EXAMPLES.general)} />
           <small className="tpl-field__hint">{t('Dates, prices and names come only from what you write or the course you pick. Lines you write one per line go on the design as they are.', 'المواعيد والأسعار والأسماء بتتاخد من كلامك أو من الدورة اللي تختارها بس. ولو كتبت سطور (كل سطر لوحده) هتتحط على التصميم زي ما هي.')}</small>
+        </label>
+        <label className="tpl-fields__field">{t('How should it look? (optional)', 'عايزه يبقى شكله إزاي؟ (اختياري)')}
+          <textarea dir={direction ? 'auto' : undefined} rows={2} maxLength={1000} value={direction} onChange={(e) => setDirection(e.target.value)}
+            placeholder={t('e.g. small, calm text; the photo is the hero; light background', 'مثال: الكلام صغير وهادي، الصورة هي البطل، وخلفية فاتحة')} />
+          <span className="tpl-direction__picks" role="group" aria-label={t('Quick picks', 'اختيارات سريعة')}>
+            {DIRECTION_PICKS.map(([en, ar]) => { const pick = t(en, ar); const on = direction.includes(pick); return <button key={en} type="button" aria-pressed={on} onClick={() => setDirection((now) => on ? now.split('، ').filter((part) => part.trim() !== pick).join('، ') : [now.trim(), pick].filter(Boolean).join('، '))}>{pick}</button>; })}
+          </span>
+          <small className="tpl-field__hint">{t('Layout, text size, colours, the picture and the mood. Words and facts come from the idea.', 'الترتيب وحجم الكلام والألوان والصورة والإحساس. الكلام والمعلومات بتيجي من الفكرة.')}</small>
         </label>
         <div className="tpl-idea__course">
           {course
