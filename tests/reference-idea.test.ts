@@ -169,3 +169,30 @@ test('reference designs: each line carries its weight and size, and the offer in
   assert.match(calls[1], /the number 50 from the idea/);
   assert.equal(out.values.title, 'خصم 50% + كاش باك 50%');
 });
+
+test('a logo the image model copied into the design is cleared first: the logo is placed once, not doubled', async () => {
+  const { placeReferenceLogo, clearReferenceLogoSpot, referenceFileFor } = await import('../server/reference-designs');
+  const { existsSync, readFileSync } = await import('node:fs');
+  // Every reference the model sees has its logo taken out.
+  for (const reference of REFERENCE_DESIGNS) assert.match(referenceFileFor(`/design-references/${reference.file}`), /design-references\/no-logo\//, reference.file);
+  assert.ok(existsSync('public/design-references/no-logo/support.jpg'));
+  const template = byFile('support.jpg');
+  const size = { width: 1080, height: 1350 };
+  const plain = await sharp({ create: { width: 1080, height: 1350, channels: 3, background: '#F2F3F5' } }).png().toBuffer();
+  // What the model drew: the colour logo at the spot, 6% larger and a few pixels down and right (the doubled look).
+  const copy = await sharp(readFileSync('public/brand/logos/engosoft-old-lockup-positive.png')).resize(218).png().toBuffer();
+  const drawn = await sharp(plain).composite([{ input: copy, left: 56, top: 46 }]).png().toBuffer();
+  const area = { x: 30, y: 25, width: 280, height: 120 };
+  const diff = async (a: Buffer, b: Buffer) => {
+    const [x, y] = await Promise.all([a, b].map((img) => sharp(img).extract({ left: area.x, top: area.y, width: area.width, height: area.height }).greyscale().raw().toBuffer()));
+    let sum = 0; for (let i = 0; i < x.length; i++) sum += Math.abs(x[i] - y[i]); return sum / x.length;
+  };
+  const ideal = await placeReferenceLogo(plain, template, size, 'feed', undefined, 'engo-soft-old');
+  const doubled = await placeReferenceLogo(drawn, template, size, 'feed', undefined, 'engo-soft-old');
+  const fixed = await placeReferenceLogo(await clearReferenceLogoSpot(drawn, template, size, 'feed', undefined), template, size, 'feed', undefined, 'engo-soft-old');
+  const before = await diff(doubled, ideal), after = await diff(fixed, ideal);
+  assert.ok(before > 6, `the doubled logo differs from a clean one (${before.toFixed(1)})`);
+  assert.ok(after < 1.5, `after clearing it matches a clean placement (${after.toFixed(1)})`);
+  // A plain spot is left exactly as it is.
+  assert.ok((await clearReferenceLogoSpot(plain, template, size, 'feed', undefined)).equals(plain));
+});

@@ -6,7 +6,7 @@
  * only from the idea or a picked course; any other number is removed in code, never trusted to the model.
  */
 import { resolve } from 'node:path';
-import { readFileSync } from 'node:fs';
+import { existsSync, readFileSync } from 'node:fs';
 import sharp from 'sharp';
 import { openAIJson } from './provider.js';
 import { clipWords, missingLines, personLines } from './template-fill.js';
@@ -86,7 +86,8 @@ export function referenceCopyInstructions(template: Pick<SvgTemplate, 'name' | '
 
 /** The reference as the copywriter sees it: 1024 px wide, as a JPEG data URL. */
 async function referenceDataUrl(sourceImage: string): Promise<string> {
-  const jpeg = await sharp(readFileSync(resolve('public', sourceImage.slice(1)))).resize({ width: 1024, withoutEnlargement: true }).jpeg({ quality: 82 }).toBuffer();
+  const clean = resolve('public', 'design-references', 'no-logo', sourceImage.replace(/^\/design-references\//, ''));
+  const jpeg = await sharp(readFileSync(existsSync(clean) ? clean : resolve('public', sourceImage.slice(1)))).resize({ width: 1024, withoutEnlargement: true }).jpeg({ quality: 82 }).toBuffer();
   return `data:image/jpeg;base64,${jpeg.toString('base64')}`;
 }
 

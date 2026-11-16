@@ -61,7 +61,7 @@ export function referencePrompt(template: SvgTemplate, values: Record<string, st
  */
 export async function renderReferenceDesign(template: SvgTemplate, values: Record<string, string>, format: Format, context: string, provider?: CreativeImageProvider, presetId?: string, opts: { idea?: string; facts?: string; logoKit?: BrandKitId; env?: NodeJS.ProcessEnv } = {}) {
   if (!template.sourceImage || !/^\/design-references\/[a-z0-9-]+\.(jpg|png)$/.test(template.sourceImage)) throw new Error('اختر مرجعًا معتمدًا من المكتبة.');
-  const file = resolve('public', template.sourceImage.slice(1));
+  const file = referenceFileFor(template.sourceImage);
   const idea = opts.idea?.trim() ?? '';
   const written = idea ? await writeReferenceCopy(template, { idea, facts: opts.facts }, opts.env ?? process.env) : null;
   const words = written ? written.values : values;
@@ -117,9 +117,85 @@ export async function placeReferenceLogo(raw: Buffer, template: Pick<SvgTemplate
   return (await compositeLogo(raw, { variantId: placed.variantId, x: placed.placement.x, y: placed.placement.y, width: placed.placement.width })).image;
 }
 
+/**
+ * The reference file the image model gets: its logo-free copy (`public/design-references/no-logo/`) when there is one.
+ * With the logo in it, the model copies the logo into the design however it is told not to, and the real file then
+ * lands a few pixels off on top of that copy: a doubled, blurred logo.
+ */
+export function referenceFileFor(sourceImage: string): string {
+  const clean = resolve('public', 'design-references', 'no-logo', sourceImage.replace(/^\/design-references\//, ''));
+  return existsSync(clean) ? clean : resolve('public', sourceImage.slice(1));
+}
+
+/** Spread of grey levels in a box of the image: a drawn logo there is far busier than the plain background beside it. */
+async function spreadAt(image: Buffer, box: { x: number; y: number; width: number; height: number }) {
+  const { width: W = 1, height: H = 1 } = await sharp(image).metadata();
+  const left = Math.max(0, Math.min(W - 2, Math.round(box.x))), top = Math.max(0, Math.min(H - 2, Math.round(box.y)));
+  const width = Math.max(2, Math.min(Math.round(box.width), W - left)), height = Math.max(2, Math.min(Math.round(box.height), H - top));
+  const { channels } = await sharp(await sharp(image).extract({ left, top, width, height }).greyscale().toBuffer()).stats();
+  return channels[0].stdev;
+}
+
+/**
+ * A box of the image repainted from its own edges: every pixel inside blends the rows just above and below it and the
+ * columns just left and right of it (a Coons patch), so a plain or gradient background continues with no seam and no
+ * pasted patch of a different tone.
+ */
+export async function fillFromEdges(image: Buffer, box: { x: number; y: number; width: number; height: number }): Promise<Buffer> {
+  const { data, info } = await sharp(image).removeAlpha().raw().toBuffer({ resolveWithObject: true });
+  const { width: W, height: H } = info;
+  const x0 = Math.max(1, Math.round(box.x)), y0 = Math.max(1, Math.round(box.y));
+  const x1 = Math.min(W - 2, Math.round(box.x + box.width)), y1 = Math.min(H - 2, Math.round(box.y + box.height));
+  const w = x1 - x0, h = y1 - y0;
+  if (w < 4 || h < 4) return image;
+  const px = (x: number, y: number, c: number) => data[(y * W + x) * 3 + c];
+  // Each edge as the mean of a few rows (or columns) just outside the box, smoothed along it, so grain makes no streaks.
+  const depth = 4, radius = 8;
+  const line = (n: number, at: (i: number, d: number, c: number) => number) => {
+    const raw = Array.from({ length: n }, (_, i) => [0, 1, 2].map((c) => { let sum = 0; for (let d = 1; d <= depth; d++) sum += at(i, d, c); return sum / depth; }));
+    return raw.map((_, i) => [0, 1, 2].map((c) => { let sum = 0, k = 0; for (let j = Math.max(0, i - radius); j <= Math.min(n - 1, i + radius); j++) { sum += raw[j][c]; k++; } return sum / k; }));
+  };
+  const top = line(w, (i, d, c) => px(x0 + i, Math.max(0, y0 - d), c));
+  const bottom = line(w, (i, d, c) => px(x0 + i, Math.min(H - 1, y1 + d - 1), c));
+  const left = line(h, (i, d, c) => px(Math.max(0, x0 - d), y0 + i, c));
+  const right = line(h, (i, d, c) => px(Math.min(W - 1, x1 + d - 1), y0 + i, c));
+  const out = Buffer.from(data);
+  for (let j = 0; j < h; j++) for (let i = 0; i < w; i++) {
+    const u = (i + 0.5) / w, v = (j + 0.5) / h;
+    for (let c = 0; c < 3; c++) {
+      const value = (1 - v) * top[i][c] + v * bottom[i][c] + (1 - u) * left[j][c] + u * right[j][c]
+        - ((1 - u) * (1 - v) * top[0][c] + u * (1 - v) * top[w - 1][c] + (1 - u) * v * bottom[0][c] + u * v * bottom[w - 1][c]);
+      out[((y0 + j) * W + x0 + i) * 3 + c] = Math.max(0, Math.min(255, Math.round(value)));
+    }
+  }
+  return sharp(out, { raw: { width: W, height: H, channels: 3 } }).png().toBuffer();
+}
+
+/**
+ * The safety net when the image model still drew something at the reference's logo spot (a copy of a logo): the
+ * spot, a little larger (wider to the sides, where a copy drifts most), is repainted from the background around it
+ * before the logo file goes on, so the logo is never doubled. A plain spot is left as it is.
+ */
+export async function clearReferenceLogoSpot(raw: Buffer, template: Pick<SvgTemplate, 'sourceImage'>, size: { width: number; height: number }, format: Format, presetId: string | undefined): Promise<Buffer> {
+  const own = referenceLogoOf(template.sourceImage);
+  if (!own) return raw;
+  const { width: W, height: H } = size;
+  const spot = logoSpotOn(own, size, safeOf(format, presetId));
+  const px = Math.round(spot.width * 0.16), py = Math.round(spot.height * 0.14);
+  const x = Math.max(0, spot.x - px), y = Math.max(0, spot.y - py);
+  const area = { x, y, width: Math.min(W - x, spot.width + 2 * px), height: Math.min(H - y, spot.height + 2 * py) };
+  // What plain background looks like here: beside the spot, and above it when there is room.
+  const beside = { x: area.x + area.width + 10, y: area.y, width: Math.min(Math.round(area.width * 0.6), W - area.x - area.width - 10), height: area.height };
+  const above = { x: area.x, y: 0, width: area.width, height: area.y };
+  const bands = [beside, above].filter((b) => b.width > 8 && b.height > 8);
+  const plain = bands.length ? Math.min(...await Promise.all(bands.map((b) => spreadAt(raw, b)))) : 6;
+  if (await spreadAt(raw, area) <= plain * 1.8 + 8) return raw;
+  return fillFromEdges(raw, area);
+}
+
 /** Output size, logo, and files: the design with the logo is served; the one without it stays private for edits. */
 async function finishReferenceDesign(template: SvgTemplate, png: Buffer, size: { width: number; height: number }, format: Format, presetId: string | undefined, model: string, kit: BrandKitId = 'official') {
-  const raw = await toSize(png, size);
+  const raw = await clearReferenceLogoSpot(await toSize(png, size), template, size, format, presetId);
   const image = await placeReferenceLogo(raw, template, size, format, presetId, kit);
   const dir = mediaDir('uploads'); mkdirSync(dir, { recursive: true });
   const id = randomUUID();
@@ -160,8 +236,10 @@ export async function relogoReferenceDesign(template: SvgTemplate, imageUrl: str
   const id = imageUrl.match(/^\/api\/uploads\/([0-9a-f-]{36})\.png$/)?.[1];
   const rawPath = id ? resolve(mediaDir('uploads'), `${id}-raw.png`) : '';
   if (!rawPath || !existsSync(rawPath)) throw new Error('هذا التصميم أُنشئ قبل إتاحة تغيير اللوجو؛ صمّمه من جديد.');
-  const raw = readFileSync(rawPath);
-  const { width = 0, height = 0 } = await sharp(raw).metadata();
+  const original = readFileSync(rawPath);
+  const { width = 0, height = 0 } = await sharp(original).metadata();
+  // A design made before the safety net may still carry the model's own logo copy at the spot.
+  const raw = await clearReferenceLogoSpot(original, template, { width, height }, format, presetId);
   const image = await placeReferenceLogo(raw, template, { width, height }, format, presetId, kit);
   const dir = mediaDir('uploads'); mkdirSync(dir, { recursive: true });
   const next = randomUUID();

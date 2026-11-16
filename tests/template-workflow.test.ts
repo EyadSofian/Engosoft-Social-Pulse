@@ -114,7 +114,8 @@ test('reference generation uses the actual image, original typography language a
   assert.equal(prompt.includes('نفخر بخريجينا'), false);
   const sharp = (await import('sharp')).default;
   const { readFileSync } = await import('node:fs');
-  const source = readFileSync('public' + template.sourceImage);
+  // The model gets the reference without its logo, so it has no logo to copy into the design.
+  const source = readFileSync('public/design-references/no-logo/' + template.sourceImage!.split('/').pop());
   let edits = 0;
   const provider = { name: 'test', model: 'test-reference-provider', generate: async () => { throw new Error('Must pass the actual reference image'); }, edit: async (request: import('../server/creative-intelligence/generation/provider').ImageEditRequest) => {
     edits++; assert.deepEqual(request.images[0].data, source); assert.equal(request.quality, 'high');

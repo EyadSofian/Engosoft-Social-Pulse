@@ -64,7 +64,8 @@ export async function placeLogo(image: Buffer, kitId: BrandKitId, spot: LogoSpot
   // reads; its shape is untouched.
   const tinted = !(spot.onDark ?? true) && kf.tone === 'reversed';
   if (tinted) for (let i = 0; i < w * h; i++) { px[i * 4] = 0x03; px[i * 4 + 1] = 0x10; px[i * 4 + 2] = 0x40; }
-  if (kit.treatment === 'flat') {
+  // The full-colour file stays crisp and flat, as on the reference designs; the grain is for the white one on blue.
+  if (kit.treatment === 'flat' || kf.tone === 'positive') {
     const mark = await sharp(px, { raw: { width: w, height: h, channels: 4 } }).png().toBuffer();
     return { image: await sharp(image).composite([{ input: mark, left, top }]).png().toBuffer(), box, kit: kit.id };
   }
@@ -81,8 +82,9 @@ export async function placeLogo(image: Buffer, kitId: BrandKitId, spot: LogoSpot
   // The shadow: the logo's shape in deep blue at 55%, softened, a little below it.
   const s = basis / 1080;
   const pad = Math.min(Math.ceil(9 * s), left, top, W - left - w, H - top - h);
-  // A deep-blue shadow is for white artwork on blue; a navy or full-colour mark on a light background stands without it.
-  if (pad < 1 || tinted || kf.tone === 'positive') return { image: await sharp(image).composite([{ input: mark, left, top }]).png().toBuffer(), box, kit: kit.id };
+  // A deep-blue shadow is for white artwork on blue; a navy mark on a light background stands without it (the
+  // full-colour file returned flat above).
+  if (pad < 1 || tinted) return { image: await sharp(image).composite([{ input: mark, left, top }]).png().toBuffer(), box, kit: kit.id };
   const shade = Buffer.alloc((w + 2 * pad) * (h + 2 * pad) * 4);
   for (let y = 0; y < h; y++) for (let x = 0; x < w; x++) {
     const o = ((y + pad) * (w + 2 * pad) + x + pad) * 4;
