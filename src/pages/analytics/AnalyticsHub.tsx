@@ -1,5 +1,5 @@
 import { useMemo, useRef, useState } from 'react';
-import { ArrowDownRight, ArrowUpRight, Download, FileSpreadsheet, FilterX, Printer, RefreshCw } from 'lucide-react';
+import { Download, FileSpreadsheet, FilterX, Printer, RefreshCw } from 'lucide-react';
 import { useQueryState } from '../../app/router/router';
 import { useLiveData } from '../../app/providers/LiveDataProvider';
 import { SeriesChart, type SeriesDatum } from '../../components/charts/Series';
@@ -18,17 +18,15 @@ import { dateFromKey, dayKeyOf } from '../../lib/format';
 import { PLATFORMS } from '../../lib/platforms';
 import { PageHeader } from '../../shell/Header';
 import { usePageMeta } from '../../shell/ShellContext';
-import type { Platform, Reach } from '../../types';
-import { exportPostList, exportWorkbook, KPI_LABEL, type ExportPosts } from './export';
+import type { Platform } from '../../types';
+import { exportPostList, exportWorkbook, type ExportPosts } from './export';
 import { printDetailedReport } from './report';
-import { buildReports, isRankBy, RANK_LABEL, RANK_PER_PLATFORM, type Reports } from './reports';
+import { buildReports, isRankBy, RANK_LABEL, RANK_PER_PLATFORM, typeLabel, type Reports } from './reports';
 import { REPORT_VIEWS, ReportsSection, type ReportView } from './ReportsSection';
 import { loadPictures, type PostPicture } from './thumbs';
-import { useAnalytics, type AnalyticsModel, type Kpi } from './model';
+import { useAnalytics, type AnalyticsModel } from './model';
 import { PostsSection } from './PostsSection';
-import { ReachSection } from './ReachSection';
-import { isReach, REACH_KINDS, REACH_LABEL } from './reach';
-import { typeLabel } from './reports';
+import { KpiTile } from './KpiTile';
 import { AudienceSection } from './AudienceSection';
 
 const PERIOD_VALUES = PERIODS.map((period) => String(period.value));
@@ -50,15 +48,19 @@ export function AnalyticsHub() {
   const period = (PERIOD_VALUES.includes(query.get('period') ?? '') ? Number(query.get('period')) : 30) as Period;
   const platform = (PLATFORMS as string[]).includes(query.get('platform') ?? '') ? (query.get('platform') as Platform) : 'all';
   const account = query.get('account') ?? 'all';
-  const reachKind: Reach | 'all' = isReach(query.get('reach')) ? (query.get('reach') as Reach) : 'all';
   const type = query.get('type') ?? 'all';
   const rankBy = isRankBy(query.get('rank')) ? (query.get('rank') as Reports['rankBy']) : 'rate';
   const view = (REPORT_VIEWS as string[]).includes(query.get('report') ?? '') ? (query.get('report') as ReportView) : 'ranking';
 
   usePageMeta(t('Analytics', 'التحليلات'), [{ label: t('Analytics', 'التحليلات') }]);
-  const model = useAnalytics({ period, platform, account, reach: reachKind, type });
-  const filtered = platform !== 'all' || account !== 'all' || reachKind !== 'all' || type !== 'all';
-  const setReach = (value: Reach | 'all') => setQuery({ reach: value === 'all' ? null : value });
+  const model = useAnalytics({ period, platform, account, type });
+  const filtered = platform !== 'all' || account !== 'all' || type !== 'all';
+  const trendLabels = useMemo(() => {
+    const day = (dayNum: number) => i18n.date(dateFromKey(dayKeyOf(dayNum)).toMillis(), 'dayShort');
+    return model.trend.map((point) =>
+      model.kpiWindow ? i18n.t(`7 days to ${day(point.to)}`, `7 أيام لحد ${day(point.to)}`) : model.weekly ? `${day(point.from)} – ${day(point.to)}` : day(point.from),
+    );
+  }, [model.trend, model.weekly, model.kpiWindow, i18n]);
   const reports = useMemo(() => buildReports(model.posts, model.todayNum, rankBy), [model.posts, model.todayNum, rankBy]);
 
   const setPlatform = (value: Platform | 'all') => setQuery({ platform: value === 'all' ? null : value, account: null, type: null });
@@ -128,13 +130,6 @@ export function AnalyticsHub() {
             options={model.accountOptions.map((option) => ({ value: option.id, label: option.name }))}
           />
         )}
-        <FilterSelect
-          label={t('Organic / paid', 'أورجانيك / ممول')}
-          value={reachKind}
-          onChange={setReach}
-          allLabel={t('Organic and paid', 'أورجانيك وممول')}
-          options={REACH_KINDS.map((kind) => ({ value: kind, label: tx(REACH_LABEL[kind]) }))}
-        />
         {model.typeOptions.length > 1 && (
           <FilterSelect
             label={t('Content type', 'نوع المحتوى')}
@@ -145,7 +140,7 @@ export function AnalyticsHub() {
           />
         )}
         {filtered && (
-          <Button size="sm" variant="ghost" icon={<FilterX size={14} />} onClick={() => setQuery({ platform: null, account: null, reach: null, type: null })}>
+          <Button size="sm" variant="ghost" icon={<FilterX size={14} />} onClick={() => setQuery({ platform: null, account: null, type: null })}>
             {t('Clear filters', 'امسح الفلاتر')}
           </Button>
         )}
@@ -159,13 +154,12 @@ export function AnalyticsHub() {
       <LiveGate needs={store.data.posts.length ? undefined : 'posts'}>
         <div className="an-kpis">
           {model.kpis.map((kpi) => (
-            <KpiTile key={kpi.key} kpi={kpi} />
+            <KpiTile key={kpi.key} kpi={kpi} labels={trendLabels} />
           ))}
         </div>
 
         {model.posts.length ? (
           <>
-            <ReachSection model={model} onPick={setReach} />
             <Activity model={model} />
             <PlatformTable model={model} onPick={setPlatform} />
             <AudienceSection audience={model.audience} />
@@ -174,7 +168,6 @@ export function AnalyticsHub() {
           </>
         ) : (
           <>
-          {model.split.organic.count + model.split.paid.count > 0 && <ReachSection model={model} onPick={setReach} />}
           <Card>
             <CardBody>
               <EmptyState
@@ -276,32 +269,6 @@ function ExportDialog({
   );
 }
 
-function KpiTile({ kpi }: { kpi: Kpi }) {
-  const { t, tx, num, compact, pct } = useI18n();
-  const value = kpi.value == null ? '—' : kpi.key === 'rate' ? pct(kpi.value, 2) : kpi.key === 'posts' ? num(kpi.value) : compact(kpi.value);
-  const up = (kpi.change ?? 0) >= 0;
-  const amount = kpi.change == null ? null : kpi.key === 'rate' ? `${num(Math.round(Math.abs(kpi.change) * 100) / 100)} ${t('pts', 'نقطة')}` : pct(Math.abs(kpi.change), 0);
-  return (
-    <article className="an-kpi">
-      <h3 className="an-kpi__label">{tx(KPI_LABEL[kpi.key])}</h3>
-      <p className="an-kpi__value u-tnum" title={kpi.value == null ? undefined : num(kpi.value)}>
-        {value}
-      </p>
-      {kpi.value == null ? (
-        <p className="an-change">{t('Not reported by the platform', 'المنصة مش بترجع الرقم ده')}</p>
-      ) : amount == null ? (
-        <p className="an-change">{t('No earlier period to compare', 'مفيش فترة قبلها للمقارنة')}</p>
-      ) : (
-        <p className={`an-change an-change--${kpi.change === 0 ? 'flat' : up ? 'up' : 'down'}`}>
-          {kpi.change === 0 ? null : up ? <ArrowUpRight size={13} aria-hidden /> : <ArrowDownRight size={13} aria-hidden />}
-          <bdi>{amount}</bdi>
-          <small>{t('vs previous period', 'عن الفترة اللي قبلها')}</small>
-        </p>
-      )}
-    </article>
-  );
-}
-
 type Metric = 'posts' | 'interactions';
 
 function Activity({ model }: { model: AnalyticsModel }) {
@@ -338,7 +305,7 @@ function Activity({ model }: { model: AnalyticsModel }) {
           kind="bars"
           unit={metric === 'posts' ? t('post', 'منشور') : t('interaction', 'تفاعل')}
           ariaLabel={metric === 'posts' ? t('Posts over time', 'المنشورات على مدار الفترة') : t('Interactions over time', 'التفاعلات على مدار الفترة')}
-          replayKey={`${metric}-${model.scope.period}-${model.scope.platform}-${model.scope.account}-${model.scope.reach}-${model.scope.type}`}
+          replayKey={`${metric}-${model.scope.period}-${model.scope.platform}-${model.scope.account}-${model.scope.type}`}
         />
       </CardBody>
     </Card>

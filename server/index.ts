@@ -6,7 +6,7 @@ import { z } from 'zod';
 import { checkAlerts } from './alerts.js';
 import { parseCalendar } from './calendar.js';
 import { applyPlanPatch, newPlan, isPlanPlatform, missingPublishProof, planState, engagementRate } from './domain.js';
-import { deletePlan, dismissAlert, getAlerts, getAudience, getConnectorStatuses, getObserved, getPlan, getPlans, getWebsiteDaily, getWebsitePages, saveImportedPlan, savePlan, setPostPromotion } from './store.js';
+import { deletePlan, dismissAlert, getAlerts, getAudience, getConnectorStatuses, getObserved, getPlan, getPlans, getWebsiteDaily, getWebsitePages, saveImportedPlan, savePlan } from './store.js';
 import { runSync } from './sync.js';
 import { pollPendingJobs } from './social/publishing.js';
 import { registerSocialRoutes } from './social/routes.js';
@@ -187,15 +187,6 @@ app.get('/api/dashboard',async(req,res)=>{
  const enrichedPosts=posts.map(post=>({...post,engagementRate:engagementRate(post)}));
  res.setHeader('Cache-Control','no-store');
  res.json({generatedAt:now.toISOString(),timeZone:process.env.BUSINESS_TIME_ZONE||'Africa/Cairo',posts:userCan(req.user!,'analytics.view')?enrichedPosts:[],plans:userCan(req.user!,'plans.view_all')||userCan(req.user!,'content.schedule')||userCan(req.user!,'content.create')?enriched:[],alerts:userCan(req.user!,'analytics.view')?alerts:[],connectors:userCan(req.user!,'analytics.view')||userCan(req.user!,'connections.manage')?connectors:[],website:userCan(req.user!,'analytics.view')?website:[],websitePages:userCan(req.user!,'analytics.view')?websitePages:[],audience:userCan(req.user!,'analytics.view')?audience:[]});
-});
-const promotionSchema=z.object({paid:z.boolean().nullable()}).strict();
-/** Marks a published post organic or paid by hand (null hands it back to what the platform reports). */
-app.put('/api/posts/:platform/:externalId/promotion',requirePermission('analytics.view'),async(req,res)=>{
- const parsed=promotionSchema.safeParse(req.body);if(!parsed.success)return res.status(400).json({error:'اختيار غير صالح.'});
- const platform=String(req.params.platform);if(!isPlanPlatform(platform)||platform==='x'||platform==='website')return res.status(400).json({error:'منصة غير معروفة.'});
- const ok=await setPostPromotion(platform,String(req.params.externalId),parsed.data.paid,req.user!.id);
- if(!ok)return res.status(404).json({error:'المنشور غير موجود.'});
- res.json({ok:true});
 });
 const planStatus=z.enum(['draft','approved','scheduled','published','cancelled']);
 const planSchema=z.object({

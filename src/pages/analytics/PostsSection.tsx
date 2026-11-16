@@ -8,13 +8,9 @@ import { Dialog } from '../../components/overlay/Overlay';
 import { Button } from '../../components/ui/Button';
 import { Card, CardBody, CardHeader } from '../../components/ui/Card';
 import { Segmented } from '../../components/ui/Tabs';
-import { useLiveData } from '../../app/providers/LiveDataProvider';
-import { useToast } from '../../components/feedback/Toast';
 import { useI18n } from '../../i18n/I18nProvider';
 import { channelName } from '../../i18n/labels';
-import { api, errorMessage } from '../../lib/api';
 import type { Metrics, Post } from '../../types';
-import { money, REACH_LABEL } from './reach';
 
 type View = 'cards' | 'table';
 const PAGE = 24;
@@ -131,7 +127,6 @@ function PostCard({ post, onOpen }: { post: Post; onOpen: () => void }) {
       <span className="an-post__meta">
         <ChannelIcon channel={post.platform} size={14} />
         <span className="u-truncate">{post.accountName || channelName[post.platform]}</span>
-        <KindBadge post={post} />
         <span className="an-post__date u-tnum">{date(post.ts, 'dayShort')}</span>
       </span>
       <span className="an-post__caption" dir="auto">
@@ -143,17 +138,6 @@ function PostCard({ post, onOpen }: { post: Post; onOpen: () => void }) {
         <Stat label={t('Rate', 'المعدل')} value={pct(post.engagementRate, 1)} />
       </span>
     </button>
-  );
-}
-
-/** "Organic" or "Paid" on a post. */
-export function KindBadge({ post }: { post: Post }) {
-  const { t, tx } = useI18n();
-  const by = post.reachKindBy === 'manual' ? t('Marked by hand', 'متحدد يدويًا') : post.reachKindBy === 'unknown' ? t('The platform does not say; counted as organic', 'المنصة مش بتقول؛ محسوب أورجانيك') : t('As reported by the platform', 'حسب المنصة');
-  return (
-    <span className={`an-kind an-kind--${post.reachKind}`} title={by}>
-      {tx(REACH_LABEL[post.reachKind])}
-    </span>
   );
 }
 
@@ -179,12 +163,10 @@ const METRICS: { key: keyof Metrics; en: string; ar: string }[] = [
 
 export function PostDialog({ post, onClose }: { post: Post | null; onClose: () => void }) {
   const { t, num, pct, date } = useI18n();
-  const { store } = useLiveData();
   // Keep the last post on screen while the dialog animates out.
   const last = useRef(post);
   if (post) last.current = post;
-  // The store's copy, so marking the post organic or paid shows at once after the reload.
-  const shown = last.current ? (store.data.posts.find((item) => item.key === last.current!.key) ?? last.current) : null;
+  const shown = post ?? last.current;
   if (!shown) return null;
   const figures = METRICS.filter((item) => shown.metrics[item.key] != null);
   return (
@@ -212,7 +194,6 @@ export function PostDialog({ post, onClose }: { post: Post | null; onClose: () =
             <Stat label={t('Interactions', 'التفاعلات')} value={shown.measured ? num(shown.interactions) : '—'} />
             <Stat label={t('Engagement rate', 'معدل التفاعل')} value={pct(shown.engagementRate, 2)} />
           </div>
-          <KindPanel post={shown} onSaved={store.reload} />
           {figures.length ? (
             <dl className="an-detail__figures">
               {figures.map((item) => (
@@ -228,61 +209,6 @@ export function PostDialog({ post, onClose }: { post: Post | null; onClose: () =
         </div>
       </div>
     </Dialog>
-  );
-}
-
-/** Organic or paid, who said so, the organic/paid split of the numbers, and a way to correct it by hand. */
-function KindPanel({ post, onSaved }: { post: Post; onSaved: () => Promise<unknown> | void }) {
-  const { t, num } = useI18n();
-  const toast = useToast();
-  const [busy, setBusy] = useState(false);
-  const promotion = post.promotion;
-  const save = async (paid: boolean | null) => {
-    setBusy(true);
-    try {
-      await api(`/api/posts/${encodeURIComponent(post.platform)}/${encodeURIComponent(post.externalId)}/promotion`, { method: 'PUT', body: { paid } });
-      await onSaved();
-    } catch (error) {
-      toast.error(t('Not saved', 'ما اتحفظش'), errorMessage(error, t('Could not save the choice.', 'تعذّر حفظ الاختيار.')));
-    } finally {
-      setBusy(false);
-    }
-  };
-  const split: { label: string; value: string }[] = [];
-  if (promotion?.organicViews != null && promotion.paidViews != null) {
-    split.push({ label: t('Organic views', 'مشاهدات أورجانيك'), value: num(promotion.organicViews) });
-    split.push({ label: t('Views from ads', 'مشاهدات من الإعلانات'), value: num(promotion.paidViews) });
-  }
-  if (promotion?.adReach != null) split.push({ label: t('Reach from ads', 'الوصول من الإعلانات'), value: num(promotion.adReach) });
-  if (promotion?.adImpressions != null) split.push({ label: t('Ad impressions', 'ظهور الإعلان'), value: num(promotion.adImpressions) });
-  if (promotion?.adClicks != null) split.push({ label: t('Ad clicks', 'نقرات الإعلان'), value: num(promotion.adClicks) });
-  if (promotion?.spend != null) split.push({ label: t('Spend', 'الصرف'), value: money(promotion.spend, promotion.currency) });
-  const by = post.reachKindBy === 'manual' ? t('Marked by hand.', 'متحدد يدويًا.') : post.reachKindBy === 'unknown' ? t('The platform does not say whether money was spent, so it counts as organic. Mark it if that is wrong.', 'المنصة مش بتقول لو اتصرف عليه فلوس، فمحسوب أورجانيك. حدده لو ده غلط.') : t('As reported by the platform.', 'حسب المنصة.');
-  return (
-    <div className="an-detail__kind">
-      <KindBadge post={post} />
-      <span className="u-row">
-        {post.reachKind === 'organic' ? (
-          <Button size="sm" busy={busy} onClick={() => void save(true)}>{t('Mark as paid', 'حدده ممول')}</Button>
-        ) : (
-          <Button size="sm" busy={busy} onClick={() => void save(false)}>{t('Mark as organic', 'حدده أورجانيك')}</Button>
-        )}
-        {post.reachKindBy === 'manual' && (
-          <Button size="sm" variant="ghost" disabled={busy} onClick={() => void save(null)}>{t('Use the platform’s answer', 'رجّع لكلام المنصة')}</Button>
-        )}
-      </span>
-      <small>{by}</small>
-      {split.length > 0 && (
-        <dl className="an-detail__figures">
-          {split.map((item) => (
-            <div key={item.label}>
-              <dt>{item.label}</dt>
-              <dd className="u-tnum">{item.value}</dd>
-            </div>
-          ))}
-        </dl>
-      )}
-    </div>
   );
 }
 
@@ -307,14 +233,10 @@ function PostTable({ posts, onOpen, empty }: { posts: Post[]; onOpen: (post: Pos
       ),
     },
     { key: 'date', header: t('Published', 'تاريخ النشر'), sort: (post) => post.ts, cell: (post) => <span className="u-tnum u-sm">{date(post.ts, 'dayShort')}</span> },
-    { key: 'kind', header: t('Organic / paid', 'أورجانيك / ممول'), sort: (post) => (post.reachKind === 'paid' ? 1 : 0), cell: (post) => <KindBadge post={post} /> },
     ...(has('reach') ? [{ key: 'reach', header: t('Reach', 'الوصول'), align: 'end' as const, sort: (post: Post) => post.metrics.reach, cell: (post: Post) => <span className="u-tnum">{compact(post.metrics.reach)}</span> }] : []),
     ...(has('views') ? [{ key: 'views', header: t('Views', 'المشاهدات'), align: 'end' as const, sort: (post: Post) => post.metrics.views, cell: (post: Post) => <span className="u-tnum">{compact(post.metrics.views)}</span> }] : []),
     { key: 'interactions', header: t('Interactions', 'التفاعلات'), align: 'end', sort: (post) => (post.measured ? post.interactions : null), cell: (post) => <span className="u-tnum">{post.measured ? compact(post.interactions) : '—'}</span> },
     { key: 'rate', header: t('Rate', 'المعدل'), align: 'end', sort: (post) => post.engagementRate, cell: (post) => <span className="u-tnum">{pct(post.engagementRate, 1)}</span>, secondary: true },
-    ...(posts.some((post) => post.promotion?.spend != null)
-      ? [{ key: 'spend', header: t('Spend', 'الصرف'), align: 'end' as const, sort: (post: Post) => post.promotion?.spend ?? null, cell: (post: Post) => <span className="u-tnum">{post.promotion?.spend != null ? money(post.promotion.spend, post.promotion.currency) : '—'}</span>, secondary: true }]
-      : []),
   ];
   return (
     <DataTable

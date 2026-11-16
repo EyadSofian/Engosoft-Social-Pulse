@@ -17,24 +17,6 @@ export interface Metrics {
   engagement: number | null;
 }
 
-/** Organic or paid, as the server read it (see server/types.ts). Every number is null when not reported. */
-export interface Promotion {
-  paid: boolean | null;
-  source: 'insights' | 'ads' | 'manual' | '';
-  organicViews: number | null;
-  paidViews: number | null;
-  adReach: number | null;
-  adImpressions: number | null;
-  adClicks: number | null;
-  adEngagement: number | null;
-  spend: number | null;
-  currency: string;
-  ads: number;
-}
-
-/** How a post reached people: on its own, or with money behind it (a boost or an ad). */
-export type Reach = 'organic' | 'paid';
-
 /* ── API payloads (GET /api/dashboard) ─────────────────────────────── */
 
 export interface ApiPost {
@@ -49,8 +31,6 @@ export interface ApiPost {
   thumbnail: string;
   metrics: Metrics;
   engagementRate: number | null;
-  /** Missing for posts not read since paid/organic was added, and for platforms that cannot tell. */
-  promotion?: Promotion;
 }
 
 export interface ApiPlan {
@@ -190,10 +170,6 @@ export interface Post extends ApiPost {
   /** True when the source returned at least one of likes/comments/shares/saves. */
   measured: boolean;
   interactions: number;
-  /** Organic unless the platform, the ads account or a person said money was spent on it. */
-  reachKind: Reach;
-  /** Who decided `reachKind`: the platform or ads account, a person, or nobody (no data, so organic). */
-  reachKindBy: 'platform' | 'manual' | 'unknown';
 }
 
 export interface Plan extends ApiPlan {

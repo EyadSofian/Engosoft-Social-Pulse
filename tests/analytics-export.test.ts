@@ -12,7 +12,6 @@ import { linkedInDemographics, linkedInFollowers } from '../server/social/linked
 import type { AudienceDay } from '../src/types';
 import type { AnalyticsModel } from '../src/pages/analytics/model';
 import { reportHtml } from '../src/pages/analytics/report';
-import { buildReachSplit, inScope } from '../src/pages/analytics/reach';
 import type { PostPicture } from '../src/pages/analytics/thumbs';
 import type { Post } from '../src/types';
 
@@ -33,15 +32,15 @@ const posts = normalize({
 function modelFor(source: Post[] = posts): AnalyticsModel {
   const summary = summarize(source);
   return {
-    now, todayNum: dayNumber(now), scope: { period: 30, platform: 'all', account: 'all', reach: 'all', type: 'all' },
-    posts: source, summary, trend: buildTrend(source, 30, dayNumber(now)), weekly: false,
-    platforms: byPlatform(source).filter((row) => row.count), accountOptions: [], typeOptions: ['image'], split: buildReachSplit(source), audience: [], lastCheck: now,
+    now, todayNum: dayNumber(now), scope: { period: 30, platform: 'all', account: 'all', type: 'all' },
+    posts: source, summary, trend: buildTrend(source, 30, dayNumber(now)), weekly: false, kpiWindow: 7,
+    platforms: byPlatform(source).filter((row) => row.count), accountOptions: [], typeOptions: ['image'], audience: [], lastCheck: now,
     kpis: [
-      { key: 'posts', value: source.length, previous: 4, change: 100 },
-      { key: 'reach', value: summary.reach, previous: 4000, change: 100 },
-      { key: 'views', value: summary.views, previous: 8000, change: 100 },
-      { key: 'interactions', value: summary.interactions, previous: 100, change: 110 },
-      { key: 'rate', value: summary.rate, previous: 1, change: 2 },
+      { key: 'posts', value: source.length, previous: 4, change: 100, series: [] },
+      { key: 'reach', value: summary.reach, previous: 4000, change: 100, series: [] },
+      { key: 'views', value: summary.views, previous: 8000, change: 100, series: [] },
+      { key: 'interactions', value: summary.interactions, previous: 100, change: 110, series: [] },
+      { key: 'rate', value: summary.rate, previous: 1, change: 2, series: [] },
     ],
   };
 }
@@ -119,22 +118,19 @@ test('exports carry every report, the ranked posts with pictures, and every post
     const i18n = language(lang);
     const sheets = buildSheets(model, reports, i18n, 'ranked', pictures);
     // Two accounts (one per platform) publish here, so the accounts sheet is included.
-    // …and the organic vs paid sheet right after the summary.
-    assert.equal(sheets.length, 10);
-    assert.equal(sheets[1].name, i18n.t('Organic vs paid', 'أورجانيك وممول'));
-    assert.equal(sheets[1].rows[0][2], 8);
+    assert.equal(sheets.length, 9);
     assert.equal(sheets[0].rows[0][1], 8);
     assert.equal(sheets[0].rows[1][1], 8000);
     assert.equal(sheets[0].rows[3][1], 210);
-    assert.equal(sheets[2].rows.reduce((sum, row) => sum + Number(row[1]), 0), 8);
-    const rankingSheet = sheets[4];
+    assert.equal(sheets[1].rows.reduce((sum, row) => sum + Number(row[1]), 0), 8);
+    const rankingSheet = sheets[3];
     assert.equal(rankingSheet.rows.length, 7);
     assert.equal(rankingSheet.images?.length, 7);
-    assert.ok(String(rankingSheet.rows[0][8]).length <= 161);
+    assert.ok(String(rankingSheet.rows[0][7]).length <= 161);
     const all = buildSheets(model, reports, i18n, 'all', pictures);
-    assert.equal(all.length, 11);
-    assert.equal(all[10].rows.length, 8);
-    assert.equal(all[10].images?.length, 8);
+    assert.equal(all.length, 10);
+    assert.equal(all[9].rows.length, 8);
+    assert.equal(all[9].images?.length, 8);
     const file = Buffer.from(await workbook(all).arrayBuffer());
     const parsed = await readSheet(file, rankingSheet.name);
     assert.equal(parsed[4][3], 1);
@@ -161,11 +157,11 @@ test('nothing to rank still gives a valid export', () => {
   const reports = buildReports(unknown.posts, unknown.todayNum, 'rate');
   assert.deepEqual(exportPostList(unknown, reports, 'ranked'), []);
   const sheets = buildSheets(unknown, reports, language('en'), 'ranked', pictures);
-  assert.equal(sheets[4].rows.length, 0);
-  assert.equal(sheets[4].images?.length, 0);
+  assert.equal(sheets[3].rows.length, 0);
+  assert.equal(sheets[3].images?.length, 0);
   assert.match(reportHtml(unknown, reports, language('en'), 'ranked', pictures, now), /No post here has the numbers/);
   const empty = modelFor([]);
-  assert.equal(buildSheets(empty, buildReports([], empty.todayNum, 'rate'), language('ar'), 'all')[4].rows.length, 0);
+  assert.equal(buildSheets(empty, buildReports([], empty.todayNum, 'rate'), language('ar'), 'all')[3].rows.length, 0);
   const noImages = reportHtml(modelFor([posts[0]]), buildReports([posts[0]], dayNumber(settledNow), 'interactions'), language('ar'), 'all', new Map(), now);
   assert.match(noImages, /الصورة مش متاحة/);
   assert.ok(!noImages.includes('undefined'));
@@ -257,59 +253,4 @@ test('LinkedIn demographics are read from lists or maps, and labelled', () => {
   assert.deepEqual(mapped.function, [{ key: 'Engineering', value: 500 }, { key: 'Sales', value: 20 }]);
   assert.equal(linkedInDemographics({ demographics: {} }), null);
   assert.equal(linkedInDemographics({}), null);
-});
-
-test('organic and paid posts are split, filtered and exported apart', async () => {
-  const mixed = normalize({
-    timeZone: 'Africa/Cairo', generatedAt: '', plans: [], alerts: [], connectors: [], website: [], websitePages: [],
-    posts: [
-      { platform: 'facebook', accountId: 'a', accountName: 'Page', externalId: 'p1', title: 'boosted', publishedAt: '2026-11-05T10:00:00Z', contentType: 'post', thumbnail: '', permalink: '', engagementRate: 2,
-        metrics: { reach: 5000, views: 9000, impressions: null, likes: 100, comments: 0, shares: 0, saves: null, clicks: null, engagement: null },
-        promotion: { paid: true, source: 'ads', organicViews: 3000, paidViews: 6000, adReach: 4000, adImpressions: 7000, adClicks: 50, adEngagement: 80, spend: 120.5, currency: 'SAR', ads: 1 } },
-      { platform: 'facebook', accountId: 'a', accountName: 'Page', externalId: 'p2', title: 'plain', publishedAt: '2026-11-06T10:00:00Z', contentType: 'post', thumbnail: '', permalink: '', engagementRate: 1,
-        metrics: { reach: 800, views: 1000, impressions: null, likes: 8, comments: 0, shares: 0, saves: null, clicks: null, engagement: null },
-        promotion: { paid: false, source: 'insights', organicViews: 1000, paidViews: 0, adReach: null, adImpressions: null, adClicks: null, adEngagement: null, spend: null, currency: '', ads: 0 } },
-      { platform: 'tiktok', accountId: 't', accountName: 'TT', externalId: 'v1', title: 'video', publishedAt: '2026-11-07T10:00:00Z', contentType: 'video', thumbnail: '', permalink: '', engagementRate: 1,
-        metrics: { reach: null, views: 300, impressions: null, likes: 3, comments: 0, shares: 0, saves: null, clicks: null, engagement: null } },
-      { platform: 'tiktok', accountId: 't', accountName: 'TT', externalId: 'v2', title: 'spark ad', publishedAt: '2026-11-08T10:00:00Z', contentType: 'video', thumbnail: '', permalink: '', engagementRate: 1,
-        metrics: { reach: null, views: 7000, impressions: null, likes: 70, comments: 0, shares: 0, saves: null, clicks: null, engagement: null },
-        promotion: { paid: true, source: 'manual', organicViews: null, paidViews: null, adReach: null, adImpressions: null, adClicks: null, adEngagement: null, spend: null, currency: '', ads: 0 } },
-    ],
-  }).posts;
-  assert.deepEqual(mixed.map((post) => [post.reachKind, post.reachKindBy]), [['paid', 'platform'], ['organic', 'platform'], ['organic', 'unknown'], ['paid', 'manual']]);
-
-  const split = buildReachSplit(mixed);
-  assert.equal(split.paid.count, 2);
-  assert.equal(split.organic.count, 2);
-  assert.equal(split.paid.reach, 5000);
-  assert.equal(split.organic.reach, 800);
-  assert.equal(split.paid.adReach, 4000);
-  assert.equal(split.paid.paidViews, 6000);
-  assert.equal(split.paid.spend, 120.5);
-  assert.equal(split.paid.currency, 'SAR');
-  assert.equal(split.unknown, 1);
-  assert.deepEqual(split.platforms.map((row) => [row.platform, row.organic.count, row.paid.count]), [['facebook', 1, 1], ['tiktok', 1, 1]]);
-
-  assert.deepEqual(mixed.filter((post) => inScope(post, { reach: 'paid', type: 'all' })).map((post) => post.externalId), ['p1', 'v2']);
-  assert.deepEqual(mixed.filter((post) => inScope(post, { reach: 'organic', type: 'video' })).map((post) => post.externalId), ['v1']);
-
-  const model = { ...modelFor(mixed), scope: { period: 30 as const, platform: 'all' as const, account: 'all', reach: 'paid' as const, type: 'all' } };
-  const sheets = buildSheets(model, buildReports(mixed, dayNumber(settledNow), 'rate'), language('en'), 'all');
-  const reach = sheets.find((sheet) => sheet.name === 'Organic vs paid');
-  assert.ok(reach, 'the export has an organic vs paid sheet');
-  assert.deepEqual(reach.rows.slice(0, 2).map((row) => [row[1], row[2], row[3]]), [['Organic', 2, 800], ['Paid', 2, 5000]]);
-  assert.match(reach.subtitle ?? '', /Paid/);
-  const all = sheets.find((sheet) => sheet.name === 'All posts')!;
-  const kindColumn = all.columns.findIndex((column) => column.header === 'Organic / paid');
-  const spendColumn = all.columns.findIndex((column) => column.header === 'Spend');
-  assert.ok(kindColumn >= 0 && spendColumn >= 0);
-  const boosted = all.rows.find((row) => row.includes('boosted'))!;
-  assert.equal(boosted[kindColumn], 'Paid');
-  assert.equal(boosted[spendColumn], 120.5);
-  assert.equal(all.rows.find((row) => row.includes('spark ad'))![kindColumn], 'Paid (by hand)');
-  assert.equal(all.rows.find((row) => row.includes('video'))![kindColumn], 'Organic (not reported)');
-  // The workbook still writes.
-  assert.ok(workbook(sheets).size > 0);
-  // The PDF shows the split.
-  assert.match(reportHtml(model, buildReports(mixed, dayNumber(settledNow), 'rate'), language('ar'), 'all', new Map(), now), /أورجانيك وممول/);
 });

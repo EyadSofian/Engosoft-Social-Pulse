@@ -4,7 +4,6 @@ import { dateFromKey, dayKeyOf } from '../../lib/format';
 import type { TrendPoint } from '../../lib/analytics';
 import type { Platform, Post } from '../../types';
 import { KPI_LABEL, reportNotes, scopeLine, shortCaption, type ExportPosts } from './export';
-import { money, REACH_KINDS, REACH_LABEL, type ReachGroup } from './reach';
 import type { AnalyticsModel, Kpi } from './model';
 import { contentTypeOf, hourBlockLabel, MIX_KEYS, MIX_LABEL, postRate, RANK_LABEL, RANK_PER_PLATFORM, typeLabel, WEEKDAY_LABEL, type Ranked, type Reports, type TimeRow } from './reports';
 import type { PostPicture } from './thumbs';
@@ -94,32 +93,6 @@ function platformRows(model: AnalyticsModel, i18n: I18n) {
     .join('');
 }
 
-const KIND_COLOR = { organic: '#0046ff', paid: '#ff6600' } as const;
-
-function reachCells(group: ReachGroup, i18n: I18n, withSpend: boolean) {
-  const { num, compact, pct } = i18n;
-  return `<td class="n">${esc(num(group.count))}</td><td class="n">${esc(group.reachCount ? compact(group.reach) : '—')}</td><td class="n">${esc(group.viewsCount ? compact(group.views) : '—')}</td><td class="n">${esc(group.measured ? compact(group.interactions) : '—')}</td><td class="n">${esc(pct(group.rate, 2))}</td>${withSpend ? `<td class="n">${esc(money(group.spend, group.currency))}</td>` : ''}`;
-}
-
-/** Organic against paid: all platforms first, then each platform. */
-function reachSection(model: AnalyticsModel, i18n: I18n) {
-  const { t, tx } = i18n;
-  const { split } = model;
-  if (!split.organic.count && !split.paid.count) return '';
-  const withSpend = split.paid.spend != null;
-  const head = `<th>${esc(t('Platform', 'المنصة'))}</th><th>${esc(t('Organic / paid', 'أورجانيك / ممول'))}</th><th class="n">${esc(t('Posts', 'المنشورات'))}</th><th class="n">${esc(t('Reach', 'الوصول'))}</th><th class="n">${esc(t('Views', 'المشاهدات'))}</th><th class="n">${esc(t('Interactions', 'التفاعلات'))}</th><th class="n">${esc(t('Engagement rate', 'معدل التفاعل'))}</th>${withSpend ? `<th class="n">${esc(t('Spend', 'الصرف'))}</th>` : ''}`;
-  const row = (label: string, group: ReachGroup, color?: string) =>
-    `<tr><td>${color ? `<span class="dot" style="background:${color}"></span>` : ''}${esc(label)}</td><td><span class="dot" style="background:${KIND_COLOR[group.kind]}"></span>${esc(tx(REACH_LABEL[group.kind]))}</td>${reachCells(group, i18n, withSpend)}</tr>`;
-  const rows = [
-    ...REACH_KINDS.map((kind) => row(t('All platforms', 'كل المنصات'), split[kind])),
-    ...(split.platforms.length > 1 ? split.platforms.flatMap((item) => REACH_KINDS.map((kind) => row(channelName[item.platform], item[kind], COLOR[item.platform]))) : []),
-  ].join('');
-  const extra = split.paid.adReach != null || split.paid.paidViews != null
-    ? `<p class="foot">${esc(t(`Paid posts: ${split.paid.adReach != null ? `${i18n.compact(split.paid.adReach)} reached by ads` : ''}${split.paid.adReach != null && split.paid.paidViews != null ? ', ' : ''}${split.paid.paidViews != null ? `${i18n.compact(split.paid.paidViews)} views from ads` : ''}.`, `المنشورات الممولة: ${split.paid.adReach != null ? `${i18n.compact(split.paid.adReach)} وصول من الإعلانات` : ''}${split.paid.adReach != null && split.paid.paidViews != null ? '، ' : ''}${split.paid.paidViews != null ? `${i18n.compact(split.paid.paidViews)} مشاهدة من الإعلانات` : ''}.`))}</p>`
-    : '';
-  return `<section><h2>${esc(t('Organic vs paid', 'أورجانيك وممول'))}</h2><table><thead><tr>${head}</tr></thead><tbody>${rows}</tbody></table>${extra}</section>`;
-}
-
 /** `extraHtml` must already be escaped. */
 function postCard(post: Post, badge: string, picture: PostPicture | undefined, i18n: I18n, extraHtml = '', tone: 'best' | 'worst' | '' = '') {
   const { t, num, pct, date, tx } = i18n;
@@ -138,7 +111,7 @@ function postCard(post: Post, badge: string, picture: PostPicture | undefined, i
   return `<article class="post${tone ? ` post--${tone}` : ''}">
     <div class="post__img">${image}</div>
     <div class="post__body">
-      <div class="post__meta"><span class="no">${esc(badge)}</span><span class="chip" style="background:${color}">${esc(channelName[post.platform])}</span><span class="chip" style="background:${KIND_COLOR[post.reachKind]}">${esc(tx(REACH_LABEL[post.reachKind]))}</span><span>${esc(tx(typeLabel(contentTypeOf(post))))} · ${esc(post.accountName || '—')} · ${esc(date(post.ts, 'dateTime'))}</span>${extraHtml ? `<span class="vs">${extraHtml}</span>` : ''}</div>
+      <div class="post__meta"><span class="no">${esc(badge)}</span><span class="chip" style="background:${color}">${esc(channelName[post.platform])}</span><span>${esc(tx(typeLabel(contentTypeOf(post))))} · ${esc(post.accountName || '—')} · ${esc(date(post.ts, 'dateTime'))}</span>${extraHtml ? `<span class="vs">${extraHtml}</span>` : ''}</div>
       <p class="post__caption" dir="auto">${esc(caption)}</p>
       <div class="figs">${figures.map((figure) => `<div class="fig${figure.strong ? ' fig--strong' : ''}"><b>${esc(figure.value)}</b><span>${esc(figure.label)}</span></div>`).join('')}</div>
       ${href ? `<a class="link" href="${esc(href)}" dir="ltr">${esc(t('Open post', 'افتح المنشور'))}</a>` : ''}
@@ -315,8 +288,6 @@ export function reportHtml(model: AnalyticsModel, reports: Reports, i18n: I18n, 
   <section><h2>${esc(t('By platform', 'حسب المنصة'))}</h2><table><thead><tr>
     <th>${esc(t('Platform', 'المنصة'))}</th><th class="n">${esc(t('Posts', 'المنشورات'))}</th><th class="n">${esc(t('Reach', 'الوصول'))}</th><th class="n">${esc(t('Views', 'المشاهدات'))}</th><th class="n">${esc(t('Interactions', 'التفاعلات'))}</th><th class="n">${esc(t('Interactions per post', 'تفاعل لكل منشور'))}</th><th class="n">${esc(t('Engagement rate', 'معدل التفاعل'))}</th>
   </tr></thead><tbody>${platformRows(model, i18n)}</tbody></table></section>
-
-  ${reachSection(model, i18n)}
 
   ${audienceSection(model, i18n)}
 

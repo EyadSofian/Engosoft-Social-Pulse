@@ -1,6 +1,6 @@
 import { createHash, randomUUID } from 'node:crypto';
 import { db, defineSchema, defineColumn } from './db.js';
-import { blankPromotion, type AudienceDemographics, type ConnectorResult, type ObservedPost, type Plan, type Platform, type Promotion } from './types.js';
+import type { AudienceDemographics, ConnectorResult, ObservedPost, Plan, Platform } from './types.js';
 
 export { db };
 defineSchema(`
@@ -18,8 +18,6 @@ CREATE TABLE IF NOT EXISTS observed_posts (
  content_type TEXT NOT NULL DEFAULT '', thumbnail TEXT NOT NULL DEFAULT '', metrics_json TEXT NOT NULL,
  fetched_at TEXT NOT NULL, PRIMARY KEY(platform, external_id)
 );
-/** A person's own answer to "was money spent on this post?"; it wins over what the platform reports. */
-CREATE TABLE IF NOT EXISTS post_promotion (platform TEXT NOT NULL, external_id TEXT NOT NULL, paid INTEGER NOT NULL, updated_by TEXT NOT NULL DEFAULT '', updated_at TEXT NOT NULL, PRIMARY KEY(platform, external_id));
 CREATE TABLE IF NOT EXISTS website_daily (date TEXT PRIMARY KEY, views INTEGER NOT NULL, sessions INTEGER NOT NULL, engaged_sessions INTEGER NOT NULL, fetched_at TEXT NOT NULL);
 CREATE TABLE IF NOT EXISTS website_page_daily (date TEXT NOT NULL, path TEXT NOT NULL, title TEXT NOT NULL, views INTEGER NOT NULL, active_users INTEGER NOT NULL, engagement_seconds REAL NOT NULL, fetched_at TEXT NOT NULL, PRIMARY KEY(date,path));
 CREATE TABLE IF NOT EXISTS audience_daily (platform TEXT NOT NULL, account_id TEXT NOT NULL, account_name TEXT NOT NULL, date TEXT NOT NULL, followers INTEGER, demographics_json TEXT NOT NULL DEFAULT '', fetched_at TEXT NOT NULL, PRIMARY KEY(platform,account_id,date));
@@ -31,8 +29,6 @@ CREATE TABLE IF NOT EXISTS alerts (id TEXT PRIMARY KEY, plan_id TEXT NOT NULL, k
 `);
 
 defineColumn('connector_status','last_success_at','TEXT');
-/** Organic or paid, with the organic/paid split of the numbers (JSON of Promotion); empty before the first sync that reads it. */
-defineColumn('observed_posts','promotion_json',"TEXT NOT NULL DEFAULT ''");
 defineColumn('connector_status','partial',"INTEGER NOT NULL DEFAULT 0");
 /** The plan row's goal (reach, engagement, leads, traffic); empty when the spreadsheet gave none. */
 defineColumn('plans','goal',"TEXT NOT NULL DEFAULT ''");
@@ -70,38 +66,19 @@ export async function deletePlan(id: string): Promise<boolean> {
   });
 }
 
-function promotionOf(raw: unknown): Promotion | undefined {
- if (!raw) return undefined;
- try { return { ...blankPromotion(), ...JSON.parse(String(raw)) }; } catch { return undefined; }
-}
 const toObserved = (r: Record<string,unknown>): ObservedPost => ({
- platform:r.platform as Platform, accountId:String(r.account_id), accountName:String(r.account_name), externalId:String(r.external_id), permalink:String(r.permalink), title:String(r.title), publishedAt:String(r.published_at), contentType:String(r.content_type), thumbnail:String(r.thumbnail), metrics:JSON.parse(String(r.metrics_json)), promotion:promotionOf(r.promotion_json)
+ platform:r.platform as Platform, accountId:String(r.account_id), accountName:String(r.account_name), externalId:String(r.external_id), permalink:String(r.permalink), title:String(r.title), publishedAt:String(r.published_at), contentType:String(r.content_type), thumbnail:String(r.thumbnail), metrics:JSON.parse(String(r.metrics_json))
 });
-/** Every observed post, newest first. A post someone marked by hand carries that answer, whatever the platform said. */
-export async function getObserved(): Promise<ObservedPost[]> {
- const [rows, manual] = await Promise.all([db.all('SELECT * FROM observed_posts ORDER BY published_at DESC'), db.all<{platform:string;external_id:string;paid:number}>('SELECT platform,external_id,paid FROM post_promotion')]);
- const marked = new Map(manual.map((m) => [`${m.platform}:${m.external_id}`, Number(m.paid) === 1]));
- return rows.map(toObserved).map((post) => {
-  const paid = marked.get(`${post.platform}:${post.externalId}`);
-  return paid == null ? post : { ...post, promotion: { ...(post.promotion ?? blankPromotion()), paid, source: 'manual' as const } };
- });
-}
-/** Marks a post organic (false) or paid (true) by hand; null goes back to what the platform reports. */
-export async function setPostPromotion(platform: Platform, externalId: string, paid: boolean | null, userId: string): Promise<boolean> {
- if (!(await db.get('SELECT 1 AS ok FROM observed_posts WHERE platform=? AND external_id=?', [platform, externalId]))) return false;
- if (paid == null) await db.run('DELETE FROM post_promotion WHERE platform=? AND external_id=?', [platform, externalId]);
- else await db.run('INSERT INTO post_promotion (platform,external_id,paid,updated_by,updated_at) VALUES (?,?,?,?,?) ON CONFLICT(platform,external_id) DO UPDATE SET paid=excluded.paid,updated_by=excluded.updated_by,updated_at=excluded.updated_at', [platform, externalId, paid ? 1 : 0, userId, new Date().toISOString()]);
- return true;
-}
+export const getObserved = async (): Promise<ObservedPost[]> => (await db.all('SELECT * FROM observed_posts ORDER BY published_at DESC')).map(toObserved);
 export async function getOldestObservedPublishedAt(platform:Platform,accountId:string):Promise<string|undefined> {
  return (await db.get<{oldest:string|null}>('SELECT MIN(published_at) AS oldest FROM observed_posts WHERE platform=? AND account_id=?',[platform,accountId]))?.oldest||undefined;
 }
 export async function saveConnectorResult(result: ConnectorResult) {
  const now = new Date().toISOString();
  await db.tx(async (tx) => {
-   for (const post of result.posts) await tx.run(`INSERT INTO observed_posts (platform,account_id,account_name,external_id,permalink,title,published_at,content_type,thumbnail,metrics_json,promotion_json,fetched_at)
- VALUES (@platform,@accountId,@accountName,@externalId,@permalink,@title,@publishedAt,@contentType,@thumbnail,@metricsJson,@promotionJson,@fetchedAt)
- ON CONFLICT(platform,external_id) DO UPDATE SET account_id=excluded.account_id,account_name=excluded.account_name,permalink=excluded.permalink,title=excluded.title,published_at=excluded.published_at,content_type=excluded.content_type,thumbnail=excluded.thumbnail,metrics_json=excluded.metrics_json,promotion_json=CASE WHEN excluded.promotion_json!='' THEN excluded.promotion_json ELSE observed_posts.promotion_json END,fetched_at=excluded.fetched_at`, {...post, metricsJson:JSON.stringify(post.metrics), promotionJson:post.promotion?JSON.stringify(post.promotion):'', fetchedAt:now});
+   for (const post of result.posts) await tx.run(`INSERT INTO observed_posts (platform,account_id,account_name,external_id,permalink,title,published_at,content_type,thumbnail,metrics_json,fetched_at)
+ VALUES (@platform,@accountId,@accountName,@externalId,@permalink,@title,@publishedAt,@contentType,@thumbnail,@metricsJson,@fetchedAt)
+ ON CONFLICT(platform,external_id) DO UPDATE SET account_id=excluded.account_id,account_name=excluded.account_name,permalink=excluded.permalink,title=excluded.title,published_at=excluded.published_at,content_type=excluded.content_type,thumbnail=excluded.thumbnail,metrics_json=excluded.metrics_json,fetched_at=excluded.fetched_at`, {...post, metricsJson:JSON.stringify(post.metrics), fetchedAt:now});
    for (const day of result.website ?? []) await tx.run('INSERT INTO website_daily (date,views,sessions,engaged_sessions,fetched_at) VALUES (@date,@views,@sessions,@engagedSessions,@fetchedAt) ON CONFLICT(date) DO UPDATE SET views=excluded.views,sessions=excluded.sessions,engaged_sessions=excluded.engaged_sessions,fetched_at=excluded.fetched_at', {...day,fetchedAt:now});
    for (const page of result.websitePages ?? []) await tx.run('INSERT INTO website_page_daily (date,path,title,views,active_users,engagement_seconds,fetched_at) VALUES (@date,@path,@title,@views,@activeUsers,@engagementSeconds,@fetchedAt) ON CONFLICT(date,path) DO UPDATE SET title=excluded.title,views=excluded.views,active_users=excluded.active_users,engagement_seconds=excluded.engagement_seconds,fetched_at=excluded.fetched_at', {...page,fetchedAt:now});
    // One row per account per business day; a later sync the same day fills in what an earlier one missed.

@@ -1,5 +1,5 @@
 import { getAccount, accountId } from '../social/store.js';
-import { blankMetrics, blankPromotion, type AudienceDemographics, type AudienceSlice, type AudienceSnapshot, type ConnectorResult, type ObservedPost, type Promotion } from '../types.js';
+import { blankMetrics, type AudienceDemographics, type AudienceSlice, type AudienceSnapshot, type ConnectorResult, type ObservedPost } from '../types.js';
 import { json, numberOrNull, text } from './http.js';
 
 type Page={id:string;name:string;access_token?:string};
@@ -93,65 +93,6 @@ async function pageDemographics(pageId:string,token:string):Promise<AudienceDemo
  }
  return output.country||output.city?output:null;
 }
-/** What the ads that used one post delivered, summed over those ads. */
-interface AdTotals { ads:number; reach:number|null; impressions:number|null; clicks:number|null; engagement:number|null; spend:number|null; currency:string }
-const addTo=(a:number|null,b:number|null)=>a==null&&b==null?null:(a??0)+(b??0);
-/**
- * Every ad in the ad accounts this token can read, keyed by the Page post (pageId_postId) or the Instagram media
- * it promotes, with lifetime results. Needs ads_read; `checked` is false when no ad account could be read, so a post
- * missing from the map is then "unknown", not "organic".
- */
-async function adsByPost(token:string):Promise<{byPost:Map<string,AdTotals>;checked:boolean;error:string}>{
- const byPost=new Map<string,AdTotals>();let checked=false;const errors:string[]=[];
- let accounts:{id:string;currency?:string}[]=[];
- const fromEnv=(process.env.META_AD_ACCOUNT_IDS||'').split(',').map(x=>x.trim()).filter(Boolean).map(id=>id.startsWith('act_')?id:`act_${id}`);
- try{
-   accounts=fromEnv.length
-     ?await Promise.all(fromEnv.map(async id=>({id,currency:text((await graph<{currency?:string}>(id,token,{fields:'currency'})).currency)})))
-     :await list<{id:string;currency?:string}>('me/adaccounts',token,{fields:'id,currency',limit:'50'},2);
- }catch(e){return {byPost,checked:false,error:e instanceof Error?e.message:'تعذّر قراءة حسابات الإعلانات'};}
- for(const account of accounts){
-   try{
-     const ads=await list<Record<string,unknown>>(`${account.id}/ads`,token,{fields:'id,creative{effective_object_story_id,effective_instagram_media_id},insights.date_preset(maximum){reach,impressions,clicks,spend,inline_post_engagement}',limit:'100'},10);
-     checked=true;
-     for(const ad of ads){
-       const creative=ad.creative as {effective_object_story_id?:string;effective_instagram_media_id?:string}|undefined;
-       const row=(ad.insights as {data?:Record<string,unknown>[]}|undefined)?.data?.[0];
-       for(const key of [text(creative?.effective_object_story_id),text(creative?.effective_instagram_media_id)].filter(Boolean)){
-         const hit=byPost.get(key)||{ads:0,reach:null,impressions:null,clicks:null,engagement:null,spend:null,currency:text(account.currency)};
-         hit.ads++;
-         if(row){hit.reach=addTo(hit.reach,numberOrNull(row.reach));hit.impressions=addTo(hit.impressions,numberOrNull(row.impressions));hit.clicks=addTo(hit.clicks,numberOrNull(row.clicks));hit.engagement=addTo(hit.engagement,numberOrNull(row.inline_post_engagement));hit.spend=addTo(hit.spend,numberOrNull(row.spend));}
-         byPost.set(key,hit);
-       }
-     }
-   }catch(e){errors.push(`${account.id}: ${e instanceof Error?e.message:'تعذّر القراءة'}`);}
- }
- return {byPost,checked,error:errors.join(' ')};
-}
-const withAds=(promotion:Promotion,ad:AdTotals|undefined):Promotion=>ad?{...promotion,adReach:ad.reach,adImpressions:ad.impressions,adClicks:ad.clicks,adEngagement:ad.engagement,spend:ad.spend,currency:ad.currency,ads:ad.ads}:promotion;
-/**
- * A Facebook post's media views split into ads and not ads (`post_media_view` with the is_from_ads breakdown,
- * Meta's replacement for the paid/organic impressions it retired in 2025). Meta has not documented the response
- * shape for this breakdown, so both shapes its insights use are read; anything else gives nulls.
- */
-export function readViewsSplit(body:{data?:Record<string,unknown>[]}):{paid:number|null;organic:number|null}{
- let paid:number|null=null,organic:number|null=null;
- const take=(key:unknown,value:unknown)=>{const k=String(key).toLowerCase();const n=numberOrNull(value);if(n==null)return;if(['true','1','yes'].includes(k))paid=(paid??0)+n;else if(['false','0','no'].includes(k))organic=(organic??0)+n;};
- for(const row of body.data||[]){
-   const values=row.values as {value?:unknown}[]|undefined;const value=values?.[values.length-1]?.value;
-   const breakdown=(row.breakdowns as Record<string,unknown>|undefined)?.is_from_ads;
-   if(breakdown!=null)take(breakdown,value);
-   else if(value&&typeof value==='object')for(const [k,v] of Object.entries(value as Record<string,unknown>))take(k,v);
-   const results=(row.total_value as {breakdowns?:{results?:{dimension_values?:unknown[];value?:unknown}[]}[]}|undefined)?.breakdowns?.[0]?.results||[];
-   for(const r of results)take(r.dimension_values?.[0],r.value);
- }
- if(paid!=null&&organic==null)organic=0;if(organic!=null&&paid==null)paid=0;
- return {paid,organic};
-}
-async function facebookViewsSplit(id:string,token:string):Promise<{paid:number|null;organic:number|null}>{
- try{return readViewsSplit(await graph<{data?:Record<string,unknown>[]}>(`${id}/insights`,token,{metric:'post_media_view',breakdown:'is_from_ads',period:'lifetime'}));}
- catch{return {paid:null,organic:null};}
-}
 export async function syncMeta(options?:{token:string;pageIds?:string[]}):Promise<ConnectorResult[]> {
  const token=options?.token||process.env.META_ACCESS_TOKEN?.trim();
  if(!token) return [
@@ -164,17 +105,13 @@ export async function syncMeta(options?:{token:string;pageIds?:string[]}):Promis
    try {pages=await list<Page>('me/accounts',token,{fields:'id,name,access_token',limit:'100'},2);} catch { /* A Page token may not list accounts. */ }
    if(ids.length) pages=ids.map(id=>pages.find(p=>p.id===id)||{id,name:`Page ${id}`});
    if(!pages.length) throw new Error('لم تظهر صفحات Meta. اضبط META_PAGE_IDS وتأكد من صلاحيات الصفحات.');
-   let canReadIgInsights=false;let grantedPermissions:string[]=[];
+   let canReadIgInsights=false;
    try {
      const permissions=await graph<{data:{permission:string;status:string}[]}>('me/permissions',token);
-     grantedPermissions=(permissions.data||[]).filter(item=>item.status==='granted').map(item=>item.permission);
-     canReadIgInsights=grantedPermissions.includes('instagram_manage_insights');
+     canReadIgInsights=permissions.data?.some(item=>item.permission==='instagram_manage_insights'&&item.status==='granted')||false;
    } catch { /* Media and engagement counts can still sync without insights access. */ }
-   // Paid or organic: the ads accounts (ads_read) say which posts ads used and what they delivered.
-   const canReadAds=grantedPermissions.some(item=>['ads_read','ads_management'].includes(item));
-   const ads=canReadAds?await adsByPost(token):{byPost:new Map<string,AdTotals>(),checked:false,error:''};
    const facebook:ObservedPost[]=[];const instagram:ObservedPost[]=[];
-   let facebookMediaViews=0;let facebookUniqueViewers=0;let facebookPaid=0;let instagramPaid=0;
+   let facebookMediaViews=0;let facebookUniqueViewers=0;
    const igErrors:string[]=[];const fbErrors:string[]=[];let fbDetail='';
    const fbAudience:AudienceSnapshot[]=[];const igAudience:AudienceSnapshot[]=[];
    for(const page of pages){
@@ -208,11 +145,7 @@ export async function syncMeta(options?:{token:string;pageIds?:string[]}):Promis
          metrics.engagement=[metrics.likes,metrics.comments,metrics.shares].some(value=>value!=null)
            ? [metrics.likes,metrics.comments,metrics.shares].reduce<number>((sum,value)=>sum+(value??0),0)
            : null;
-         const split=await facebookViewsSplit(id,pageToken);const ad=ads.byPost.get(id);
-         const paid=ad?true:split.paid!=null?split.paid>0:ads.checked?false:null;
-         if(paid)facebookPaid++;
-         const promotion=withAds({...blankPromotion(),paid,source:ad||(ads.checked&&split.paid==null)?'ads':split.paid!=null?'insights':'',organicViews:split.organic,paidViews:split.paid},ad);
-         return {platform:'facebook' as const,accountId:page.id,accountName:page.name,externalId:id,permalink:text(p.permalink_url),title:text(p.message).slice(0,220)||'Facebook post',publishedAt:text(p.created_time),contentType:'post',thumbnail:text(p.full_picture),metrics,promotion};
+         return {platform:'facebook' as const,accountId:page.id,accountName:page.name,externalId:id,permalink:text(p.permalink_url),title:text(p.message).slice(0,220)||'Facebook post',publishedAt:text(p.created_time),contentType:'post',thumbnail:text(p.full_picture),metrics};
        });
        facebook.push(...pagePosts.filter((post)=>post!==undefined));
      }catch(e){fbErrors.push(`${page.name}: ${e instanceof Error?e.message:'تعذّر القراءة'}`);}
@@ -225,11 +158,7 @@ export async function syncMeta(options?:{token:string;pageIds?:string[]}):Promis
        const igId=info.instagram_business_account?.id;
        if(igId&&(await getAccount(accountId('instagram',igId)))?.status==='disconnected')continue;
        if(!igId) {igErrors.push(`${page.name}: لا يوجد Instagram Professional مرتبط.`);continue;}
-       const mediaFields='id,caption,media_type,permalink,timestamp,like_count,comments_count,thumbnail_url,media_url';
-       // boost_ads_list names the ads running on a post now; the field is refused without ads access, so read without it then.
-       let boostChecked=true;let raw:Record<string,unknown>[];
-       try{raw=await list<Record<string,unknown>>(`${igId}/media`,pageToken,{fields:`${mediaFields},boost_ads_list`,limit:'50'},3);}
-       catch{boostChecked=false;raw=await list<Record<string,unknown>>(`${igId}/media`,pageToken,{fields:mediaFields,limit:'50'},3);}
+       const raw=await list<Record<string,unknown>>(`${igId}/media`,pageToken,{fields:'id,caption,media_type,permalink,timestamp,like_count,comments_count,thumbnail_url,media_url',limit:'50'},3);
        const pagePosts=await mapConcurrent(raw,4,async p=>{
          const id=text(p.id);if(!id)return undefined;
          const m=blankMetrics();m.likes=numberOrNull(p.like_count);m.comments=numberOrNull(p.comments_count);
@@ -240,15 +169,7 @@ export async function syncMeta(options?:{token:string;pageIds?:string[]}):Promis
          const extra=canReadIgInsights?await optionalInsights(id,token,['reach','saved','shares','views','total_interactions']):{};
          m.reach=extra.reach??null;m.saves=extra.saved??null;m.shares=extra.shares??null;m.views=extra.views??null;
          m.engagement=extra.total_interactions??null;
-         // Instagram's views, likes and comments count organic activity only; total_views adds the ads (and Facebook).
-         const boosts=boostChecked?((p.boost_ads_list as {data?:unknown[]}|undefined)?.data?.length??0):0;
-         const ad=ads.byPost.get(id);
-         const paid=ad||boosts?true:ads.checked?false:null;
-         let paidViews:number|null=null;
-         if(paid&&canReadIgInsights){const total=(await optionalInsight(id,token,['total_views'])).total_views;if(total!=null&&m.views!=null)paidViews=Math.max(0,total-m.views);}
-         if(paid)instagramPaid++;
-         const promotion=withAds({...blankPromotion(),paid,source:ad||ads.checked?'ads':boosts?'insights':'',organicViews:m.views,paidViews:paid?paidViews:paid===false?0:null},ad);
-         return {platform:'instagram' as const,accountId:igId,accountName:page.name,externalId:id,permalink:text(p.permalink),title:text(p.caption).slice(0,220)||'Instagram post',publishedAt:text(p.timestamp),contentType:text(p.media_type).toLowerCase()||'post',thumbnail:text(p.thumbnail_url)||text(p.media_url),metrics:m,promotion};
+         return {platform:'instagram' as const,accountId:igId,accountName:page.name,externalId:id,permalink:text(p.permalink),title:text(p.caption).slice(0,220)||'Instagram post',publishedAt:text(p.timestamp),contentType:text(p.media_type).toLowerCase()||'post',thumbnail:text(p.thumbnail_url)||text(p.media_url),metrics:m};
        });
        instagram.push(...pagePosts.filter((post)=>post!==undefined));
        let followers:number|null=null;
@@ -257,10 +178,9 @@ export async function syncMeta(options?:{token:string;pageIds?:string[]}):Promis
        igAudience.push({platform:'instagram',accountId:igId,accountName:page.name,followers,demographics});
      }catch(e){const message=e instanceof Error?e.message:'تعذّر القراءة';igErrors.push(`${page.name}: ${message.includes('code 10')?'صلاحية instagram_basic/instagram_manage_insights غير متاحة لهذا التوكن.':message}`);}
    }
-   const adsNote=!canReadAds?'نتائج الإعلانات (الوصول المدفوع والصرف) تحتاج صلاحية ads_read.':ads.error?`حسابات الإعلانات: ${ads.error}`:'';
    return [
-     {platform:'facebook',partial:fbErrors.length>0&&facebook.length>0,status:fbErrors.length&&!facebook.length?'error':'connected',message:fbErrors.join(' ')||`تم جلب ${facebook.length} منشور. مشاهدات المحتوى متاحة لـ ${facebookMediaViews} منشور، والمشاهدون الفريدون لـ ${facebookUniqueViewers} منشور. ${facebookPaid} منشور ممول. ${fbDetail} ${adsNote}`.trim(),posts:facebook,audience:fbAudience},
-     {platform:'instagram',partial:igErrors.length>0&&instagram.length>0,status:igErrors.length&&!instagram.length?'error':'connected',message:igErrors.join(' ')||`تم جلب ${instagram.length} منشور، منهم ${instagramPaid} ممول.${canReadIgInsights?'':' reach/views/saves تحتاج صلاحية instagram_manage_insights.'} ${adsNote}`.trim(),posts:instagram,audience:igAudience}
+     {platform:'facebook',partial:fbErrors.length>0&&facebook.length>0,status:fbErrors.length&&!facebook.length?'error':'connected',message:fbErrors.join(' ')||`تم جلب ${facebook.length} منشور. مشاهدات المحتوى متاحة لـ ${facebookMediaViews} منشور، والمشاهدون الفريدون لـ ${facebookUniqueViewers} منشور. ${fbDetail}`,posts:facebook,audience:fbAudience},
+     {platform:'instagram',partial:igErrors.length>0&&instagram.length>0,status:igErrors.length&&!instagram.length?'error':'connected',message:igErrors.join(' ')||`تم جلب ${instagram.length} منشور.${canReadIgInsights?'':' reach/views/saves تحتاج صلاحية instagram_manage_insights.'}`,posts:instagram,audience:igAudience}
    ];
  }catch(e){const message=e instanceof Error?e.message:'تعذّر الاتصال بـMeta';return [{platform:'facebook',status:'error',message,posts:[]},{platform:'instagram',status:'error',message,posts:[]}];}
 }

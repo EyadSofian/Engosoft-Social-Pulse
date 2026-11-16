@@ -54,8 +54,6 @@ export function normalize(raw: ApiDashboard): Dashboard {
       weekday: local.weekday,
       measured,
       interactions: measured ? interactions : 0,
-      reachKind: post.promotion?.paid ? 'paid' : 'organic',
-      reachKindBy: post.promotion?.source === 'manual' ? 'manual' : post.promotion?.paid == null ? 'unknown' : 'platform',
     };
   });
   const plans: Plan[] = raw.plans.map((plan) => {
