@@ -1,10 +1,10 @@
 import type { LucideIcon } from 'lucide-react';
-import { CalendarDays, ChartSpline, GraduationCap, Layers, LayoutDashboard, Library, Send, Settings, Wallet, WandSparkles } from 'lucide-react';
+import { CalendarDays, ChartSpline, GraduationCap, Layers, LayoutDashboard, Library, Radar, Send, Settings, Wallet, WandSparkles } from 'lucide-react';
 import type { Text } from '../domain/shared';
 import type { User } from '../domain/users';
 import { hasPermission } from '../features/workspace/permissions';
 
-export type NavId = 'overview' | 'home' | 'content' | 'calendar' | 'publish' | 'analytics' | 'courses' | 'library' | 'usage' | 'settings';
+export type NavId = 'overview' | 'home' | 'content' | 'calendar' | 'publish' | 'analytics' | 'radar' | 'courses' | 'library' | 'usage' | 'settings';
 
 export interface NavItem {
   id: NavId;
@@ -41,6 +41,7 @@ export const NAV: NavGroup[] = [
     label: { en: 'Results', ar: 'النتائج' },
     items: [
       { id: 'analytics', path: '/analytics', label: { en: 'Analytics', ar: 'التحليلات' }, icon: ChartSpline, visible: (user) => hasPermission(user, 'analytics.view') },
+      { id: 'radar', path: '/competitors', label: { en: 'Competitors', ar: 'متابعة المنافسين' }, icon: Radar, visible: (user) => hasPermission(user, 'analytics.view') },
     ],
   },
   {

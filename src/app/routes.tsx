@@ -6,6 +6,7 @@ import { ContentBoardPage } from '../pages/content/ContentBoardPage';
 import { CreationHomePage } from '../pages/home/CreationHomePage';
 import { OverviewPage } from '../pages/overview/OverviewPage';
 import { PublishPage } from '../pages/publish/PublishPage';
+import { RadarPage } from '../pages/radar/RadarPage';
 import { TemplatePage } from '../pages/library/TemplatePage';
 import { UsagePage } from '../pages/usage/UsagePage';
 import { LibraryPage } from '../pages/library/LibraryPage';
@@ -33,6 +34,8 @@ export const ROUTES: RouteDef[] = [
   // Older links to the separate tracking pages open Analytics.
   { pattern: '/tracking', nav: 'analytics', render: () => <AnalyticsHub /> },
   { pattern: '/performance', nav: 'analytics', render: () => <AnalyticsHub /> },
+  { pattern: '/competitors', nav: 'radar', render: () => <RadarPage /> },
+  { pattern: '/radar', nav: 'radar', render: () => <RadarPage /> },
   { pattern: '/courses', nav: 'courses', render: () => <CoursesPage /> },
   { pattern: '/library', nav: 'library', render: () => <LibraryPage /> },
   { pattern: '/library/templates/:id', nav: 'library', render: ({ id }) => <TemplatePage key={id} id={id} /> },

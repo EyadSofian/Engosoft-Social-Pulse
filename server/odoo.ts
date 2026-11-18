@@ -183,3 +183,65 @@ export async function readOdooCatalog(env: NodeJS.ProcessEnv = process.env): Pro
     return { status: 'error', courses: [], events: [], message: error instanceof Error ? error.message : String(error) };
   }
 }
+
+/* ── Agenda: today's lectures and the coming events ─────────────────── */
+
+export interface AgendaLecture { id: string; title: string; course: string; startsAt: string; endsAt: string; hours: number | null }
+export interface AgendaEvent extends ScheduleEntry { type: string; webinar: boolean }
+export interface OdooAgenda { status: 'connected' | 'needs_setup' | 'error'; lectures: AgendaLecture[]; events: AgendaEvent[]; message?: string }
+
+const odooIso = (value: unknown) => {
+  const v = text(value);
+  return v ? (v.includes('T') ? v : `${v.replace(' ', 'T')}Z`) : '';
+};
+const WEBINAR_TEXT = /webinar|seminar|ويبينار|ويبنار|ندوة|free (lecture|session)|محاضرة مجانية/i;
+/** Lecture rows the LMS adds for course material have no session of their own. */
+export const isLecture = (name: string) => Boolean(name.trim()) && !/^material$/i.test(name.trim());
+/** "(E05743) PMP Course Online - 5743" → "PMP Course Online". */
+export const agendaCourseName = (eventName: string) => runCourseName(eventName.replace(/^\s*\(E\d+\)\s*/, '').replace(/\s+/g, ' ').trim());
+
+let agendaCache: { at: number; value: OdooAgenda } | null = null;
+
+/**
+ * The lectures (event.track sessions) from now to the end of tomorrow, Riyadh time, and the events (course runs,
+ * webinars, seminars) of the next 30 days. Read-only; cached for 15 minutes.
+ */
+export async function readOdooAgenda(env: NodeJS.ProcessEnv = process.env, now = new Date()): Promise<OdooAgenda> {
+  if (!env.ODOO_URL?.trim() || !env.ODOO_API_KEY?.trim()) return { status: 'needs_setup', lectures: [], events: [], message: 'أضف ODOO_URL و ODOO_API_KEY على الخادم.' };
+  if (env.ODOO_API_MODE === 'jsonrpc' && (!env.ODOO_DATABASE?.trim() || !env.ODOO_USERNAME?.trim())) return { status: 'needs_setup', lectures: [], events: [], message: 'الربط مع Odoo JSON-RPC يحتاج ODOO_DATABASE و ODOO_USERNAME.' };
+  if (agendaCache && now.getTime() - agendaCache.at < 15 * 60_000) return agendaCache.value;
+  const base = env.ODOO_URL.trim().replace(/\/+$/, '');
+  const odooTime = (d: Date) => d.toISOString().slice(0, 19).replace('T', ' ');
+  // Riyadh is UTC+3 all year: the agenda runs from the start of today there to the end of tomorrow.
+  const riyadhMidnight = new Date(Date.UTC(now.getUTCFullYear(), now.getUTCMonth(), now.getUTCDate() + (now.getUTCHours() >= 21 ? 1 : 0)) - 3 * 3600000);
+  const errors: string[] = [];
+  const lectures: AgendaLecture[] = [];
+  const events: AgendaEvent[] = [];
+  try {
+    const rows = await odooSearchRead(env, 'event.track', [['date', '>=', odooTime(riyadhMidnight)], ['date', '<', odooTime(new Date(riyadhMidnight.getTime() + 2 * 86400000))]],
+      ['name', 'date', 'date_end', 'duration', 'event_id'], { limit: 300, order: 'date asc' });
+    for (const r of rows) {
+      const name = text(r.name);
+      if (!isLecture(name)) continue;
+      const eventName = Array.isArray(r.event_id) ? text(r.event_id[1]) : '';
+      const hours = typeof r.duration === 'number' && r.duration > 0 ? r.duration : null;
+      lectures.push({ id: `event.track:${r.id}`, title: name.replace(/\s+/g, ' ').trim(), course: agendaCourseName(eventName) || name, startsAt: odooIso(r.date), endsAt: odooIso(r.date_end) || odooIso(r.date), hours });
+    }
+  } catch (error) { errors.push(`event.track: ${error instanceof Error ? error.message : String(error)}`); }
+  try {
+    const rows = await odooSearchRead(env, 'event.event', [['date_begin', '>=', odooTime(riyadhMidnight)], ['date_begin', '<=', odooTime(new Date(now.getTime() + 30 * 86400000))]],
+      ['name', 'date_begin', 'date_end', 'event_type_id', 'website_published', 'website_url'], { limit: 300, order: 'date_begin asc' });
+    for (const r of rows) {
+      const title = text(r.name).replace(/\s+/g, ' ');
+      if (!title) continue;
+      const type = Array.isArray(r.event_type_id) ? text(r.event_type_id[1]) : '';
+      const url = r.website_published === true ? text(r.website_url) : '';
+      events.push({ id: `event.event:${r.id}`, title, startsAt: odooIso(r.date_begin), endsAt: odooIso(r.date_end) || odooIso(r.date_begin), source: 'event.event', type, webinar: WEBINAR_TEXT.test(`${title} ${type}`),
+        ...(url ? { registrationUrl: url.startsWith('/') ? `${base}${url}` : url } : {}), ...(typeof r.website_published === 'boolean' ? { websitePublished: r.website_published } : {}) });
+    }
+  } catch (error) { errors.push(`event.event: ${error instanceof Error ? error.message : String(error)}`); }
+  if (errors.length === 2) return { status: 'error', lectures: [], events: [], message: errors.join('; ') };
+  const value: OdooAgenda = { status: 'connected', lectures, events, ...(errors.length ? { message: errors.join('; ') } : {}) };
+  agendaCache = { at: now.getTime(), value };
+  return value;
+}

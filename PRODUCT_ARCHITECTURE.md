@@ -48,6 +48,7 @@ The sidebar has four groups. Items are hidden when the current role cannot use t
 | | Calendar | `/calendar` (`?view=live` for spreadsheet plans: import, export, alerts) | Everyone; scheduling with `content.schedule` |
 | | Publishing | `/publish` | Roles with `content.publish` or `content.schedule` |
 | Results | Analytics | `/analytics?section=platforms\|posts\|insights\|team` (old `/tracking`, `/performance` open the matching section) | Roles with `analytics.view` |
+| | Competitors (متابعة المنافسين) | `/competitors?days=7\|30\|60` (old `/radar`) | Roles with `analytics.view`; "Run now" with `connections.manage` |
 | Resources | Library | `/library`, `/library/templates/:id` | Everyone |
 | | Courses | `/courses` | Edit and approve with `templates.manage`; read-only with `content.create` |
 | System | AI usage | `/usage` | Roles with `credits.view` or `credits.view_all` |
@@ -176,3 +177,16 @@ Operational KPIs (posts completed, tasks completed, on-time delivery, reviews co
 - A LinkedIn connector, and lead tracking
 
 See [MIGRATION_PLAN.md](MIGRATION_PLAN.md) for the order.
+
+## Competitors (متابعة المنافسين)
+
+`server/competitor-radar/` watches Engineering Tracks, Bakkah and ILTC on Facebook, Instagram, LinkedIn and TikTok (`competitors.ts`).
+
+1. **Pull** (`run.ts`, `apify.ts`): one Apify actor run per account, each with a cost cap. The first pull of an account goes back 60 days; after that a daily pull covers 4 days and a weekly pull covers 21 days plus Facebook and Instagram follower counts. The month's Apify spend stops at `RADAR_MONTHLY_USD` (default $4.5). Only the production server (Postgres) runs the 07:00 Riyadh daily job on its own.
+2. **Store** (`store.ts`, `normalize.ts`): `radar_posts` keeps each post's latest public counts. A count a platform did not return stays null. `radar_followers` keeps one row per day.
+3. **Pictures**: a small JPEG of each post is copied to `media/radar/`, because platform image links expire. TikTok covers come as HEIC and are skipped.
+4. **Numbers by code** (`metrics.ts`): interactions = reactions + comments + shares. A post's level compares it with the median of the same account on the same platform (breakout ≥ 3×, high ≥ 1.5×, low ≤ 0.5× once the post is 2 days old).
+5. **AI reading** (`analyze.ts`): each new post gets a goal, content type, idea, hook, design, dialect, why and lesson. The level comes from code. Clear dialect words override the model's label, and a weak post is never offered as one to copy.
+6. **Odoo agenda** (`readOdooAgenda` in `server/odoo.ts`): today's and tomorrow's lectures (`event.track`, without the LMS "Material" rows) and the events of the next 30 days (`event.event` with their type: course, webinar, seminar). Cached for 15 minutes and shown on the page.
+7. **Brief** (`brief.ts`): code writes the alerts it can prove (a breakout post, no webinar booked in Odoo, a silent account). The AI writes the insights and post ideas from the computed numbers and the Odoo schedule. Any insight or idea without real post evidence is dropped, and so is any course Odoo does not have.
+

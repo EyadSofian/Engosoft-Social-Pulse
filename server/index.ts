@@ -46,6 +46,8 @@ import { runStorageMaintenance } from './storage-retention.js';
 import { registerGoogleCalendarRoutes } from './google/routes.js';
 import { registerCalendarPostRoutes } from './calendar-posts.js';
 import { syncGoogleCalendars } from './google/calendar-sync.js';
+import { registerRadarRoutes } from './competitor-radar/routes.js';
+import { radarTick } from './competitor-radar/run.js';
 
 const app=express();const port=Number(process.env.PORT)||4100;const host=process.env.HOST||'127.0.0.1';
 app.disable('x-powered-by');app.set('trust proxy',1);app.use('/api/ai',express.json({limit:'18mb'}));app.use('/api/studio',express.json({limit:'18mb'}));app.use('/api/svg-templates',express.json({limit:'16mb'}));app.use('/api/uploads',express.json({limit:'16mb'}));app.use('/api/brand-templates/render',express.json({limit:'24mb'}));app.use(express.json({limit:'1mb'}));
@@ -73,6 +75,7 @@ registerReferenceDesignRoutes(app);
 registerBrandTemplateRoutes(app);
 registerCourseProfileRoutes(app);
 registerPostThumbnailRoutes(app);
+registerRadarRoutes(app);
 app.get('/api/odoo/schedule',async(_req,res)=>{
  const result=await readOdooSchedule();
  res.setHeader('Cache-Control','no-store');
@@ -255,4 +258,8 @@ setInterval(()=>{void runStorageMaintenance().catch(()=>console.error('Storage m
 // The course library follows engosoft.com: once shortly after start, then daily.
 const courseSync=()=>{void syncFromWebsite().then((r)=>console.log(`Course library synced from the website: ${r.added} added, ${r.updated} updated, ${r.hidden} hidden, ${r.total} in the library.`)).catch((e)=>console.error('Course library sync from the website failed:',e instanceof Error?e.message:e));};
 setTimeout(courseSync,2*60_000).unref();
+// The competitor radar runs once a day after 07:00 Riyadh; the check is cheap and repeats every 10 minutes.
+const radar=()=>{void radarTick().catch((e)=>console.error('Competitor radar failed:',e instanceof Error?e.message:e));};
+setTimeout(radar,3*60_000).unref();
+setInterval(radar,10*60_000).unref();
 setInterval(courseSync,24*3600_000).unref();
