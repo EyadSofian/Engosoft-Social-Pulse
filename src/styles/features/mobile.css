@@ -1,0 +1,45 @@
+/*
+ * Phone fixes for pages first laid out for the desktop. Last in the cascade, phone widths only.
+ */
+
+/* The installed iPhone app: no text-size jumps on rotate, no grey flash on tap, no bounce past the edges. */
+html { -webkit-text-size-adjust: 100%; text-size-adjust: 100%; }
+@media (display-mode: standalone) {
+  html, body { overscroll-behavior-y: none; }
+  * { -webkit-tap-highlight-color: transparent; }
+}
+
+/* The generated password reads left to right, so the regenerate button sits on the left in Arabic. */
+[dir='rtl'] .settings-add__password input { padding-inline-end: 12px; padding-left: 34px; }
+
+@media (max-width: 640px) {
+  /* iOS zooms into any field under 16px when it gets focus. */
+  input:not([type='checkbox']):not([type='radio']):not([type='range']), select, textarea { font-size: 16px; }
+
+  /* Where posts stand: all five steps on screen as a compact grid, not a strip cut at the edge. */
+  .journey { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 8px; overflow: visible; padding: 0; scroll-snap-type: none; }
+  .journey__stop { flex: initial; min-width: 0; }
+  .journey__btn { padding: 10px; border-radius: 12px; }
+  .journey__top { flex-wrap: wrap; gap: 6px; }
+  .journey__icon { width: 24px; height: 24px; border-radius: 8px; }
+  .journey__top b { font-size: 18px; }
+  .journey__turn { margin-inline-start: 0; font-size: 10px; }
+  .journey__label { font-size: 12px; line-height: 1.4; }
+  .journey__who, .journey svg.journey__arrow { display: none; }
+
+  /* Team: one card per person instead of a six-column table. */
+  .settings-users { overflow: visible; padding: 0; background: none; border: 0; box-shadow: none; }
+  .settings-users table, .settings-users tbody { display: block; }
+  .settings-users thead { display: none; }
+  .settings-users tr { display: grid; grid-template-columns: minmax(0, 1fr) minmax(0, 1fr); gap: 8px 10px; margin-block-end: 10px; padding: 12px; border: 1px solid var(--border); border-radius: 14px; background: var(--surface); }
+  .settings-users td { display: block; padding: 0; border: 0; min-width: 0; }
+  .settings-users td:first-child { grid-column: 1 / -1; }
+  .settings-users td select { width: 100%; }
+  .settings-users td:nth-child(4), .settings-users td:nth-child(5) { color: var(--text-muted); font-size: 12px; }
+  .settings-users td:nth-child(5)::before { content: 'آخر دخول: '; }
+  [dir='ltr'] .settings-users td:nth-child(5)::before { content: 'Last sign-in: '; }
+  .settings-users__actions { grid-column: 1 / -1; flex-wrap: wrap; padding-block-start: 8px !important; border-block-start: 1px solid var(--border) !important; }
+
+  /* Calendar: the week is a list of days on phones (the page picks it), so the "posts of a day" switch goes. */
+  .pc-toolbar__group .pc-seg:nth-child(2) { display: none; }
+}

@@ -77,6 +77,7 @@ export const notificationCategoryLabel: Record<NotificationCategory, Text> = {
   mention: L('Mention', 'إشارة'),
   credit_warning: L('Credit warning', 'تنبيه رصيد'),
   integration_problem: L('Integration problem', 'مشكلة ربط'),
+  performance: L('Performance', 'الأداء'),
 };
 
 export const eventKindLabel: Record<EventKind, Text> = {

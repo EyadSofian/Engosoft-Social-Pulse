@@ -1,7 +1,7 @@
 import { useEffect } from 'react';
 import { ProductTour } from './ProductTour';
 import { AnimatePresence, motion } from 'motion/react';
-import { CalendarDays, House, Layers, LayoutDashboard, Lock, MapPinOff, Send, WandSparkles } from 'lucide-react';
+import { BellRing, CalendarDays, House, Layers, LayoutDashboard, Lock, MapPinOff, Menu as MenuIcon, WandSparkles } from 'lucide-react';
 import { Link, useRouter } from '../app/router/router';
 import { resolveRoute } from '../app/routes';
 import { EmptyState } from '../components/feedback/States';
@@ -14,7 +14,8 @@ import { CommandPalette } from './CommandPalette';
 import { Header } from './Header';
 import { activeNav, navItem, type NavId } from './nav';
 import { NotificationCenter } from './NotificationCenter';
-import { NotificationPopups } from './serverNotifications';
+import { NotificationPopups, useServerNotifications } from './serverNotifications';
+import { registerServiceWorker, resyncPush } from '../lib/push';
 import { useShell, usePageMeta } from './ShellContext';
 import { Sidebar } from './Sidebar';
 
@@ -36,6 +37,8 @@ export function AppShell() {
   useEffect(() => {
     if (!compact) setMobileNavOpen(false);
   }, [compact, setMobileNavOpen]);
+
+  useAppNotifications();
 
   return (
     <div className="shell" data-collapsed={collapsed || undefined}>
@@ -101,33 +104,65 @@ function MobileNav({ onClose }: { onClose: () => void }) {
   );
 }
 
-const BOTTOM: { id: NavId; icon: typeof House }[] = [
-  { id: 'overview', icon: LayoutDashboard },
-  { id: 'home', icon: WandSparkles },
-  { id: 'content', icon: Layers },
-  { id: 'calendar', icon: CalendarDays },
-  { id: 'publish', icon: Send },
-];
+/**
+ * The installed app: the service worker shows phone notifications, and tapping one while the app is open moves to
+ * its page here instead of reloading. The device's subscription is re-sent after each sign-in.
+ */
+function useAppNotifications() {
+  const { navigate } = useRouter();
+  useEffect(() => {
+    void registerServiceWorker().then(() => resyncPush());
+    if (!('serviceWorker' in navigator)) return;
+    const onMessage = (event: MessageEvent) => {
+      const data = event.data as { type?: string; url?: string } | null;
+      if (data?.type !== 'open' || !data.url) return;
+      const url = new URL(data.url, window.location.origin);
+      if (url.origin === window.location.origin) navigate(`${url.pathname}${url.search}`);
+    };
+    navigator.serviceWorker.addEventListener('message', onMessage);
+    return () => navigator.serviceWorker.removeEventListener('message', onMessage);
+  }, [navigate]);
+}
 
-/** Phones: the five daily destinations stay one tap away; everything else is in the menu. */
+/**
+ * Phones: four daily destinations and «المزيد» for everything else. People who follow performance get its summary
+ * in the bar (with a dot for unread notifications); the others get the calendar.
+ */
 function BottomNav() {
   const { path } = useRouter();
   const { me } = useWorkspace();
   const { tx, t } = useI18n();
+  const { setMobileNavOpen } = useShell();
+  const { items } = useServerNotifications();
   const active = activeNav(path);
+  const performance = navItem('insights').visible(me);
+  const unreadInsights = items.some((item) => item.kind.startsWith('insight_') && !item.readAt);
+  const ids: { id: NavId; icon: typeof House }[] = [
+    { id: 'overview', icon: LayoutDashboard },
+    { id: 'content', icon: Layers },
+    { id: 'home', icon: WandSparkles },
+    performance ? { id: 'insights', icon: BellRing } : { id: 'calendar', icon: CalendarDays },
+  ];
   return (
     <nav className="shell-bottom-nav" aria-label={t('Quick navigation', 'تنقل سريع')}>
-      {BOTTOM.filter(({ id }) => navItem(id).visible(me)).map(({ id, icon: Icon }) => {
+      {ids.filter(({ id }) => navItem(id).visible(me)).map(({ id, icon: Icon }) => {
         const item = navItem(id);
         return (
           <Link key={id} to={item.path} className="shell-bottom-nav__item" data-tour={`nav-${id}`} data-create={id === 'home' || undefined} aria-current={active === id ? 'page' : undefined}>
             <span className="shell-bottom-nav__icon">
               <Icon size={19} aria-hidden />
+              {id === 'insights' && unreadInsights && <span className="shell-bottom-nav__dot" aria-label={t('New', 'جديد')} />}
             </span>
-            <span>{tx(item.label)}</span>
+            <span>{id === 'insights' ? t('Performance', 'الأداء') : tx(item.label)}</span>
           </Link>
         );
       })}
+      <button type="button" className="shell-bottom-nav__item" onClick={() => setMobileNavOpen(true)}>
+        <span className="shell-bottom-nav__icon">
+          <MenuIcon size={19} aria-hidden />
+        </span>
+        <span>{t('More', 'المزيد')}</span>
+      </button>
     </nav>
   );
 }

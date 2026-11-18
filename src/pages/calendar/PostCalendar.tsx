@@ -18,6 +18,7 @@ import { calendarStatusLabel, duplicateCalendarPost, pauseCalendarPost, type Cal
 import { platformOf, usePublishingBoard } from '../../features/publishing/PublishDialog';
 import { useClock } from '../../features/workspace/hooks';
 import { useI18n } from '../../i18n/I18nProvider';
+import { useMediaQuery } from '../../hooks/ui';
 import { api, errorMessage } from '../../lib/api';
 import { monthCells, weekCells, type DayCell } from '../../lib/calendar';
 import { businessZone, parseTimestamp } from '../../lib/format';
@@ -86,7 +87,9 @@ export function PostCalendar({ board, nativeAllowed, onChanged }: { board: Calen
   }, []);
 
   const view: View = query.get('mode') === 'month' ? 'month' : query.get('mode') === 'list' ? 'list' : 'week';
-  const layout: Layout = query.get('layout') === 'row' ? 'row' : query.get('layout') === 'stack' ? 'stack' : storedLayout;
+  const phone = useMediaQuery('(max-width: 640px)');
+  // A seven-column week does not fit a phone: there the week is always a list of days.
+  const layout: Layout = phone ? 'row' : query.get('layout') === 'row' ? 'row' : query.get('layout') === 'stack' ? 'stack' : storedLayout;
   const setLayout = (next: Layout) => { setStoredLayout(next); try { localStorage.setItem(LAYOUT_KEY, next); } catch { /* a convenience only */ } setQuery({ layout: next }); };
   const filter = FILTERS.find((f) => f.id === query.get('s')) ?? FILTERS[0];
   const platforms = new Set((query.get('p') ?? '').split(',').filter(Boolean) as Channel[]);

@@ -57,7 +57,8 @@ export type NotificationCategory =
   | 'deadline'
   | 'mention'
   | 'credit_warning'
-  | 'integration_problem';
+  | 'integration_problem'
+  | 'performance';
 
 export interface AppNotification {
   id: Id;

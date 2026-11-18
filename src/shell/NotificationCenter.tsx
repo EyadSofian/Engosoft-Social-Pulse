@@ -1,5 +1,5 @@
 import { useMemo, useState } from 'react';
-import { AtSign, BellOff, CalendarClock, CircleAlert, CircleCheck, Coins, FilePenLine, Hourglass, ListTodo, PlugZap, SearchCheck } from 'lucide-react';
+import { AtSign, BellOff, CalendarClock, ChartSpline, CircleAlert, CircleCheck, Coins, FilePenLine, Hourglass, ListTodo, PlugZap, SearchCheck } from 'lucide-react';
 import type { LucideIcon } from 'lucide-react';
 import { useRouter } from '../app/router/router';
 import { useLiveData } from '../app/providers/LiveDataProvider';
@@ -20,6 +20,7 @@ import { errorMessage } from '../lib/api';
 import { parseTimestamp } from '../lib/format';
 import { markServerRead, useServerNotifications } from './serverNotifications';
 import { useShell } from './ShellContext';
+import { PushCard } from '../features/notifications/PushCard';
 
 const SERVER_CATEGORY: Record<string, NotificationCategory> = {
   content_created: 'task_assigned',
@@ -30,6 +31,11 @@ const SERVER_CATEGORY: Record<string, NotificationCategory> = {
   content_scheduled: 'publishing_reminder',
   content_published: 'approved',
   test: 'mention',
+  insight_daily: 'performance',
+  insight_best: 'performance',
+  insight_alert: 'performance',
+  insight_tip: 'performance',
+  insight_idea: 'performance',
 };
 
 const ICON: Record<NotificationCategory, LucideIcon> = {
@@ -43,6 +49,7 @@ const ICON: Record<NotificationCategory, LucideIcon> = {
   mention: AtSign,
   credit_warning: Coins,
   integration_problem: PlugZap,
+  performance: ChartSpline,
 };
 
 /** One row in the center: related notifications collapse into a group with a count. */
@@ -203,6 +210,7 @@ export function NotificationCenter() {
         </div>
       }
     >
+      <PushCard compact />
       {visible.length === 0 ? (
         <EmptyState
           icon={<BellOff size={20} />}

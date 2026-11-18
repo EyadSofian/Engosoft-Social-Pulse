@@ -33,6 +33,8 @@ import { db, initDb } from './db.js';
 import { mediaDir } from './paths.js';
 import { registerUsageRoutes, requireAiBudget } from './usage.js';
 import { registerNotifyRoutes } from './notify.js';
+import { registerPushRoutes } from './push/index.js';
+import { insightsTick, registerInsightRoutes } from './insights/index.js';
 import { registerSvgTemplateRoutes } from './svg-templates.js';
 import { campaignIdentity, registerCampaignRoutes } from './campaigns.js';
 import { registerScheduleRoutes } from './course-schedule.js';
@@ -70,6 +72,8 @@ registerCaptionRoutes(app);
 registerContentKitRoutes(app);
 registerUsageRoutes(app);
 registerNotifyRoutes(app);
+registerPushRoutes(app);
+registerInsightRoutes(app);
 registerSvgTemplateRoutes(app);
 registerReferenceDesignRoutes(app);
 registerBrandTemplateRoutes(app);
@@ -263,3 +267,7 @@ const radar=()=>{void radarTick().catch((e)=>console.error('Competitor radar fai
 setTimeout(radar,3*60_000).unref();
 setInterval(radar,10*60_000).unref();
 setInterval(courseSync,24*3600_000).unref();
+// Performance notifications (daily summary, best post, alerts, tips, ideas): each is sent once; checked every 10 minutes.
+const insights=()=>{void insightsTick().catch((e)=>console.error('Performance notifications failed:',e instanceof Error?e.message:e));};
+setTimeout(insights,4*60_000).unref();
+setInterval(insights,10*60_000).unref();

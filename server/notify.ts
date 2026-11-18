@@ -11,6 +11,7 @@ import type { ContentStatus } from '../src/domain/content.js';
 import { getUser, listUsers, requirePermission, requireUser, userCan, type AuthUser } from './auth.js';
 import { getSetting, setSetting } from './settings.js';
 import { db, defineSchema } from './db.js';
+import { pushToUsers } from './push/index.js';
 
 defineSchema(`
 CREATE TABLE IF NOT EXISTS notifications (
@@ -53,9 +54,11 @@ async function sendEmail(to: string[], subject: string, text: string, link: stri
   return { sent: true };
 }
 
-async function notifyUsers(userIds: string[], kind: string, title: string, body: string, link: string) {
+/** In-app notification for each person, and the same message on the phones of those who turned it on. */
+export async function notifyUsers(userIds: string[], kind: string, title: string, body: string, link: string, push: { image?: string; tag?: string } | false = {}) {
   const now = new Date().toISOString();
   for (const userId of new Set(userIds)) await db.run('INSERT INTO notifications (id,user_id,kind,title,body,link,created_at) VALUES (?,?,?,?,?,?,?)', [randomUUID(), userId, kind, title, body, link, now]);
+  if (push) void pushToUsers(userIds, kind, { title, body, url: link, ...push });
 }
 
 /** A direct notification to one person (e.g. their design finished while they were on another page). */
