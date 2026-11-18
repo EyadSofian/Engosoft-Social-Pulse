@@ -88,11 +88,13 @@ test('the brief keeps only evidence that names real posts and courses that Odoo 
       { title: 'فكرة', idea: 'قصة نجاح', platform: 'tiktok', format: 'reel', why: 'لأن', evidence: ['a'], course: 'PMP Course Online - 5874', suggestedDate: '2026-12-01' },
       { title: 'مخترعة', idea: 'x', platform: 'tiktok', format: 'reel', why: 'y', evidence: ['made-up'], course: '', suggestedDate: '' },
       { title: 'كورس غلط', idea: 'x', platform: 'linkedin', format: 'image', why: 'y', evidence: ['a'], course: 'Invented course', suggestedDate: 'next week' },
+      { title: 'تاريخ فات', idea: 'x', platform: 'facebook', format: 'image', why: 'y', evidence: ['a'], course: '', suggestedDate: '2026-11-17' },
     ],
-  }, new Set(['a']), new Set(['PMP Course Online - 5874']));
+  }, new Set(['a']), new Set(['PMP Course Online - 5874']), '2026-11-18');
   assert.equal(clean.headline, 'عنوان');
   assert.deepEqual(clean.insights, [{ text: 'ملاحظة', evidence: ['a'] }]);
-  assert.equal(clean.ideas.length, 2);
+  assert.equal(clean.ideas.length, 3);
+  assert.equal(clean.ideas[2].suggestedDate, '', 'a date already past is dropped');
   assert.equal(clean.ideas[0].course, 'PMP Course Online - 5874');
   assert.equal(clean.ideas[1].course, '');
   assert.equal(clean.ideas[1].suggestedDate, '');

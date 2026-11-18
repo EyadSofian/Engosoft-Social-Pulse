@@ -28,3 +28,9 @@
 .template-card p { margin: 4px 0; color: var(--text-muted); font-size: 12px; line-height: 1.6; display: -webkit-box; -webkit-line-clamp: 3; -webkit-box-orient: vertical; overflow: hidden; }
 .template-card small { color: var(--text-subtle); font-size: 11px; }
 .template-card__actions { display: flex; justify-content: space-between; align-items: center; }
+
+/* An idea handed from Competitors or Odoo: shown above the templates until one is picked. */
+.handed-idea { display: flex; align-items: flex-start; justify-content: space-between; gap: 16px; padding: 16px 20px; border: 1px solid var(--border-strong); border-inline-start: 3px solid var(--brand); border-radius: var(--radius-lg); background: var(--surface); }
+.handed-idea__text { display: grid; gap: 4px; min-width: 0; }
+.handed-idea__text p { margin: 0; line-height: 1.7; white-space: pre-line; }
+.handed-idea__text small { color: var(--text-subtle); }

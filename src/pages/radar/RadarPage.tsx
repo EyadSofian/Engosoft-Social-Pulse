@@ -1,16 +1,17 @@
 import { useCallback, useEffect, useMemo, useState } from 'react';
-import { CalendarDays, ChevronDown, ExternalLink, Lightbulb, Play, RefreshCw, Users, WandSparkles } from 'lucide-react';
-import { useQueryState } from '../../app/router/router';
+import { CalendarDays, ExternalLink, Image as ImageIcon, LayoutTemplate, Lightbulb, Play, RefreshCw, Trophy, Users } from 'lucide-react';
+import { useQueryState, useRouter } from '../../app/router/router';
 import { ChannelIcon } from '../../components/data-display/ChannelIcon';
 import { EmptyState, SkeletonRows } from '../../components/feedback/States';
 import { FilterSelect } from '../../components/forms/Field';
 import { Dialog } from '../../components/overlay/Overlay';
 import { Badge } from '../../components/ui/Badge';
 import { Button } from '../../components/ui/Button';
-import { Card, CardBody, CardHeader } from '../../components/ui/Card';
-import { Segmented } from '../../components/ui/Tabs';
+import { Card, CardBody } from '../../components/ui/Card';
+import { Segmented, Tabs } from '../../components/ui/Tabs';
 import { useAuth } from '../../features/auth/AuthProvider';
-import { useCreateContent } from '../../features/content/CreateContent';
+import { writeTemplateIdea } from '../../features/content/templateIdea';
+import type { Channel } from '../../domain/shared';
 import { useI18n } from '../../i18n/I18nProvider';
 import { api, errorMessage } from '../../lib/api';
 import { PageHeader } from '../../shell/Header';
@@ -22,19 +23,30 @@ import {
 
 const PERIODS = ['7', '30', '60'] as const;
 type PeriodValue = (typeof PERIODS)[number];
+const VIEWS = ['ideas', 'odoo', 'compare', 'posts'] as const;
+type View = (typeof VIEWS)[number];
 const RIYADH_TIME = new Intl.DateTimeFormat('ar-EG-u-nu-latn', { hour: 'numeric', minute: '2-digit', timeZone: 'Asia/Riyadh' });
 const RIYADH_DAY = new Intl.DateTimeFormat('en-CA', { timeZone: 'Asia/Riyadh' });
 
+/** Opens Create on the ready templates with this idea written; the picked template makes the design and copy. */
+function useMakeFromTemplate() {
+  const { navigate } = useRouter();
+  return useCallback((idea: string, channels?: Channel[]) => {
+    writeTemplateIdea({ idea, channels });
+    navigate(`/?idea=${Date.now()}`);
+  }, [navigate]);
+}
+
 /**
  * Competitors: every morning the server reads Engineering Tracks, Bakkah and ILTC and writes a short brief.
- * The page reads top to bottom: today's summary, ideas for us beside today's lectures and coming Odoo events,
- * each competitor at a glance, their best posts, then every post on demand.
+ * A dark summary band on top, then four tabs: ideas for us, Odoo lectures and events, the comparison and the posts.
  */
 export function RadarPage() {
   const { t, relative } = useI18n();
   const { can } = useAuth();
   const [query, setQuery] = useQueryState();
   const days = (PERIODS as readonly string[]).includes(query.get('days') ?? '') ? (query.get('days') as PeriodValue) : '30';
+  const view = (VIEWS as readonly string[]).includes(query.get('view') ?? '') ? (query.get('view') as View) : 'ideas';
   const [data, setData] = useState<RadarData | null>(null);
   const [error, setError] = useState('');
   const [starting, setStarting] = useState(false);
@@ -66,12 +78,21 @@ export function RadarPage() {
   const lastRun = data?.runs.find((r) => r.status !== 'running');
   const open = openId ? byId.get(openId) ?? null : null;
   const runNote = lastRun?.message.replace('[weekly]', '').trim();
+  const ideas = data?.brief?.brief.ideas ?? [];
+  const lectures = data?.agenda.lectures.length ?? 0;
 
   return (
     <div className="u-stack cw">
       <PageHeader
         title={t('Competitors', 'متابعة المنافسين')}
         description={t('Engineering Tracks, Bakkah and ILTC, read every morning, with post ideas for us.', 'بنتابع إنجنيرنج تراكس وبكة والتعليم المتكامل كل يوم الصبح، ونطلع منهم بأفكار بوستات لينا.')}
+        meta={data ? (
+          <span title={runNote || undefined}>
+            {lastRun ? t(`Updated ${relative(lastRun.finishedAt || lastRun.startedAt)}`, `اتحدّث ${relative(lastRun.finishedAt || lastRun.startedAt)}`) : t('Not updated yet', 'لسه ما اتحدّثش')}
+            {can('connections.manage') && <> · {t(`this month $${data.spentUsd} of $${data.budgetUsd}`, `تكلفة الشهر ${data.spentUsd}$ من ${data.budgetUsd}$`)}</>}
+            {runNote ? <> · <span className="cw-warn">{t('some sources did not answer', 'في مصادر ماردّتش')}</span></> : null}
+          </span>
+        ) : undefined}
         actions={can('connections.manage') && data?.configured ? (
           <Button icon={data.running ? <RefreshCw size={15} className="cw-spin" /> : <Play size={15} />} onClick={() => void run()} disabled={data.running || starting} busy={starting}>
             {data.running ? t('Updating…', 'بنحدّث…') : t('Update now', 'حدّث دلوقتي')}
@@ -79,40 +100,31 @@ export function RadarPage() {
         ) : undefined}
       />
 
-      <div className="cw-bar">
-        <Segmented label={t('Period', 'الفترة')} value={days} onChange={(value) => setQuery({ days: value === '30' ? null : value })}
-          items={PERIODS.map((value) => ({ value, label: t(`${value} days`, `آخر ${value} يوم`) }))} />
-        {data && (
-          <span className="cw-bar__meta" title={runNote || undefined}>
-            {lastRun ? t(`Updated ${relative(lastRun.finishedAt || lastRun.startedAt)}`, `اتحدّث ${relative(lastRun.finishedAt || lastRun.startedAt)}`) : t('Not updated yet', 'لسه ما اتحدّثش')}
-            {can('connections.manage') && <> · {t(`this month $${data.spentUsd} of $${data.budgetUsd}`, `تكلفة الشهر ${data.spentUsd}$ من ${data.budgetUsd}$`)}</>}
-            {runNote ? <> · <span className="cw-bar__warn">{t('some sources did not answer', 'في مصادر ماردّتش')}</span></> : null}
-          </span>
-        )}
-      </div>
-
       {error && <p className="cw-error" role="alert">{error}</p>}
       {!data && !error && <Card><CardBody><SkeletonRows rows={6} /></CardBody></Card>}
-      {data && !posts.length && !data.running && (
-        <Card><CardBody>
-          <EmptyState icon={<Users size={22} />} title={data.configured ? t('No posts yet', 'لسه مفيش بوستات') : t('Not set up yet', 'لسه متفعّلتش')}
-            text={data.configured ? t('The first update runs after 7:00 Riyadh, or update now.', 'أول تحديث بيحصل بعد 7 الصبح بتوقيت السعودية، أو دوس «حدّث دلوقتي».') : t('Add APIFY_API_TOKEN on the server.', 'محتاجين APIFY_API_TOKEN على الخادم.')} />
-        </CardBody></Card>
+
+      {data && <Hero data={data} byId={byId} onOpen={setOpenId} />}
+
+      {data && (
+        <div className="cw-tabsbar">
+          <Tabs label={t('Sections', 'الأقسام')} value={view} onChange={(value) => setQuery({ view: value === 'ideas' ? null : value })}
+            items={[
+              { value: 'ideas', label: t('Ideas for us', 'أفكار لينا'), icon: <Lightbulb size={15} />, count: ideas.length || undefined },
+              { value: 'odoo', label: t('Lectures and events', 'محاضرات وفعاليات'), icon: <CalendarDays size={15} />, count: lectures || undefined },
+              { value: 'compare', label: t('Comparison', 'المقارنة'), icon: <Trophy size={15} /> },
+              { value: 'posts', label: t('Their posts', 'بوستاتهم'), icon: <ImageIcon size={15} />, count: posts.length || undefined },
+            ]} />
+          {(view === 'compare' || view === 'posts') && (
+            <Segmented label={t('Period', 'الفترة')} value={days} onChange={(value) => setQuery({ days: value === '30' ? null : value })}
+              items={PERIODS.map((value) => ({ value, label: t(`${value} days`, `${value} يوم`) }))} />
+          )}
+        </div>
       )}
 
-      {data && posts.length > 0 && (
-        <>
-          <Summary data={data} byId={byId} onOpen={setOpenId} />
-          <div className="cw-split">
-            <Ideas data={data} byId={byId} onOpen={setOpenId} />
-            <OdooAgenda agenda={data.agenda} />
-          </div>
-          <Competitors data={data} onOpen={setOpenId} />
-          <BestPosts posts={posts} nameOf={nameOf} onOpen={setOpenId} />
-          <AllPosts posts={posts} data={data} nameOf={nameOf} onOpen={setOpenId} />
-        </>
-      )}
-      {data && !posts.length && <OdooAgenda agenda={data.agenda} />}
+      {data && view === 'ideas' && <IdeasView data={data} byId={byId} onOpen={setOpenId} />}
+      {data && view === 'odoo' && <OdooView agenda={data.agenda} />}
+      {data && view === 'compare' && (posts.length ? <Scoreboard data={data} onOpen={setOpenId} /> : <NoPosts data={data} />)}
+      {data && view === 'posts' && (posts.length ? <PostsView posts={posts} data={data} nameOf={nameOf} onOpen={setOpenId} /> : <NoPosts data={data} />)}
 
       <Dialog open={Boolean(open)} onClose={() => setOpenId(null)} title={open ? nameOf(open.competitorId) : ''} size="lg">
         {open && <PostDetail post={open} />}
@@ -121,265 +133,289 @@ export function RadarPage() {
   );
 }
 
-/* ── Today's summary ────────────────────────────────────────────────── */
-
-function Summary({ data, byId, onOpen }: { data: RadarData; byId: Map<string, RadarPost>; onOpen: (id: string) => void }) {
-  const { t, date } = useI18n();
-  const [more, setMore] = useState(false);
-  const brief = data.brief?.brief;
-  if (!brief) return null;
-  const points = more ? brief.insights : brief.insights.slice(0, 3);
+function NoPosts({ data }: { data: RadarData }) {
+  const { t } = useI18n();
   return (
-    <Card className="cw-summary">
-      <CardBody>
-        <p className="cw-summary__date">{t("Today's summary", 'ملخص النهارده')} · {date(data.brief!.createdAt, 'day')}</p>
-        {brief.headline && <h2 className="cw-summary__headline" dir="auto">{brief.headline}</h2>}
-        {brief.alerts.length > 0 && (
-          <ul className="cw-alerts">
+    <Card><CardBody>
+      <EmptyState icon={<Users size={22} />} title={data.configured ? t('No posts yet', 'لسه مفيش بوستات') : t('Not set up yet', 'لسه متفعّلتش')}
+        text={data.configured ? t('The first update runs after 7:00 Riyadh, or update now.', 'أول تحديث بيحصل بعد 7 الصبح بتوقيت السعودية، أو دوس «حدّث دلوقتي».') : t('Add APIFY_API_TOKEN on the server.', 'محتاجين APIFY_API_TOKEN على الخادم.')} />
+    </CardBody></Card>
+  );
+}
+
+/* ── Summary band ───────────────────────────────────────────────────── */
+
+function Hero({ data, byId, onOpen }: { data: RadarData; byId: Map<string, RadarPost>; onOpen: (id: string) => void }) {
+  const { t, date, num } = useI18n();
+  const brief = data.brief?.brief;
+  const best = [...data.posts].filter((p) => p.interactions != null).sort((a, b) => (b.interactions ?? 0) - (a.interactions ?? 0))[0];
+  const today = RIYADH_DAY.format(new Date());
+  const todayLectures = data.agenda.lectures.filter((l) => RIYADH_DAY.format(new Date(l.startsAt)) === today).length;
+  const stats = [
+    { label: t('Posts read', 'بوست اتقرا'), value: num(data.posts.length) },
+    { label: t('Strongest post', 'أقوى بوست (تفاعل)'), value: best ? num(best.interactions) : '—', onClick: best ? () => onOpen(best.id) : undefined },
+    { label: t('Lectures today', 'محاضرة النهارده'), value: data.agenda.status === 'connected' ? num(todayLectures) : '—' },
+  ];
+  return (
+    <section className="cw-hero" aria-label={t("Today's summary", 'ملخص النهارده')}>
+      <div className="cw-hero__main">
+        <p className="cw-hero__date">{t("Today's summary", 'ملخص النهارده')}{data.brief ? ` · ${date(data.brief.createdAt, 'day')}` : ''}</p>
+        <h2 className="cw-hero__headline" dir="auto">{brief?.headline || t('The summary appears after the first update.', 'الملخص بيظهر بعد أول تحديث.')}</h2>
+        {brief && brief.alerts.length > 0 && (
+          <ul className="cw-hero__alerts">
             {brief.alerts.map((a, i) => (
-              <li key={i} className={`cw-alert cw-alert--${a.kind}`}>
-                <span dir="auto">{a.text}</span>
-                {a.postId && byId.has(a.postId) && <button type="button" className="cw-link" onClick={() => onOpen(a.postId!)}>{t('See it', 'شوفه')}</button>}
+              <li key={i} className={`cw-hero__alert cw-hero__alert--${a.kind}`}>
+                {a.postId && byId.has(a.postId)
+                  ? <button type="button" onClick={() => onOpen(a.postId!)} dir="auto">{a.text}</button>
+                  : <span dir="auto">{a.text}</span>}
               </li>
             ))}
           </ul>
         )}
-        {points.length > 0 && (
-          <ul className="cw-points">
-            {points.map((p, i) => (
-              <li key={i}>
-                <span dir="auto">{p.text}</span>
-                {p.evidence[0] && byId.has(p.evidence[0]) && <button type="button" className="cw-link" onClick={() => onOpen(p.evidence[0])}>{t('Example', 'مثال')}</button>}
-              </li>
-            ))}
-          </ul>
-        )}
-        {brief.insights.length > 3 && (
-          <button type="button" className="cw-more" onClick={() => setMore((v) => !v)} aria-expanded={more}>
-            {more ? t('Less', 'أقل') : t(`${brief.insights.length - 3} more`, `${brief.insights.length - 3} ملاحظات كمان`)} <ChevronDown size={14} className={more ? 'cw-flip' : ''} aria-hidden />
-          </button>
-        )}
-      </CardBody>
-    </Card>
+      </div>
+      <dl className="cw-hero__stats">
+        {stats.map((s) => (
+          <div key={s.label}>
+            <dt>{s.label}</dt>
+            <dd className="u-tnum">{s.onClick ? <button type="button" onClick={s.onClick}>{s.value}</button> : s.value}</dd>
+          </div>
+        ))}
+      </dl>
+    </section>
   );
 }
 
 /* ── Ideas for us ───────────────────────────────────────────────────── */
 
-function Ideas({ data, byId, onOpen }: { data: RadarData; byId: Map<string, RadarPost>; onOpen: (id: string) => void }) {
+function IdeasView({ data, byId, onOpen }: { data: RadarData; byId: Map<string, RadarPost>; onOpen: (id: string) => void }) {
   const { t, tx, date } = useI18n();
-  const { open } = useCreateContent();
-  const ideas = data.brief?.brief.ideas ?? [];
-  const make = (idea: BriefIdea) => open({ title: idea.title, caption: `${idea.idea}${idea.course ? `\n${idea.course}` : ''}`, channels: [idea.platform] });
+  const make = useMakeFromTemplate();
+  const brief = data.brief?.brief;
+  const ideas = brief?.ideas ?? [];
+  const ideaText = (idea: BriefIdea) => `${idea.title}\n${idea.idea}${idea.course ? `\nالكورس: ${idea.course}` : ''}`;
   return (
-    <Card className="cw-ideas">
-      <CardHeader icon={<Lightbulb size={16} />} title={t('Post ideas for us', 'أفكار بوستات لينا')} count={ideas.length || undefined} />
-      {ideas.length ? (
-        <ol className="cw-ideas__list">
-          {ideas.map((idea, i) => (
-            <li key={i} className="cw-idea">
-              <div className="cw-idea__main">
-                <h3 className="cw-idea__title" dir="auto"><ChannelIcon channel={idea.platform} size={15} /> {idea.title}</h3>
-                <p className="cw-idea__text" dir="auto">{idea.idea}</p>
-                <p className="cw-idea__meta">
-                  <span>{tx(PLATFORM_NAME[idea.platform])} · {tx(FORMAT[idea.format] ?? { en: idea.format, ar: idea.format })}</span>
-                  {idea.course && <span>· <bdi>{idea.course}</bdi></span>}
-                  {idea.suggestedDate && <span>· {t('post on', 'ينزل يوم')} {date(idea.suggestedDate, 'day')}</span>}
-                  {idea.evidence[0] && byId.has(idea.evidence[0]) && <button type="button" className="cw-link" onClick={() => onOpen(idea.evidence[0])}>{t('inspired by', 'مستوحاة من')}</button>}
-                </p>
-              </div>
-              <Button size="sm" variant="secondary" icon={<WandSparkles size={14} />} onClick={() => make(idea)}>{t('Make it', 'اعمله')}</Button>
-            </li>
-          ))}
-        </ol>
-      ) : <CardBody><p className="cw-muted">{t('Ideas appear with the next update.', 'الأفكار بتظهر مع التحديث الجاي.')}</p></CardBody>}
-    </Card>
+    <div className="cw-grid">
+      <div className="cw-ideas">
+        {ideas.length ? ideas.map((idea, i) => (
+          <article key={i} className="cw-idea">
+            <header className="cw-idea__head">
+              <span className="cw-idea__num u-tnum">{i + 1}</span>
+              <h3 dir="auto">{idea.title}</h3>
+            </header>
+            <p className="cw-idea__text" dir="auto">{idea.idea}</p>
+            <div className="cw-idea__foot">
+              <span className="cw-tag"><ChannelIcon channel={idea.platform} size={13} /> {tx(PLATFORM_NAME[idea.platform])} · {tx(FORMAT[idea.format] ?? { en: idea.format, ar: idea.format })}</span>
+              {idea.course && <span className="cw-tag"><bdi>{idea.course}</bdi></span>}
+              {idea.suggestedDate && <span className="cw-tag">{t('post on', 'ينزل')} {date(idea.suggestedDate, 'dayShort')}</span>}
+              {idea.evidence[0] && byId.has(idea.evidence[0]) && <button type="button" className="cw-link" onClick={() => onOpen(idea.evidence[0])}>{t('inspired by', 'مستوحاة من بوست')}</button>}
+              <Button size="sm" variant="primary" icon={<LayoutTemplate size={14} />} onClick={() => make(ideaText(idea), [idea.platform])}>{t('Pick a template', 'اختار قالب')}</Button>
+            </div>
+          </article>
+        )) : <Card><CardBody><p className="cw-muted">{t('Ideas appear with the next update.', 'الأفكار بتظهر مع التحديث الجاي.')}</p></CardBody></Card>}
+      </div>
+      {brief && brief.insights.length > 0 && (
+        <aside className="cw-notes">
+          <h3>{t('What we noticed', 'اللي لاحظناه')}</h3>
+          <ol>
+            {brief.insights.map((p, i) => (
+              <li key={i}>
+                <p dir="auto">{p.text}</p>
+                {p.evidence[0] && byId.has(p.evidence[0]) && <button type="button" className="cw-link" onClick={() => onOpen(p.evidence[0])}>{t('Example', 'مثال')}</button>}
+              </li>
+            ))}
+          </ol>
+        </aside>
+      )}
+    </div>
   );
 }
 
-/* ── Odoo: today's lectures and coming events ───────────────────────── */
+/* ── Odoo: lectures and events, each one a post ─────────────────────── */
 
-function OdooAgenda({ agenda }: { agenda: Agenda }) {
+function OdooView({ agenda }: { agenda: Agenda }) {
   const { t, date } = useI18n();
-  const [expanded, setExpanded] = useState<Record<string, boolean>>({});
-  const toggle = (key: string) => setExpanded((e) => ({ ...e, [key]: !e[key] }));
-  const cap = (key: string, n: number) => (expanded[key] ? Infinity : n);
+  const make = useMakeFromTemplate();
+  if (agenda.status !== 'connected') return <Card><CardBody><p className="cw-muted">{t('Odoo is not reachable right now.', 'Odoo مش متاح دلوقتي.')}</p></CardBody></Card>;
   const today = RIYADH_DAY.format(new Date());
   const day = (iso: string) => RIYADH_DAY.format(new Date(iso));
-  const groups = [
-    { key: 'today', label: t('Lectures today', 'محاضرات النهارده'), items: agenda.lectures.filter((l) => day(l.startsAt) === today), max: 6 },
-    { key: 'tomorrow', label: t('Lectures tomorrow', 'محاضرات بكرة'), items: agenda.lectures.filter((l) => day(l.startsAt) !== today), max: 3 },
-  ];
+  const todays = agenda.lectures.filter((l) => day(l.startsAt) === today);
+  const tomorrows = agenda.lectures.filter((l) => day(l.startsAt) !== today);
   const webinars = agenda.events.filter((e) => e.webinar);
   const runs = agenda.events.filter((e) => !e.webinar);
-
+  const lectureIdea = (course: string, iso: string, when: string) => `محاضرة ${course} ${when} الساعة ${RIYADH_TIME.format(new Date(iso))} بتوقيت السعودية. بوست من جوه المحاضرة: معلومة مفيدة من الشرح أو لقطة من المحاضرة، ودعوة للتسجيل في الدفعة الجاية.`;
+  const runIdea = (title: string, iso: string) => `كورس ${title.replace(/\s*[-–]?\s*\d{3,}\s*$/, '')} بيبدأ يوم ${date(iso, 'day')}. بوست إعلان عن بداية الكورس ودعوة للتسجيل.`;
+  const webinarIdea = (title: string, iso: string, url?: string) => `${title} يوم ${date(iso, 'day')}. دعوة للتسجيل${url ? ` من الرابط: ${url}` : ''}.`;
+  const Column = ({ title, count, children, empty }: { title: string; count: number; children: React.ReactNode; empty: string }) => (
+    <section className="cw-col">
+      <header className="cw-col__head"><h3>{title}</h3><span className="cw-count u-tnum">{count}</span></header>
+      {count ? <ul className="cw-col__list">{children}</ul> : <p className="cw-col__empty">{empty}</p>}
+    </section>
+  );
+  const Row = ({ when, name, sub, onMake }: { when: string; name: string; sub?: string; onMake: () => void }) => (
+    <li className="cw-item">
+      <span className="cw-item__when u-tnum">{when}</span>
+      <span className="cw-item__name"><bdi>{name}</bdi>{sub && <small>{sub}</small>}</span>
+      <Button size="sm" variant="secondary" icon={<LayoutTemplate size={13} />} onClick={onMake}>{t('Post', 'بوست')}</Button>
+    </li>
+  );
   return (
-    <Card className="cw-agenda">
-      <CardHeader icon={<CalendarDays size={16} />} title={t('In Odoo', 'في Odoo')} description={t('Saudi time', 'بتوقيت السعودية')} />
-      <CardBody>
-        {agenda.status !== 'connected' ? <p className="cw-muted">{t('Odoo is not reachable right now.', 'Odoo مش متاح دلوقتي.')}</p> : (
-          <div className="cw-agenda__body">
-            {groups.map((g) => (
-              <section key={g.key}>
-                <h3 className="cw-agenda__h">{g.label} <span className="cw-count">{g.items.length}</span></h3>
-                {g.items.length ? (
-                  <ul className="cw-agenda__list">
-                    {g.items.slice(0, cap(g.key, g.max)).map((l) => (
-                      <li key={l.id}><span className="cw-time u-tnum">{RIYADH_TIME.format(new Date(l.startsAt))}</span><bdi className="cw-agenda__name" title={l.title}>{l.course}</bdi></li>
-                    ))}
-                  </ul>
-                ) : <p className="cw-muted">{t('No lectures.', 'مفيش محاضرات.')}</p>}
-                {g.items.length > g.max && <MoreButton open={Boolean(expanded[g.key])} total={g.items.length} onClick={() => toggle(g.key)} />}
-              </section>
-            ))}
-            <section>
-              <h3 className="cw-agenda__h">{t('Webinars and seminars', 'ويبنارات وندوات')} <span className="cw-count">{webinars.length}</span></h3>
-              {webinars.length ? (
-                <ul className="cw-agenda__list">
-                  {webinars.map((e) => <li key={e.id}><span className="cw-time">{date(e.startsAt, 'dayShort')}</span><bdi className="cw-agenda__name">{e.title}</bdi></li>)}
-                </ul>
-              ) : <p className="cw-agenda__warn">{t('None booked in the next 30 days.', 'مفيش ولا واحد متسجّل في الـ 30 يوم الجاية.')}</p>}
-            </section>
-            <section>
-              <h3 className="cw-agenda__h">{t('Courses starting', 'كورسات بتبدأ')} <span className="cw-count">{runs.length}</span></h3>
-              <ul className="cw-agenda__list">
-                {runs.slice(0, cap('runs', 4)).map((e) => <li key={e.id}><span className="cw-time">{date(e.startsAt, 'dayShort')}</span><bdi className="cw-agenda__name">{e.title.replace(/\s*[-–]?\s*\d{3,}\s*$/, '')}</bdi></li>)}
-              </ul>
-              {runs.length > 4 && <MoreButton open={Boolean(expanded.runs)} total={runs.length} onClick={() => toggle('runs')} />}
-            </section>
-          </div>
-        )}
-      </CardBody>
+    <div className="cw-cols">
+      <Column title={t('Lectures today', 'محاضرات النهارده')} count={todays.length} empty={t('No lectures today.', 'مفيش محاضرات النهارده.')}>
+        {todays.map((l) => <Row key={l.id} when={RIYADH_TIME.format(new Date(l.startsAt))} name={l.course} onMake={() => make(lectureIdea(l.course, l.startsAt, 'النهارده'))} />)}
+      </Column>
+      <Column title={t('Lectures tomorrow', 'محاضرات بكرة')} count={tomorrows.length} empty={t('No lectures tomorrow.', 'مفيش محاضرات بكرة.')}>
+        {tomorrows.map((l) => <Row key={l.id} when={RIYADH_TIME.format(new Date(l.startsAt))} name={l.course} onMake={() => make(lectureIdea(l.course, l.startsAt, 'بكرة'))} />)}
+      </Column>
+      <div className="cw-col-stack">
+        <Column title={t('Webinars and seminars', 'ويبنارات وندوات')} count={webinars.length} empty={t('None booked in the next 30 days.', 'مفيش ولا واحد متسجّل في الـ 30 يوم الجاية.')}>
+          {webinars.map((e) => <Row key={e.id} when={date(e.startsAt, 'dayShort')} name={e.title} sub={e.type} onMake={() => make(webinarIdea(e.title, e.startsAt, e.registrationUrl))} />)}
+        </Column>
+        <Column title={t('Courses starting (30 days)', 'كورسات بتبدأ (30 يوم)')} count={runs.length} empty={t('No courses starting.', 'مفيش كورسات بتبدأ.')}>
+          {runs.map((e) => <Row key={e.id} when={date(e.startsAt, 'dayShort')} name={e.title.replace(/\s*[-–]?\s*\d{3,}\s*$/, '')} onMake={() => make(runIdea(e.title, e.startsAt))} />)}
+        </Column>
+      </div>
+    </div>
+  );
+}
+
+/* ── Comparison: one scoreboard ─────────────────────────────────────── */
+
+function Scoreboard({ data, onOpen }: { data: RadarData; onOpen: (id: string) => void }) {
+  const { t, tx, num, compact } = useI18n();
+  const hasOurs = data.metrics.ours.some((o) => o.posts);
+  const columns = [
+    ...(hasOurs ? [{ id: 'ours', name: t('Us', 'إحنا'), ours: true }] : []),
+    ...data.competitors.map((c) => ({ id: c.id, name: t(c.name, c.nameAr), ours: false })),
+  ];
+  const account = (col: string, p: RadarPlatform) => data.metrics.accounts.find((a) => a.competitorId === col && a.platform === p);
+  const valueOf = (col: string, p: RadarPlatform): { median: number | null; perWeek: number | null; bestId?: string } => {
+    if (col === 'ours') { const o = data.metrics.ours.find((x) => x.platform === p); return { median: o?.posts ? o.medianInteractions : null, perWeek: o?.posts ? o.perWeek : null }; }
+    const a = account(col, p);
+    return { median: a?.posts ? a.medianInteractions : null, perWeek: a?.posts ? a.perWeek : null, bestId: a?.best?.id };
+  };
+  const totals = (col: string) => {
+    if (col === 'ours') return { followers: null as number | null, sales: null as number | null, perWeek: data.metrics.ours.reduce((s, o) => s + o.perWeek, 0) };
+    const rows = RADAR_PLATFORMS.map((p) => account(col, p)).filter(Boolean) as NonNullable<ReturnType<typeof account>>[];
+    const known = rows.filter((a) => a.followers != null);
+    const sales = rows.filter((a) => a.salesShare != null && a.posts);
+    const n = sales.reduce((s, a) => s + a.posts, 0);
+    return {
+      followers: known.length ? known.reduce((s, a) => s + (a.followers ?? 0), 0) : null,
+      sales: n ? Math.round(sales.reduce((s, a) => s + (a.salesShare ?? 0) * a.posts, 0) / n) : null,
+      perWeek: Math.round(rows.reduce((s, a) => s + a.perWeek, 0) * 10) / 10,
+    };
+  };
+  return (
+    <Card flush className="cw-board">
+      <div className="cw-board__intro">
+        <h3>{t('Who gets more interaction, platform by platform', 'مين بياخد تفاعل أكتر على كل منصة')}</h3>
+        <p>{t(`Usual interactions per post (reactions + comments + shares), last ${data.metrics.windowDays} days. The leader on each platform is filled.`, `التفاعل المعتاد للبوست (إعجاب + تعليق + مشاركة) في آخر ${data.metrics.windowDays} يوم. المتصدّر على كل منصة لونه مليان.`)}</p>
+      </div>
+      <div className="ui-table-scroll">
+        <table className="cw-board__table">
+          <thead>
+            <tr>
+              <th scope="col" className="cw-board__corner">{t('Platform', 'المنصة')}</th>
+              {columns.map((c) => <th key={c.id} scope="col" className={c.ours ? 'cw-board__ours' : undefined}>{c.name}</th>)}
+            </tr>
+          </thead>
+          <tbody>
+            {RADAR_PLATFORMS.map((p) => {
+              const cells = columns.map((c) => ({ col: c, v: valueOf(c.id, p) }));
+              const max = Math.max(0, ...cells.map((x) => x.v.median ?? 0));
+              return (
+                <tr key={p}>
+                  <th scope="row"><span className="cw-board__pf"><ChannelIcon channel={p} size={16} />{tx(PLATFORM_NAME[p])}</span></th>
+                  {cells.map(({ col, v }) => {
+                    const lead = v.median != null && max > 0 && v.median === max;
+                    const share = v.median != null && max > 0 ? v.median / max : 0;
+                    return (
+                      <td key={col.id} className={lead ? 'cw-cell cw-cell--lead' : v.median == null ? 'cw-cell cw-cell--none' : 'cw-cell'} style={!lead && v.median != null ? { ['--share' as string]: `${Math.round(8 + share * 30)}%` } : undefined}>
+                        <span className="cw-cell__value u-tnum">{v.median == null ? '—' : num(v.median)}</span>
+                        <span className="cw-cell__sub">{v.perWeek == null ? t('no posts', 'مفيش بوستات') : t(`${v.perWeek} posts/week`, `${v.perWeek} بوست/أسبوع`)}</span>
+                        {v.bestId && <button type="button" className="cw-cell__best" onClick={() => onOpen(v.bestId!)}>{t('best post', 'أحسن بوست')}</button>}
+                      </td>
+                    );
+                  })}
+                </tr>
+              );
+            })}
+          </tbody>
+          <tfoot>
+            <tr>
+              <th scope="row">{t('Posts a week', 'بوستات في الأسبوع')}</th>
+              {columns.map((c) => <td key={c.id} className="u-tnum">{num(Math.round(totals(c.id).perWeek * 10) / 10)}</td>)}
+            </tr>
+            <tr>
+              <th scope="row">{t('Selling posts', 'بوستات بيع')}</th>
+              {columns.map((c) => { const s = totals(c.id).sales; return <td key={c.id} className="u-tnum">{s == null ? '—' : `${s}%`}</td>; })}
+            </tr>
+            <tr>
+              <th scope="row">{t('Followers', 'المتابعين')}</th>
+              {columns.map((c) => { const f = totals(c.id).followers; return <td key={c.id} className="u-tnum">{f == null ? '—' : compact(f)}</td>; })}
+            </tr>
+          </tfoot>
+        </table>
+      </div>
     </Card>
   );
 }
 
-function MoreButton({ open, total, onClick }: { open: boolean; total: number; onClick: () => void }) {
-  const { t } = useI18n();
-  return (
-    <button type="button" className="cw-more" onClick={onClick} aria-expanded={open}>
-      {open ? t('Less', 'أقل') : t(`All ${total}`, `الكل (${total})`)} <ChevronDown size={14} className={open ? 'cw-flip' : ''} aria-hidden />
-    </button>
-  );
-}
+/* ── Their posts ────────────────────────────────────────────────────── */
 
-/* ── Each competitor at a glance ────────────────────────────────────── */
-
-function Competitors({ data, onOpen }: { data: RadarData; onOpen: (id: string) => void }) {
-  const { t, tx, num, compact } = useI18n();
-  const ours = data.metrics.ours.some((o) => o.posts);
-  return (
-    <section className="cw-section">
-      <header className="cw-section__head">
-        <h2>{t('How each one is doing', 'كل منافس عامل إزاي')}</h2>
-        <p>{t(`Usual interactions per post in the last ${data.metrics.windowDays} days (reactions, comments and shares).`, `التفاعل المعتاد للبوست في آخر ${data.metrics.windowDays} يوم (إعجاب وتعليق ومشاركة).`)}</p>
-      </header>
-      <div className="cw-rivals">
-        {ours && (
-          <article className="cw-rival cw-rival--ours">
-            <h3>{t('Us (Engosoft)', 'إحنا (إنجوسوفت)')}</h3>
-            <ul>
-              {RADAR_PLATFORMS.map((p) => {
-                const o = data.metrics.ours.find((x) => x.platform === p);
-                return <li key={p}><span className="cw-rival__pf"><ChannelIcon channel={p} size={14} />{tx(PLATFORM_NAME[p])}</span><b className="u-tnum">{num(o?.medianInteractions)}</b><small>{o?.posts ? t(`${o.perWeek}/wk`, `${o.perWeek} في الأسبوع`) : '—'}</small></li>;
-              })}
-            </ul>
-          </article>
-        )}
-        {data.competitors.map((c) => {
-          const rows = RADAR_PLATFORMS.map((p) => ({ p, a: data.metrics.accounts.find((x) => x.competitorId === c.id && x.platform === p) }));
-          const best = rows.flatMap((r) => (r.a?.best ? [r.a.best] : [])).sort((a, b) => b.interactions - a.interactions)[0];
-          const sales = rows.flatMap((r) => (r.a?.salesShare != null && r.a.posts ? [{ share: r.a.salesShare, n: r.a.posts }] : []));
-          const salesShare = sales.length ? Math.round(sales.reduce((s, x) => s + x.share * x.n, 0) / sales.reduce((s, x) => s + x.n, 0)) : null;
-          return (
-            <article key={c.id} className="cw-rival">
-              <h3>{t(c.name, c.nameAr)}</h3>
-              <ul>
-                {rows.map(({ p, a }) => (
-                  <li key={p}>
-                    <span className="cw-rival__pf"><ChannelIcon channel={p} size={14} />{tx(PLATFORM_NAME[p])}</span>
-                    <b className="u-tnum">{a?.posts ? num(a.medianInteractions) : '—'}</b>
-                    <small>{a?.posts ? t(`${a.perWeek}/wk`, `${a.perWeek} في الأسبوع`) : a?.lastPostAt ? t('quiet', 'ساكت') : '—'}{a?.followers != null ? ` · ${compact(a.followers)} ${t('followers', 'متابع')}` : ''}</small>
-                  </li>
-                ))}
-              </ul>
-              <footer>
-                {salesShare != null && <span>{t(`${salesShare}% selling posts`, `${salesShare}% من بوستاتهم بيع`)}</span>}
-                {best && <button type="button" className="cw-link" onClick={() => onOpen(best.id)}>{t(`best post: ${best.interactions}`, `أحسن بوست: ${best.interactions} تفاعل`)}</button>}
-              </footer>
-            </article>
-          );
-        })}
-      </div>
-    </section>
-  );
-}
-
-/* ── Posts ──────────────────────────────────────────────────────────── */
-
-function BestPosts({ posts, nameOf, onOpen }: { posts: RadarPost[]; nameOf: (id: string) => string; onOpen: (id: string) => void }) {
-  const { t, tx, num, date } = useI18n();
-  const top = [...posts].filter((p) => p.level === 'breakout' || p.level === 'high').sort(byStrength).slice(0, 6);
-  if (!top.length) return null;
-  return (
-    <section className="cw-section">
-      <header className="cw-section__head">
-        <h2>{t('Their best posts', 'أحسن بوستاتهم')}</h2>
-        <p>{t('Posts well above what the same account usually gets.', 'بوستات جابت أكتر بكتير من المعتاد بتاع نفس الحساب.')}</p>
-      </header>
-      <div className="cw-posts">
-        {top.map((p) => (
-          <button key={p.id} type="button" className="cw-post" onClick={() => onOpen(p.id)}>
-            <span className="cw-post__pic">
-              {p.picture ? <img src={p.picture} alt="" loading="lazy" /> : <ChannelIcon channel={p.platform} size={26} />}
-            </span>
-            <span className="cw-post__body">
-              <span className="cw-post__who"><ChannelIcon channel={p.platform} size={13} /> {nameOf(p.competitorId)} · {date(p.postedAt, 'dayShort')}</span>
-              <span className="cw-post__nums"><b className="u-tnum">{num(p.interactions)}</b> {t('interactions', 'تفاعل')} <span className="cw-muted">· {t('usual', 'المعتاد')} {num(p.groupMedian)}</span> {p.level && <Badge tone={LEVEL_TONE[p.level]}>{tx(LEVEL[p.level])}</Badge>}</span>
-              {p.analysis && <span className="cw-post__idea" dir="auto">{p.analysis.idea}</span>}
-            </span>
-          </button>
-        ))}
-      </div>
-    </section>
-  );
-}
-
-function AllPosts({ posts, data, nameOf, onOpen }: { posts: RadarPost[]; data: RadarData; nameOf: (id: string) => string; onOpen: (id: string) => void }) {
+function PostsView({ posts, data, nameOf, onOpen }: { posts: RadarPost[]; data: RadarData; nameOf: (id: string) => string; onOpen: (id: string) => void }) {
   const { t, tx, num, date } = useI18n();
   const [competitor, setCompetitor] = useState<string>('all');
   const [platform, setPlatform] = useState<RadarPlatform | 'all'>('all');
-  const [all, setAll] = useState(false);
-  const list = posts.filter((p) => (competitor === 'all' || p.competitorId === competitor) && (platform === 'all' || p.platform === platform)).sort((a, b) => b.postedAt.localeCompare(a.postedAt));
-  const shown = all ? list : list.slice(0, 10);
+  const list = posts.filter((p) => (competitor === 'all' || p.competitorId === competitor) && (platform === 'all' || p.platform === platform));
+  const top = [...list].filter((p) => p.level === 'breakout' || p.level === 'high').sort(byStrength).slice(0, 4);
+  const rest = [...list].sort((a, b) => b.postedAt.localeCompare(a.postedAt));
   return (
-    <Card flush className="cw-all">
-      <CardHeader title={t('Every post', 'كل البوستات')} count={list.length}
-        actions={<div className="cw-filters">
-          <FilterSelect label={t('Competitor', 'المنافس')} value={competitor} onChange={setCompetitor} allLabel={t('All', 'الكل')} options={data.competitors.map((c) => ({ value: c.id, label: t(c.name, c.nameAr) }))} />
-          <FilterSelect label={t('Platform', 'المنصة')} value={platform} onChange={setPlatform} allLabel={t('All', 'الكل')} options={RADAR_PLATFORMS.map((p) => ({ value: p, label: tx(PLATFORM_NAME[p]) }))} />
-        </div>} />
-      <ul className="cw-rows">
-        {shown.map((p) => (
-          <li key={p.id}>
-            <button type="button" className="cw-row" onClick={() => onOpen(p.id)}>
-              {p.picture ? <img src={p.picture} alt="" loading="lazy" /> : <span className="cw-row__nopic"><ChannelIcon channel={p.platform} size={14} /></span>}
-              <span className="cw-row__main">
-                <span className="cw-row__who"><ChannelIcon channel={p.platform} size={12} /> {nameOf(p.competitorId)} · {date(p.postedAt, 'dayShort')}</span>
-                <span className="cw-row__idea" dir="auto">{p.analysis?.idea ?? p.text.slice(0, 140)}</span>
+    <div className="u-stack">
+      <div className="cw-filters">
+        <FilterSelect label={t('Competitor', 'المنافس')} value={competitor} onChange={setCompetitor} allLabel={t('All', 'الكل')} options={data.competitors.map((c) => ({ value: c.id, label: t(c.name, c.nameAr) }))} />
+        <FilterSelect label={t('Platform', 'المنصة')} value={platform} onChange={setPlatform} allLabel={t('All', 'الكل')} options={RADAR_PLATFORMS.map((p) => ({ value: p, label: tx(PLATFORM_NAME[p]) }))} />
+      </div>
+      {top.length > 0 && (
+        <div className="cw-posts">
+          {top.map((p) => (
+            <button key={p.id} type="button" className="cw-post" onClick={() => onOpen(p.id)}>
+              <span className="cw-post__pic">
+                {p.picture ? <img src={p.picture} alt="" loading="lazy" /> : <ChannelIcon channel={p.platform} size={26} />}
+                {p.level && <span className="cw-post__level"><Badge tone={LEVEL_TONE[p.level]}>{tx(LEVEL[p.level])}</Badge></span>}
               </span>
-              <span className="cw-row__num"><b className="u-tnum">{num(p.interactions)}</b>{p.level && <Badge tone={LEVEL_TONE[p.level]}>{tx(LEVEL[p.level])}</Badge>}</span>
+              <span className="cw-post__body">
+                <span className="cw-post__who"><ChannelIcon channel={p.platform} size={13} /> {nameOf(p.competitorId)} · {date(p.postedAt, 'dayShort')}</span>
+                <span className="cw-post__nums"><b className="u-tnum">{num(p.interactions)}</b> {t('interactions', 'تفاعل')} <span className="cw-muted">· {t('usual', 'المعتاد')} {num(p.groupMedian)}</span></span>
+                {p.analysis && <span className="cw-post__idea" dir="auto">{p.analysis.idea}</span>}
+              </span>
             </button>
-          </li>
-        ))}
-      </ul>
-      {list.length > 10 && <div className="cw-all__foot"><button type="button" className="cw-more" onClick={() => setAll((v) => !v)}>{all ? t('Show less', 'عرض أقل') : t(`Show all ${list.length}`, `عرض الكل (${list.length})`)}</button></div>}
-    </Card>
+          ))}
+        </div>
+      )}
+      <Card flush>
+        <ul className="cw-rows">
+          {rest.map((p) => (
+            <li key={p.id}>
+              <button type="button" className="cw-row" onClick={() => onOpen(p.id)}>
+                {p.picture ? <img src={p.picture} alt="" loading="lazy" /> : <span className="cw-row__nopic"><ChannelIcon channel={p.platform} size={14} /></span>}
+                <span className="cw-row__main">
+                  <span className="cw-row__who"><ChannelIcon channel={p.platform} size={12} /> {nameOf(p.competitorId)} · {date(p.postedAt, 'dayShort')}</span>
+                  <span className="cw-row__idea" dir="auto">{p.analysis?.idea ?? p.text.slice(0, 140)}</span>
+                </span>
+                <span className="cw-row__num"><b className="u-tnum">{num(p.interactions)}</b>{p.level && <Badge tone={LEVEL_TONE[p.level]}>{tx(LEVEL[p.level])}</Badge>}</span>
+              </button>
+            </li>
+          ))}
+        </ul>
+      </Card>
+    </div>
   );
 }
 
 function PostDetail({ post }: { post: RadarPost }) {
   const { t, tx, num, date } = useI18n();
+  const make = useMakeFromTemplate();
   const a = post.analysis;
   return (
     <div className="cw-detail">
@@ -404,6 +440,9 @@ function PostDetail({ post }: { post: RadarPost }) {
             <h3>{t('Why it landed here', 'ليه وصل للمستوى ده')}</h3><p dir="auto">{a.why}</p>
             {a.lesson && <><h3>{t('For us', 'لينا')} <Badge tone={a.lessonKind === 'avoid' ? 'danger' : a.lessonKind === 'copy' ? 'success' : 'info'}>{tx(LESSON[a.lessonKind])}</Badge></h3><p dir="auto">{a.lesson}</p></>}
             <h3>{t('Design', 'التصميم')}</h3><p dir="auto">{a.design}</p>
+            {a.lessonKind !== 'avoid' && (
+              <Button size="sm" variant="primary" icon={<LayoutTemplate size={14} />} onClick={() => make(`فكرة مستوحاة من بوست منافس: ${a.idea}\n${a.lesson}`, [post.platform])}>{t('Make ours from a template', 'اعمل واحد لينا من قالب')}</Button>
+            )}
           </>
         ) : <p className="cw-muted">{t('Not read yet.', 'لسه ما اتحللش.')}</p>}
         {post.text && <details className="cw-detail__caption"><summary>{t('Post text', 'نص البوست')}</summary><p dir="auto">{post.text}</p></details>}

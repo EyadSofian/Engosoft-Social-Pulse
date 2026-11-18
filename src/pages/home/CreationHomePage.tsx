@@ -11,6 +11,7 @@ import { fromInputValue, toInputValue } from '../../lib/format';
 import { Link, useRouter } from '../../app/router/router';
 import { Button } from '../../components/ui/Button';
 import { CREATE_PREFILL_KEY, type CreatePrefill } from '../../features/content/CreateContent';
+import { takeTemplateIdea, type TemplateIdea } from '../../features/content/templateIdea';
 import { type CreativeReference, type Objective } from '../../features/creative-studio/brief';
 import { FullCreativeJob } from '../../features/creative-studio/FullCreativeJob';
 import { useAuth } from '../../features/auth/AuthProvider';
@@ -131,7 +132,7 @@ export function CreationHomePage() {
   // Coming back while a design is still running reopens it; links that name a template open that template.
   const [mode, setMode] = useState<Mode>(() => {
     if (free && (query.has('creative') || query.has('template') || query.has('follow') || getActiveCreative()?.status === 'running')) return 'ai';
-    if ((query.has('svgTemplate') || query.has('schedule') || query.has('brand')) && ways.includes('template')) return 'template';
+    if ((query.has('svgTemplate') || query.has('schedule') || query.has('brand') || query.has('idea')) && ways.includes('template')) return 'template';
     return ways.length === 1 ? ways[0] : 'choose';
   });
   // A plan left from an abandoned visit must not attach a new post to someone else's plan row.
@@ -161,6 +162,8 @@ export function CreationHomePage() {
   const [picked, setPicked] = useState<{ course: string; facts: string } | null>(null);
   // A library design picked from the AI screen: the template opens with the idea already written.
   const [brandPick] = useState<{ id: string; prompt: string } | null>(() => (query.get('brand') ? { id: query.get('brand')!, prompt: '' } : null));
+  // An idea handed from another page (competitors, Odoo): the templates open with it written.
+  const [handedIdea, setHandedIdea] = useState<TemplateIdea | null>(() => (query.has('idea') ? takeTemplateIdea() : null));
   const { items: pipeline } = usePipeline();
   usePageMeta(t('Create', 'إنشاء'), [{ label: t('Create', 'إنشاء') }]);
   useEffect(() => {
@@ -275,7 +278,7 @@ export function CreationHomePage() {
     {mode !== 'choose' && stage === 'compose' && <PostDetails key={planKey} />}
     {mode === 'upload' && <UploadMode />}
     {mode === 'reel' && <ReelMode />}
-    {mode === 'template' && <TemplateMode key={brandPick?.id ?? ''} initialId={query.get('svgTemplate')} initialSchedule={query.has('schedule')} initialBrand={brandPick?.id ?? null} initialPrompt={brandPick?.prompt ?? ''} />}
+    {mode === 'template' && <TemplateMode key={brandPick?.id ?? ''} initialId={query.get('svgTemplate')} initialSchedule={query.has('schedule')} initialBrand={brandPick?.id ?? null} initialPrompt={brandPick?.prompt ?? ''} idea={handedIdea} onClearIdea={() => setHandedIdea(null)} />}
     {mode === 'ai' && <div className={stage === 'compose' ? 'create-layout' : 'create-layout create-layout--single'}>
     <div className="creative-home__hero">
       {stage === 'compose' && <>
@@ -428,7 +431,7 @@ function SizePicker({ platforms, chosen, main, designs, onDesigns, onToggle, onM
 }
 
 /** Ready templates: pick the kind of post, then a template, fill it and export without any image-model cost. */
-function TemplateMode({ initialId, initialSchedule, initialBrand, initialPrompt }: { initialId: string | null; initialSchedule: boolean; initialBrand: string | null; initialPrompt: string }) {
+function TemplateMode({ initialId, initialSchedule, initialBrand, initialPrompt, idea, onClearIdea }: { initialId: string | null; initialSchedule: boolean; initialBrand: string | null; initialPrompt: string; idea?: TemplateIdea | null; onClearIdea?: () => void }) {
   const { t } = useI18n();
   const { navigate } = useRouter();
   const { can } = useAuth();
@@ -440,13 +443,18 @@ function TemplateMode({ initialId, initialSchedule, initialBrand, initialPrompt 
   const [brand, setBrand] = useState(() => brandTemplate(initialBrand) ?? null);
   const template = items?.find((item) => item.id === selected);
   if (schedule) return <ScheduleComposer onClose={() => setSchedule(false)} />;
-  if (brand) return <BrandTemplateComposer key={brand.id} template={brand} initialPrompt={initialBrand === brand.id ? initialPrompt : ''} onClose={() => setBrand(null)} />;
+  const ideaChannels = (idea?.channels ?? []).filter((c): c is CreativePlatform => (CREATIVE_PLATFORMS as string[]).includes(c));
+  if (brand) return <BrandTemplateComposer key={brand.id} template={brand} initialPrompt={initialBrand === brand.id ? initialPrompt : idea?.idea ?? ''} onClose={() => setBrand(null)} />;
   if (error) return <div className="library-empty glass" role="alert"><p>{error}</p><Button variant="secondary" onClick={() => void reload()}>{t('Retry', 'أعد المحاولة')}</Button></div>;
   if (!items) return <div className="board-loading"><span className="ui-btn__spinner" /></div>;
-  if (template) return <TemplateComposer key={template.id} template={template} onClose={() => setSelected(null)} />;
+  if (template) return <TemplateComposer key={template.id} template={template} initialIdea={idea?.idea} initialChannels={ideaChannels.length ? ideaChannels : undefined} onClose={() => setSelected(null)} />;
   const shown = kind === 'all' ? items : items.filter((item) => item.kind === kind);
   const kinds = (Object.keys(KIND_LABEL) as TemplateKind[]).filter((value) => items.some((item) => item.kind === value));
   return <section className="u-stack">
+    {idea && <div className="handed-idea" role="status">
+      <div className="handed-idea__text"><b>{t('Pick a template for this idea', 'اختار قالب للفكرة دي')}</b><p dir="auto">{idea.idea}</p><small>{t('The template you pick writes the text and makes the design from it.', 'القالب اللي هتختاره هيكتب الكلام ويعمل التصميم منها.')}</small></div>
+      {onClearIdea && <Button size="sm" variant="ghost" onClick={onClearIdea}>{t('Remove', 'شيل الفكرة')}</Button>}
+    </div>}
     <div className="library-section">
       <div className="library-section__head"><h2><LayoutTemplate size={18} /> {t('Engosoft brand designs', 'تصاميم هوية إنجوسوفت')}</h2><small className="u-muted">{t('Every size, the exact logo, your photos', 'كل المقاسات، الشعار الصح، وصورك')}</small></div>
       <BrandTemplateGrid onOpen={setBrand} />
