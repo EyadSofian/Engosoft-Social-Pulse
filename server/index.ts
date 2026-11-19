@@ -9,6 +9,8 @@ import { applyPlanPatch, newPlan, isPlanPlatform, missingPublishProof, planState
 import { deletePlan, dismissAlert, getAlerts, getAudience, getConnectorStatuses, getObserved, getPlan, getPlans, getWebsiteDaily, getWebsitePages, saveImportedPlan, savePlan } from './store.js';
 import { runSync } from './sync.js';
 import { pollPendingJobs } from './social/publishing.js';
+import { registerMetaCommentWebhook } from './social/comment-routes.js';
+import { runCommentQueue } from './social/comments.js';
 import { registerSocialRoutes } from './social/routes.js';
 import { runDuePublications } from './social/queue.js';
 import { randomUUID } from 'node:crypto';
@@ -52,7 +54,9 @@ import { registerRadarRoutes } from './competitor-radar/routes.js';
 import { radarTick } from './competitor-radar/run.js';
 
 const app=express();const port=Number(process.env.PORT)||4100;const host=process.env.HOST||'127.0.0.1';
-app.disable('x-powered-by');app.set('trust proxy',1);app.use('/api/ai',express.json({limit:'18mb'}));app.use('/api/studio',express.json({limit:'18mb'}));app.use('/api/svg-templates',express.json({limit:'16mb'}));app.use('/api/uploads',express.json({limit:'16mb'}));app.use('/api/brand-templates/render',express.json({limit:'24mb'}));app.use(express.json({limit:'1mb'}));
+app.disable('x-powered-by');app.set('trust proxy',1);
+registerMetaCommentWebhook(app);
+app.use('/api/ai',express.json({limit:'18mb'}));app.use('/api/studio',express.json({limit:'18mb'}));app.use('/api/svg-templates',express.json({limit:'16mb'}));app.use('/api/uploads',express.json({limit:'16mb'}));app.use('/api/brand-templates/render',express.json({limit:'24mb'}));app.use(express.json({limit:'1mb'}));
 app.get('/api/health',(_req,res)=>res.json({ok:true}));
 registerAuthRoutes(app);
 // Provider callbacks validate state and the initiating user; signed media is narrowly scoped to one expiring asset.
@@ -252,6 +256,7 @@ setInterval(()=>{void checkAlerts().catch(()=>{});},60_000).unref();
 // Scheduled Facebook and Instagram publications go out within a minute of their time.
 setInterval(()=>{void syncGoogleCalendars().catch(()=>{});},60_000).unref();
 setInterval(()=>{void runDuePublications().catch(()=>{});},60_000).unref();
+setInterval(()=>{void runCommentQueue().catch(()=>console.error('Social comment queue failed.'));},30_000).unref();
 // Publications still processing are checked every minute, not only with the 30-minute sync: an Instagram Reel goes live
 // only when this check sends media_publish after its container is ready.
 let polling=false;

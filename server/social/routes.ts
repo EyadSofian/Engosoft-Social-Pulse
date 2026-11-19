@@ -3,6 +3,8 @@ import { tokenHealth } from './credentials.js';
 import express from 'express';
 import { z } from 'zod';
 import { db } from '../db.js';
+import { isCommentPlatform } from '../../src/domain/social-comments.js';
+import { registerCommentRoutes } from './comment-routes.js';
 import { requirePermission, userCan } from '../auth.js';
 import { canEdit, canSee, contentIsMutable, getContent, MANUAL_CHANNELS, manualPublications, recordManualPublication } from '../workspace.js';
 import { registerSocialOAuth, socialProviders } from './oauth.js';
@@ -34,6 +36,7 @@ export function registerSocialRoutes(app:express.Express) {
  registerSocialOAuth(app);
  app.use('/api/social',sameOriginWrites);
  app.use('/api/publishing',sameOriginWrites);
+ registerCommentRoutes(app);
  const failed=(res:express.Response,e:unknown)=>res.status(e instanceof WorkspaceError?e.status:409).json({error:e instanceof Error?e.message:'Publishing unavailable.'});
  app.get('/api/publishing',async(req,res)=>{
   if(!userCan(req.user!,'content.publish')&&!userCan(req.user!,'content.schedule'))return res.status(403).json({error:'Permission required.'});
@@ -66,7 +69,8 @@ export function registerSocialRoutes(app:express.Express) {
   res.setHeader('Cache-Control','no-store');
   res.json({providers:socialProviders.map(p=>{
    const linked=accounts.filter(a=>a.provider===p);let oauthConfigured=false;try{configuredCallback(p);oauthConfigured=true;}catch{}
-   return {provider:p,oauthConfigured,accounts:linked.map(({credentialSource,ownerId,...a})=>({...a,authorization:health[a.id],capabilities:capabilities(p,linked.find(x=>x.id===a.id)!)})),capabilities:capabilities(p,linked.find(a=>a.status==='connected')),requirements:requirements(p)};
+   let commentOAuthConfigured=false;if(isCommentPlatform(p))try{configuredCallback(p,'comments');commentOAuthConfigured=true;}catch{}
+   return {provider:p,oauthConfigured,commentOAuthConfigured,accounts:linked.map(({credentialSource,ownerId,...a})=>({...a,authorization:health[a.id],capabilities:capabilities(p,linked.find(x=>x.id===a.id)!)})),capabilities:capabilities(p,linked.find(a=>a.status==='connected')),requirements:requirements(p)};
   })});
  });
  app.get('/api/social/linkedin/candidates',requirePermission('connections.manage'),async(_req,res)=>{try{res.setHeader('Cache-Control','no-store');res.json({accounts:await linkedInCandidates()});}catch{res.status(409).json({error:'Connect the organization to Zernio and check its API-key Accounts permission.'});}});

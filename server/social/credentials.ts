@@ -3,8 +3,15 @@ import { loadSecret, saveSecret } from './store.js';
 import { ProviderError, request } from './http.js';
 import type { Credential, SocialAccount } from './types.js';
 
-export const oauthConfig = (provider:string) => {
- if(provider==='facebook'||provider==='instagram')return {client:process.env.META_APP_ID,secret:process.env.META_APP_SECRET,redirect:provider==='instagram'?process.env.META_INSTAGRAM_REDIRECT_URI:process.env.META_REDIRECT_URI,token:`https://graph.facebook.com/${process.env.META_API_VERSION||'v24.0'}/oauth/access_token`,authorize:`https://www.facebook.com/${process.env.META_API_VERSION||'v24.0'}/dialog/oauth`,clientField:'client_id'};
+export const metaCommentApp = () => {
+ const { META_COMMENTS_APP_ID, META_COMMENTS_APP_SECRET, META_APP_ID, META_APP_SECRET } = process.env;
+ return META_COMMENTS_APP_ID || META_COMMENTS_APP_SECRET
+  ? { client: META_COMMENTS_APP_ID, secret: META_COMMENTS_APP_SECRET }
+  : { client: META_APP_ID, secret: META_APP_SECRET };
+};
+
+export const oauthConfig = (provider:string, mode='read') => {
+ if(provider==='facebook'||provider==='instagram')return {...(mode==='comments'?metaCommentApp():{client:process.env.META_APP_ID,secret:process.env.META_APP_SECRET}),redirect:provider==='instagram'?process.env.META_INSTAGRAM_REDIRECT_URI:process.env.META_REDIRECT_URI,token:`https://graph.facebook.com/${process.env.META_API_VERSION||'v24.0'}/oauth/access_token`,authorize:`https://www.facebook.com/${process.env.META_API_VERSION||'v24.0'}/dialog/oauth`,clientField:'client_id'};
  if(provider==='tiktok')return {client:process.env.TIKTOK_CLIENT_KEY,secret:process.env.TIKTOK_CLIENT_SECRET,redirect:process.env.TIKTOK_REDIRECT_URI,token:'https://open.tiktokapis.com/v2/oauth/token/',authorize:'https://www.tiktok.com/v2/auth/authorize/',clientField:'client_key'};
  if(provider==='snapchat')return {client:process.env.SNAP_CLIENT_ID,secret:process.env.SNAP_CLIENT_SECRET,redirect:process.env.SNAP_REDIRECT_URI,token:'https://accounts.snapchat.com/login/oauth2/access_token',authorize:'https://accounts.snapchat.com/login/oauth2/authorize',clientField:'client_id'};
  return {client:process.env.YOUTUBE_CLIENT_ID,secret:process.env.YOUTUBE_CLIENT_SECRET,redirect:process.env.YOUTUBE_REDIRECT_URI,token:'https://oauth2.googleapis.com/token',authorize:'https://accounts.google.com/o/oauth2/v2/auth',clientField:'client_id'};

@@ -10,6 +10,8 @@ import { Card, CardBody, CardHeader } from '../../components/ui/Card';
 import { Segmented } from '../../components/ui/Tabs';
 import { useI18n } from '../../i18n/I18nProvider';
 import { channelName } from '../../i18n/labels';
+import { isCommentPlatform } from '../../domain/social-comments';
+import { PostComments } from '../../features/social-comments/PostComments';
 import type { Metrics, Post } from '../../types';
 
 type View = 'cards' | 'table';
@@ -208,6 +210,7 @@ export function PostDialog({ post, onClose }: { post: Post | null; onClose: () =
           )}
         </div>
       </div>
+      {post && isCommentPlatform(post.platform) && <PostComments key={post.key} post={post} />}
     </Dialog>
   );
 }

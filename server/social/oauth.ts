@@ -3,6 +3,8 @@ import type express from 'express';
 import { db } from '../db.js';
 import { getUser, readCookie, requirePermission, userCan } from '../auth.js';
 import { oauthConfig } from './credentials.js';
+import { commentOAuthScopes, saveCommentGrants } from './comment-meta.js';
+import { isCommentPlatform } from '../../src/domain/social-comments.js';
 import { discover } from './accounts.js';
 import { request } from './http.js';
 import { saveSecret } from './store.js';
@@ -16,6 +18,7 @@ export function metaTokenExpiry(info:{expires_at?:number;data_access_expires_at?
 }
 export function oauthScopes(p:SocialProvider,mode:string):string[] {
  if(p==='linkedin')throw new Error('LinkedIn OAuth is managed by Zernio.');
+ if(mode==='comments'&&isCommentPlatform(p))return commentOAuthScopes(p);
  const publishing=mode==='publishing'||mode==='publishing-and-draft';
  if(p==='facebook')return ['pages_show_list','pages_read_engagement','read_insights',...(publishing?['pages_manage_posts','publish_video']:[])];
  if(p==='instagram')return ['pages_show_list','pages_read_engagement','instagram_basic','instagram_manage_insights',...(publishing?['instagram_content_publish']:[])];
@@ -23,9 +26,9 @@ export function oauthScopes(p:SocialProvider,mode:string):string[] {
  if(p==='snapchat')return ['snapchat-profile-api'];
  return ['https://www.googleapis.com/auth/youtube.readonly','https://www.googleapis.com/auth/yt-analytics.readonly',...(publishing?['https://www.googleapis.com/auth/youtube.upload']:[])];
 }
-export function configuredCallback(provider:SocialProvider) {
+export function configuredCallback(provider:SocialProvider,mode='read') {
  if(provider==='linkedin')throw new Error('LinkedIn connects through Zernio.');
- const c=oauthConfig(provider);
+ const c=oauthConfig(provider,mode);
  if(!c.client||!c.secret||!c.redirect)throw new Error('OAuth client, secret and exact redirect URI must be configured on the server.');
  const url=new URL(c.redirect), app=new URL(process.env.APP_URL||'http://127.0.0.1:4100');
  if(url.origin!==app.origin||url.pathname!==`/api/oauth/${provider}/callback`||url.search||url.hash||url.username||url.password)throw new Error('OAuth redirect URI must match APP_URL and the provider callback path exactly.');
@@ -41,9 +44,10 @@ export function registerSocialOAuth(app:express.Express) {
  for(const provider of socialProviders.filter(p=>p!=='linkedin')) {
   app.get(`/api/oauth/${provider}/start`,requirePermission('connections.manage'),async(req,res)=>{
    try {
-    const c=configuredCallback(provider),state=randomBytes(32).toString('base64url');
-    const mode=['publishing','draft','publishing-and-draft'].includes(String(req.query.mode))?String(req.query.mode):'read';
+    const mode=['publishing','draft','publishing-and-draft','comments'].includes(String(req.query.mode))?String(req.query.mode):'read';
+    if(mode==='comments'&&!isCommentPlatform(provider))return res.status(400).json({error:'Comment authorization is available for Meta accounts.'});
     if(['draft','publishing-and-draft'].includes(mode)&&provider!=='tiktok')return res.status(400).json({error:'Draft upload is only available for TikTok.'});
+    const c=configuredCallback(provider,mode),state=randomBytes(32).toString('base64url');
     await db.run('DELETE FROM social_oauth_states WHERE expires_at<?',[Date.now()]);
     await db.run('INSERT INTO social_oauth_states(hash,provider,owner_id,mode,expires_at) VALUES(?,?,?,?,?)',[hash(state),provider,req.user!.id,mode,Date.now()+600_000]);
     res.cookie(`social_${provider}_state`,state,{httpOnly:true,secure:c.redirect!.startsWith('https:'),sameSite:'lax',maxAge:600_000,path:`/api/oauth/${provider}`});
@@ -51,7 +55,8 @@ export function registerSocialOAuth(app:express.Express) {
     if(provider==='facebook'||provider==='instagram') {
      // Business Login configurations define their own permission set. Never use a
      // publishing configuration for a read-only connection.
-     const config=mode==='publishing'?process.env.META_PUBLISH_LOGIN_CONFIG_ID:process.env.META_READ_LOGIN_CONFIG_ID;
+     const config=mode==='comments'?process.env.META_COMMENTS_LOGIN_CONFIG_ID:mode==='publishing'?process.env.META_PUBLISH_LOGIN_CONFIG_ID:process.env.META_READ_LOGIN_CONFIG_ID;
+     if(mode==='comments')u.searchParams.set('auth_type','rerequest');
      if(config) {
       if(!/^\d+$/.test(config))throw new Error('Invalid Meta Login configuration ID.');
       u.searchParams.delete('scope');u.searchParams.set('config_id',config);
@@ -73,7 +78,7 @@ export function registerSocialOAuth(app:express.Express) {
    if(!owner||owner.status!=='active'||!userCan(owner,'connections.manage'))return res.status(403).send('Authorization is no longer available.');
    if(req.query.error||typeof req.query.code!=='string'||!req.query.code)return res.redirect(`/connections?provider=${provider}&oauth=denied`);
    try {
-    const c=configuredCallback(provider),body=new URLSearchParams({grant_type:'authorization_code',code:req.query.code,redirect_uri:c.redirect!,[c.clientField]:c.client!,client_secret:c.secret!});
+    const c=configuredCallback(provider,saved.mode),body=new URLSearchParams({grant_type:'authorization_code',code:req.query.code,redirect_uri:c.redirect!,[c.clientField]:c.client!,client_secret:c.secret!});
     const r=await request<Record<string,any>>(c.token,{method:'POST',headers:{'Content-Type':'application/x-www-form-urlencoded'},body});
     if(!r.access_token)throw new Error('Invalid token response.');
     // Meta's permission edge is authoritative. Other providers return granted scopes in the exchange.
@@ -92,6 +97,10 @@ export function registerSocialOAuth(app:express.Express) {
      const debug=await request<Record<string,any>>(debugUrl.toString(),{headers:{Authorization:`Bearer ${c.client}|${c.secret}`}},true);
      if(!debug.data?.is_valid||String(debug.data.app_id)!==c.client)throw new Error('Meta token verification failed.');
      token.expiresAt=metaTokenExpiry(debug.data);
+    }
+    if(saved.mode==='comments'&&isCommentPlatform(provider)) {
+     await saveCommentGrants(provider,token);
+     return res.redirect(`/connections?provider=${provider}&oauth=connected`);
     }
     const source=`oauth:${provider}:${randomUUID()}`;
     // Verify account identity before saving; discovery never returns credentials to the caller/browser.

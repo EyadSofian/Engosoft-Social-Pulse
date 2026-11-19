@@ -1,6 +1,7 @@
 import type { JSX } from 'react';
 import { AnalyticsHub } from '../pages/analytics/AnalyticsHub';
 import { CalendarPage } from '../pages/calendar/CalendarPage';
+import { CommentsPage } from '../pages/comments/CommentsPage';
 import { CoursesPage } from '../pages/courses/CoursesPage';
 import { InsightsPage } from '../pages/insights/InsightsPage';
 import { ContentBoardPage } from '../pages/content/ContentBoardPage';
@@ -33,6 +34,7 @@ export const ROUTES: RouteDef[] = [
   { pattern: '/overview', nav: 'overview', render: () => <OverviewPage /> },
   { pattern: '/insights', nav: 'insights', render: () => <InsightsPage /> },
   { pattern: '/analytics', nav: 'analytics', render: () => <AnalyticsHub /> },
+  { pattern: '/comments', nav: 'comments', render: () => <CommentsPage /> },
   // Older links to the separate tracking pages open Analytics.
   { pattern: '/tracking', nav: 'analytics', render: () => <AnalyticsHub /> },
   { pattern: '/performance', nav: 'analytics', render: () => <AnalyticsHub /> },

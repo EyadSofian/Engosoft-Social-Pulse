@@ -11,19 +11,24 @@ export async function registerAccount(provider:SocialProvider,id:string,name:str
  const value:SocialAccount={id:accountId(provider,id),provider,externalId:id,name,ownerId:existing?.ownerId||ownerId,scopes,metadata,credentialSource,status:'connected',verifiedAt:new Date().toISOString(),lastSyncAt:existing?.lastSyncAt||null,error:null};
  await putAccount(value,reconnect);return (await getAccount(value.id))!;
 }
-export async function discover(provider:SocialProvider,token:Credential,ownerId:string,source:string,reconnect=false):Promise<SocialAccount[]> {
- const result:SocialAccount[]=[];
- if(provider==='facebook'||provider==='instagram') {
-  const perms=await graphRead('me/permissions',token.accessToken);
+export async function metaPages(accessToken:string) {
+  const perms=await graphRead('me/permissions',accessToken);
   const scopes=(perms.data||[]).filter((x:any)=>x.status==='granted').map((x:any)=>x.permission);
   const pageFields='id,name,access_token,tasks'+(scopes.includes('instagram_basic')?',instagram_business_account{id,username,name}':'');
   let next=''; let pages:Record<string,any>[]=[];
   for(let i=0;i<10;i++) {
-   const r=next?await request(next,{headers:headers(token.accessToken)},true):await graphRead('me/accounts',token.accessToken,{fields:pageFields,limit:'100'});
+   const r=next?await request(next,{headers:headers(accessToken)},true):await graphRead('me/accounts',accessToken,{fields:pageFields,limit:'100'});
    pages.push(...r.data||[]);next=r.paging?.next||'';
    if(!next)break;
    if(new URL(next).origin!=='https://graph.facebook.com')throw new Error('Unexpected pagination host.');
   }
+  return {scopes:scopes as string[],pages};
+}
+export async function discover(provider:SocialProvider,token:Credential,ownerId:string,source:string,reconnect=false):Promise<SocialAccount[]> {
+ const result:SocialAccount[]=[];
+ if(provider==='facebook'||provider==='instagram') {
+  const {scopes,pages:discoveredPages}=await metaPages(token.accessToken);
+  let pages=discoveredPages;
   const allowed=(process.env.META_PAGE_IDS||'').split(',').map(x=>x.trim()).filter(Boolean);
   if(allowed.length&&!reconnect) {
    for(const id of allowed) if(!pages.some(p=>p.id===id)) { try{ pages.push(await graphRead(id,token.accessToken,{fields:'id,name,instagram_business_account{id,username,name}'})); }catch{/* A configured ID does not prove access. */} }
