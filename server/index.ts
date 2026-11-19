@@ -10,7 +10,7 @@ import { deletePlan, dismissAlert, getAlerts, getAudience, getConnectorStatuses,
 import { runSync } from './sync.js';
 import { pollPendingJobs } from './social/publishing.js';
 import { registerMetaCommentWebhook } from './social/comment-routes.js';
-import { runCommentQueue } from './social/comments.js';
+import { pollSocialComments, runCommentQueue } from './social/comments.js';
 import { registerSocialRoutes } from './social/routes.js';
 import { runDuePublications } from './social/queue.js';
 import { randomUUID } from 'node:crypto';
@@ -257,6 +257,7 @@ setInterval(()=>{void checkAlerts().catch(()=>{});},60_000).unref();
 setInterval(()=>{void syncGoogleCalendars().catch(()=>{});},60_000).unref();
 setInterval(()=>{void runDuePublications().catch(()=>{});},60_000).unref();
 setInterval(()=>{void runCommentQueue().catch(()=>console.error('Social comment queue failed.'));},30_000).unref();
+setInterval(()=>{void pollSocialComments().catch(()=>console.error('Social comment scan failed.'));},30_000).unref();
 // Publications still processing are checked every minute, not only with the 30-minute sync: an Instagram Reel goes live
 // only when this check sends media_publish after its container is ready.
 let polling=false;

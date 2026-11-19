@@ -66,6 +66,7 @@ export function PostComments({ post }: { post: Post }) {
       {settings.canManage && <details><summary>{t('Reply settings', 'إعدادات الرد')}</summary>
         <CommentPolicyEditor path={path + '/settings'} settings={settings} onSave={setSettings} post />
       </details>}
+      {settings.canReply && <NewPostComment path={path} account={post.accountName} onSent={() => void refresh()} />}
       {!page && !error && <p className="u-sm" role="status">{t('Loading comments…', 'جاري تحميل التعليقات…')}</p>}
       {page && !page.comments.length && <p className="u-sm">{t('No comments on this post yet.', 'لسه مفيش تعليقات على المنشور.')}</p>}
       {page?.comments.length ? <ul className="social-comments__list">{page.comments.map(comment => <CommentThread key={comment.id}
@@ -74,6 +75,47 @@ export function PostComments({ post }: { post: Post }) {
     </>}
     {error && <p className="u-sm" role="alert">{error}</p>}
   </section>;
+}
+
+function NewPostComment({ path, account, onSent }: { path: string; account: string; onSent: () => void }) {
+  const { t } = useI18n();
+  const [text, setText] = useState('');
+  const [requestId, setRequestId] = useState<string>();
+  const [busy, setBusy] = useState(false);
+  const [notice, setNotice] = useState('');
+  const [error, setError] = useState('');
+  const [uncertain, setUncertain] = useState(false);
+  const [pendingConfirmation, setPendingConfirmation] = useState(false);
+  async function send() {
+    const id = requestId ?? crypto.randomUUID();
+    setRequestId(id);
+    setBusy(true); setError(''); setNotice('');
+    try {
+      await api(path, { body: { requestId: id, message: text.trim() } });
+      setText(''); setRequestId(undefined); setPendingConfirmation(false);
+      setNotice(t('Comment published.', 'اتنشر التعليق.'));
+      onSent();
+    } catch (err) {
+      const details = err instanceof ApiError ? err.details as { code?: string } | undefined : undefined;
+      if (details?.code === 'reply_unconfirmed') setUncertain(true);
+      setPendingConfirmation(err instanceof ApiError && (err.status === 0 || err.status >= 500));
+      setError(errorMessage(err, t('Could not publish the comment.', 'تعذّر نشر التعليق.')));
+    } finally { setBusy(false); }
+  }
+  return <details className="social-comments__new">
+    <summary>{t('Write a new comment', 'اكتب تعليق جديد')}</summary>
+    <div className="u-stack u-stack--xs social-comments__settings">
+      <Field label={account ? t(`Comment publicly as ${account}`, `تعليق علني باسم ${account}`) : t('Public comment', 'تعليق علني')}>
+        {id => <Textarea id={id} rows={2} maxLength={600} dir="auto" value={text} readOnly={uncertain || pendingConfirmation} disabled={busy} onChange={event => {
+          setText(event.target.value);
+          setRequestId(undefined);
+        }} />}
+      </Field>
+      <div><Button size="sm" variant="primary" busy={busy} disabled={!text.trim() || uncertain} onClick={() => void send()}>{pendingConfirmation ? t('Check sending status', 'تحقّق من الإرسال') : t('Publish comment', 'انشر التعليق')}</Button></div>
+      {notice && <small role="status">{notice}</small>}
+      {error && <p role="alert" className="u-sm">{error}</p>}
+    </div>
+  </details>;
 }
 
 function CommentContent({ comment }: { comment: PublicSocialComment }) {

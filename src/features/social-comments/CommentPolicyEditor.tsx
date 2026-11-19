@@ -21,7 +21,7 @@ export function CommentPolicyEditor({ path, settings, onSave, post = false }: {
   const [saving, setSaving] = useState(false);
   const [notice, setNotice] = useState('');
   const [error, setError] = useState('');
-  const automaticUnavailable = !settings.authorized || !settings.aiReady || !settings.webhookConfigured;
+  const automaticUnavailable = !settings.authorized || !settings.aiReady;
   const invalid = policy?.mode === 'automatic' && (automaticUnavailable || !policy.faqs.length)
     || policy?.faqs.some(faq => !faq.question.trim() || !faq.answer.trim());
   const changed = JSON.stringify(policy) !== JSON.stringify(initial);
@@ -51,10 +51,11 @@ export function CommentPolicyEditor({ path, settings, onSave, post = false }: {
     </Field>
     {policy && policy.mode !== 'manual' && <>
       {policy.mode === 'automatic' && <p className="u-sm">
-        {t('AI matches new comments to your approved questions and posts the corresponding answer. Other comments are flagged for review.', 'الذكاء الاصطناعي يطابق التعليقات الجديدة مع الأسئلة المعتمدة وينشر الإجابة المقابلة. باقي التعليقات بتظهر للمراجعة.')}
+        {t('Mobde3 checks eligible posts about every five minutes. AI selects an approved answer for each matching new comment.', 'مبدع بيفحص المنشورات المؤهلة كل خمس دقايق تقريبًا. الـAI بيختار إجابة معتمدة للتعليقات الجديدة المطابقة.')}
       </p>}
+      {policy.mode === 'automatic' && !post && <p className="u-sm">{t('The account setting covers its latest 14 synced posts. A post setting can override it.', 'إعداد الحساب بيشمل آخر ١٤ بوست متزامن. تقدر تغيّره لأي بوست من إعدادات البوست نفسه.')}</p>}
       {policy.mode === 'automatic' && automaticUnavailable && <p className="u-sm" role="status">
-        {t('Automatic sending requires comment authorization, OpenAI and the Meta webhook.', 'الرد التلقائي يحتاج تفويض التعليقات وإعداد OpenAI وWebhook من Meta.')}
+        {t('Automatic replies require comment authorization and OpenAI.', 'الرد التلقائي يحتاج تفويض التعليقات وإعداد OpenAI.')}
       </p>}
       {policy.faqs.map((faq, index) => {
         const change = (field: 'question' | 'answer', value: string) => setPolicy({ ...policy, faqs: policy.faqs.map((item, i) => i === index ? { ...item, [field]: value } : item) });
@@ -85,18 +86,7 @@ export function AccountCommentSettings({ platform, id }: { platform: string; id:
   const [open, setOpen] = useState(false);
   const [settings, setSettings] = useState<CommentSettings>();
   const [error, setError] = useState('');
-  const [subscribing, setSubscribing] = useState(false);
-  const [subscriptionNotice, setSubscriptionNotice] = useState('');
-  const accountPath = commentAccountPath(platform, id);
-  const path = accountPath + '/settings';
-  const subscribe = async () => {
-    setSubscribing(true); setSubscriptionNotice('');
-    try {
-      await api(accountPath + '/subscription', { method: 'POST' });
-      setSubscriptionNotice(t('Page subscribed to Meta updates.', 'تم اشتراك الصفحة في إشعارات Meta.'));
-    } catch (err) { setSubscriptionNotice(errorMessage(err, t('Could not subscribe this account.', 'تعذّر تفعيل الإشعارات لهذا الحساب.'))); }
-    finally { setSubscribing(false); }
-  };
+  const path = commentAccountPath(platform, id) + '/settings';
   useEffect(() => {
     if (!open) return;
     let active = true;
@@ -109,10 +99,6 @@ export function AccountCommentSettings({ platform, id }: { platform: string; id:
     <summary>{t('Comment reply settings', 'إعدادات الرد على التعليقات')}</summary>
     {open && (settings ? <>
       {!settings.authorized && <p className="u-sm">{t('Authorize comments for this account to read and send replies.', 'فوّض التعليقات لهذا الحساب عشان تقدر تقراها وترد عليها.')}</p>}
-      {settings.authorized && settings.webhookConfigured && <div className="u-row u-row--wrap">
-        <Button size="sm" busy={subscribing} onClick={() => void subscribe()}>{t('Subscribe to comment updates', 'فعّل استقبال التعليقات الجديدة')}</Button>
-        {subscriptionNotice && <small role="status">{subscriptionNotice}</small>}
-      </div>}
       <CommentPolicyEditor path={path} settings={settings} onSave={setSettings} />
     </> : <p role={error ? 'alert' : 'status'} className="u-sm">{error || t('Loading…', 'جاري التحميل…')}</p>)}
   </details>;

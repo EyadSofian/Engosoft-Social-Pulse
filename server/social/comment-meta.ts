@@ -1,7 +1,7 @@
 import { randomUUID } from 'node:crypto';
 import type { CommentPlatform } from '../../src/domain/social-comments.js';
 import { db, defineSchema } from '../db.js';
-import { graphBase, graphRead, metaPages } from './accounts.js';
+import { graphBase, metaPages } from './accounts.js';
 import { metaCommentApp } from './credentials.js';
 import { headers, request, ProviderError } from './http.js';
 import { accountId, listAccounts, loadSecret, saveSecret } from './store.js';
@@ -77,6 +77,11 @@ export async function subscribeCommentPage(a: SocialAccount) {
 }
 
 
+// The comments worker backs off from Meta throttling before making another request.
+const graphRead = (path: string, token: string, params: Record<string, string>) =>
+  request(`${graphBase()}/${path}?${new URLSearchParams(params)}`, { headers: headers(token) });
+
+
 interface MetaComment {
   id?: string; text?: string; message?: string; created_time?: string; timestamp?: string;
   from?: { id?: string; username?: string; name?: string }; username?: string; user?: { id?: string }; can_comment?: boolean;
@@ -130,6 +135,12 @@ const graphWrite = (path: string, token: string, values: Record<string, string>)
 
 export async function sendMetaReply(a: SocialAccount, token: string, id: string, message: string) {
   const edge = a.provider === 'facebook' ? 'comments' : 'replies';
+  return createMetaComment(token, id, edge, message);
+}
+
+export const sendMetaPostComment = (token: string, id: string, message: string) => createMetaComment(token, id, 'comments', message);
+
+async function createMetaComment(token: string, id: string, edge: string, message: string) {
   const result = await graphWrite(`${id}/${edge}`, token, { message });
   if (!metaId(result.id)) throw new ProviderError(0, 'missing_reply_id');
   return result.id;

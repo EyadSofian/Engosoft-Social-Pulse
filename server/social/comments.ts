@@ -6,9 +6,9 @@ import { allCourseProfiles } from '../course-profiles.js';
 import { openAIJson } from '../creative-intelligence/generation/provider.js';
 import { budgetOf, spentThisMonth, withUsage } from '../usage.js';
 import { metaCommentApp } from './credentials.js';
-import { commentToken, hasCommentSubscription, isFacebookPostParent, listMetaComments, metaId, readMetaComment, readOwnedMetaPost, sendMetaReply } from './comment-meta.js';
+import { commentToken, isFacebookPostParent, listMetaComments, metaId, readMetaComment, readOwnedMetaPost, sendMetaPostComment, sendMetaReply } from './comment-meta.js';
 import { ProviderError } from './http.js';
-import { accountId, getAccount } from './store.js';
+import { accountId, getAccount, listAccounts } from './store.js';
 import type { SocialAccount } from './types.js';
 import { commentModes, isCommentPlatform, type CommentPlatform, type CommentPolicy, type PublicSocialComment } from '../../src/domain/social-comments.js';
 
@@ -23,11 +23,19 @@ CREATE TABLE IF NOT EXISTS social_comment_events (
  PRIMARY KEY(account_id,post_id,comment_id)
 );
 CREATE INDEX IF NOT EXISTS social_comment_events_due ON social_comment_events(state,next_at);
+CREATE TABLE IF NOT EXISTS social_comment_timers (
+ key TEXT PRIMARY KEY, next_at INTEGER NOT NULL
+);
+CREATE TABLE IF NOT EXISTS social_comment_scans (
+ account_id TEXT NOT NULL, post_id TEXT NOT NULL, scanned_at INTEGER NOT NULL,
+ PRIMARY KEY(account_id,post_id)
+);
 CREATE TABLE IF NOT EXISTS social_comment_deliveries (
  account_id TEXT NOT NULL, post_id TEXT NOT NULL, comment_id TEXT NOT NULL, text TEXT NOT NULL, actor_id TEXT NOT NULL,
  automatic INTEGER NOT NULL, state TEXT NOT NULL, remote_id TEXT, updated_at INTEGER NOT NULL,
  PRIMARY KEY(account_id,post_id,comment_id)
 );
+CREATE INDEX IF NOT EXISTS social_comment_delivery_account_time ON social_comment_deliveries(account_id,automatic,updated_at);
 `);
 
 export class CommentError extends Error {
@@ -40,6 +48,38 @@ export const policyInput = z.object({
 }).refine(p => p.mode !== 'automatic' || p.faqs.length > 0);
 export const commentAiReady = () => Boolean(process.env.OPENAI_API_KEY?.trim());
 export const commentWebhookConfigured = () => Boolean(metaCommentApp().secret && metaCommentApp().client && process.env.META_COMMENTS_VERIFY_TOKEN);
+
+const FIVE_MINUTES = 5 * 60_000;
+const MAX_COMMENT_AGE = 2 * 3600_000;
+export const COMMENT_SCAN_POSTS = 14;
+const AUTO_REPLY_DAILY_LIMIT = 20;
+const eligibleUser = async (id: string) => {
+  const user = await getUser(id);
+  return user?.status === 'active' && userCan(user, 'connections.manage') && userCan(user, 'content.publish');
+};
+
+async function reserveTimer(key: string, until: number, now = Date.now()) {
+  const reservation = await db.run(`INSERT INTO social_comment_timers (key,next_at) VALUES (?,?)
+    ON CONFLICT(key) DO UPDATE SET next_at=excluded.next_at WHERE social_comment_timers.next_at<=?`, [key, until, now]);
+  return reservation.changes > 0;
+}
+async function providerPause(account: string) {
+  const row = await db.get<{ until_at: number | null }>(
+    'SELECT MAX(next_at) AS until_at FROM social_comment_timers WHERE key IN (?,?)', ['meta:paused', `paused:${account}`]);
+  return Number(row?.until_at ?? 0);
+}
+export const commentProviderLimited = (error: ProviderError) =>
+  (error.status === 429 || ['4', '17', '32', '613', '80001', '368', 'rate_limit_exceeded'].includes(error.code));
+async function pauseAfterProviderError(account: string, error: unknown) {
+  if (!(error instanceof ProviderError) || !commentProviderLimited(error)) return;
+  const until = Date.now() + Math.max((error.code === '368' ? 60 : 15) * 60_000, error.retryAfter * 1000);
+  await db.run(`INSERT INTO social_comment_timers (key,next_at) VALUES (?,?) ON CONFLICT(key) DO UPDATE
+    SET next_at=excluded.next_at WHERE social_comment_timers.next_at<excluded.next_at`,
+  [error.code === '4' ? 'meta:paused' : `paused:${account}`, until]);
+}
+function commentRateLimit() {
+  return new CommentError(429, 'comment_rate_limited', 'الإرسال متوقف مؤقتًا. حاول لاحقًا.');
+}
 
 interface Target { account: SocialAccount; postId: string }
 export async function commentAccount(platform: string, id: string) {
@@ -66,8 +106,8 @@ export async function getPolicy(a: SocialAccount, postId = ''): Promise<StoredPo
 }
 export async function setPolicy(a: SocialAccount, postId: string, policy: CommentPolicy | null, actor: string) {
   if (policy?.mode === 'automatic') {
-    if (!commentAiReady() || !commentWebhookConfigured()) throw new CommentError(409, 'automatic_setup_required', 'يلزم إعداد OpenAI وإشعارات Meta قبل التفعيل.');
-    if (!await hasCommentSubscription(a)) throw new CommentError(409, 'comment_subscription_required', 'فعّل استقبال تعليقات الحساب من شاشة ربط المنصات أولًا.');
+    if (!commentAiReady()) throw new CommentError(409, 'automatic_setup_required', 'يلزم إعداد OpenAI قبل تفعيل الرد التلقائي.');
+    await commentToken(a);
   }
   if (!policy) {
     await db.run('DELETE FROM social_comment_policies WHERE account_id=? AND post_id=?', [a.id, postId]);
@@ -102,7 +142,11 @@ const eventKey = (event: EventKey) => [event.account_id, event.post_id, event.co
 
 export async function readCommentPage(target: Target, cursor?: string, parent?: string) {
   const token = await commentToken(target.account);
-  const result = await listMetaComments(target.account, token, parent ?? target.postId, cursor, Boolean(parent));
+  if (await providerPause(target.account.id) > Date.now()) throw commentRateLimit();
+  const result = await listMetaComments(target.account, token, parent ?? target.postId, cursor, Boolean(parent)).catch(async error => {
+    await pauseAfterProviderError(target.account.id, error);
+    throw error;
+  });
   const ids = result.comments.map(comment => comment.id);
   const params = [target.account.id, target.postId, ...ids];
   const filter = `WHERE account_id=? AND post_id=? AND comment_id IN (${ids.map(() => '?').join(',')})`;
@@ -126,7 +170,8 @@ export async function readCommentPage(target: Target, cursor?: string, parent?: 
   }) };
 }
 
-export async function deliverReply(target: Target, token: string, commentId: string, message: string, actor: string, automatic: boolean) {
+export async function deliverReply(target: Target, token: string, commentId: string, message: string, actor: string, automatic: boolean, topLevel = false) {
+  if (await providerPause(target.account.id) > Date.now()) throw commentRateLimit();
   const identity = key(target, commentId);
   const claimed = await db.run(`INSERT INTO social_comment_deliveries (account_id,post_id,comment_id,text,actor_id,automatic,state,updated_at)
     VALUES (?,?,?,?,?,?, 'sending',?) ON CONFLICT(account_id,post_id,comment_id) DO UPDATE SET
@@ -135,17 +180,40 @@ export async function deliverReply(target: Target, token: string, commentId: str
   if (!claimed.changes) throw new CommentError(409, 'reply_already_attempted', 'الرد موجود بالفعل أو حالته تحتاج تحقق. حدّث التعليقات.');
   let remoteId: string;
   try {
-    remoteId = await sendMetaReply(target.account, token, commentId, message);
+    remoteId = topLevel ? await sendMetaPostComment(token, target.postId, message)
+      : await sendMetaReply(target.account, token, commentId, message);
   } catch (error) {
     const uncertain = !(error instanceof ProviderError) || error.status === 0 || error.status >= 500;
     await db.run('UPDATE social_comment_deliveries SET state=?,updated_at=? WHERE account_id=? AND post_id=? AND comment_id=?',
       [uncertain ? 'uncertain' : 'failed', Date.now(), ...identity]);
+    await pauseAfterProviderError(target.account.id, error);
     if (uncertain) throw new CommentError(409, 'reply_unconfirmed', 'المنصة لم تؤكد الإرسال. راجع الردود على المنشور قبل محاولة الإرسال مرة أخرى.');
     throw error;
   }
   await db.run("UPDATE social_comment_deliveries SET state='sent',remote_id=?,updated_at=? WHERE account_id=? AND post_id=? AND comment_id=?",
     [remoteId, Date.now(), ...identity]);
   return remoteId;
+}
+
+export async function publishPostComment(target: Target, requestId: string, message: string, actor: string) {
+  const id = `new:${requestId}`;
+  const prior = await db.get<{ state: string; remote_id: string | null; text: string; actor_id: string }>(
+    'SELECT state,remote_id,text,actor_id FROM social_comment_deliveries WHERE account_id=? AND post_id=? AND comment_id=?', key(target, id));
+  if (prior && (prior.text !== message || prior.actor_id !== actor)) {
+    throw new CommentError(409, 'comment_request_conflict', 'معرّف الطلب مرتبط بتعليق آخر.');
+  }
+  if (prior?.state === 'sent' && prior.remote_id) return prior.remote_id;
+  if (prior && prior.state !== 'failed') {
+    throw new CommentError(409, 'reply_unconfirmed', 'راجع التعليقات على المنشور للتحقق من الإرسال.');
+  }
+  const now = Date.now();
+  if (await providerPause(target.account.id) > now || !await reserveTimer(`manual:${target.account.id}`, now + 5_000, now)) throw commentRateLimit();
+  const token = await commentToken(target.account);
+  if (await readOwnedMetaPost(target.account, token, target.postId).catch(async error => {
+    await pauseAfterProviderError(target.account.id, error);
+    throw error;
+  }) === undefined) throw new CommentError(409, 'post_not_owned', 'تعذّر تأكيد ملكية المنشور لهذا الحساب.');
+  return deliverReply(target, token, id, message, actor, false, true);
 }
 
 const privateText = (value: string) => /[\p{N}][\p{N}\s().+-]{6,}[\p{N}]|[\w.+-]+@[\w.-]+\.[a-z]{2,}/iu.test(value);
@@ -178,15 +246,83 @@ export async function suggestReply(caption: string, text: string, policy: Commen
 }
 
 export interface MetaCommentEvent { platform: CommentPlatform; account: string; post: string; comment: string }
+async function enqueueComment(a: SocialAccount, postId: string, commentId: string) {
+  const now = Date.now();
+  await db.run(`INSERT INTO social_comment_events (account_id,post_id,comment_id,received_at,next_at,state)
+    VALUES (?,?,?,?,?,'queued') ON CONFLICT(account_id,post_id,comment_id) DO NOTHING`, [a.id, postId, commentId, now, now]);
+}
+
 export async function enqueueMetaComment(event: MetaCommentEvent) {
   const id = accountId(event.platform, event.account);
   const a = await getAccount(id);
   if (!a || a.status === 'disconnected') return;
   const policy = await getPolicy(a, event.post) ?? await getPolicy(a);
   if (policy?.policy.mode !== 'automatic') return;
-  const now = Date.now();
-  await db.run(`INSERT INTO social_comment_events (account_id,post_id,comment_id,received_at,next_at,state)
-    VALUES (?,?,?,?,?,'queued') ON CONFLICT(account_id,post_id,comment_id) DO NOTHING`, [id, event.post, event.comment, now, now]);
+  await enqueueComment(a, event.post, event.comment);
+}
+
+interface ScanTarget { account: SocialAccount; postId: string; since: number; scannedAt: number }
+async function scanTargets(now: number) {
+  const targets: ScanTarget[] = [];
+  for (const account of await listAccounts()) {
+    if (!isCommentPlatform(account.provider) || !account.verifiedAt || ['disconnected','authorization_required'].includes(account.status)) continue;
+    const defaults = await getPolicy(account);
+    const inherit = defaults?.policy.mode === 'automatic' && await eligibleUser(defaults.updated_by);
+    const ids = inherit ? await db.all<{ external_id: string }>(
+      'SELECT external_id FROM observed_posts WHERE platform=? AND account_id=? ORDER BY published_at DESC,external_id LIMIT ?',
+      [account.provider, account.externalId, COMMENT_SCAN_POSTS]) : [];
+    const overrides = await db.all<{ post_id: string; policy_json: string; updated_by: string; updated_at: number }>(
+      "SELECT post_id,policy_json,updated_by,updated_at FROM social_comment_policies WHERE account_id=? AND post_id<>''", [account.id]);
+    const byPost = new Map(overrides.map(row => [row.post_id, { ...row, policy: JSON.parse(row.policy_json) as CommentPolicy }]));
+    const scans = new Map((await db.all<{ post_id: string; scanned_at: number }>(
+      'SELECT post_id,scanned_at FROM social_comment_scans WHERE account_id=?', [account.id])).map(row => [row.post_id, Number(row.scanned_at)]));
+    const candidates = new Set([...ids.map(row => row.external_id), ...overrides.map(row => row.post_id)]);
+    for (const postId of candidates) {
+      if (!metaId(postId)) continue;
+      const policy = byPost.get(postId) ?? (inherit ? defaults : undefined);
+      if (policy?.policy.mode !== 'automatic' || !await eligibleUser(policy.updated_by)) continue;
+      const scannedAt = scans.get(postId) ?? 0;
+      if (scannedAt + FIVE_MINUTES > now) continue;
+      targets.push({ account, postId, since: Math.max(Number(policy.updated_at), now - MAX_COMMENT_AGE), scannedAt });
+    }
+  }
+  return targets.sort((left, right) => left.scannedAt - right.scannedAt);
+}
+
+export async function pollSocialComments(now = Date.now()) {
+  if (!commentAiReady() || !await reserveTimer('poll', now + FIVE_MINUTES, now)) return 0;
+  const stopAt = Date.now() + 75_000;
+  let scanned = 0;
+  const tokens = new Map<string, string>();
+  const blocked = new Set<string>();
+  for (const { account, postId, since } of await scanTargets(now)) {
+    if (scanned >= COMMENT_SCAN_POSTS || Date.now() >= stopAt) break;
+    if (blocked.has(account.id) || await providerPause(account.id) > Date.now()) continue;
+    try {
+      if (!tokens.has(account.id)) tokens.set(account.id, await commentToken(account));
+      const token = tokens.get(account.id)!;
+      scanned++;
+      let cursor: string | undefined;
+      for (let page = 0; page < 3 && Date.now() < stopAt; page++) {
+        const result = await listMetaComments(account, token, postId, cursor);
+        for (const comment of result.comments) {
+          if (!comment.own && comment.canReply && Date.parse(comment.createdAt) > since) await enqueueComment(account, postId, comment.id);
+        }
+        if (!result.next || result.comments.some(comment => Date.parse(comment.createdAt) <= since)) break;
+        cursor = result.next;
+      }
+    } catch (error) {
+      await pauseAfterProviderError(account.id, error);
+      if (error instanceof ProviderError) {
+        if (commentProviderLimited(error) || [401, 403].includes(error.status)) blocked.add(account.id);
+        if (commentProviderLimited(error) && error.code === '4') break;
+      }
+    } finally {
+      await db.run(`INSERT INTO social_comment_scans (account_id,post_id,scanned_at) VALUES (?,?,?) ON CONFLICT(account_id,post_id)
+        DO UPDATE SET scanned_at=excluded.scanned_at`, [account.id, postId, now]);
+    }
+  }
+  return scanned;
 }
 
 async function replyThreadStatus(target: Target, token: string, id: string) {
@@ -203,16 +339,15 @@ async function replyThreadStatus(target: Target, token: string, id: string) {
 
 async function processEvent(event: EventRow) {
   const a = await getAccount(event.account_id);
-  if (!a || !isCommentPlatform(a.provider) || !commentWebhookConfigured() || !commentAiReady() || Date.now() - Number(event.received_at) > 24 * 3600_000) return 'review';
+  if (!a || !isCommentPlatform(a.provider) || !commentAiReady() || Date.now() - Number(event.received_at) > MAX_COMMENT_AGE) return 'review';
   const target = { account: a, postId: event.post_id };
   const activePolicy = () => getPolicy(a, event.post_id).then(policy => policy ?? getPolicy(a));
   const policy = await activePolicy();
   if (policy?.policy.mode !== 'automatic' || policy.updated_at > Number(event.received_at)) return 'done';
-  const canRun = async () => {
-    const user = await getUser(policy.updated_by);
-    return user?.status === 'active' && userCan(user, 'connections.manage') && userCan(user, 'content.publish');
-  };
-  if (!await canRun()) return 'review';
+  if (!await eligibleUser(policy.updated_by)) return 'review';
+  if (await providerPause(a.id) > Date.now()) return 'queued';
+  const pace = await db.get<{ next_at: number }>('SELECT next_at FROM social_comment_timers WHERE key=?', [`auto:${a.id}`]);
+  if (Number(pace?.next_at ?? 0) > Date.now()) return 'queued';
   const budget = await budgetOf(policy.updated_by);
   if (budget != null && await spentThisMonth(policy.updated_by) >= budget) return 'review';
   const prior = await db.get<{ state: DeliveryRow['state'] }>('SELECT state FROM social_comment_deliveries WHERE account_id=? AND post_id=? AND comment_id=?', eventKey(event));
@@ -224,7 +359,7 @@ async function processEvent(event: EventRow) {
     : !comment.parentId || isFacebookPostParent(comment.parentId, target.postId);
   if (!comment.knownAuthor || !comment.canReply || !parentMatches) return 'review';
   const createdAt = Date.parse(comment.createdAt);
-  if (!Number.isFinite(createdAt) || Math.floor(createdAt / 1000) <= Math.floor(policy.updated_at / 1000)) return 'done';
+  if (!Number.isFinite(createdAt) || createdAt < Date.now() - MAX_COMMENT_AGE || Math.floor(createdAt / 1000) <= Math.floor(policy.updated_at / 1000)) return 'done';
   const caption = await readOwnedMetaPost(a, token, target.postId);
   if (caption === undefined) return 'review';
   const thread = await replyThreadStatus(target, token, event.comment_id);
@@ -238,14 +373,19 @@ async function processEvent(event: EventRow) {
   const latestThread = await replyThreadStatus(target, token, event.comment_id);
   if (latestThread !== 'unanswered') return latestThread === 'answered' ? 'done' : 'review';
   const current = await activePolicy();
-  if (current?.policy.mode !== 'automatic' || current.updated_at !== policy.updated_at || current.updated_by !== policy.updated_by || !await canRun()) return 'done';
+  if (current?.policy.mode !== 'automatic' || current.updated_at !== policy.updated_at || current.updated_by !== policy.updated_by || !await eligibleUser(policy.updated_by)) return 'done';
+  const now = Date.now();
+  const day = await db.get<{ total: number }>(`SELECT COUNT(*) AS total FROM social_comment_deliveries
+    WHERE account_id=? AND automatic=1 AND updated_at>=?`, [a.id, now - 86_400_000]);
+  if (Number(day?.total ?? 0) >= AUTO_REPLY_DAILY_LIMIT) return 'review';
+  if (!await reserveTimer(`auto:${a.id}`, now + 60_000, now)) return 'queued';
   await deliverReply(target, token, event.comment_id, message, policy.updated_by, true);
   return 'done';
 }
 
 let worker: Promise<void> | undefined;
 export function runCommentQueue() {
-  if (!commentWebhookConfigured() || !commentAiReady()) return Promise.resolve();
+  if (!commentAiReady()) return Promise.resolve();
   worker ??= drain().finally(() => { worker = undefined; });
   return worker;
 }
@@ -254,18 +394,21 @@ async function drain() {
   const now = Date.now();
   await db.run("DELETE FROM social_comment_events WHERE state='done' AND received_at<?", [now - 30 * 86_400_000]);
   const events = await db.all<EventRow>("SELECT * FROM social_comment_events WHERE state IN ('queued','working') AND next_at<=? ORDER BY next_at LIMIT 6", [now]);
-  await Promise.all(events.map(async event => {
+  for (const event of events) {
+    const lease = Date.now() + 10 * 60_000;
     const claimed = await db.run("UPDATE social_comment_events SET state='working',next_at=?,attempts=attempts+1 WHERE account_id=? AND post_id=? AND comment_id=? AND state IN ('queued','working') AND next_at=?",
-      [now + 10 * 60_000, ...eventKey(event), event.next_at]);
-    if (!claimed.changes) return;
+      [lease, ...eventKey(event), event.next_at]);
+    if (!claimed.changes) continue;
     let state = 'review';
     try {
       state = await processEvent(event);
     } catch (error) {
+      await pauseAfterProviderError(event.account_id, error);
       if (error instanceof CommentError && error.code === 'reply_already_attempted') state = 'done';
-      else if (error instanceof ProviderError && error.retryable && Number(event.attempts) < 2) state = 'queued';
+      else if (error instanceof ProviderError && commentProviderLimited(error) || error instanceof CommentError && error.code === 'comment_rate_limited') state = 'queued';
+      else if (error instanceof ProviderError && (error.status === 0 || error.status >= 500) && Number(event.attempts) < 2) state = 'queued';
     }
     await db.run("UPDATE social_comment_events SET state=?,next_at=? WHERE account_id=? AND post_id=? AND comment_id=? AND state='working' AND next_at=?",
-      [state, Date.now() + 60_000, ...eventKey(event), now + 10 * 60_000]);
-  }));
+      [state, Math.max(Date.now() + 60_000, state === 'queued' ? await providerPause(event.account_id) : 0), ...eventKey(event), lease]);
+  }
 }

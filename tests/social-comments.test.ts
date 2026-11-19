@@ -1,5 +1,5 @@
 import assert from 'node:assert/strict';
-import { createHmac, randomBytes } from 'node:crypto';
+import { createHmac, randomBytes, randomUUID } from 'node:crypto';
 import { mkdtempSync, rmSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
@@ -19,7 +19,7 @@ const { registerAccount } = await import('../server/social/accounts');
 const { saveCommentGrants } = await import('../server/social/comment-meta');
 const { parseMetaCommentEvents, registerMetaCommentWebhook } = await import('../server/social/comment-routes');
 const { registerSocialRoutes } = await import('../server/social/routes');
-const { runCommentQueue } = await import('../server/social/comments');
+const { pollSocialComments, runCommentQueue } = await import('../server/social/comments');
 const { saveConnectorResult } = await import('../server/store');
 const { blankMetrics } = await import('../server/types');
 const { flushUsage } = await import('../server/usage');
@@ -70,6 +70,9 @@ let aiCalls = 0;
 let faq: number | null = 1;
 let uncertainId: string | undefined;
 let subscribed = ['messages'];
+let scanComments = false;
+const polledPosts: string[] = [];
+let limitingPost: string | undefined;
 let beforeAi: (() => Promise<void>) | undefined;
 globalThis.fetch = async (input, init) => {
   const url = new URL(String(input));
@@ -103,6 +106,16 @@ globalThis.fetch = async (input, init) => {
     writes.push({ id, edge, message: new URLSearchParams(String(init.body)).get('message')! });
     if (id === uncertainId) throw new Error('Connection reset after write');
     return json({ id: '777' });
+  }
+  if (scanComments && edge === 'comments' && (id.startsWith('12_') || id === '67')) {
+    polledPosts.push(id);
+    if (id === limitingPost) return json({ error: { code: 4 } }, 403);
+    if (id === '12_34') return json({ data: [
+      fbComment('34_16'),
+      { ...fbComment('34_17'), from: { id: '12' } },
+      { ...fbComment('34_18'), created_time: new Date(Date.now() - 3 * 3600_000).toISOString() },
+    ] });
+    return json({ data: [] });
   }
   if (id === '12_34' && edge === 'comments') return json({ data: [fbComment('34_10'), fbComment('34_11')], paging: { next: 'https://not-used.invalid', cursors: { after: 'cursor' } } });
   if (id === '12_35' && edge === 'comments') return json({ data: [] });
@@ -192,12 +205,8 @@ test('webhook signatures, organic top-level events and disabled defaults', async
 test('account defaults queue one approved reply, skip native replies, and obey a post override', async () => {
   const before = aiCalls;
   assert.equal((await api(accountSettings, { method: 'PATCH', body: automatic, cookie: employeeCookie })).status, 403);
-  const notSubscribed = await api(accountSettings, { method: 'PATCH', body: automatic });
-  assert.equal(notSubscribed.status, 409);
-  assert.equal((await notSubscribed.json()).code, 'comment_subscription_required');
-  assert.equal((await api('/api/social/comments/facebook/12/subscription', { method: 'POST' })).status, 204);
-  assert.deepEqual(subscribed, ['messages', 'feed']);
   assert.equal((await api(accountSettings, { method: 'PATCH', body: automatic })).status, 200);
+  assert.deepEqual(subscribed, ['messages']);
   assert.equal((await api(otherPost + '/settings', { method: 'PATCH', body: { policy: manual } })).status, 200);
   assert.equal((await api(igPost + '/settings', { method: 'PATCH', body: { policy: automatic } })).status, 200);
   assert.equal((await sendEvent([feed('34_12'), feed('34_12'), feed('34_13'), feed('35_12', '12_35'), instagram('682')])).status, 200);
@@ -206,6 +215,9 @@ test('account defaults queue one approved reply, skip native replies, and obey a
     { id: '34_12', edge: 'comments', message: automatic.faqs[0].answer }, { id: '682', edge: 'replies', message: automatic.faqs[0].answer },
   ]);
   assert.equal(aiCalls - before, 2);
+  await db.run('DELETE FROM social_comment_timers WHERE key=?', ['auto:facebook:12']);
+  await db.run('UPDATE social_comment_events SET next_at=0 WHERE comment_id=?', ['34_13']);
+  await runCommentQueue();
   assert.equal(await state('34_13'), 'done');
   assert.equal(await state('35_12'), undefined);
   await sendEvent(feed('34_12'));
@@ -214,6 +226,7 @@ test('account defaults queue one approved reply, skip native replies, and obey a
 });
 
 test('automation holds unmatched comments and honors disabling while the AI runs', async () => {
+  await db.run('DELETE FROM social_comment_timers WHERE key=?', ['auto:facebook:12']);
   faq = null;
   await sendEvent(feed('34_14'));
   await runCommentQueue();
@@ -229,4 +242,62 @@ test('automation holds unmatched comments and honors disabling while the AI runs
   assert.equal(writes.some(w => w.id === '34_15'), false);
   assert.equal((await api(fbPost + '/settings', { method: 'PATCH', body: { policy: null } })).status, 200);
   assert.equal((await (await api(fbPost + '/settings')).json()).policy, null);
+  beforeAi = undefined;
+});
+
+test('manual top-level comments use the post edge on both services and deduplicate retried requests', async () => {
+  const fbInput = { requestId: randomUUID(), message: 'A new Page comment.' };
+  const igInput = { requestId: randomUUID(), message: 'A new Instagram comment.' };
+  assert.equal((await api(fbPost, { body: fbInput, cookie: employeeCookie })).status, 403);
+  assert.equal((await api(fbPost, { body: fbInput })).status, 201);
+  assert.equal((await api(fbPost, { body: fbInput })).status, 201);
+  assert.equal((await api(fbPost, { body: { ...fbInput, message: 'Changed text' } })).status, 409);
+  assert.equal((await api(igPost, { body: igInput })).status, 201);
+  assert.deepEqual(writes.filter(w => w.id === '12_34' || w.id === '67'), [
+    { id: '12_34', edge: 'comments', message: fbInput.message }, { id: '67', edge: 'comments', message: igInput.message },
+  ]);
+});
+
+test('periodic scan needs no webhook, skips old and own comments, and claims one batch per five minutes', async () => {
+  const token = process.env.META_COMMENTS_VERIFY_TOKEN;
+  delete process.env.META_COMMENTS_VERIFY_TOKEN;
+  scanComments = true;
+  try {
+    assert.equal((await api(fbPost + '/settings', { method: 'PATCH', body: { policy: automatic } })).status, 200);
+    const now = Date.now();
+    const results = await Promise.all([pollSocialComments(now), pollSocialComments(now)]);
+    assert.deepEqual(results.sort(), [0, 2]);
+    assert.equal(await pollSocialComments(now + 60_000), 0);
+    assert.equal(await state('34_16'), 'queued');
+    assert.equal(await state('34_17'), undefined);
+    assert.equal(await state('34_18'), undefined);
+    await runCommentQueue();
+    assert.equal(await state('34_16'), 'done');
+    assert.equal(writes.filter(row => row.id === '34_16').length, 1);
+  } finally {
+    process.env.META_COMMENTS_VERIFY_TOKEN = token;
+    scanComments = false;
+  }
+});
+
+test('scan batches stop at 14 posts and pause globally on a Meta app rate limit', async () => {
+  scanComments = true;
+  try {
+    const more = Array.from({ length: 16 }, (_, i) => ({
+      platform: 'facebook' as const, accountId: fb.externalId, accountName: fb.name, externalId: `12_${50 + i}`,
+      permalink: '', title: caption, publishedAt: new Date(Date.now() + 10_000 + i).toISOString(),
+      contentType: 'post', thumbnail: '', metrics: blankMetrics(),
+    }));
+    await saveConnectorResult({ platform: 'facebook', status: 'connected', message: '', posts: more });
+    const now = Date.now();
+    assert.equal(await pollSocialComments(now + 6 * 60_000), 14);
+    const before = polledPosts.length;
+    limitingPost = '67';
+    const scanned = await pollSocialComments(now + 12 * 60_000);
+    assert.equal(polledPosts.length - before, scanned);
+    assert.equal(polledPosts.at(-1), limitingPost);
+    assert.ok(scanned < 14);
+    assert.equal((await api(fbPost)).status, 429);
+    assert.equal(await pollSocialComments(now + 18 * 60_000), 0);
+  } finally { scanComments = false; limitingPost = undefined; }
 });

@@ -6,7 +6,7 @@ import { requireAiBudget } from '../usage.js';
 import type { CommentSettings } from '../../src/domain/social-comments.js';
 import { metaCommentApp } from './credentials.js';
 import { commentToken, subscribeCommentPage, grantFor, isFacebookPostParent, metaId, readMetaComment } from './comment-meta.js';
-import { commentAccount, commentAiReady, commentPost, commentWebhookConfigured, CommentError, deliverReply, enqueueMetaComment, getPolicy, defaultCommentPolicy, policyInput, readCommentPage, requireCommentRef, setPolicy, suggestReply, type MetaCommentEvent } from './comments.js';
+import { commentAccount, commentAiReady, commentPost, commentProviderLimited, commentWebhookConfigured, CommentError, deliverReply, publishPostComment, enqueueMetaComment, getPolicy, defaultCommentPolicy, policyInput, readCommentPage, requireCommentRef, setPolicy, suggestReply, type MetaCommentEvent } from './comments.js';
 import { ProviderError } from './http.js';
 import type { SocialAccount } from './types.js';
 
@@ -76,10 +76,10 @@ function fail(res: express.Response, error: unknown) {
   if (error instanceof ZodError) return res.status(400).json({ error: 'تحقق من البيانات المدخلة.', code: 'invalid_comment_request' });
   if (error instanceof CommentError) return res.status(error.status).json({ error: error.message, code: error.code });
   if (error instanceof ProviderError) {
+    if (commentProviderLimited(error)) return res.status(429).json({ error: 'المنصة طلبت الانتظار. حاول مرة أخرى لاحقًا.', code: 'comment_rate_limited' });
     if ([401, 403].includes(error.status) || ['190', '200', '283', 'comment_reconnect'].includes(error.code)) {
       return res.status(403).json({ error: 'راجع تفويض التعليقات وصلاحيات الحساب لدى Meta.', code: 'comment_reconnect' });
     }
-    if (error.status === 429 || error.retryable && error.status < 500 && error.status > 0) return res.status(429).json({ error: 'المنصة طلبت الانتظار. حاول مرة أخرى لاحقًا.', code: 'comment_rate_limited' });
     return res.status(502).json({ error: 'تعذّر تنفيذ الطلب على Meta. قد يكون التعليق محذوفًا أو غير متاح.', code: 'comment_provider_error' });
   }
   return res.status(502).json({ error: 'تعذّر تنفيذ طلب التعليقات. حاول مرة أخرى لاحقًا.', code: 'comment_error' });
@@ -140,6 +140,11 @@ export function registerCommentRoutes(app: express.Express) {
 
   app.get(postPath, requirePermission('analytics.view'), wrap(async (req, res) => {
     res.json(await readCommentPage(await target(req), cursor.parse(req.query.cursor)));
+  }));
+  app.post(postPath, requirePermission('analytics.view'), requirePermission('content.publish'), wrap(async (req, res) => {
+    const post = await target(req);
+    const input = z.object({ requestId: z.uuid(), message: z.string().trim().min(1).max(600) }).parse(req.body);
+    res.status(201).json({ id: await publishPostComment(post, input.requestId, input.message, req.user!.id) });
   }));
   app.get(postPath + '/:commentId/replies', requirePermission('analytics.view'), wrap(async (req, res) => {
     const post = await target(req);
