@@ -277,6 +277,15 @@ test('Google refresh is single-flight, uses a separate encrypted grant and never
   assert.ok(!saved!.encrypted_json.includes('new-google'));
   globalThis.fetch = originalFetch;
 });
+test('the shared company Google grant serves every teammate and wins over personal grants', async () => {
+  const teammate = await auth.createUser({ name: 'Drive Teammate', email: 'drive-teammate@example.test', password: 'test-password-123', role: 'admin', departmentId: 'marketing' });
+  await assert.rejects(google.googleToken(teammate.id), /Google Drive/);
+  await social.saveSecret(google.GOOGLE_SHARED_SECRET, { accessToken: 'company-google', refreshToken: 'company-refresh', expiresAt: Date.now() + 3_600_000, scopes: google.GOOGLE_SCOPES, email: 'marketing@company.test' });
+  assert.equal(await google.googleToken(teammate.id), 'company-google');
+  assert.equal(await google.googleToken(user.id), 'company-google');
+  assert.equal((await google.googleGrant(teammate.id))?.credential.email, 'marketing@company.test');
+  await db.run('DELETE FROM social_credentials WHERE id=?', [google.GOOGLE_SHARED_SECRET]);
+});
 test('OAuth and management endpoints enforce CSRF, permissions, source ownership and opaque state', async () => {
   const app = express(); app.use(express.json());
   app.use((req, _res, next) => { req.user = req.header('X-Viewer') ? viewer : user; next(); });

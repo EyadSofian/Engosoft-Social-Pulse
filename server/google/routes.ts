@@ -7,7 +7,7 @@ import { equalState } from '../social/oauth.js';
 import { loadSecret, saveSecret, listAccounts, cancelQueued, contentQueue } from '../social/store.js';
 import { request } from '../social/http.js';
 import type { Credential } from '../social/types.js';
-import { GOOGLE_SCOPES, GoogleClient, googleConfig, googleReference, googleSecret } from './client.js';
+import { GOOGLE_SCOPES, GOOGLE_SHARED_SECRET, GoogleClient, googleConfig, googleGrant, googleReference, googleSecret, type GoogleCredential } from './client.js';
 import { getSource, sourceRows } from './store.js';
 import { rowOutcome, syncGoogleSource } from './calendar-sync.js';
 import { getContent } from '../workspace.js';
@@ -56,18 +56,22 @@ export function registerGoogleCalendarRoutes(app: express.Express) {
       const config = googleConfig();
       const value = await request<{ access_token: string; refresh_token?: string; expires_in: number; scope?: string }>('https://oauth2.googleapis.com/token', { method: 'POST', headers: { 'Content-Type': 'application/x-www-form-urlencoded' }, body: new URLSearchParams({ grant_type: 'authorization_code', code: req.query.code, client_id: config.client!, client_secret: config.secret!, redirect_uri: config.redirect }) });
       if (!value.access_token || !value.refresh_token || !GOOGLE_SCOPES.every(s => (value.scope || '').split(' ').includes(s))) throw new Error('Missing offline consent.');
-      const credential: Credential = { accessToken: value.access_token, refreshToken: value.refresh_token, expiresAt: Date.now() + value.expires_in * 1000, scopes: value.scope!.split(' ') };
-      await saveSecret(googleSecret(user.id), credential);
+      let email: string | undefined;
+      try { email = (await request<{ user?: { emailAddress?: string } }>('https://www.googleapis.com/drive/v3/about?fields=user(emailAddress)', { headers: { Authorization: `Bearer ${value.access_token}` } })).user?.emailAddress; } catch {}
+      const credential: GoogleCredential = { accessToken: value.access_token, refreshToken: value.refresh_token, expiresAt: Date.now() + value.expires_in * 1000, scopes: value.scope!.split(' '), email, connectedBy: user.name || user.email };
+      // One connection for the whole team: everyone publishes Drive links through this account.
+      await saveSecret(GOOGLE_SHARED_SECRET, credential);
       res.redirect('/calendar?google=connected');
     } catch { res.redirect('/calendar?google=failed'); }
   });
   app.get('/api/google-calendar', async (req, res) => {
     let oauthConfigured = true; try { googleConfig(); } catch { oauthConfigured = false; }
-    let connected = false; try { const secret = await loadSecret(googleSecret(req.user!.id)); connected = Boolean(secret?.refreshToken && GOOGLE_SCOPES.every(s => secret.scopes.includes(s))); } catch {}
+    let connected = false, account: string | null = null, connectedBy: string | null = null, shared = false;
+    try { const grant = await googleGrant(req.user!.id); connected = Boolean(grant?.credential.refreshToken); shared = Boolean(grant?.shared); account = grant?.credential.email || null; connectedBy = grant?.shared ? grant.credential.connectedBy || null : null; } catch {}
     const sources = await db.all("SELECT id,spreadsheet_id,tab,targets_json,enabled,last_sync_at,error,validation_errors_json FROM google_calendar_sources WHERE owner_id=? AND spreadsheet_id NOT LIKE 'native:%'", [req.user!.id]);
     const rows = [];
     for (const source of sources) for (const row of await sourceRows(String(source.id))) rows.push({ sourceId: source.id, postId: row.post_id, contentId: row.content_id, ...await rowOutcome(row) });
-    res.json({ oauthConfigured, connected, callbackUrl: `${new URL(process.env.APP_URL || 'http://127.0.0.1:4100').origin}/api/oauth/drive/callback`, sources: sources.map(s => ({ ...s, targets: JSON.parse(String(s.targets_json)), targets_json: undefined, validationErrors: JSON.parse(String(s.validation_errors_json)), validation_errors_json: undefined })), rows,
+    res.json({ oauthConfigured, connected, shared, account, connectedBy, callbackUrl: `${new URL(process.env.APP_URL || 'http://127.0.0.1:4100').origin}/api/oauth/drive/callback`, sources: sources.map(s => ({ ...s, targets: JSON.parse(String(s.targets_json)), targets_json: undefined, validationErrors: JSON.parse(String(s.validation_errors_json)), validation_errors_json: undefined })), rows,
       accounts: (await listAccounts()).filter(a => a.status === 'connected').map(a => ({ id: a.id, provider: a.provider, name: a.name })) });
   });
   app.post('/api/google-calendar/inspect', mustManage, async (req, res) => {
@@ -155,10 +159,11 @@ export function registerGoogleCalendarRoutes(app: express.Express) {
     } catch (e) { res.status(409).json({ error: e instanceof Error ? e.message : 'تعذّرت إعادة المحاولة.' }); }
   });
   app.post('/api/google-calendar/disconnect', mustManage, async (req, res) => {
-    const sources = await db.all<{ id: string }>("SELECT id FROM google_calendar_sources WHERE owner_id=? AND spreadsheet_id NOT LIKE 'native:%'", [req.user!.id]);
-    await db.run("UPDATE google_calendar_sources SET enabled=0,last_sync_at=NULL,revision=revision+1 WHERE owner_id=? AND spreadsheet_id NOT LIKE 'native:%'", [req.user!.id]);
+    // The shared account serves every teammate's synced sheets, so they all pause with it.
+    const sources = await db.all<{ id: string }>("SELECT id FROM google_calendar_sources WHERE spreadsheet_id NOT LIKE 'native:%'");
+    await db.run("UPDATE google_calendar_sources SET enabled=0,last_sync_at=NULL,revision=revision+1 WHERE spreadsheet_id NOT LIKE 'native:%'");
     for (const s of sources) for (const row of await sourceRows(s.id)) await cancelQueued(row.content_id, 'Google disconnected.');
-    await db.run('DELETE FROM social_credentials WHERE id=?', [googleSecret(req.user!.id)]);
+    await db.run('DELETE FROM social_credentials WHERE id IN (?,?)', [GOOGLE_SHARED_SECRET, googleSecret(req.user!.id)]);
     res.json({ disconnected: true });
   });
 }

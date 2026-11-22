@@ -5,7 +5,19 @@ import type { Credential } from '../social/types.js';
 import { Readable } from 'node:stream';
 
 export const GOOGLE_SCOPES = ['https://www.googleapis.com/auth/drive.readonly', 'https://www.googleapis.com/auth/spreadsheets'];
+/** Legacy per-user grant; still used when the team has no shared Google account yet. */
 export const googleSecret = (owner: string) => `google-calendar:${owner}`;
+/** One Google account (the company Drive) that every teammate publishes through. */
+export const GOOGLE_SHARED_SECRET = 'google-calendar:workspace';
+export type GoogleCredential = Credential & { email?: string; connectedBy?: string };
+const usable = (c?: GoogleCredential) => Boolean(c && GOOGLE_SCOPES.every(s => c.scopes.includes(s)));
+/** The shared company grant wins; a teammate's old personal grant is only a fallback. */
+export async function googleGrant(owner: string): Promise<{ id: string; credential: GoogleCredential; shared: boolean } | undefined> {
+  const shared = await loadSecret<GoogleCredential>(GOOGLE_SHARED_SECRET);
+  if (usable(shared)) return { id: GOOGLE_SHARED_SECRET, credential: shared!, shared: true };
+  const own = await loadSecret<GoogleCredential>(googleSecret(owner));
+  return usable(own) ? { id: googleSecret(owner), credential: own!, shared: false } : undefined;
+}
 export function googleConfig() {
   const client = process.env.GOOGLE_DRIVE_CLIENT_ID || process.env.YOUTUBE_CLIENT_ID;
   const secret = process.env.GOOGLE_DRIVE_CLIENT_SECRET || process.env.YOUTUBE_CLIENT_SECRET;
@@ -17,12 +29,13 @@ export function googleConfig() {
   return { client, secret, redirect };
 }
 const refreshing = new Map<string, Promise<string>>();
-export function googleToken(owner: string): Promise<string> {
-  const existing = refreshing.get(owner);
+export async function googleToken(owner: string): Promise<string> {
+  const grant = await googleGrant(owner);
+  if (!grant) throw new Error('Google Drive مش مربوط. اربط حساب Google بتاع الشركة مرة واحدة من خانة لينك الدرايف أو من الكالندر.');
+  const id = grant.id, existing = refreshing.get(id);
   if (existing) return existing;
   const promise = (async () => {
-    const id = googleSecret(owner), saved = await loadSecret(id);
-    if (!saved || !GOOGLE_SCOPES.every(s => saved.scopes.includes(s))) throw new Error('اربط Google Drive وSheets من الكالندر أولًا.');
+    const saved = (await loadSecret<GoogleCredential>(id)) || grant.credential;
     if (saved.expiresAt > Date.now() + 300_000) return saved.accessToken;
     const config = googleConfig();
     if (!saved.refreshToken) throw new Error('أعد تفويض Google لتفعيل المزامنة المستمرة.');
@@ -31,11 +44,11 @@ export function googleToken(owner: string): Promise<string> {
       body: new URLSearchParams({ grant_type: 'refresh_token', refresh_token: saved.refreshToken, client_id: config.client!, client_secret: config.secret! }),
     });
     if (!value.access_token) throw new Error('تعذّر تجديد تفويض Google.');
-    const next: Credential = { ...saved, accessToken: value.access_token, refreshToken: value.refresh_token || saved.refreshToken, expiresAt: Date.now() + value.expires_in * 1000 };
+    const next: GoogleCredential = { ...saved, accessToken: value.access_token, refreshToken: value.refresh_token || saved.refreshToken, expiresAt: Date.now() + value.expires_in * 1000 };
     await saveSecret(id, next);
     return next.accessToken;
-  })().finally(() => refreshing.delete(owner));
-  refreshing.set(owner, promise);
+  })().finally(() => refreshing.delete(id));
+  refreshing.set(id, promise);
   return promise;
 }
 
