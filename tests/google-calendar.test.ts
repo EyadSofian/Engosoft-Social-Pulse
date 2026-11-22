@@ -277,6 +277,14 @@ test('Google refresh is single-flight, uses a separate encrypted grant and never
   assert.ok(!saved!.encrypted_json.includes('new-google'));
   globalThis.fetch = originalFetch;
 });
+test('a reel linked as MOV, or a file the linked account cannot open, gets a plain explanation', async () => {
+  assert.throws(() => google.chooseDriveMedia([{ id: 'v', name: 'reel.mov', mimeType: 'video/quicktime' }], 'reel'), /reel\.mov.*MOV.*MP4/);
+  await social.saveSecret(google.GOOGLE_SHARED_SECRET, { accessToken: 'company-google', refreshToken: 'r', expiresAt: Date.now() + 3_600_000, scopes: google.GOOGLE_SCOPES, email: 'marketing@company.test' });
+  globalThis.fetch = async () => Response.json({ error: { code: 404, message: 'File not found' } }, { status: 404 });
+  await assert.rejects(new google.GoogleClient(user.id).file({ id: 'private-file' }), /marketing@company\.test.*Share/);
+  globalThis.fetch = originalFetch;
+  await db.run('DELETE FROM social_credentials WHERE id=?', [google.GOOGLE_SHARED_SECRET]);
+});
 test('the shared company Google grant serves every teammate and wins over personal grants', async () => {
   const teammate = await auth.createUser({ name: 'Drive Teammate', email: 'drive-teammate@example.test', password: 'test-password-123', role: 'admin', departmentId: 'marketing' });
   await assert.rejects(google.googleToken(teammate.id), /Google Drive/);

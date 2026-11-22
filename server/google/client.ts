@@ -1,6 +1,6 @@
 /** Google credentials belong to this app, independently of the assistant's Drive connection. */
 import { loadSecret, saveSecret } from '../social/store.js';
-import { request } from '../social/http.js';
+import { ProviderError, request } from '../social/http.js';
 import type { Credential } from '../social/types.js';
 import { Readable } from 'node:stream';
 
@@ -65,6 +65,20 @@ export interface DriveFile { id: string; name: string; mimeType: string; size?: 
 export type GoogleValues = (string | number | boolean | null)[][];
 export const quotedTab = (tab: string) => `'${tab.replace(/'/g, "''")}'`;
 
+const FILE_TYPES: Record<string, string> = { 'video/quicktime': 'MOV', 'video/x-msvideo': 'AVI', 'video/webm': 'WebM', 'video/x-matroska': 'MKV', 'video/3gpp': '3GP', 'image/heic': 'HEIC', 'image/heif': 'HEIF', 'image/gif': 'GIF', 'application/vnd.google-apps.shortcut': 'اختصار (Shortcut)' };
+const fileType = (mime: string) => FILE_TYPES[mime] || mime;
+
+/** Drive answers 403/404 when the connected account simply can't see the file; say that plainly. */
+async function driveAccessError(error: unknown, owner: string): Promise<never> {
+  const status = error instanceof ProviderError ? error.status : Number(/HTTP (\d+)/.exec(error instanceof Error ? error.message : '')?.[1] || 0);
+  if (status === 403 || status === 404) {
+    const email = (await googleGrant(owner).catch(() => undefined))?.credential.email;
+    throw new Error(`حساب Google المربوط${email ? ` (${email})` : ''} مش قادر يفتح الملف ده. اعمل Share للملف أو الفولدر مع الحساب ده، أو انقله لدرايف الشركة، وبعدين احفظ البوست تاني.`);
+  }
+  if (status === 401) throw new Error('تفويض Google انتهى؛ اربط Google Drive تاني من الكالندر.');
+  throw error;
+}
+
 export class GoogleClient {
   constructor(private owner: string) {}
   private async json<T>(url: string, init: RequestInit = {}, resource?: { id: string; resourceKey?: string }) {
@@ -85,7 +99,7 @@ export class GoogleClient {
     return this.json(`https://sheets.googleapis.com/v4/spreadsheets/${id}/values:batchUpdate`, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ valueInputOption: 'RAW', data }) });
   }
   async file(ref: { id: string; resourceKey?: string }): Promise<DriveFile> {
-    const file = await this.json<DriveFile>(`https://www.googleapis.com/drive/v3/files/${ref.id}?supportsAllDrives=true&fields=id,name,mimeType,size,resourceKey,capabilities(canDownload),trashed`, {}, ref);
+    const file = await this.json<DriveFile>(`https://www.googleapis.com/drive/v3/files/${ref.id}?supportsAllDrives=true&fields=id,name,mimeType,size,resourceKey,capabilities(canDownload),trashed`, {}, ref).catch(e => driveAccessError(e, this.owner));
     if (file.trashed) throw new Error('ملف Drive موجود في سلة المهملات.');
     return file;
   }
@@ -93,7 +107,7 @@ export class GoogleClient {
     const files: DriveFile[] = []; let token = '';
     do {
       const query = new URLSearchParams({ q: `'${folder.id}' in parents and trashed=false`, pageSize: '100', fields: 'nextPageToken,files(id,name,mimeType,size,resourceKey,capabilities(canDownload))', supportsAllDrives: 'true', includeItemsFromAllDrives: 'true', ...(token ? { pageToken: token } : {}) });
-      const page = await this.json<{ files: DriveFile[]; nextPageToken?: string }>(`https://www.googleapis.com/drive/v3/files?${query}`, {}, folder);
+      const page = await this.json<{ files: DriveFile[]; nextPageToken?: string }>(`https://www.googleapis.com/drive/v3/files?${query}`, {}, folder).catch(e => driveAccessError(e, this.owner));
       files.push(...page.files); token = page.nextPageToken || '';
       if (files.length > 500) throw new Error('الفولدر كبير جدًا؛ استخدم فولدرًا خاصًا بالبوست.');
     } while (token);
@@ -103,7 +117,8 @@ export class GoogleClient {
     const limit = file.mimeType.startsWith('image/') ? 40 * 1024 * 1024 : 200 * 1024 * 1024;
     if (file.capabilities?.canDownload === false || Number(file.size || 0) > limit) throw new Error('تنزيل الملف غير مسموح أو حجمه يتجاوز الحد (40MB للصورة / 200MB للفيديو).');
     const response = await fetch(`https://www.googleapis.com/drive/v3/files/${file.id}?alt=media&supportsAllDrives=true`, { headers: { Authorization: `Bearer ${await googleToken(this.owner)}`, ...(file.resourceKey ? { 'X-Goog-Drive-Resource-Keys': `${file.id}/${file.resourceKey}` } : {}) }, signal: AbortSignal.timeout(120_000), redirect: 'error' });
-    if (!response.ok || !response.body) throw new Error(`تعذّر تنزيل ملف Drive (HTTP ${response.status}).`);
+    if (!response.ok || !response.body) await driveAccessError(new Error(`تعذّر تنزيل ملف Drive (HTTP ${response.status}).`), this.owner);
+    if (!response.body) throw new Error('تعذّر تنزيل ملف Drive.');
     return response;
   }
   async downloadStream(file: DriveFile): Promise<Readable> {
@@ -125,6 +140,11 @@ export class GoogleClient {
 export function chooseDriveMedia(files: DriveFile[], type: string): DriveFile[] {
   const image = (f: DriveFile) => ['image/jpeg', 'image/png', 'image/webp'].includes(f.mimeType);
   const selected = files.filter(f => type === 'image' || type === 'carousel' ? image(f) : f.mimeType === 'video/mp4');
+  // A single linked file of the wrong kind: name the actual format instead of "found 0".
+  if (files.length === 1 && !selected.length) {
+    const need = type === 'image' ? 'الصورة لازم تكون JPG أو PNG أو WebP' : type === 'carousel' ? 'الكاروسيل محتاج فولدر فيه صورتين على الأقل' : 'الريل/الفيديو لازم يكون MP4 (صدّره MP4 من برنامج المونتاج أو الموبايل)';
+    throw new Error(`الملف «${files[0].name}» نوعه ${fileType(files[0].mimeType)}؛ ${need}.`);
+  }
   if (type !== 'carousel' && selected.length !== 1) throw new Error(`المطلوب ملف ${type === 'image' ? 'صورة' : 'MP4'} واحد بالضبط؛ الموجود ${selected.length}. ضع رابط الملف مباشرة أو نظّم الفولدر.`);
   if (type === 'carousel') {
     if (selected.length < 2 || selected.length > 20) throw new Error('الكاروسيل يحتاج من صورتين إلى 20 صورة.');

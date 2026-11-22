@@ -192,7 +192,10 @@ async function applyRow(source: GoogleSource, mapping: GoogleRow, row: Publishin
         ...(channel === 'snapchat' ? { snapTarget: row.snapTarget, locale: row.snapLocale } : {}),
       };
       await validatePreparedPublication(user, input); inputs.push(input);
-    } catch (error) { errors.push(`${channel}: ${error instanceof Error ? error.message : 'تعذّر تجهيز المنصة.'}`); }
+    } catch (error) {
+      errors.push(`${channel}: ${error instanceof Error ? error.message : 'تعذّر تجهيز المنصة.'}`);
+      console.warn(`[calendar] platform not scheduled source=${source.id} post=${row.postId} channel=${channel}: ${error instanceof Error ? error.message : error}`);
+    }
   }
   if (inputs.length) await schedulePreparedPublications(user, item.id, inputs, row.scheduledAt, source.id);
   // A partial selection is still one completed snapshot; polling never recreates its waiting queue.
@@ -244,6 +247,8 @@ export async function syncGoogleSource(id: string, clientOverride?: CalendarGoog
         await applyRow(source, mapping, row, user, client);
       } catch (error) {
         const message = error instanceof Error ? error.message : 'تعذّرت قراءة الصف.';
+        // Visible in the server logs, so a failed schedule can be traced without opening the database.
+        console.warn(`[calendar] post not scheduled source=${id} post=${postId} owner=${source.owner_id} type=${textCell(raw['media type']) || '-'}: ${message}`);
         rowErrors.push(`${postId}: ${message}`);
         invalid.set(postId, message);
         if (mapping) {
@@ -281,6 +286,7 @@ export async function syncGoogleSource(id: string, clientOverride?: CalendarGoog
     if (!committed.changes) throw new Error('تغيرت إعدادات الربط؛ أعد الفحص قبل النشر.');
     return { rows: summary, errors: rowErrors };
   } catch (error) {
+    console.warn(`[calendar] sync failed source=${id}: ${error instanceof Error ? error.message : error}`);
     await db.run('UPDATE google_calendar_sources SET error=? WHERE id=? AND lock_token=?', [error instanceof Error ? error.message : 'Google synchronization failed.', id, token]);
     throw error;
   } finally {

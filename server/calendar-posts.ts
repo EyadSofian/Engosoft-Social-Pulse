@@ -179,7 +179,7 @@ export function registerCalendarPostRoutes(app: express.Express) {
         }
       }
       res.json({post:(await records(req.user!.id)).find(p=>p.id===id),errors:result.errors});
-    }catch(e){res.status(409).json({error:e instanceof Error?e.message:'تعذّر حفظ المنشور.'});}
+    }catch(e){console.warn(`[calendar] post save refused user=${req.user!.id}: ${e instanceof Error?e.message:e}`);res.status(409).json({error:e instanceof Error?e.message:'تعذّر حفظ المنشور.'});}
     finally {if(claimed)await db.run('UPDATE google_calendar_sources SET lock_token=NULL,lock_until=0 WHERE id=? AND lock_token=?',[id,'native-edit']);}
   };
   app.post('/api/calendar-posts',save);
