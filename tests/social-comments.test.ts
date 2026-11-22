@@ -179,16 +179,25 @@ test('manual replies and drafts are scoped to the selected post and authorized p
   assert.equal((await (await api(fbPost)).json()).comments[0].delivery.state, 'sent');
 });
 
-test('ambiguous Meta failures stay unconfirmed without sending a second reply', async () => {
+test('ambiguous Meta failures stay unconfirmed until the thread shows the reply is missing', async () => {
   const comment = (await (await api(fbPost)).json()).comments[1];
   const body = { reference: comment.reference, message: 'Reply may have been sent' };
   uncertainId = '34_11';
   const result = await api(fbPost + '/34_11/replies', { body });
   assert.equal(result.status, 409);
   assert.equal((await result.json()).code, 'reply_unconfirmed');
-  assert.equal((await api(fbPost + '/34_11/replies', { body })).status, 409);
+  const early = await api(fbPost + '/34_11/replies', { body });
+  assert.equal(early.status, 409);
+  assert.equal((await early.json()).code, 'reply_check_later');
   assert.equal(writes.filter(w => w.id === uncertainId).length, 1);
   assert.equal((await (await api(fbPost)).json()).comments[1].delivery.state, 'uncertain');
+  // After two minutes an empty thread proves the first attempt did not land, so one resend is allowed.
+  await db.run("UPDATE social_comment_deliveries SET updated_at=? WHERE comment_id='34_11'", [Date.now() - 3 * 60_000]);
+  uncertainId = undefined;
+  assert.equal((await api(fbPost + '/34_11/replies', { body })).status, 201);
+  assert.equal(writes.filter(w => w.id === '34_11').length, 2);
+  assert.equal((await (await api(fbPost)).json()).comments[1].delivery.state, 'sent');
+  assert.equal((await api(fbPost + '/34_11/replies', { body })).status, 409);
 });
 
 test('webhook signatures, organic top-level events and disabled defaults', async () => {

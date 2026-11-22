@@ -3,7 +3,7 @@ import { tokenHealth } from './credentials.js';
 import express from 'express';
 import { z } from 'zod';
 import { db } from '../db.js';
-import { isCommentPlatform } from '../../src/domain/social-comments.js';
+import { hasCommentOAuth } from '../../src/domain/social-comments.js';
 import { registerCommentRoutes } from './comment-routes.js';
 import { requirePermission, userCan } from '../auth.js';
 import { canEdit, canSee, contentIsMutable, getContent, MANUAL_CHANNELS, manualPublications, recordManualPublication } from '../workspace.js';
@@ -69,7 +69,7 @@ export function registerSocialRoutes(app:express.Express) {
   res.setHeader('Cache-Control','no-store');
   res.json({providers:socialProviders.map(p=>{
    const linked=accounts.filter(a=>a.provider===p);let oauthConfigured=false;try{configuredCallback(p);oauthConfigured=true;}catch{}
-   let commentOAuthConfigured=false;if(isCommentPlatform(p))try{configuredCallback(p,'comments');commentOAuthConfigured=true;}catch{}
+   let commentOAuthConfigured=false;if(hasCommentOAuth(p))try{configuredCallback(p,'comments');commentOAuthConfigured=true;}catch{}
    return {provider:p,oauthConfigured,commentOAuthConfigured,accounts:linked.map(({credentialSource,ownerId,...a})=>({...a,authorization:health[a.id],capabilities:capabilities(p,linked.find(x=>x.id===a.id)!)})),capabilities:capabilities(p,linked.find(a=>a.status==='connected')),requirements:requirements(p)};
   })});
  });

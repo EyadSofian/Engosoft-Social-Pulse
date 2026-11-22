@@ -52,7 +52,7 @@ export function CommentsPage() {
 
   return <div className="u-stack u-stack--lg">
     <PageHeader title={title}
-      description={t('Read and reply to public comments on your Facebook and Instagram posts.', 'تابع تعليقات الجمهور ورد عليها على بوستات Facebook وInstagram.')}
+      description={t('Read and reply to public comments on Facebook, Instagram, LinkedIn, TikTok and YouTube.', 'تابع تعليقات الجمهور ورد عليها على Facebook وInstagram وLinkedIn وTikTok وYouTube.')}
       actions={can('connections.manage') && <ButtonLink to="/connections" size="sm">{t('Connections', 'ربط المنصات')}</ButtonLink>} />
     <LiveGate>
       {posts.length ? <div className="comment-workspace" data-post-open={Boolean(selected)}>
@@ -109,7 +109,7 @@ export function CommentsPage() {
             </> : <EmptyState compact icon={<MessageCircle size={24} />} title={t('Select a post to view its comments', 'اختار منشور عشان تشوف التعليقات')} />}
           </CardBody>
         </Card>
-      </div> : <EmptyState icon={<MessageCircle size={24} />} title={t('No Facebook or Instagram posts have synced yet', 'لسه مفيش منشورات متزامنة من Facebook أو Instagram')}
+      </div> : <EmptyState icon={<MessageCircle size={24} />} title={t('No posts have synced yet', 'لسه مفيش منشورات متزامنة')}
         text={t('Posts appear here when the connected accounts sync.', 'المنشورات هتظهر هنا بعد مزامنة الحسابات المربوطة.')} />}
     </LiveGate>
   </div>;

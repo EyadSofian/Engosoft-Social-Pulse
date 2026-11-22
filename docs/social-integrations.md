@@ -267,7 +267,7 @@ refresh rotation; discovery; deduplication; unavailable metrics; quotas/retries;
 permission separation; media restrictions; asynchronous publication evidence;
 ambiguous outcomes; MP4 upload transfer; and preservation of the approval/calendar flow.
 
-## Public Facebook and Instagram comments
+## Public comments: Facebook, Instagram, LinkedIn, TikTok and YouTube
 
 Open **Comments** in the sidebar, or use **Analytics → Posts → Post details**. People with publishing access can reply to a thread or select **Write a new comment** to publish a top-level comment as the connected account. The app returns the provider’s comment ID and refreshes the thread. An ambiguous write is held for verification.
 
@@ -280,3 +280,20 @@ The worker scans up to 14 eligible posts per five-minute batch and prioritizes t
 The signed webhook endpoint remains available for installations with their own Meta routing. It and the periodic scan share the same queue and deduplicate by comment ID.
 
 Sources: [Facebook Graph comments](https://developers.facebook.com/docs/graph-api/reference/object/comments), [Instagram comments API](https://developers.facebook.com/documentation/instagram-platform/instagram-graph-api/reference/ig-media/comments), [Meta rate limits](https://developers.facebook.com/docs/graph-api/overview/rate-limiting/).
+
+### Other platforms
+
+The same Comments page, reply modes, approved FAQs, automatic worker and limits apply to every platform below. Only the connection differs.
+
+| Platform | Connection | What the account needs |
+|---|---|---|
+| LinkedIn | Zernio Inbox API | The organization page connected through Zernio (as for publishing) and the **Inbox add-on** on the Zernio account. Comments work on `urn:li:share` and `urn:li:ugcPost` posts. Older posts known only by an activity ID show a notice instead. |
+| TikTok | Zernio Inbox API | A Zernio publishing route for the account (Connections → TikTok) and the Inbox add-on. Zernio reads and replies only for accounts connected through the **TikTok for Business** app. Other connections show a notice. |
+| YouTube | YouTube Data API v3, direct | In Connections → YouTube, select **Authorize comment replies** once. This adds the `youtube.force-ssl` scope to the channel's existing grant. A comment reply costs 50 quota units, and a quota error pauses the channel for an hour. |
+| Snapchat | — | No public comment API. Not supported. |
+
+Zernio caches comment listings for up to 10 minutes, so automatic replies on LinkedIn and TikTok can arrive up to about 15 minutes after the comment. Zernio writes carry an idempotency key, so a retried reply is not posted twice.
+
+When a platform does not confirm a reply, the comment is held. After two minutes, **Check and send** reads the thread. If the account's reply is there, the comment is marked sent. If the thread has no reply from the account, the reply is sent once more.
+
+Sources: [Zernio comments API](https://docs.zernio.com/products/comments), [YouTube comments.insert](https://developers.google.com/youtube/v3/docs/comments/insert), [YouTube commentThreads](https://developers.google.com/youtube/v3/docs/commentThreads/list).

@@ -8,7 +8,7 @@ import { useI18n } from '../../i18n/I18nProvider';
 import { api, ApiError, errorMessage } from '../../lib/api';
 import type { CommentPage, CommentSettings, PublicSocialComment } from '../../domain/social-comments';
 import type { Post } from '../../types';
-import { commentAccountPath, CommentPolicyEditor, policyLabel } from './CommentPolicyEditor';
+import { commentAccountPath, CommentPolicyEditor, commentSetupHint, policyLabel } from './CommentPolicyEditor';
 
 function mergePage(current: PublicSocialComment[], incoming: PublicSocialComment[]) {
   return [...new Map([...current, ...incoming].map(row => [row.id, row])).values()];
@@ -59,7 +59,7 @@ export function PostComments({ post }: { post: Post }) {
     </header>
     {!settings && !error && <p className="u-sm" role="status">{t('Loading comments…', 'جاري تحميل التعليقات…')}</p>}
     {settings && !settings.authorized && <p className="u-sm">
-      {t('This account needs comment authorization.', 'الحساب محتاج تفويض للتعليقات.')} {settings.canManage && <Link to="/connections">{t('Open Connections', 'افتح ربط المنصات')}</Link>}
+      {commentSetupHint(settings.setup, t)} {settings.canManage && <Link to="/connections">{t('Open Connections', 'افتح ربط المنصات')}</Link>}
     </p>}
     {settings && settings.authorized && <>
       <div><Badge tone="neutral">{policyLabel(mode, t)}</Badge></div>
@@ -143,7 +143,8 @@ function CommentThread({ comment, path, account, canReply, ai }: { comment: Publ
   const [error, setError] = useState('');
   const route = `${path}/${encodeURIComponent(comment.id)}`;
   const delivery = comment.delivery;
-  const blocked = uncertain || Boolean(sent) || Boolean(delivery && delivery.state !== 'failed');
+  const unconfirmed = uncertain || delivery?.state === 'uncertain';
+  const blocked = Boolean(sent) || delivery?.state === 'sent' || (delivery?.state === 'sending' && !uncertain);
   const canWrite = canReply && comment.canReply && !comment.own && !blocked;
 
   async function loadReplies(append = false) {
@@ -168,12 +169,15 @@ function CommentThread({ comment, path, account, canReply, ai }: { comment: Publ
         const result = await api<{ id: string }>(route + '/replies', { body: { reference: comment.reference, message } });
         setSent({ id: result.id, message });
         setText('');
+        setUnconfirmedReference(undefined);
         await loadReplies().catch(() => {});
       }
     } catch (err) {
-      if (action === 'send' && err instanceof ApiError && (err.status === 0 || (err.details as { code?: string } | undefined)?.code === 'reply_unconfirmed')) {
+      const code = err instanceof ApiError ? (err.details as { code?: string } | undefined)?.code : undefined;
+      if (action === 'send' && err instanceof ApiError && (err.status === 0 || code === 'reply_unconfirmed')) {
         setUnconfirmedReference(comment.reference);
       }
+      if (code === 'reply_already_sent') setSent({ id: '', message: text.trim() });
       setError(errorMessage(err, t('The comment request failed.', 'تعذّر تنفيذ طلب التعليق.')));
     } finally { setBusy(undefined); }
   }
@@ -182,8 +186,9 @@ function CommentThread({ comment, path, account, canReply, ai }: { comment: Publ
   return <li className="social-comments__item u-stack u-stack--xs">
     <CommentContent comment={comment} />
     {comment.review && !saved && <div><Badge tone="warning">{t('Needs review', 'محتاج مراجعة')}</Badge></div>}
-    {(uncertain || delivery?.state === 'uncertain' || delivery?.state === 'sending') && <p className="u-sm" role="status">
-      {t('Awaiting confirmation. Check the replies before resending.', 'الإرسال لسه غير مؤكد. راجع الردود قبل أي محاولة تانية.')}
+    {!saved && (unconfirmed || delivery?.state === 'sending') && <p className="u-sm" role="status">
+      {t('The platform did not confirm the reply. “Check and send” looks for it in the thread first and sends only if it is missing.',
+        'المنصة ما أكدتش الرد. «تحقّق وأرسل» بيدوّر عليه في الردود الأول، وبيبعته بس لو مش موجود.')}
     </p>}
     {saved && <p className="social-comments__reply" dir="auto"><strong>{delivery?.automatic ? t('Automatic reply', 'رد تلقائي') : t('Published reply', 'الرد المنشور')}</strong>{page?.comments.some(row => row.id === saved.id) ? '' : ` · ${saved.message}`}</p>}
     <div>
@@ -202,7 +207,7 @@ function CommentThread({ comment, path, account, canReply, ai }: { comment: Publ
         </Field>
         <div className="u-row u-row--wrap">
           {ai && <Button size="sm" icon={<Sparkles size={14} />} busy={busy === 'draft'} disabled={Boolean(busy)} onClick={() => void run('draft')}>{t('Suggest with AI', 'اقترح رد بالذكاء الاصطناعي')}</Button>}
-          <Button size="sm" variant="primary" busy={busy === 'send'} disabled={Boolean(busy) || !text.trim()} onClick={() => void run('send')}>{t('Send public reply', 'انشر الرد')}</Button>
+          <Button size="sm" variant="primary" busy={busy === 'send'} disabled={Boolean(busy) || !text.trim()} onClick={() => void run('send')}>{unconfirmed ? t('Check and send', 'تحقّق وأرسل') : t('Send public reply', 'انشر الرد')}</Button>
         </div>
       </>}
     </>}

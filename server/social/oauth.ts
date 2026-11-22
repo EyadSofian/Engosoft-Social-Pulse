@@ -4,7 +4,7 @@ import { db } from '../db.js';
 import { getUser, readCookie, requirePermission, userCan } from '../auth.js';
 import { oauthConfig } from './credentials.js';
 import { commentOAuthScopes, saveCommentGrants } from './comment-meta.js';
-import { isCommentPlatform } from '../../src/domain/social-comments.js';
+import { hasCommentOAuth, isMetaCommentPlatform } from '../../src/domain/social-comments.js';
 import { discover } from './accounts.js';
 import { request } from './http.js';
 import { saveSecret } from './store.js';
@@ -18,7 +18,9 @@ export function metaTokenExpiry(info:{expires_at?:number;data_access_expires_at?
 }
 export function oauthScopes(p:SocialProvider,mode:string):string[] {
  if(p==='linkedin')throw new Error('LinkedIn OAuth is managed by Zernio.');
- if(mode==='comments'&&isCommentPlatform(p))return commentOAuthScopes(p);
+ if(mode==='comments'&&isMetaCommentPlatform(p))return commentOAuthScopes(p);
+ // Google adds the channel's earlier grants (include_granted_scopes); force-ssl is the scope that writes comments.
+ if(mode==='comments'&&p==='youtube')return ['https://www.googleapis.com/auth/youtube.readonly','https://www.googleapis.com/auth/yt-analytics.readonly','https://www.googleapis.com/auth/youtube.force-ssl'];
  const publishing=mode==='publishing'||mode==='publishing-and-draft';
  if(p==='facebook')return ['pages_show_list','pages_read_engagement','read_insights',...(publishing?['pages_manage_posts','publish_video']:[])];
  if(p==='instagram')return ['pages_show_list','pages_read_engagement','instagram_basic','instagram_manage_insights',...(publishing?['instagram_content_publish']:[])];
@@ -45,7 +47,7 @@ export function registerSocialOAuth(app:express.Express) {
   app.get(`/api/oauth/${provider}/start`,requirePermission('connections.manage'),async(req,res)=>{
    try {
     const mode=['publishing','draft','publishing-and-draft','comments'].includes(String(req.query.mode))?String(req.query.mode):'read';
-    if(mode==='comments'&&!isCommentPlatform(provider))return res.status(400).json({error:'Comment authorization is available for Meta accounts.'});
+    if(mode==='comments'&&!hasCommentOAuth(provider))return res.status(400).json({error:'Comment authorization is available for Meta and YouTube accounts.'});
     if(['draft','publishing-and-draft'].includes(mode)&&provider!=='tiktok')return res.status(400).json({error:'Draft upload is only available for TikTok.'});
     const c=configuredCallback(provider,mode),state=randomBytes(32).toString('base64url');
     await db.run('DELETE FROM social_oauth_states WHERE expires_at<?',[Date.now()]);
@@ -98,7 +100,7 @@ export function registerSocialOAuth(app:express.Express) {
      if(!debug.data?.is_valid||String(debug.data.app_id)!==c.client)throw new Error('Meta token verification failed.');
      token.expiresAt=metaTokenExpiry(debug.data);
     }
-    if(saved.mode==='comments'&&isCommentPlatform(provider)) {
+    if(saved.mode==='comments'&&isMetaCommentPlatform(provider)) {
      await saveCommentGrants(provider,token);
      return res.redirect(`/connections?provider=${provider}&oauth=connected`);
     }

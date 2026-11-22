@@ -1,7 +1,14 @@
 export const commentModes = ['manual', 'assist', 'automatic'] as const;
 export type CommentMode = (typeof commentModes)[number];
-export type CommentPlatform = 'facebook' | 'instagram';
-export const isCommentPlatform = (value: string): value is CommentPlatform => value === 'facebook' || value === 'instagram';
+export const commentPlatforms = ['facebook', 'instagram', 'linkedin', 'tiktok', 'youtube'] as const;
+export type CommentPlatform = (typeof commentPlatforms)[number];
+export type MetaCommentPlatform = 'facebook' | 'instagram';
+export const isCommentPlatform = (value: string): value is CommentPlatform => (commentPlatforms as readonly string[]).includes(value);
+export const isMetaCommentPlatform = (value: string): value is MetaCommentPlatform => value === 'facebook' || value === 'instagram';
+/** Platforms whose comment permission is granted through this app's own OAuth consent. */
+export const hasCommentOAuth = (value: string) => isMetaCommentPlatform(value) || value === 'youtube';
+/** How an account becomes ready for comments: a Meta grant, a YouTube consent, or a Zernio connection with the Inbox add-on. */
+export type CommentSetup = 'meta' | 'youtube' | 'zernio_linkedin' | 'zernio_tiktok';
 
 export interface CommentFaq {
   question: string;
@@ -21,6 +28,7 @@ export interface CommentSettings {
   authorized: boolean;
   aiReady: boolean;
   webhookConfigured: boolean;
+  setup: CommentSetup;
 }
 
 export interface PublicSocialComment {

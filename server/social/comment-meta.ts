@@ -1,5 +1,5 @@
 import { randomUUID } from 'node:crypto';
-import type { CommentPlatform } from '../../src/domain/social-comments.js';
+import type { MetaCommentPlatform } from '../../src/domain/social-comments.js';
 import { db, defineSchema } from '../db.js';
 import { graphBase, metaPages } from './accounts.js';
 import { metaCommentApp } from './credentials.js';
@@ -17,9 +17,9 @@ const commentScopes = {
   facebook: ['pages_show_list', 'pages_read_engagement', 'pages_read_user_content', 'pages_manage_engagement'],
   instagram: ['pages_show_list', 'pages_read_engagement', 'instagram_basic', 'instagram_manage_comments'],
 };
-export const commentOAuthScopes = (platform: CommentPlatform) => [...commentScopes[platform], 'pages_manage_metadata'];
+export const commentOAuthScopes = (platform: MetaCommentPlatform) => [...commentScopes[platform], 'pages_manage_metadata'];
 
-export async function saveCommentGrants(platform: CommentPlatform, token: Credential) {
+export async function saveCommentGrants(platform: MetaCommentPlatform, token: Credential) {
   const appId = metaCommentApp().client;
   if (!appId) throw new Error('Meta comment app is not configured.');
   const { scopes, pages } = await metaPages(token.accessToken);

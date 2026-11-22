@@ -3,7 +3,7 @@ import { Field, Input, Select, Textarea } from '../../components/forms/Field';
 import { Button } from '../../components/ui/Button';
 import { useI18n } from '../../i18n/I18nProvider';
 import { api, errorMessage } from '../../lib/api';
-import { commentModes, type CommentMode, type CommentPolicy, type CommentSettings } from '../../domain/social-comments';
+import { commentModes, type CommentMode, type CommentPolicy, type CommentSettings, type CommentSetup } from '../../domain/social-comments';
 
 export const commentAccountPath = (platform: string, accountId: string) => `/api/social/comments/${platform}/${encodeURIComponent(accountId)}`;
 export const policyLabel = (mode: CommentMode, t: (en: string, ar: string) => string) => ({
@@ -11,6 +11,16 @@ export const policyLabel = (mode: CommentMode, t: (en: string, ar: string) => st
   assist: t('AI suggestions', 'اقتراحات بالذكاء الاصطناعي'),
   automatic: t('Automatic replies', 'رد تلقائي'),
 })[mode];
+
+/** What the account still needs before comments can be read and answered, in the platform's own terms. */
+export function commentSetupHint(setup: CommentSetup, t: (en: string, ar: string) => string) {
+  return ({
+    meta: t('Authorize comment replies for this account in Connections.', 'فوّض الرد على التعليقات للحساب ده من ربط المنصات.'),
+    youtube: t('Give the channel a new consent that allows comment replies: Connections → YouTube → Authorize comment replies.', 'القناة محتاجة موافقة جديدة تسمح بالرد على التعليقات: ربط المنصات ← YouTube ← فوّض الرد على التعليقات.'),
+    zernio_linkedin: t('The LinkedIn page must be connected through Zernio, and the Zernio account needs the Inbox add-on.', 'صفحة LinkedIn لازم تكون مربوطة عن طريق Zernio، وحساب Zernio محتاج إضافة Inbox.'),
+    zernio_tiktok: t('Add a Zernio publishing route for this TikTok account, connected through TikTok for Business, and enable the Inbox add-on in Zernio.', 'ضيف مسار نشر Zernio لحساب TikTok ده (مربوط عن طريق TikTok for Business) وفعّل إضافة Inbox في Zernio.'),
+  })[setup];
+}
 
 export function CommentPolicyEditor({ path, settings, onSave, post = false }: {
   path: string; settings: CommentSettings; onSave: (value: CommentSettings) => void; post?: boolean;
@@ -98,7 +108,7 @@ export function AccountCommentSettings({ platform, id }: { platform: string; id:
   return <details onToggle={event => setOpen(event.currentTarget.open)}>
     <summary>{t('Comment reply settings', 'إعدادات الرد على التعليقات')}</summary>
     {open && (settings ? <>
-      {!settings.authorized && <p className="u-sm">{t('Authorize comments for this account to read and send replies.', 'فوّض التعليقات لهذا الحساب عشان تقدر تقراها وترد عليها.')}</p>}
+      {!settings.authorized && <p className="u-sm">{commentSetupHint(settings.setup, t)}</p>}
       <CommentPolicyEditor path={path} settings={settings} onSave={setSettings} />
     </> : <p role={error ? 'alert' : 'status'} className="u-sm">{error || t('Loading…', 'جاري التحميل…')}</p>)}
   </details>;

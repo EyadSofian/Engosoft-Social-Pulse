@@ -3,10 +3,10 @@ import express from 'express';
 import { z, ZodError } from 'zod';
 import { requirePermission, userCan, type AuthUser } from '../auth.js';
 import { requireAiBudget } from '../usage.js';
-import type { CommentSettings } from '../../src/domain/social-comments.js';
+import { isMetaCommentPlatform, type CommentSettings } from '../../src/domain/social-comments.js';
 import { metaCommentApp } from './credentials.js';
-import { commentToken, subscribeCommentPage, grantFor, isFacebookPostParent, metaId, readMetaComment } from './comment-meta.js';
-import { commentAccount, commentAiReady, commentPost, commentProviderLimited, commentWebhookConfigured, CommentError, deliverReply, publishPostComment, enqueueMetaComment, getPolicy, defaultCommentPolicy, policyInput, readCommentPage, requireCommentRef, setPolicy, suggestReply, type MetaCommentEvent } from './comments.js';
+import { subscribeCommentPage, isFacebookPostParent, metaId } from './comment-meta.js';
+import { adapterOf, commentAccount, commentAiReady, commentAuthorized, commentPost, commentProviderLimited, commentWebhookConfigured, CommentError, deliverReply, publishPostComment, enqueueMetaComment, getPolicy, defaultCommentPolicy, policyInput, readCommentPage, requireCommentRef, setPolicy, suggestReply, type MetaCommentEvent } from './comments.js';
 import { ProviderError } from './http.js';
 import type { SocialAccount } from './types.js';
 
@@ -76,11 +76,15 @@ function fail(res: express.Response, error: unknown) {
   if (error instanceof ZodError) return res.status(400).json({ error: 'تحقق من البيانات المدخلة.', code: 'invalid_comment_request' });
   if (error instanceof CommentError) return res.status(error.status).json({ error: error.message, code: error.code });
   if (error instanceof ProviderError) {
+    if (error.code === 'inbox_addon_required') return res.status(403).json({ error: 'حساب Zernio محتاج إضافة Inbox عشان يقرا التعليقات ويرد عليها.', code: error.code });
+    if (error.code === 'platform_limitation') return res.status(409).json({ error: 'الربط الحالي لا يسمح بالتعليقات. حساب TikTok لازم يكون مربوط في Zernio عن طريق TikTok for Business.', code: error.code });
+    if (error.code === 'comments_disabled') return res.status(409).json({ error: 'التعليقات مقفولة على المنشور ده.', code: error.code });
+    if (error.code === 'comment_not_found') return res.status(404).json({ error: 'التعليق مش موجود. ممكن يكون اتمسح. حدّث التعليقات.', code: error.code });
     if (commentProviderLimited(error)) return res.status(429).json({ error: 'المنصة طلبت الانتظار. حاول مرة أخرى لاحقًا.', code: 'comment_rate_limited' });
     if ([401, 403].includes(error.status) || ['190', '200', '283', 'comment_reconnect'].includes(error.code)) {
-      return res.status(403).json({ error: 'راجع تفويض التعليقات وصلاحيات الحساب لدى Meta.', code: 'comment_reconnect' });
+      return res.status(403).json({ error: 'راجع تفويض التعليقات وصلاحيات الحساب على المنصة.', code: 'comment_reconnect' });
     }
-    return res.status(502).json({ error: 'تعذّر تنفيذ الطلب على Meta. قد يكون التعليق محذوفًا أو غير متاح.', code: 'comment_provider_error' });
+    return res.status(502).json({ error: 'تعذّر تنفيذ الطلب على المنصة. قد يكون التعليق محذوفًا أو غير متاح.', code: 'comment_provider_error' });
   }
   return res.status(502).json({ error: 'تعذّر تنفيذ طلب التعليقات. حاول مرة أخرى لاحقًا.', code: 'comment_error' });
 }
@@ -94,13 +98,13 @@ const manageComments: express.RequestHandler = (req, res, next) => {
 };
 
 async function settings(a: SocialAccount, user: AuthUser, postId?: string): Promise<CommentSettings> {
-  const [policy, accountPolicy, grant] = await Promise.all([postId ? getPolicy(a, postId) : getPolicy(a), postId ? getPolicy(a) : undefined, grantFor(a)]);
+  const [policy, accountPolicy, authorized] = await Promise.all([postId ? getPolicy(a, postId) : getPolicy(a), postId ? getPolicy(a) : undefined, commentAuthorized(a)]);
   const manage = canManageComments(user);
   return {
     policy: policy ? { ...policy.policy, faqs: manage ? policy.policy.faqs : [] } : null,
     accountPolicy: accountPolicy ? { ...accountPolicy.policy, faqs: manage ? accountPolicy.policy.faqs : [] } : defaultCommentPolicy,
     canManage: manage, canReply: userCan(user, 'content.publish'),
-    authorized: Boolean(grant && a.verifiedAt && !['disconnected', 'authorization_required'].includes(a.status)),
+    authorized, setup: adapterOf(a).setup,
     aiReady: commentAiReady(), webhookConfigured: commentWebhookConfigured(),
   };
 }
@@ -119,8 +123,10 @@ export function registerCommentRoutes(app: express.Express) {
     res.json(await settings(await account(req), req.user!));
   }));
   app.post(accountPath + '/subscription', manageComments, wrap(async (req, res) => {
+    const a = await account(req);
+    if (!isMetaCommentPlatform(a.provider)) throw new CommentError(409, 'subscription_unsupported', 'الاشتراك في الإشعارات متاح لحسابات Meta فقط.');
     if (!commentWebhookConfigured()) throw new CommentError(409, 'automatic_setup_required', 'يلزم إعداد إشعارات Meta على السيرفر أولًا.');
-    await subscribeCommentPage(await account(req));
+    await subscribeCommentPage(a);
     res.sendStatus(204);
   }));
   app.patch(accountPath + '/settings', manageComments, wrap(async (req, res) => {
@@ -157,10 +163,11 @@ export function registerCommentRoutes(app: express.Express) {
     const id = String(req.params.commentId);
     const input = z.object({ reference, message: z.string().trim().min(1).max(600) }).parse(req.body);
     requireCommentRef(post, id, input.reference);
-    const token = await commentToken(post.account);
-    const comment = await readMetaComment(post.account, token, id);
+    const adapter = adapterOf(post.account);
+    const session = await adapter.session(post.account);
+    const comment = await adapter.read(post.account, session, post.postId, id);
     if (comment.own || !comment.canReply) throw new CommentError(409, 'comment_not_replyable', 'التعليق غير متاح للرد.');
-    res.status(201).json({ id: await deliverReply(post, token, id, input.message, req.user!.id, false) });
+    res.status(201).json({ id: await deliverReply(post, session, id, input.message, req.user!.id, false) });
   }));
   app.post(postPath + '/:commentId/draft', requirePermission('analytics.view'), requirePermission('content.publish'), requireAiBudget, wrap(async (req, res) => {
     const post = await target(req);
@@ -169,9 +176,9 @@ export function registerCommentRoutes(app: express.Express) {
     const override = await getPolicy(post.account, post.postId);
     const policy = override?.policy ?? (await getPolicy(post.account))?.policy ?? defaultCommentPolicy;
     if (policy.mode === 'manual') throw new CommentError(409, 'comment_ai_disabled', 'وضع المنشور الحالي هو الرد اليدوي.');
-    const token = await commentToken(post.account);
-    const comment = await readMetaComment(post.account, token, id);
+    const adapter = adapterOf(post.account);
+    const comment = await adapter.read(post.account, await adapter.session(post.account), post.postId, id);
     if (comment.own || !comment.canReply) throw new CommentError(409, 'comment_not_replyable', 'التعليق غير متاح للرد.');
-    res.json({ draft: await suggestReply(post.caption, comment.text, policy, req.user!.id) });
+    res.json({ draft: await suggestReply(post.caption, comment.text, policy, req.user!.id, false, post.account.provider) });
   }));
 }
