@@ -2,8 +2,8 @@
 .ov {
   --st-published: var(--success);
   --st-scheduled: var(--brand);
-  --st-approved: #7c9cff;
-  --st-work: var(--warning);
+  --st-approved: color-mix(in srgb, var(--brand) 45%, var(--surface));
+  --st-work: var(--accent);
   --st-missing: var(--danger);
 }
 
@@ -139,3 +139,45 @@
   .ov-plan { padding: var(--sp-4); }
   .ov-plan__score { justify-items: start; text-align: start; }
 }
+
+/* ── The month in numbers (Nov 23) ─────────────────────────────────── */
+.ov-kpis { display: grid; grid-template-columns: repeat(auto-fit, minmax(160px, 1fr)); gap: var(--sp-3); }
+.ov-kpi {
+  display: grid;
+  align-content: start;
+  gap: 2px;
+  min-width: 0;
+  padding: var(--sp-4) var(--sp-4) var(--sp-3);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-lg);
+  background: var(--surface);
+  box-shadow: var(--shadow-xs);
+  color: var(--text);
+  text-decoration: none;
+  transition: border-color var(--t-hover) var(--ease), box-shadow var(--t-hover) var(--ease);
+}
+.ov-kpi:hover { border-color: var(--border-strong); box-shadow: var(--shadow-md); }
+.ov-kpi:focus-visible { outline: 2px solid var(--border-focus); outline-offset: 2px; }
+.ov-kpi__label { color: var(--text-muted); font-size: var(--fs-sm); font-weight: 600; }
+.ov-kpi__value { font-size: 30px; font-weight: 700; line-height: 1.25; letter-spacing: -0.01em; }
+.ov-kpi__hint { color: var(--text-subtle); font-size: var(--fs-xs); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+/* Something waits for you: orange, the colour for attention. */
+.ov-kpi[data-attention] { border-color: color-mix(in srgb, var(--accent) 45%, var(--border)); background: var(--accent-soft); }
+.ov-kpi[data-attention] .ov-kpi__label, .ov-kpi[data-attention] .ov-kpi__hint, .ov-kpi[data-attention] .ov-kpi__value { color: var(--accent-ink); }
+
+/* One card per section */
+.ov-sections { display: grid; grid-template-columns: repeat(auto-fit, minmax(240px, 1fr)); gap: var(--sp-3); }
+.ov-section { display: grid; align-content: start; gap: var(--sp-3); min-width: 0; padding: var(--sp-4); border: 1px solid var(--border); border-radius: var(--radius-lg); background: var(--surface); box-shadow: var(--shadow-xs); }
+.ov-section__head { display: flex; align-items: center; gap: var(--sp-2); }
+.ov-section__head h2 { flex: 1; margin: 0; font-size: var(--fs-md); font-weight: 700; }
+.ov-section__icon { display: grid; place-items: center; width: 30px; height: 30px; border-radius: var(--radius-md); background: var(--brand-soft); color: var(--brand-ink); }
+.ov-section__open { display: grid; place-items: center; width: 30px; height: 30px; border-radius: 50%; color: var(--text-subtle); }
+.ov-section__open:hover { background: var(--surface-hover); color: var(--brand-ink); }
+.ov-section__headline { margin: 0; color: var(--text); font-size: var(--fs-sm); font-weight: 600; line-height: 1.6; display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; overflow: hidden; }
+.ov-section__rows { display: grid; margin: 0; padding: 0; list-style: none; border-top: 1px solid var(--border); }
+.ov-section__rows a { display: flex; align-items: center; justify-content: space-between; gap: var(--sp-3); padding: 9px 2px; border-bottom: 1px solid var(--border); color: var(--text-muted); font-size: var(--fs-sm); text-decoration: none; }
+.ov-section__rows li:last-child a { border-bottom: 0; padding-bottom: 0; }
+.ov-section__rows a:hover { color: var(--text); }
+.ov-section__rows b { color: var(--text); font-size: var(--fs-md); font-weight: 700; }
+.ov-section__rows a[data-attention] b { display: inline-grid; min-width: 26px; place-items: center; padding: 1px 8px; border-radius: var(--radius-pill); background: var(--accent); color: var(--on-accent); font-size: var(--fs-sm); }
+.ov-section__go { color: var(--text-subtle); }

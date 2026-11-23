@@ -19,8 +19,7 @@ export function LoginPage({ onSignedIn }: { onSignedIn: () => void | Promise<voi
     setBusy(false);
   };
   return <div className="auth-screen">
-    <div className="auth-orb auth-orb--a" aria-hidden /><div className="auth-orb auth-orb--b" aria-hidden />
-    <motion.form className="auth-card glass" onSubmit={(e) => void submit(e)} initial={{ opacity: 0, y: 16, scale: 0.98 }} animate={{ opacity: 1, y: 0, scale: 1 }} transition={{ duration: 0.45, ease: [0.16, 1, 0.3, 1] }}>
+        <motion.form className="auth-card glass" onSubmit={(e) => void submit(e)} initial={{ opacity: 0, y: 16, scale: 0.98 }} animate={{ opacity: 1, y: 0, scale: 1 }} transition={{ duration: 0.45, ease: [0.16, 1, 0.3, 1] }}>
       <img src="/brand/logos/engosoft-lockup-reversed.svg" alt="Engosoft" className="auth-logo" />
       <h1>{t('Mobde3', 'مبدع')}</h1>
       <p>{t('Sign in to create, review and track Engosoft content.', 'سجّل الدخول لتصميم محتوى إنجوسوفت ومراجعته ومتابعته.')}</p>

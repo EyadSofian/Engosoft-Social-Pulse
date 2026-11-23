@@ -20,6 +20,7 @@ import { useI18n } from '../../i18n/I18nProvider';
 import { businessZone, compact, greeting, parseTimestamp } from '../../lib/format';
 import { PageHeader } from '../../shell/Header';
 import { usePageMeta } from '../../shell/ShellContext';
+import { SectionSummary } from './SectionSummary';
 
 const zoned = (ms: number) => DateTime.fromMillis(ms, { zone: businessZone() });
 const dayOf = (iso: string) => zoned(parseTimestamp(iso)).toISODate() ?? '';
@@ -88,6 +89,8 @@ export function OverviewPage() {
           {can('content.create') && <Button variant="primary" icon={<Plus size={15} />} onClick={() => create.open()}>{t('New post', 'منشور جديد')}</Button>}
         </>}
       />
+
+      <SectionSummary month={start.toFormat('yyyy-MM')} items={live} monthCount={planned} monthPublished={counts.published} livePosts={livePosts} loading={loading} />
 
       <section className="ov-plan">
         <header className="ov-plan__head">

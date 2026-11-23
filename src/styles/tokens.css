@@ -3,7 +3,9 @@
  *
  * Semantic roles only: components read these, never raw hex values.
  * Light is the primary operational theme; dark redefines the same roles.
- * Brand blue marks actions, selection, links and focus. Orange is a sparse accent.
+ * Blue and orange (Nov 23 palette): blue marks actions, selection, links and focus; orange is the second
+ * colour for what needs attention (waiting for you, unread, the month's plan). Green, amber and red are status
+ * only. The seven content-type colours are for telling content apart in charts and the calendar.
  */
 
 :root {
@@ -14,12 +16,12 @@
 
   /* Type scale (px) */
   --fs-xs: 12px;
-  --fs-sm: 13px;
-  --fs-md: 14px;
-  --fs-lg: 16px;
-  --fs-xl: 18px;
-  --fs-2xl: 22px;
-  --fs-3xl: 28px;
+  --fs-sm: 13.5px;
+  --fs-md: 15px;
+  --fs-lg: 16.5px;
+  --fs-xl: 19px;
+  --fs-2xl: 24px;
+  --fs-3xl: 30px;
 
   /* Spacing: 4px base */
   --sp-1: 4px;
@@ -33,11 +35,11 @@
 
   --radius-sm: 6px;
   --radius-md: 8px;
-  --radius-lg: 12px;
-  --radius-xl: 16px;
+  --radius-lg: 10px;
+  --radius-xl: 12px;
   --radius-pill: 999px;
 
-  --sidebar-w: 288px;
+  --sidebar-w: 264px;
   --sidebar-rail: 64px;
   --header-h: 60px;
   --page-max: 1480px;
@@ -56,40 +58,41 @@
   --brand: #0046ff;
   --brand-hover: #003bd6;
   --brand-active: #0033b8;
-  --brand-soft: #ebf0ff;
-  --brand-soft-strong: #d6e1ff;
-  --brand-ink: #0038cc;
+  --brand-soft: #e8eeff;
+  --brand-soft-strong: #d4e0ff;
+  --brand-ink: #0040e6;
   --on-brand: #ffffff;
 
   --accent: #ff6600;
-  --accent-soft: #fff1e6;
-  --accent-ink: #b84a00;
+  --accent-soft: #ffefe3;
+  --accent-ink: #a84300;
+  --on-accent: #1a1a1a;
 
-  --bg: #f6f8fb;
+  --bg: #f2f5fa;
   --surface: #ffffff;
-  --surface-subtle: #f8fafc;
-  --surface-hover: #f1f4f9;
-  --surface-active: #e9eef6;
-  --surface-inverse: #17191c;
+  --surface-subtle: #f7f9fc;
+  --surface-hover: #f0f3f9;
+  --surface-active: #e6ebf4;
+  --surface-inverse: #121826;
 
-  --border: #dde3eb;
-  --border-strong: #c7cfdb;
+  --border: #dfe5ef;
+  --border-strong: #c9d2e0;
   --border-focus: var(--brand);
 
-  --text: #17191c;
-  --text-muted: #4d596b;
-  --text-subtle: #6b7588;
+  --text: #121826;
+  --text-muted: #4a5468;
+  --text-subtle: #667085;
   --text-inverse: #ffffff;
 
-  --success: #32b771;
-  --success-ink: #13744a;
-  --success-soft: #e7f6ee;
+  --success: #2f9e5b;
+  --success-ink: #1b7a3a;
+  --success-soft: #e4f4e9;
   --warning: #f5a524;
-  --warning-ink: #8a5300;
-  --warning-soft: #fef3e0;
+  --warning-ink: #8a5600;
+  --warning-soft: #fff2d1;
   --danger: #e5484d;
-  --danger-ink: #be2a30;
-  --danger-soft: #fdecec;
+  --danger-ink: #c42b2f;
+  --danger-soft: #fde9e9;
   --info: #0090ff;
   --info-ink: #0063b3;
   --info-soft: #e6f4ff;
@@ -98,10 +101,10 @@
   --violet-soft: #f0edfb;
   --violet-ink: #5340b3;
 
-  --shadow-xs: 0 1px 2px rgb(16 24 40 / 0.05);
-  --shadow-sm: 0 1px 3px rgb(16 24 40 / 0.08), 0 1px 2px -1px rgb(16 24 40 / 0.06);
-  --shadow-md: 0 8px 24px -8px rgb(16 24 40 / 0.16), 0 2px 6px -2px rgb(16 24 40 / 0.06);
-  --shadow-lg: 0 24px 48px -16px rgb(16 24 40 / 0.22);
+  --shadow-xs: 0 1px 2px rgb(18 24 38 / 0.05);
+  --shadow-sm: 0 1px 2px rgb(18 24 38 / 0.06), 0 1px 3px rgb(18 24 38 / 0.04);
+  --shadow-md: 0 6px 16px -6px rgb(18 24 38 / 0.14), 0 2px 4px -2px rgb(18 24 38 / 0.06);
+  --shadow-lg: 0 20px 40px -16px rgb(18 24 38 / 0.22);
   --scrim: rgb(15 20 30 / 0.36);
 
   /* Platform marks: small icons and dots only, never large fills. */
@@ -115,41 +118,52 @@
 
   /* Charts */
   --chart-1: #0046ff;
-  --chart-2: #8ea9ff;
+  --chart-2: #ff6600;
   --chart-grid: #edf0f5;
   --chart-axis: #c8cfda;
+
+  /* The seven content types: sales, promotion, technical, events, trends, people, testimonials.
+     Checked for contrast on cards (3:1+) and kept apart for red-green colour blindness. */
+  --type-sales: #e8590c;
+  --type-promo: #b5175a;
+  --type-tech: #164c9e;
+  --type-events: #8b5cf6;
+  --type-trends: #0c8599;
+  --type-people: #2b8a3e;
+  --type-reviews: #7d6200;
 }
 
 /* Dark: index.html resolves the saved choice or the system setting into data-theme before first paint. */
 :root[data-theme='dark'] {
   color-scheme: dark;
 
-  --brand: #3d73ff;
-  --brand-hover: #5a88ff;
-  --brand-active: #2c63f0;
-  --brand-soft: rgb(61 115 255 / 0.16);
-  --brand-soft-strong: rgb(61 115 255 / 0.26);
-  --brand-ink: #9db8ff;
+  --brand: #2563ff;
+  --brand-hover: #3b73ff;
+  --brand-active: #1d55e6;
+  --brand-soft: rgb(37 99 255 / 0.18);
+  --brand-soft-strong: rgb(37 99 255 / 0.3);
+  --brand-ink: #86a8ff;
   --on-brand: #ffffff;
 
-  --accent: #ff7a26;
-  --accent-soft: rgb(255 122 38 / 0.14);
-  --accent-ink: #ffab73;
+  --accent: #ff7a1a;
+  --accent-soft: rgb(255 122 26 / 0.16);
+  --accent-ink: #ffa466;
+  --on-accent: #1a1a1a;
 
-  --bg: #0d1015;
-  --surface: #14181f;
-  --surface-subtle: #181d25;
-  --surface-hover: #1d232d;
-  --surface-active: #232a36;
-  --surface-inverse: #eef1f5;
+  --bg: #0d1220;
+  --surface: #151c2e;
+  --surface-subtle: #1b2338;
+  --surface-hover: #1e2740;
+  --surface-active: #24304d;
+  --surface-inverse: #eef2fa;
 
-  --border: #2a313d;
-  --border-strong: #3a4352;
+  --border: #2a3550;
+  --border-strong: #3a4766;
 
-  --text: #e9ecf1;
-  --text-muted: #b1b9c6;
-  --text-subtle: #8d97a8;
-  --text-inverse: #0d1015;
+  --text: #eef2fa;
+  --text-muted: #a3aec4;
+  --text-subtle: #8792aa;
+  --text-inverse: #0d1220;
 
   --success: #3ccb83;
   --success-ink: #6fdca4;
@@ -178,98 +192,52 @@
   --p-x: #e9ecf1;
   --p-snapchat: #f2d438;
 
-  --chart-1: #5a88ff;
-  --chart-2: #3a4f86;
-  --chart-grid: #202632;
-  --chart-axis: #3a4353;
+  --chart-1: #4f8dff;
+  --chart-2: #ff8a4c;
+  --chart-grid: #222b42;
+  --chart-axis: #3a4766;
+
+  --type-sales: #ff8a4c;
+  --type-promo: #f06595;
+  --type-tech: #4f8dff;
+  --type-events: #b197fc;
+  --type-trends: #3bc9db;
+  --type-people: #69db7c;
+  --type-reviews: #ffd43b;
 }
 
-/* ── Glass surfaces ───────────────────────────────────────────────── */
+/* ── Surfaces ─────────────────────────────────────────────────────── */
+/* The glass and glow tokens are kept as names so older rules still resolve, but every one is now a solid,
+   quiet surface: no translucency, blur, orbs or gradients behind the work. */
 
 :root,
 :root[data-theme='light'] {
-  --glass-bg: rgb(255 255 255 / 0.68);
-  --glass-bg-strong: rgb(255 255 255 / 0.86);
-  --glass-border: rgb(255 255 255 / 0.7);
-  --glass-edge: rgb(15 35 90 / 0.08);
-  --glass-shadow: 0 1px 0 rgb(255 255 255 / 0.6) inset, 0 12px 40px -12px rgb(8 27 83 / 0.18);
-  --glass-blur: 18px;
-  --backdrop: radial-gradient(1100px 620px at 85% -10%, rgb(0 70 255 / 0.16), transparent 60%),
-    radial-gradient(900px 560px at 0% 30%, rgb(0 27 183 / 0.1), transparent 60%),
-    radial-gradient(700px 480px at 70% 110%, rgb(255 102 0 / 0.1), transparent 60%),
-    linear-gradient(180deg, #f5f8ff 0%, #eef2fb 100%);
-}
+  --glass-bg: var(--surface);
+  --glass-bg-strong: var(--surface);
+  --glass-border: var(--border);
+  --glass-edge: transparent;
+  --glass-shadow: var(--shadow-xs);
+  --glass-blur: 0px;
+  --backdrop: none;
 
-:root[data-theme='dark'] {
-  --glass-bg: rgb(16 22 40 / 0.62);
-  --glass-bg-strong: rgb(16 22 40 / 0.84);
-  --glass-border: rgb(255 255 255 / 0.09);
-  --glass-edge: rgb(255 255 255 / 0.06);
-  --glass-shadow: 0 1px 0 rgb(255 255 255 / 0.05) inset, 0 16px 48px -16px rgb(0 0 0 / 0.6);
-  --backdrop: radial-gradient(1100px 620px at 85% -10%, rgb(0 70 255 / 0.32), transparent 60%),
-    radial-gradient(900px 560px at 0% 30%, rgb(0 27 183 / 0.28), transparent 62%),
-    radial-gradient(700px 480px at 70% 110%, rgb(255 102 0 / 0.12), transparent 60%),
-    linear-gradient(180deg, #070b18 0%, #0a1024 100%);
-}
+  --orb-a: transparent;
+  --orb-b: transparent;
+  --orb-c: transparent;
+  --orb-d: transparent;
+  --grid-line: transparent;
+  --cursor-glow: transparent;
+  --dot: transparent;
 
-@media (prefers-color-scheme: dark) {
-  :root:not([data-theme='light']) {
-    --glass-bg: rgb(16 22 40 / 0.62);
-    --glass-bg-strong: rgb(16 22 40 / 0.84);
-    --glass-border: rgb(255 255 255 / 0.09);
-    --glass-edge: rgb(255 255 255 / 0.06);
-    --glass-shadow: 0 1px 0 rgb(255 255 255 / 0.05) inset, 0 16px 48px -16px rgb(0 0 0 / 0.6);
-    --backdrop: radial-gradient(1100px 620px at 85% -10%, rgb(0 70 255 / 0.32), transparent 60%),
-      radial-gradient(900px 560px at 0% 30%, rgb(0 27 183 / 0.28), transparent 62%),
-      radial-gradient(700px 480px at 70% 110%, rgb(255 102 0 / 0.12), transparent 60%),
-      linear-gradient(180deg, #070b18 0%, #0a1024 100%);
-  }
-}
+  --card-bg: var(--surface);
+  --card-bg-hover: var(--surface);
+  --card-border: var(--border);
+  --card-edge: var(--border);
+  --card-shadow: var(--shadow-xs);
+  --card-shadow-hover: var(--shadow-md);
+  --spot: transparent;
+  --spot-edge: transparent;
 
-/* ── Cards, backdrop and the create call-to-action ────────────────── */
-
-:root,
-:root[data-theme='light'] {
-  --orb-a: rgb(0 70 255 / 0.34);
-  --orb-b: rgb(86 161 255 / 0.42);
-  --orb-c: rgb(255 122 38 / 0.26);
-  --orb-d: rgb(124 92 255 / 0.28);
-  --grid-line: rgb(15 35 90 / 0.07);
-  --cursor-glow: rgb(0 70 255 / 0.12);
-  --dot: rgb(0 70 255 / 0.35);
-
-  --card-bg: rgb(255 255 255 / 0.74);
-  --card-bg-hover: rgb(255 255 255 / 0.9);
-  --card-border: rgb(255 255 255 / 0.9);
-  --card-edge: rgb(15 35 90 / 0.07);
-  --card-shadow: 0 1px 0 rgb(255 255 255 / 0.8) inset, 0 0 0 1px var(--card-edge), 0 10px 30px -18px rgb(8 27 83 / 0.28);
-  --card-shadow-hover: 0 1px 0 rgb(255 255 255 / 0.8) inset, 0 0 0 1px rgb(0 70 255 / 0.16), 0 22px 44px -20px rgb(0 47 180 / 0.35);
-  --spot: rgb(0 70 255 / 0.07);
-  --spot-edge: rgb(0 70 255 / 0.5);
-
-  --cta: linear-gradient(120deg, #0046ff 0%, #2f6bff 35%, #6a4dff 65%, #0046ff 100%);
-  --cta-glow: 0 10px 28px -10px rgb(0 70 255 / 0.75);
-  --icon-tile: rgb(15 35 90 / 0.05);
-}
-
-:root[data-theme='dark'] {
-  --orb-a: rgb(0 70 255 / 0.42);
-  --orb-b: rgb(30 60 190 / 0.4);
-  --orb-c: rgb(255 102 0 / 0.16);
-  --orb-d: rgb(120 90 255 / 0.22);
-  --grid-line: rgb(255 255 255 / 0.035);
-  --cursor-glow: rgb(61 115 255 / 0.12);
-  --dot: rgb(160 190 255 / 0.5);
-
-  --card-bg: rgb(18 24 42 / 0.66);
-  --card-bg-hover: rgb(22 30 52 / 0.8);
-  --card-border: rgb(255 255 255 / 0.07);
-  --card-edge: rgb(255 255 255 / 0.03);
-  --card-shadow: 0 1px 0 rgb(255 255 255 / 0.05) inset, 0 0 0 1px var(--card-edge), 0 14px 36px -20px rgb(0 0 0 / 0.75);
-  --card-shadow-hover: 0 1px 0 rgb(255 255 255 / 0.07) inset, 0 0 0 1px rgb(90 136 255 / 0.28), 0 24px 48px -20px rgb(0 0 0 / 0.8), 0 0 40px -18px rgb(61 115 255 / 0.5);
-  --spot: rgb(90 136 255 / 0.1);
-  --spot-edge: rgb(120 160 255 / 0.65);
-
-  --cta-glow: 0 10px 30px -8px rgb(61 115 255 / 0.7);
-  --icon-tile: rgb(255 255 255 / 0.05);
+  --cta: var(--brand);
+  --cta-glow: none;
+  --icon-tile: var(--surface-subtle);
 }

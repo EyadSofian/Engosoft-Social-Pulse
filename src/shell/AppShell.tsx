@@ -9,15 +9,15 @@ import { ButtonLink } from '../components/ui/Button';
 import { useWorkspace } from '../features/workspace/WorkspaceProvider';
 import { useMediaQuery, useOverlay } from '../hooks/ui';
 import { useI18n } from '../i18n/I18nProvider';
-import { Ambient } from './Ambient';
 import { CommandPalette } from './CommandPalette';
 import { Header } from './Header';
-import { activeNav, navItem, type NavId } from './nav';
+import { activeNav, navItem, sectionOf, type NavId } from './nav';
 import { NotificationCenter } from './NotificationCenter';
 import { NotificationPopups, useServerNotifications } from './serverNotifications';
 import { registerServiceWorker, resyncPush } from '../lib/push';
 import { useShell, usePageMeta } from './ShellContext';
 import { Sidebar } from './Sidebar';
+import { PostDrawerHost } from './PostDrawerHost';
 
 /**
  * The persistent application frame: sidebar (rail when collapsed), sticky
@@ -42,7 +42,6 @@ export function AppShell() {
 
   return (
     <div className="shell" data-collapsed={collapsed || undefined}>
-      <Ambient />
       <a href="#app-main" className="skip-link">
         {t('Skip to content', 'تخطَّ إلى المحتوى')}
       </a>
@@ -53,15 +52,16 @@ export function AppShell() {
 
       <div className="shell-main">
         <Header />
+        <SectionTabs path={path} />
         <main id="app-main" className="shell-content" tabIndex={-1}>
           <AnimatePresence mode="wait" initial={false}>
             <motion.div
               key={resolved ? `${resolved.route.pattern}:${resolved.params.id ?? ''}` : path}
               className="page"
-              initial={{ opacity: 0, y: 16, scale: 0.992 }}
-              animate={{ opacity: 1, y: 0, scale: 1 }}
-              exit={{ opacity: 0, y: -8, transition: { duration: 0.12, ease: [0.4, 0, 1, 1] } }}
-              transition={{ duration: 0.38, ease: [0.16, 1, 0.3, 1] }}
+              initial={{ opacity: 0 }}
+              animate={{ opacity: 1 }}
+              exit={{ opacity: 0, transition: { duration: 0.08 } }}
+              transition={{ duration: 0.16, ease: [0.2, 0, 0, 1] }}
             >
               {!resolved ? <NotFound /> : !allowed ? <NoAccess nav={resolved.route.nav} /> : resolved.route.render(resolved.params)}
             </motion.div>
@@ -73,8 +73,32 @@ export function AppShell() {
       <CommandPalette />
       <NotificationCenter />
       <NotificationPopups />
+      <PostDrawerHost />
       <ProductTour />
     </div>
+  );
+}
+
+/** The pages of the open section as tabs under the header: Content shows Create, Approval, Calendar, Publishing. */
+function SectionTabs({ path }: { path: string }) {
+  const { me } = useWorkspace();
+  const { tx, t } = useI18n();
+  const active = activeNav(path);
+  const section = sectionOf(active, me);
+  if (!section || section.visibleItems.length < 2) return null;
+  return (
+    <nav className="section-tabs" aria-label={t(`${section.label.en} pages`, `صفحات ${section.label.ar}`)}>
+      <div className="section-tabs__inner">
+        <span className="section-tabs__title">{tx(section.label)}</span>
+        <div className="section-tabs__list">
+          {section.visibleItems.map((item) => (
+            <Link key={item.id} to={item.path} className="section-tabs__tab" aria-current={active === item.id ? 'page' : undefined}>
+              {tx(item.label)}
+            </Link>
+          ))}
+        </div>
+      </div>
+    </nav>
   );
 }
 

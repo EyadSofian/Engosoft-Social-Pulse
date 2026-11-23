@@ -43,6 +43,8 @@ export const ROUTES: RouteDef[] = [
   { pattern: '/courses', nav: 'courses', render: () => <CoursesPage /> },
   { pattern: '/library', nav: 'library', render: () => <LibraryPage /> },
   { pattern: '/library/templates/:id', nav: 'library', render: ({ id }) => <TemplatePage key={id} id={id} /> },
+  // Task notifications from before tasks were folded into posts open the board.
+  { pattern: '/tasks', nav: 'content', render: () => <ContentBoardPage /> },
   { pattern: '/usage', nav: 'usage', render: () => <UsagePage /> },
   { pattern: '/settings', nav: 'settings', render: () => <SettingsPage /> },
   { pattern: '/connections', nav: 'settings', render: () => <SettingsPage initialTab="connections" /> },

@@ -1,5 +1,5 @@
 /*
- * Competitors (متابعة المنافسين): a dark summary band, a tab bar, and one view at a time:
+ * Competitors (متابعة المنافسين): a light summary card, a tab bar, and one view at a time:
  * ideas with notes, Odoo lectures and events as columns, a comparison scoreboard, and the posts.
  * The scoreboard is the one coloured element: cells deepen with the share of the row's best, the leader is filled.
  */
@@ -34,50 +34,36 @@
   font-size: var(--fs-sm);
 }
 
-/* ── Summary band: the page's dark anchor ──────────────────────────── */
+/* ── Summary band: a light card with a blue edge; the headline reads first, the numbers sit beside it ── */
 
 .cw-hero {
   display: grid;
   grid-template-columns: minmax(0, 1fr) auto;
   gap: var(--sp-6, 24px);
-  align-items: end;
-  padding: 28px 32px;
+  align-items: center;
+  padding: 22px 24px;
+  border: 1px solid var(--border);
+  border-inline-start: 4px solid var(--brand);
   border-radius: var(--radius-xl);
-  background: var(--text);
-  color: var(--surface);
+  background: var(--surface);
+  box-shadow: var(--shadow-xs);
+  color: var(--text);
 }
 
-.cw-hero__date {
-  margin: 0 0 var(--sp-2);
-  font-size: var(--fs-xs);
-  color: color-mix(in srgb, var(--surface) 62%, transparent);
-}
+.cw-hero__date { margin: 0 0 var(--sp-2); font-size: var(--fs-xs); font-weight: 600; color: var(--text-subtle); }
 
-.cw-hero__headline {
-  margin: 0;
-  max-width: 62ch;
-  font-size: 22px;
-  font-weight: 700;
-  line-height: 1.55;
-  color: var(--surface);
-}
+.cw-hero__headline { margin: 0; max-width: 62ch; font-size: var(--fs-xl); font-weight: 700; line-height: 1.6; color: var(--text); }
 
-.cw-hero__alerts {
-  display: flex;
-  flex-wrap: wrap;
-  gap: var(--sp-2);
-  margin: var(--sp-4) 0 0;
-  padding: 0;
-  list-style: none;
-}
+.cw-hero__alerts { display: flex; flex-wrap: wrap; gap: var(--sp-2); margin: var(--sp-3) 0 0; padding: 0; list-style: none; }
 
 .cw-hero__alert > * {
   display: inline-block;
-  padding: 6px 12px;
-  border: 1px solid color-mix(in srgb, var(--surface) 18%, transparent);
+  max-width: 60ch;
+  padding: 5px 12px;
+  border: 1px solid var(--border);
   border-radius: var(--radius-pill);
-  background: color-mix(in srgb, var(--surface) 8%, transparent);
-  color: color-mix(in srgb, var(--surface) 88%, transparent);
+  background: var(--surface-subtle);
+  color: var(--text-muted);
   font: inherit;
   font-size: var(--fs-xs);
   line-height: 1.5;
@@ -85,55 +71,27 @@
 }
 
 .cw-hero__alert button { cursor: pointer; }
-.cw-hero__alert button:hover { background: color-mix(in srgb, var(--surface) 16%, transparent); }
+.cw-hero__alert button:hover { border-color: var(--border-strong); color: var(--text); }
 
-.cw-hero__alert--webinar > * {
-  border-color: color-mix(in srgb, var(--warning) 60%, transparent);
-  color: color-mix(in srgb, var(--warning) 70%, var(--surface));
-}
+.cw-hero__alert--webinar > * { border-color: color-mix(in srgb, var(--accent) 45%, var(--border)); background: var(--accent-soft); color: var(--accent-ink); }
 
-.cw-hero__stats {
-  display: grid;
-  grid-auto-flow: column;
-  gap: var(--sp-2);
-  margin: 0;
-}
+.cw-hero__stats { display: grid; grid-auto-flow: column; gap: var(--sp-2); margin: 0; }
 
-.cw-hero__stats > div {
-  min-width: 112px;
-  padding: var(--sp-3) var(--sp-4);
-  border-radius: var(--radius-lg);
-  background: color-mix(in srgb, var(--surface) 8%, transparent);
-}
+.cw-hero__stats > div { min-width: 112px; padding: var(--sp-3) var(--sp-4); border: 1px solid var(--border); border-radius: var(--radius-lg); background: var(--surface-subtle); }
 
-.cw-hero__stats dt {
-  font-size: var(--fs-xs);
-  color: color-mix(in srgb, var(--surface) 62%, transparent);
-}
+.cw-hero__stats dt { font-size: var(--fs-xs); font-weight: 600; color: var(--text-muted); }
 
-.cw-hero__stats dd {
-  margin: 4px 0 0;
-  font-size: 28px;
-  font-weight: 700;
-  line-height: 1.1;
-}
+.cw-hero__stats dd { margin: 4px 0 0; font-size: 28px; font-weight: 700; line-height: 1.1; color: var(--text); font-variant-numeric: tabular-nums; }
 
-.cw-hero__stats dd button {
-  padding: 0;
-  border: 0;
-  background: none;
-  color: inherit;
-  font: inherit;
-  cursor: pointer;
-}
+.cw-hero__stats dd button { padding: 0; border: 0; background: none; color: var(--brand-ink); font: inherit; cursor: pointer; }
 
 .cw-hero__stats dd button:hover { text-decoration: underline; }
 
 @media (max-width: 960px) {
-  .cw-hero { grid-template-columns: 1fr; padding: 24px 20px; }
+  .cw-hero { grid-template-columns: 1fr; padding: 18px 16px; }
   .cw-hero__stats { grid-auto-flow: row; grid-template-columns: repeat(3, minmax(0, 1fr)); }
   .cw-hero__stats > div { min-width: 0; }
-  .cw-hero__headline { font-size: var(--fs-xl); }
+  .cw-hero__headline { font-size: var(--fs-lg); }
 }
 
 /* ── Tab bar ───────────────────────────────────────────────────────── */

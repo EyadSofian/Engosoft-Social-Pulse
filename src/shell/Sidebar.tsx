@@ -1,6 +1,5 @@
 import { useEffect, useState } from 'react';
-import { motion } from 'motion/react';
-import { ChevronsUpDown, Compass, Languages, LogOut, Moon, Plus, Sparkles, SunMedium } from 'lucide-react';
+import { ChevronDown, ChevronsUpDown, Compass, Languages, LogOut, Moon, Plus, SunMedium } from 'lucide-react';
 import { startTour } from './ProductTour';
 import { Link, useRouter } from '../app/router/router';
 import { ROLES, departmentById } from '../domain/catalog';
@@ -46,6 +45,15 @@ export function Sidebar({ drawer }: { drawer?: boolean }) {
   const { can } = useAuth();
   const counts = useNavCounts();
   const active = activeNav(path);
+  const [open, setOpen] = useState<string[]>(() => { try { return JSON.parse(localStorage.getItem('mobde3-nav-open') || '[]'); } catch { return []; } });
+  const toggle = (id: string, here: boolean) => {
+    if (here) return;
+    setOpen((current) => {
+      const next = current.includes(id) ? current.filter((value) => value !== id) : [...current, id];
+      try { localStorage.setItem('mobde3-nav-open', JSON.stringify(next)); } catch { /* private window */ }
+      return next;
+    });
+  };
 
   return (
     <div className="shell-sidebar" data-collapsed={collapsed || undefined}>
@@ -67,7 +75,6 @@ export function Sidebar({ drawer }: { drawer?: boolean }) {
           {!collapsed && (
             <>
               <span className="shell-create__text">{t('New post', 'منشور جديد')}</span>
-              <Sparkles size={15} className="shell-create__spark" aria-hidden />
             </>
           )}
         </Link>
@@ -77,40 +84,67 @@ export function Sidebar({ drawer }: { drawer?: boolean }) {
         {NAV.map((group) => {
           const items = group.items.filter((item) => item.visible(me));
           if (!items.length) return null;
+          const SectionIcon = group.icon;
+          const here = items.some((item) => item.id === active);
+          const total = items.reduce((sum, item) => sum + (counts[item.id] ?? 0), 0);
+          // A one-page section, or the narrow rail, is a single link to its first page.
+          if (items.length === 1 || collapsed) {
+            const first = items[0];
+            return (
+              <div key={group.id} className="shell-nav__section">
+                <Link
+                  to={first.path}
+                  className="shell-nav__item shell-nav__item--section"
+                  data-tour={`nav-${first.id}`}
+                  data-tour-also={items.map((item) => `nav-${item.id}`).join(' ')}
+                  aria-current={here ? 'page' : undefined}
+                  data-tip={collapsed ? tx(group.label) : undefined}
+                  aria-label={collapsed ? tx(group.label) : undefined}
+                  onClick={() => setMobileNavOpen(false)}
+                >
+                  <span className="shell-nav__icon"><SectionIcon size={18} strokeWidth={1.9} aria-hidden /></span>
+                  {!collapsed && <span className="shell-nav__text">{tx(group.label)}</span>}
+                  {total ? <span className="shell-nav__count u-tnum" aria-label={t(`${total} open`, `${total} مفتوحة`)}>{total}</span> : null}
+                </Link>
+              </div>
+            );
+          }
+          const isOpen = here || open.includes(group.id);
           return (
-            <div key={group.id} className="shell-nav__group">
-              {!collapsed ? <p className="shell-nav__label">{tx(group.label)}</p> : <span className="shell-nav__divider" aria-hidden />}
-              <ul>
-                {items.map((item) => {
-                  const Icon = item.icon;
-                  const count = counts[item.id];
-                  const current = active === item.id;
-                  return (
-                    <li key={item.id}>
-                      <Link
-                        to={item.path}
-                        className="shell-nav__item"
-                        data-tour={`nav-${item.id}`}
-                        aria-current={current ? 'page' : undefined}
-                        data-tip={collapsed ? tx(item.label) : undefined}
-                        aria-label={collapsed ? tx(item.label) : undefined}
-                        onClick={() => setMobileNavOpen(false)}
-                      >
-                        {current && <motion.span layoutId={drawer ? 'nav-pill-drawer' : 'nav-pill'} className="shell-nav__pill" transition={{ type: 'spring', stiffness: 420, damping: 34 }} aria-hidden />}
-                        <span className="shell-nav__icon">
-                          <Icon size={17} strokeWidth={1.9} aria-hidden />
-                        </span>
-                        {!collapsed && <span className="shell-nav__text">{tx(item.label)}</span>}
-                        {count ? (
-                          <span className="shell-nav__count u-tnum" aria-label={t(`${count} open`, `${count} مفتوحة`)}>
-                            {count}
-                          </span>
-                        ) : null}
-                      </Link>
-                    </li>
-                  );
-                })}
-              </ul>
+            <div key={group.id} className="shell-nav__section" data-open={isOpen || undefined} data-here={here || undefined}>
+              <button
+                type="button"
+                className="shell-nav__item shell-nav__item--section"
+                aria-expanded={isOpen}
+                data-tour-also={items.map((item) => `nav-${item.id}`).join(' ')}
+                onClick={() => toggle(group.id, here)}
+              >
+                <span className="shell-nav__icon"><SectionIcon size={18} strokeWidth={1.9} aria-hidden /></span>
+                <span className="shell-nav__text">{tx(group.label)}</span>
+                {!isOpen && total ? <span className="shell-nav__count u-tnum">{total}</span> : null}
+                <ChevronDown size={15} className="shell-nav__chevron" aria-hidden />
+              </button>
+              {isOpen && (
+                <ul className="shell-nav__children">
+                  {items.map((item) => {
+                    const count = counts[item.id];
+                    return (
+                      <li key={item.id}>
+                        <Link
+                          to={item.path}
+                          className="shell-nav__child"
+                          data-tour={`nav-${item.id}`}
+                          aria-current={active === item.id ? 'page' : undefined}
+                          onClick={() => setMobileNavOpen(false)}
+                        >
+                          <span className="shell-nav__text">{tx(item.label)}</span>
+                          {count ? <span className="shell-nav__count u-tnum" aria-label={t(`${count} open`, `${count} مفتوحة`)}>{count}</span> : null}
+                        </Link>
+                      </li>
+                    );
+                  })}
+                </ul>
+              )}
             </div>
           );
         })}

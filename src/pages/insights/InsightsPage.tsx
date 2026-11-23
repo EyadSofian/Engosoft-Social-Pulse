@@ -1,3 +1,4 @@
+import { ClampText } from '../../components/ui/ClampText';
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { CalendarCheck, Clock, ExternalLink, Lightbulb, RefreshCw, TrendingDown, TrendingUp, TriangleAlert, Trophy } from 'lucide-react';
 import type { LucideIcon } from 'lucide-react';
@@ -141,6 +142,8 @@ function InsightCard({ item, focused }: { item: Insight; focused: boolean }) {
   const { stats, posts, points, action } = item.detail;
   useEffect(() => { if (focused) ref.current?.scrollIntoView({ block: 'center', behavior: 'smooth' }); }, [focused]);
   const external = action?.to.startsWith('http');
+  const [allPoints, setAllPoints] = useState(false);
+  const shownPoints = points && !allPoints ? points.slice(0, 2) : points;
   return (
     <article ref={ref} className="ins-card" data-tone={meta.tone} data-focused={focused || undefined}>
       <header className="ins-card__head">
@@ -149,7 +152,7 @@ function InsightCard({ item, focused }: { item: Insight; focused: boolean }) {
         <time className="ins-card__time" dateTime={item.createdAt}>{TIME_FORMAT.format(new Date(item.createdAt))}</time>
       </header>
       <h3 className="ins-card__title" dir="auto">{item.title}</h3>
-      <p className="ins-card__body" dir="auto">{item.body}</p>
+      <ClampText text={item.body} lines={2} className="ins-card__body" />
       {stats?.length ? (
         <dl className="ins-stats">
           {stats.map((s) => (
@@ -173,7 +176,8 @@ function InsightCard({ item, focused }: { item: Insight; focused: boolean }) {
           ))}
         </ul>
       ) : null}
-      {points?.length ? <ul className="ins-points">{points.map((point) => <li key={point} dir="auto">{point}</li>)}</ul> : null}
+      {shownPoints?.length ? <ul className="ins-points">{shownPoints.map((point) => <li key={point} dir="auto">{point}</li>)}</ul> : null}
+      {points && points.length > 2 && <button type="button" className="clamp-text__more ins-card__more" onClick={() => setAllPoints(!allPoints)} aria-expanded={allPoints}>{allPoints ? 'اعرض أقل' : `${points.length - 2} أفكار كمان`}</button>}
       {action && (
         <div className="ins-card__action">
           {external ? (

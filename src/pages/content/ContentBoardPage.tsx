@@ -33,7 +33,7 @@ export function ContentBoardPage({ openId }: { openId?: string }) {
   const { t, tx, date } = useI18n();
   const { user, departments, can } = useAuth();
   const { navigate } = useRouter();
-  usePageMeta(t('Content & approval', 'المحتوى والاعتماد'), [{ label: t('Content & approval', 'المحتوى والاعتماد') }]);
+  usePageMeta(t('Approval', 'الاعتماد'), [{ label: t('Content', 'المحتوى') }, { label: t('Approval', 'الاعتماد') }]);
   const [items, setItems] = useState<PipelineItem[] | null>(null);
   const [team, setTeam] = useState<TeamMember[]>([]);
   const [error, setError] = useState('');
@@ -51,12 +51,15 @@ export function ContentBoardPage({ openId }: { openId?: string }) {
 
   const load = useCallback(() => api<PipelineItem[]>('/api/content').then((data) => { setItems(data); setError(''); }).catch((e) => setError(errorMessage(e, t('Could not load content.', 'تعذّر تحميل المحتوى.')))), [t]);
   useEffect(() => { void load(); void api<TeamMember[]>('/api/users').then(setTeam).catch(() => {}); }, [load]);
+  // A post changed in the drawer opened from another place (or here) refreshes the board.
+  useEffect(() => { const reload = () => void load(); window.addEventListener('mobde3:content-changed', reload); return () => window.removeEventListener('mobde3:content-changed', reload); }, [load]);
 
   const scoped = useMemo(() => (items ?? []).filter((item) =>
     (scope === 'all' || (scope === 'mine' ? item.ownerId === user.id : item.departmentId === user.departmentId))
     && (!query.trim() || item.title.toLowerCase().includes(query.trim().toLowerCase()))), [items, scope, query, user]);
   // Approvers land on what waits for them; everyone else on the full list.
-  const active: Tab = tab ?? (can('content.approve') || can('content.publish') ? 'review' : 'all');
+  const waiting = scoped.some((item) => stageOf(item.status) === 'review');
+  const active: Tab = tab ?? ((can('content.approve') || can('content.publish')) && waiting ? 'review' : 'all');
   const current = JOURNEY.find((stage) => stage.id === active);
   const shown = scoped.filter((item) => active === 'all' ? item.status !== 'archived' : stageOf(item.status) === active);
   const allCount = scoped.filter((item) => item.status !== 'archived').length;
@@ -73,7 +76,7 @@ export function ContentBoardPage({ openId }: { openId?: string }) {
   };
 
   return <div className="u-stack u-stack--lg board-page">
-    <PageHeader title={t('Content & approval', 'المحتوى والاعتماد')} description={t('Every post moves through the same five steps. Press a step to see its posts; each card says who has it and what to do next.', 'كل منشور بيمشي في نفس الخمس خطوات. اضغط على أي خطوة تشوف منشوراتها، وكل كارت بيقولك هو عند مين والخطوة الجاية إيه.')} />
+    <PageHeader title={t('Approval', 'الاعتماد')} description={t('Every post moves through the same five steps. Press a step to see its posts; each card says who has it and what to do next.', 'كل منشور بيمشي في نفس الخمس خطوات. اضغط على أي خطوة تشوف منشوراتها، وكل كارت بيقولك هو عند مين والخطوة الجاية إيه.')} />
     {items && <Journey items={scoped} active={active === 'all' ? null : active} onSelect={(stage) => setTab(active === stage ? 'all' : stage)} />}
     {items && <NextForYou items={scoped} onGo={(stage) => stage === 'ready' ? navigate('/publish?view=ready') : setTab(stage)} />}
     <div className="ca-bar glass">
@@ -105,8 +108,12 @@ export function ContentBoardPage({ openId }: { openId?: string }) {
   </div>;
 }
 
-function ContentDrawer({ id, team, onClose, onChanged }: { id: string; team: TeamMember[]; onClose: () => void; onChanged: () => void }) {
+/** One post, opened over whatever page you are on. `team` is passed by the board; elsewhere it loads itself. */
+export function ContentDrawer({ id, team: given, onClose, onChanged }: { id: string; team?: TeamMember[]; onClose: () => void; onChanged: () => void }) {
   const { t, tx, dir, date, num } = useI18n();
+  const [loadedTeam, setLoadedTeam] = useState<TeamMember[]>([]);
+  useEffect(() => { if (!given) void api<TeamMember[]>('/api/users').then(setLoadedTeam).catch(() => {}); }, [given]);
+  const team = given ?? loadedTeam;
   const overlay = useOverlay(true, onClose);
   const { can } = useAuth();
   const { navigate } = useRouter();

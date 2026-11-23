@@ -170,7 +170,7 @@
 .cop__head { display: flex; align-items: center; gap: 10px; min-width: 0; }
 .cop__head h3 { margin: 0; font-size: 16px; }
 .cop__head small { display: block; color: var(--text-muted); font-size: 12.5px; }
-.cop__badge { display: grid; place-items: center; flex: none; width: 36px; height: 36px; border-radius: 11px; color: #fff; background: linear-gradient(135deg, var(--brand), var(--accent)); box-shadow: 0 6px 16px color-mix(in srgb, var(--brand) 30%, transparent); }
+.cop__badge { display: grid; place-items: center; flex: none; width: 36px; height: 36px; border-radius: 11px; color: #fff; background: var(--brand); box-shadow: 0 6px 16px color-mix(in srgb, var(--brand) 30%, transparent); }
 .cop__dialects { display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 4px; padding: 4px; border-radius: 12px; background: var(--surface-active); }
 .cop__dialects button { padding: 8px 6px; border: 0; border-radius: 9px; background: transparent; color: var(--text-muted); font: inherit; font-size: 13px; font-weight: 800; cursor: pointer; transition: background 140ms, color 140ms, box-shadow 140ms; }
 .cop__dialects button:hover { color: var(--text); }
@@ -328,7 +328,7 @@
 .journey__btn[data-stage='scheduled'] .journey__icon { background: var(--violet-soft); color: var(--violet-ink); }
 .journey__btn[data-stage='published'] .journey__icon { background: var(--success-soft); color: var(--success-ink); }
 .journey__top b { font-size: 20px; line-height: 1; }
-.journey__turn { margin-inline-start: auto; padding: 2px 8px; border-radius: 999px; background: var(--brand); color: var(--on-brand); font-size: 11px; font-weight: 800; white-space: nowrap; }
+.journey__turn { margin-inline-start: auto; padding: 2px 8px; border-radius: 999px; background: var(--accent); color: var(--on-accent); font-size: 11px; font-weight: 800; white-space: nowrap; }
 .journey__label { font-weight: 800; font-size: 13.5px; }
 .journey__who { color: var(--text-muted); font-size: 11.5px; line-height: 1.4; }
 .journey-next { display: flex; align-items: center; gap: 10px; padding: 10px 14px; border: 1px solid color-mix(in srgb, var(--brand) 40%, var(--border)); border-radius: 12px; background: var(--brand-soft); font-size: 13.5px; }

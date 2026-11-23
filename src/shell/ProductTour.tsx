@@ -44,7 +44,8 @@ const STEPS: Step[] = [
 
 /** The first element with this tag that is actually on screen (the sidebar is hidden on phones, the bottom bar on desktop). */
 function findTarget(tag: string): HTMLElement | null {
-  for (const element of document.querySelectorAll<HTMLElement>(`[data-tour="${tag}"]`)) {
+  // A page inside a closed sidebar section points at the section itself.
+  for (const element of document.querySelectorAll<HTMLElement>(`[data-tour="${tag}"], [data-tour-also~="${tag}"]`)) {
     const rect = element.getBoundingClientRect();
     if (rect.width > 0 && rect.height > 0 && getComputedStyle(element).visibility !== 'hidden') return element;
   }

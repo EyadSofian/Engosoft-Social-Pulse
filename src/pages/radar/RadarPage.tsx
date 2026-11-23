@@ -1,3 +1,4 @@
+import { ClampText } from '../../components/ui/ClampText';
 import { useCallback, useEffect, useMemo, useState } from 'react';
 import { CalendarDays, ExternalLink, Image as ImageIcon, LayoutTemplate, Lightbulb, Play, RefreshCw, Trophy, Users } from 'lucide-react';
 import { useQueryState, useRouter } from '../../app/router/router';
@@ -202,7 +203,7 @@ function IdeasView({ data, byId, onOpen }: { data: RadarData; byId: Map<string, 
               <span className="cw-idea__num u-tnum">{i + 1}</span>
               <h3 dir="auto">{idea.title}</h3>
             </header>
-            <p className="cw-idea__text" dir="auto">{idea.idea}</p>
+            <div className="cw-idea__text"><ClampText text={idea.idea} lines={2} /></div>
             <div className="cw-idea__foot">
               <span className="cw-tag"><ChannelIcon channel={idea.platform} size={13} /> {tx(PLATFORM_NAME[idea.platform])} · {tx(FORMAT[idea.format] ?? { en: idea.format, ar: idea.format })}</span>
               {idea.course && <span className="cw-tag"><bdi>{idea.course}</bdi></span>}
@@ -219,7 +220,7 @@ function IdeasView({ data, byId, onOpen }: { data: RadarData; byId: Map<string, 
           <ol>
             {brief.insights.map((p, i) => (
               <li key={i}>
-                <p dir="auto">{p.text}</p>
+                <ClampText text={p.text} lines={3} />
                 {p.evidence[0] && byId.has(p.evidence[0]) && <button type="button" className="cw-link" onClick={() => onOpen(p.evidence[0])}>{t('Example', 'مثال')}</button>}
               </li>
             ))}

@@ -194,3 +194,7 @@
 .pc-rows__day[data-past][data-empty] header b { font-size: 15px; }
 .pc-rows__day[data-past][data-empty] .pc-rows__posts { min-height: 0; padding: 0; }
 .pc-rows__day[data-past][data-empty] .pc-tag { display: none; }
+
+/* Nov 23: the footer wraps instead of cutting the status ("عند المسؤول عن ال…"). */
+.pc-post__foot { flex-wrap: wrap; row-gap: 4px; }
+.pc-status { min-width: 0; max-width: 100%; white-space: normal; overflow-wrap: anywhere; line-height: 1.35; }

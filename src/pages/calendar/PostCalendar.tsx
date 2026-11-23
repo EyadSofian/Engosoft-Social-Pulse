@@ -2,7 +2,7 @@ import { useEffect, useMemo, useState, type DragEvent, type ReactNode } from 're
 import { DateTime } from 'luxon';
 import { CalendarClock, ChevronLeft, ChevronRight, Columns3, Copy, ExternalLink, Image as ImageIcon, LayoutGrid, List, Pause, Pencil, Plus, Rows3, Search, Sparkles, X, Zap } from 'lucide-react';
 import { useLiveData } from '../../app/providers/LiveDataProvider';
-import { Link, useQueryState, useRouter } from '../../app/router/router';
+import { Link, useQueryState } from '../../app/router/router';
 import { ChannelIcon } from '../../components/data-display/ChannelIcon';
 import { useToast } from '../../components/feedback/Toast';
 import { Button } from '../../components/ui/Button';
@@ -137,12 +137,14 @@ export function PostCalendar({ board, nativeAllowed, onChanged }: { board: Calen
     if (nativeAllowed) setQuery({ calendarPost: 'new', postDay: day });
     else create.open({ plannedFor: DateTime.fromISO(`${day}T10:00`, { zone: zone() }).toUTC().toISO() ?? undefined });
   };
-  const { navigate } = useRouter();
   const openEntry = (entry: Entry) => {
     if (entry.record?.editable && entry.record.origin === 'dashboard') setQuery({ calendarPost: entry.record.id });
-    else navigate(`/content/${entry.item.id}`);
+    // The post opens over the calendar; closing it keeps you here.
+    else setQuery({ post: entry.item.id });
   };
   const changed = () => { void reload(); onChanged(); };
+  // A post edited in the drawer (opened over the calendar) shows its new day and status at once.
+  useEffect(() => { const listen = () => changed(); window.addEventListener('mobde3:content-changed', listen); return () => window.removeEventListener('mobde3:content-changed', listen); });
 
   /** Moves a post to another day at the same time of day, through the path its kind already uses. */
   const moveTo = async (entry: Entry, day: string) => {

@@ -1,6 +1,6 @@
 import { useEffect } from 'react';
 import { AnimatePresence, motion } from 'motion/react';
-import { Bell, ChevronRight, Menu as MenuIcon, Moon, PanelLeft, Search, SunMedium } from 'lucide-react';
+import { Bell, ChevronRight, Info, Menu as MenuIcon, Moon, PanelLeft, Search, SunMedium } from 'lucide-react';
 import { Link, useRouter } from '../app/router/router';
 import { useLiveData } from '../app/providers/LiveDataProvider';
 import { updateActiveCreative, useActiveCreative } from '../features/creative-studio/activeCreative';
@@ -125,12 +125,21 @@ function ThemeToggle() {
 
 /** The title block at the top of each page: title, one-line description, actions. */
 export function PageHeader({ title, description, actions, meta }: { title: React.ReactNode; description?: React.ReactNode; actions?: React.ReactNode; meta?: React.ReactNode }) {
+  const { t } = useI18n();
   return (
     <div className="page-head">
       <div className="page-head__titles">
         {meta && <div className="page-head__meta">{meta}</div>}
-        <h1 className="page-head__title">{title}</h1>
-        {description && <p className="page-head__desc">{description}</p>}
+        <div className="page-head__row">
+          <h1 className="page-head__title">{title}</h1>
+          {/* The page's explanation stays one click away instead of a paragraph above the work. */}
+          {description && (
+            <details className="page-head__about">
+              <summary aria-label={t('About this page', 'عن الصفحة دي')} title={t('About this page', 'عن الصفحة دي')}><Info size={15} aria-hidden /></summary>
+              <p className="page-head__desc">{description}</p>
+            </details>
+          )}
+        </div>
       </div>
       {actions && <div className="page-head__actions">{actions}</div>}
     </div>
