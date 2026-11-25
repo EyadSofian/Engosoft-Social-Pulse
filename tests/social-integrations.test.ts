@@ -5,6 +5,7 @@ import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { createHash, randomBytes } from 'node:crypto';
 import express from 'express';
+import { blankMetrics, type ObservedPost } from '../server/types';
 const directory=mkdtempSync(join(tmpdir(),'social-integrations-'));
 process.env.DATA_FILE=join(directory,'test.sqlite');
 process.env.MEDIA_DIR=directory;
@@ -218,6 +219,55 @@ test('YouTube insights add up the period, keep missing numbers missing, and name
  mock(()=>Response.json({columnHeaders:[{name:'day'},{name:'views'}],rows:[]}));
  const empty=await youtube.youtubeInsights(account,'2026-10-01','2026-10-02',new Map());
  assert.equal(empty.totals.views,null,'no rows means no number, never zero');
+});
+test('YouTube breakdowns keep the available window, use watch time for devices, and compare the same number of days', async () => {
+ const response = (columns: string[], rows: (string | number)[][]) =>
+  Response.json({ columnHeaders: columns.map(name => ({ name })), rows });
+ mock(url => {
+  const q = new URL(url).searchParams;
+  const dimension = q.get('dimensions');
+  assert.equal(q.get('ids'), 'channel==channel-1');
+  if (dimension === 'day') {
+   assert.equal(q.get('startDate'), '2026-09-30');
+   assert.equal(q.get('endDate'), '2026-10-25');
+   return response(['day', 'views', 'estimatedMinutesWatched'], [['2026-09-30', 14, 53], ['2026-10-25', 40, 99]]);
+  }
+  assert.equal(q.get('startDate'), '2026-10-28');
+  assert.equal(q.get('endDate'), '2026-11-22');
+  if (dimension === 'operatingSystem') {
+   assert.equal(q.get('filters'), 'deviceType==MOBILE');
+   return response(['operatingSystem', 'views', 'estimatedMinutesWatched'], [['ANDROID', 60, 10], ['IOS', 15, 60]]);
+  }
+  if (dimension === 'deviceType') {
+   assert.equal(q.get('sort'), '-estimatedMinutesWatched');
+   return response(['deviceType', 'views', 'estimatedMinutesWatched'], [['MOBILE', 75, 70], ['DESKTOP', 25, 30]]);
+  }
+  if (dimension === 'ageGroup') return response(['ageGroup', 'viewerPercentage'], [['age25-34', 36.8]]);
+  if (dimension === 'gender') return Response.json({ error: { message: 'Report not available' } }, { status: 400 });
+  return response(dimension ? [dimension] : ['averageViewDuration'], []);
+ });
+ const result = await youtube.youtubeBreakdowns(account, '2026-10-28', '2026-11-22', 28);
+ assert.deepEqual(result.devices?.[0], { key: 'MOBILE', views: 75, minutes: 70 });
+ assert.deepEqual(result.mobileSystems?.[1], { key: 'IOS', views: 15, minutes: 60 });
+ assert.deepEqual(result.age, [{ key: 'age25-34', percentage: 36.8 }]);
+ assert.equal(result.gender, null);
+ assert.deepEqual(result.traffic, []);
+ assert.equal(result.previous?.availableThrough, '2026-10-25');
+ assert.equal(result.previous?.totals.views, 54);
+});
+test('the published-video comparison uses Pacific upload dates and lifetime counts', () => {
+ const video = (externalId: string, publishedAt: string, views: number | null, likes: number | null): ObservedPost => ({
+  platform: 'youtube', accountId: 'channel-1', accountName: 'Channel', externalId, publishedAt,
+  title: externalId, thumbnail: '', permalink: '', contentType: 'video', metrics: { ...blankMetrics(), views, likes },
+ });
+ const total = youtube.youtubePublishedVideoTotals([
+  video('previous-day', '2026-10-28T06:59:59Z', 800, 100),
+  video('first-day', '2026-10-28T07:00:00Z', 100, 7),
+  video('last-day', '2026-11-25T07:59:59Z', 50, 4),
+  video('next-day', '2026-11-25T08:00:00Z', 200, 25),
+  video('missing', '2026-11-24T20:00:00Z', null, null),
+ ], '2026-10-28', '2026-11-24');
+ assert.deepEqual(total, { count: 3, views: 150, interactions: 11 });
 });
 test('media rejects unapproved arbitrary URLs and platform-specific invalid formats',async()=>{
  const item=await ws.createContent(admin,{title:'Draft',channels:['youtube'],captions:{},creative:null});await assert.rejects(()=>media.resolveMedia(item,['https://127.0.0.1/private']),/approved/);

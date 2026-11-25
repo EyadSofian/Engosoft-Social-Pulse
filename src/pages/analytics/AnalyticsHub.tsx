@@ -172,7 +172,7 @@ export function AnalyticsHub() {
           <>
             <Activity model={model} />
             <PlatformTable model={model} onPick={setPlatform} />
-            <AudienceSection audience={model.audience} />
+            {!youtube && <AudienceSection audience={model.audience} />}
             <ReportsSection reports={reports} view={view} onView={(next) => setQuery({ report: next === 'ranking' ? null : next })} onRankBy={(next) => setQuery({ rank: next === 'rate' ? null : next })} />
             <PostsSection posts={model.posts} />
           </>
@@ -187,7 +187,7 @@ export function AnalyticsHub() {
               />
             </CardBody>
           </Card>
-          <AudienceSection audience={model.audience} />
+          {!youtube && <AudienceSection audience={model.audience} />}
           </>
         )}
       </LiveGate>

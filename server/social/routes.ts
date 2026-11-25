@@ -1,6 +1,7 @@
 import { linkedInCandidates, connectLinkedIn } from './linkedin.js';
 import { tokenHealth } from './credentials.js';
 import express from 'express';
+import { DateTime } from 'luxon';
 import { z } from 'zod';
 import { db } from '../db.js';
 import { hasCommentOAuth } from '../../src/domain/social-comments.js';
@@ -21,7 +22,7 @@ import { runSync } from '../sync.js';
 import { cancelPublication, publishingBoard, publishNow, publishTargets, schedulePublication } from './queue.js';
 import { contentQueue } from './store.js';
 import { WorkspaceError } from '../workspace.js';
-import { youtubeAnalytics, youtubeDateRange, youtubeInsights } from '../connectors/youtube.js';
+import { youtubeAnalytics, youtubeBreakdowns, youtubeDateRange, youtubeInsights, youtubePublishedVideoTotals } from '../connectors/youtube.js';
 import { YOUTUBE_ANALYTICS_PERIODS } from '../../src/domain/youtube-analytics.js';
 import { getObserved } from '../store.js';
 import type { PublishInput, SocialProvider } from './types.js';
@@ -129,9 +130,33 @@ export function registerSocialRoutes(app:express.Express) {
   res.setHeader('Cache-Control','no-store');
   if(!a)return res.status(409).json({error:accounts.length?'YouTube Analytics consent is missing. Reconnect the channel with analytics access.':'No YouTube channel is connected.',code:accounts.length?'consent':'not_connected'});
   const {start,end}=youtubeDateRange(days);
-  const titles=new Map((await getObserved()).filter(p=>p.platform==='youtube'&&p.accountId===a.externalId).map(p=>[p.externalId,{title:p.title,publishedAt:p.publishedAt}]));
-  try{res.json(await youtubeInsights(a,start,end,titles));}
+  try {
+    const posts=(await getObserved()).filter(p=>p.platform==='youtube'&&p.accountId===a.externalId);
+    const titles=new Map(posts.map(p=>[p.externalId,{title:p.title,publishedAt:p.publishedAt}]));
+    const report=await youtubeInsights(a,start,end,titles);
+    res.json({...report,publishedVideoTotals:youtubePublishedVideoTotals(posts,start,end)});
+  }
   catch{res.status(502).json({error:'YouTube Analytics did not answer. Check the channel consent and the API quota.',code:'unavailable'});}
+ });
+ app.get('/api/social/youtube/breakdowns',requirePermission('analytics.view'),async(req,res)=>{
+  res.setHeader('Cache-Control','no-store');
+  const period=YOUTUBE_ANALYTICS_PERIODS.find(value=>value===Number(req.query.days));
+  const {startDate,endDate,channel}=req.query;
+  const validDate=(value:unknown):value is string=>typeof value==='string'&&/^\d{4}-\d{2}-\d{2}$/.test(value)&&DateTime.fromISO(value).isValid;
+  if(!period||typeof channel!=='string'||!validDate(startDate)||!validDate(endDate)||startDate>endDate
+    ||endDate>youtubeDateRange(period).end||DateTime.fromISO(endDate,{zone:'UTC'}).diff(DateTime.fromISO(startDate,{zone:'UTC'}),'days').days>=period)
+    return res.status(400).json({error:'Choose a valid YouTube reporting window.'});
+  const account=(await listAccounts('youtube')).find(a=>a.externalId===channel&&a.status==='connected'&&capabilities('youtube',a).read_analytics==='available');
+  if(!account)return res.status(409).json({error:'YouTube Analytics consent required.'});
+  try {
+    const [breakdowns,snapshot]=await Promise.all([
+      youtubeBreakdowns(account,startDate,endDate,period),
+      db.get<{date:string;followers:number|null}>("SELECT date,followers FROM audience_daily WHERE platform='youtube' AND account_id=? ORDER BY date DESC LIMIT 1",[channel]),
+    ]);
+    res.json({...breakdowns,subscriberSnapshot:snapshot&&{date:snapshot.date,count:snapshot.followers}});
+  } catch {
+    res.status(502).json({error:'YouTube breakdowns could not be loaded.'});
+  }
  });
  app.get('/api/social/content/:id',async(req,res)=>{
   const item=await getContent(String(req.params.id));if(!item||!canSee(req.user!,item))return res.status(404).end();

@@ -5,8 +5,9 @@ import { checkpoint } from '../social/store.js';
 import { headers, request } from '../social/http.js';
 import type { SocialAccount } from '../social/types.js';
 import { DateTime } from 'luxon';
-import type { YouTubeAnalyticsPeriod, YouTubeChannelMetrics } from '../../src/domain/youtube-analytics.js';
+import type { YouTubeActivityTotals, YouTubeAnalyticsPeriod, YouTubeBreakdownRow, YouTubeBreakdowns, YouTubeChannelMetrics } from '../../src/domain/youtube-analytics.js';
 const base='https://www.googleapis.com/youtube/v3/';
+const reportingZone = 'America/Los_Angeles';
 export async function youtubeAnalytics(account:SocialAccount,startDate:string,endDate:string) {
  const token=await accessToken(account);
  return request(`https://youtubeanalytics.googleapis.com/v2/reports?${new URLSearchParams({ids:`channel==${account.externalId}`,startDate,endDate,metrics:'views,estimatedMinutesWatched,likes,comments,shares',dimensions:'day',sort:'day'})}`,{headers:headers(token)},true);
@@ -20,10 +21,32 @@ type Report = { columnHeaders?: { name: string }[]; rows?: (string | number)[][]
 const rowsOf = (report: Report) => (report.rows ?? []).map((row) => Object.fromEntries((report.columnHeaders ?? []).map((h, i) => [h.name, row[i]])));
 const metric = (value: unknown) => (typeof value === 'number' && Number.isFinite(value) ? value : typeof value === 'string' && value.trim() !== '' && Number.isFinite(Number(value)) ? Number(value) : null);
 const sum = (rows: Record<string, unknown>[], key: string) => (rows.some((r) => metric(r[key]) !== null) ? rows.reduce((total, r) => total + (metric(r[key]) ?? 0), 0) : null);
+const activityMetrics = 'estimatedMinutesWatched,likes,comments,shares,subscribersGained,subscribersLost';
+const totalsOf = (views: Record<string, unknown>[], activity: Record<string, unknown>[]): YouTubeActivityTotals => ({
+  views: sum(views, 'views'),
+  minutes: sum(activity, 'estimatedMinutesWatched'),
+  likes: sum(activity, 'likes'),
+  comments: sum(activity, 'comments'),
+  shares: sum(activity, 'shares'),
+  subscribersGained: sum(activity, 'subscribersGained'),
+  subscribersLost: sum(activity, 'subscribersLost'),
+});
 
 export function youtubeDateRange(days: YouTubeAnalyticsPeriod, now = new Date()) {
-  const end = DateTime.fromJSDate(now, { zone: 'America/Los_Angeles' }).minus({ days: 1 });
+  const end = DateTime.fromJSDate(now, { zone: reportingZone }).minus({ days: 1 });
   return { start: end.minus({ days: days - 1 }).toISODate()!, end: end.toISODate()! };
+}
+
+/** The post report counts lifetime activity for videos uploaded in the window. */
+export function youtubePublishedVideoTotals(posts: ObservedPost[], startDate: string, endDate: string): NonNullable<YouTubeChannelMetrics['publishedVideoTotals']> {
+  const rows = posts.flatMap(post => {
+    const day = DateTime.fromISO(post.publishedAt, { zone: reportingZone }).toISODate();
+    if (!day || day < startDate || day > endDate) return [];
+    const { views, engagement, likes, comments, shares, saves } = post.metrics;
+    const parts = [likes, comments, shares, saves].flatMap(value => value == null ? [] : [value]);
+    return [{ views, interactions: engagement ?? (parts.length ? parts.reduce((total, value) => total + value, 0) : null) }];
+  });
+  return { count: rows.length, views: sum(rows, 'views'), interactions: sum(rows, 'interactions') };
 }
 
 /**
@@ -36,7 +59,7 @@ export async function youtubeInsights(account: SocialAccount, startDate: string,
   // The API truncates a multi-metric report to the last day common to every requested metric.
   const [views, activity, top] = await Promise.all([
     report({ metrics: 'views', dimensions: 'day', sort: 'day' }),
-    report({ metrics: 'estimatedMinutesWatched,likes,comments,shares,subscribersGained,subscribersLost', dimensions: 'day', sort: 'day' }).catch(() => ({})),
+    report({ metrics: activityMetrics, dimensions: 'day', sort: 'day' }).catch(() => ({})),
     report({ metrics: 'views,estimatedMinutesWatched,averageViewDuration,likes,shares', dimensions: 'video', sort: '-views', maxResults: '10' }).catch(() => ({})),
   ]);
   const viewRows = rowsOf(views), activityRows = rowsOf(activity);
@@ -47,13 +70,56 @@ export async function youtubeInsights(account: SocialAccount, startDate: string,
     channel: account.name, channelId: account.externalId, startDate, endDate,
     viewsThrough: viewRows.at(-1)?.day?.toString() ?? null,
     activityThrough: activityRows.at(-1)?.day?.toString() ?? null,
-    totals: { views: sum(viewRows, 'views'), minutes: sum(activityRows, 'estimatedMinutesWatched'), likes: sum(activityRows, 'likes'), comments: sum(activityRows, 'comments'), shares: sum(activityRows, 'shares'), subscribersGained: sum(activityRows, 'subscribersGained'), subscribersLost: sum(activityRows, 'subscribersLost') },
+    totals: totalsOf(viewRows, activityRows),
     daily: dates.map(date => ({ date, views: dailyViews.get(date) ?? null, minutes: dailyMinutes.get(date) ?? null })),
     videos: rowsOf(top).map((r) => {
       const id = String(r.video);
       const known = titles.get(id);
       return { id, title: known?.title ?? id, url: `https://www.youtube.com/watch?v=${id}`, publishedAt: known?.publishedAt ?? null, views: metric(r.views), minutes: metric(r.estimatedMinutesWatched), averageViewSeconds: metric(r.averageViewDuration), likes: metric(r.likes), shares: metric(r.shares) };
     }),
+  };
+}
+
+/** Request ranked reports for the same dates as the channel's available view data. */
+export async function youtubeBreakdowns(account: SocialAccount, startDate: string, endDate: string, period: YouTubeAnalyticsPeriod): Promise<YouTubeBreakdowns> {
+  const token = await accessToken(account);
+  const report = async (params: Record<string, string>) => {
+    try {
+      const query = new URLSearchParams({ ids: `channel==${account.externalId}`, startDate, endDate, ...params });
+      return rowsOf(await request<Report>(`https://youtubeanalytics.googleapis.com/v2/reports?${query}`, { headers: headers(token) }, true));
+    } catch {
+      return null;
+    }
+  };
+  const activity = async (dimension: string, params: Record<string, string> = {}): Promise<YouTubeBreakdownRow[] | null> =>
+    (await report({ metrics: 'views,estimatedMinutesWatched', dimensions: dimension, sort: '-estimatedMinutesWatched', ...params }))?.map(row => ({
+      key: String(row[dimension]), views: metric(row.views), minutes: metric(row.estimatedMinutesWatched),
+    })) ?? null;
+  const demographics = async (dimension: 'ageGroup' | 'gender') =>
+    (await report({ metrics: 'viewerPercentage', dimensions: dimension }))?.flatMap(row => {
+      const percentage = metric(row.viewerPercentage);
+      return percentage == null ? [] : [{ key: String(row[dimension]), percentage }];
+    }) ?? null;
+  const previousStart = DateTime.fromISO(startDate, { zone: 'UTC' }).minus({ days: period }).toISODate()!;
+  const previousEnd = DateTime.fromISO(endDate, { zone: 'UTC' }).minus({ days: period }).toISODate()!;
+  const [devices, mobileSystems, traffic, countries, subscribed, age, gender, watch, previous] = await Promise.all([
+    activity('deviceType'),
+    activity('operatingSystem', { filters: 'deviceType==MOBILE' }),
+    activity('insightTrafficSourceType', { sort: '-views' }),
+    activity('country', { sort: '-views', maxResults: '12' }),
+    activity('subscribedStatus'),
+    demographics('ageGroup'),
+    demographics('gender'),
+    report({ metrics: 'averageViewDuration,averageViewPercentage' }),
+    report({ startDate: previousStart, endDate: previousEnd, metrics: `views,${activityMetrics}`, dimensions: 'day', sort: 'day' }),
+  ]);
+  if ([devices, mobileSystems, traffic, countries, subscribed, age, gender, watch, previous].every(rows => rows === null))
+    throw new Error('No YouTube Analytics breakdown succeeded.');
+  return {
+    startDate, endDate, devices, mobileSystems, traffic, countries, subscribed, age, gender,
+    averageViewSeconds: metric(watch?.[0]?.averageViewDuration),
+    averageViewPercentage: metric(watch?.[0]?.averageViewPercentage),
+    previous: previous && { startDate: previousStart, endDate: previousEnd, availableThrough: previous.at(-1)?.day?.toString() ?? null, totals: totalsOf(previous, previous) },
   };
 }
 /**

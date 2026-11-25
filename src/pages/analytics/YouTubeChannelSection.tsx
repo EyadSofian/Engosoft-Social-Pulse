@@ -8,6 +8,7 @@ import type { YouTubeAnalyticsPeriod, YouTubeChannelMetrics } from '../../domain
 import { useI18n } from '../../i18n/I18nProvider';
 import { ApiError, request } from '../../lib/api';
 import { dateFromKey } from '../../lib/format';
+import { YouTubeBreakdownSection } from './YouTubeBreakdownSection';
 
 type ReportState = { key: string; data: YouTubeChannelMetrics } | { key: string; error: 'not_connected' | 'consent' | 'unavailable' };
 
@@ -40,6 +41,7 @@ export function YouTubeChannelSection({ days, account, refresh }: { days: YouTub
   const title = t('YouTube channel analytics', 'تحليلات قناة يوتيوب');
 
   return (
+    <>
     <Card aria-busy={!state}>
       <CardHeader
         title={title}
@@ -79,5 +81,7 @@ export function YouTubeChannelSection({ days, account, refresh }: { days: YouTub
         )}
       </CardBody>
     </Card>
+    {data && <YouTubeBreakdownSection overview={data} days={days} refresh={refresh} />}
+    </>
   );
 }
