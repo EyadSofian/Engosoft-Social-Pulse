@@ -7,6 +7,7 @@
  */
 import { DateTime } from 'luxon';
 import type { ObservedPost, Platform } from '../types.js';
+import type { SheetSchedule } from './posting-gap.js';
 
 export type InsightKind = 'insight_daily' | 'insight_best' | 'insight_alert' | 'insight_tip' | 'insight_idea';
 export interface InsightPost { platform: Platform; title: string; permalink: string; thumbnail: string; publishedAt: string; contentType: string; interactions: number | null; reach: number | null; ratio: number | null }
@@ -21,6 +22,9 @@ export interface InsightInput {
   zone: string;
   /** Plans and queued publications still due today. */
   scheduledLaterToday: number;
+  /** Today's tracked publications and plans, including ones already in progress. */
+  hasPostingToday?: boolean;
+  sheetSchedule?: SheetSchedule;
   /** Today's (or yesterday's) competitor brief ideas, when the competitor tab has run. */
   radarIdeas?: RadarIdea[];
   radarDate?: string;
@@ -119,7 +123,7 @@ export function buildInsights(input: InsightInput): Insight[] {
       out.push({
         key: `daily:${yesterday.toISODate()}`, kind: 'insight_daily',
         title: 'امبارح مفيش ولا بوست اتنشر',
-        body: last ? `آخر بوست نزل من ${daysWord(since)} على ${platformAr(last.platform)}. ${input.scheduledLaterToday ? `فيه ${postsWord(input.scheduledLaterToday)} مجدول النهارده.` : 'ومفيش حاجة مجدولة النهارده لسه.'}` : 'مفيش بوستات متسجلة من الحسابات المربوطة.',
+        body: last ? `آخر بوست نزل من ${daysWord(since)} على ${platformAr(last.platform)}.${input.scheduledLaterToday ? ` فيه ${postsWord(input.scheduledLaterToday)} مجدول النهارده.` : ''}` : 'مفيش بوستات متسجلة من الحسابات المربوطة.',
         detail: { stats: [{ label, value: '0 بوست', tone: 'down' }], action: { label: 'افتح التقويم', to: '/calendar' } },
       });
     } else {
@@ -196,13 +200,17 @@ export function buildInsights(input: InsightInput): Insight[] {
   }
 
   /* ── Nothing posted today by 2 pm, on a weekday we usually post ── */
-  if (local.hour >= 14 && local.hour < 21 && !posts.some((p) => +dayOf(p) === +today) && !input.scheduledLaterToday) {
+  if (local.hour >= 14 && local.hour < 21 && !posts.some((p) => +dayOf(p) === +today) && !input.hasPostingToday && !input.scheduledLaterToday) {
     const sameWeekday = Array.from({ length: 8 }, (_, i) => today.minus({ weeks: i + 1 }));
     const active = sameWeekday.filter((d) => posts.some((p) => +dayOf(p) === +d)).length;
+    const sheetBlocked = input.sheetSchedule === 'blocked';
+    const sheetUnavailable = input.sheetSchedule === 'unavailable';
     if (active >= 4) out.push({
       key: `gap-today:${today.toISODate()}`, kind: 'insight_alert',
-      title: 'لسه مفيش ولا بوست النهارده',
-      body: `ومفيش حاجة مجدولة لباقي اليوم. في العادة بننشر يوم ${WEEKDAY_AR[today.weekday]}: نشرنا فيه ${active} مرات من آخر 8 أسابيع.`,
+      title: sheetBlocked ? 'فيه صفوف في الشيت محتاجة مراجعة' : sheetUnavailable ? 'جدولة الشيت لسه مش متأكدة' : 'لسه مفيش نشر أو جدولة مؤكدة النهارده',
+      body: sheetBlocked ? 'في صفوف عليها Ready في الشيت ما دخلتش طابور النشر. راجع التاريخ والساعة وخانة Last Error.'
+        : sheetUnavailable ? 'لسه ما قدرناش نتأكد من أحدث جدولة من الشيت. راجع حالة المزامنة في التقويم.'
+        : `وقت الفحص، مفيش نشر أو جدولة مؤكدة لباقي اليوم. نشرنا يوم ${WEEKDAY_AR[today.weekday]} في ${active} من آخر 8 أسابيع.`,
       detail: { action: { label: 'افتح التقويم', to: '/calendar' } },
     });
   }

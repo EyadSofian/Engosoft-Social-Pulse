@@ -8,29 +8,12 @@ import type express from 'express';
 import { DateTime } from 'luxon';
 import { listUsers, requirePermission, requireUser, userCan } from '../auth.js';
 import { latestBrief } from '../competitor-radar/store.js';
-import { db, defineSchema } from '../db.js';
+import { db } from '../db.js';
 import { notifyUsers } from '../notify.js';
 import { pushToUsers } from '../push/index.js';
-import { getObserved, getPlans } from '../store.js';
+import { getObserved } from '../store.js';
 import { buildInsights, type Insight, type RadarIdea } from './compute.js';
-
-defineSchema(`
-CREATE TABLE IF NOT EXISTS insights (
- id TEXT PRIMARY KEY, key TEXT NOT NULL UNIQUE, kind TEXT NOT NULL, title TEXT NOT NULL, body TEXT NOT NULL,
- detail_json TEXT NOT NULL DEFAULT '{}', image TEXT NOT NULL DEFAULT '', created_at TEXT NOT NULL
-);
-CREATE INDEX IF NOT EXISTS insights_by_date ON insights(created_at);
-`);
-
-export const insightsZone = () => process.env.BUSINESS_TIME_ZONE?.trim() || 'Africa/Cairo';
-
-async function scheduledLaterToday(now: Date, zone: string): Promise<number> {
-  const from = now.getTime();
-  const until = DateTime.fromJSDate(now, { zone }).endOf('day').toMillis();
-  const plans = (await getPlans()).filter((p) => (p.status === 'scheduled' || p.status === 'approved') && Date.parse(p.scheduledAt) >= from && Date.parse(p.scheduledAt) <= until).length;
-  const queued = await db.get<{ n: number }>("SELECT COUNT(*) AS n FROM social_publish_queue WHERE state='queued' AND publish_at>=? AND publish_at<=?", [new Date(from).toISOString(), new Date(until).toISOString()]).catch(() => ({ n: 0 }));
-  return plans + Number(queued?.n ?? 0);
-}
+import { getPostingSchedule, insightsZone, resolvePostingGap } from './posting-gap.js';
 
 async function radarIdeas(): Promise<{ ideas: RadarIdea[]; date?: string }> {
   try {
@@ -49,8 +32,11 @@ async function recipients(): Promise<string[]> {
 /** Works out what is due and sends what was not sent before. Returns the new insights. */
 export async function runInsights(now = new Date()): Promise<Insight[]> {
   const zone = insightsZone();
-  const [posts, scheduled, radar] = await Promise.all([getObserved(), scheduledLaterToday(now, zone), radarIdeas()]);
-  const due = buildInsights({ posts, now, zone, scheduledLaterToday: scheduled, radarIdeas: radar.ideas, radarDate: radar.date });
+  const [posts, schedule, radar] = await Promise.all([getObserved(), getPostingSchedule(now, zone), radarIdeas()]);
+  const today = DateTime.fromJSDate(now, { zone }).toISODate();
+  const publishedToday = posts.some(post => DateTime.fromISO(post.publishedAt, { zone }).toISODate() === today);
+  await resolvePostingGap(now, zone, schedule.hasPostingToday || publishedToday);
+  const due = buildInsights({ posts, now, zone, ...schedule, radarIdeas: radar.ideas, radarDate: radar.date });
   if (!due.length) return [];
   const known = new Set((await db.all<{ key: string }>(`SELECT key FROM insights WHERE key IN (${due.map(() => '?').join(',')})`, due.map((i) => i.key))).map((r) => r.key));
   const fresh = due.filter((i) => !known.has(i.key));
@@ -93,7 +79,8 @@ export async function insightsTick(env: NodeJS.ProcessEnv = process.env) {
 export function registerInsightRoutes(app: express.Express) {
   app.get('/api/insights', requireUser, requirePermission('analytics.view'), async (req, res) => {
     const limit = Math.min(Number(req.query.limit) || 60, 200);
-    const rows = await db.all<{ id: string; key: string; kind: string; title: string; body: string; detail_json: string; image: string; created_at: string }>('SELECT * FROM insights ORDER BY created_at DESC LIMIT ?', [limit]);
+    await resolvePostingGap();
+    const rows = await db.all<{ id: string; key: string; kind: string; title: string; body: string; detail_json: string; image: string; created_at: string }>('SELECT * FROM insights WHERE resolved_at IS NULL ORDER BY created_at DESC LIMIT ?', [limit]);
     res.setHeader('Cache-Control', 'no-store');
     res.json({
       timeZone: insightsZone(),

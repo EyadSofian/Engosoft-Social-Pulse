@@ -64,11 +64,12 @@ export function InsightsPage() {
     try { setItems((await api<{ items: Insight[] }>('/api/insights?limit=80')).items); setError(''); }
     catch (e) { setError(errorMessage(e, 'تعذّر تحميل الصفحة.')); }
   }, []);
-  useEffect(() => { void load(); }, [load]);
-
   // Opening the page reads its notifications, so the dot on «الأداء» clears.
   const { items: notifications } = useServerNotifications();
-  const unread = notifications.filter((n) => n.kind.startsWith('insight_') && !n.readAt).map((n) => n.id);
+  const performanceNotifications = notifications.filter((n) => n.kind.startsWith('insight_'));
+  const performanceIds = performanceNotifications.map((n) => n.id).join(',');
+  useEffect(() => { void load(); }, [load, performanceIds]);
+  const unread = performanceNotifications.filter((n) => !n.readAt).map((n) => n.id);
   useEffect(() => { if (unread.length) void markServerRead(unread); }, [unread.join(',')]); // eslint-disable-line react-hooks/exhaustive-deps
 
   const check = async () => {

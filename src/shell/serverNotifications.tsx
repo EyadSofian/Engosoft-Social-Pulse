@@ -26,6 +26,8 @@ async function poll(first: boolean) {
     const fresh = result.items.filter((item) => !item.readAt && !seen.has(item.id));
     result.items.forEach((item) => seen.add(item.id));
     items = result.items;
+    const present = new Set(items.map((item) => item.id));
+    popups = popups.filter((item) => present.has(item.id));
     // On first load only today's unread items pop up; after that, anything new.
     const pop = (first ? fresh.filter((item) => Date.now() - Date.parse(item.createdAt) < 15 * 60_000) : fresh).filter((item) => !popped.has(item.id));
     if (pop.length) { popups = [...pop.slice(0, 3), ...popups].slice(0, 3); remember(pop.map((item) => item.id)); }

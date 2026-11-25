@@ -8,6 +8,7 @@ import sharp from 'sharp';
 import express from 'express';
 import { once } from 'node:events';
 import { Readable } from 'node:stream';
+import { DateTime } from 'luxon';
 import type { DriveFile, GoogleValues } from '../server/google/client';
 import type { CalendarGoogleClient } from '../server/google/calendar-sync';
 
@@ -27,6 +28,9 @@ const google = await import('../server/google/client');
 const sync = await import('../server/google/calendar-sync');
 const sources = await import('../server/google/store');
 const { registerGoogleCalendarRoutes } = await import('../server/google/routes');
+const { registerInsightRoutes, runInsights } = await import('../server/insights/index');
+const { getPostingSchedule } = await import('../server/insights/posting-gap');
+const { registerNotifyRoutes } = await import('../server/notify');
 await initDb();
 const user = await auth.createUser({ name: 'Google Admin', email: 'google-admin@example.test', password: 'test-password-123', role: 'admin', departmentId: 'marketing' });
 const viewer = await auth.createUser({ name: 'Google Viewer', email: 'google-viewer@example.test', password: 'test-password-123', role: 'creator', departmentId: 'operations' });
@@ -83,6 +87,59 @@ test('Notes and Thumbnail are optional, and image posts cannot accidentally use 
   assert.equal(format.parsePublishingRow(raw('optional', { notes: '', thumbnail: '' })).thumbnail, undefined);
   assert.throws(() => format.parsePublishingRow(raw('wrong-cover', { thumbnail: 'https://drive.google.com/file/d/cover-123456/view' })), /Thumbnail/);
   assert.equal(format.parsePublishingRow(raw('reel-cover', { 'media type': 'reel', thumbnail: 'https://drive.google.com/file/d/cover-123456/view' })).thumbnail, 'https://drive.google.com/file/d/cover-123456/view');
+});
+test('a ready sheet row blocked by its date explains the gap, then scheduling resolves both copies of the alert', async () => {
+  const zone = 'Africa/Cairo';
+  const afternoon = DateTime.now().setZone(zone).plus({ days: 1 }).set({ hour: 14, minute: 1, second: 0, millisecond: 0 });
+  const day = afternoon.toISODate()!;
+  const now = afternoon.toJSDate();
+  const postId = 'late-sheet-post';
+  const s = await setup(values(raw(postId, { date: '', time: '15:00' })));
+  const keepSourcesCurrent = () => db.run('UPDATE google_calendar_sources SET last_sync_at=? WHERE id=?', [+afternoon, s.id]);
+  for (let week = 1; week <= 4; week++) {
+    const publishedAt = afternoon.minus({ weeks: week }).toUTC().toISO();
+    await db.run(`INSERT INTO observed_posts (platform,account_id,account_name,external_id,published_at,metrics_json,fetched_at)
+      VALUES ('facebook', 'test', 'Test Page', ?, ?, '{}', ?)`, [`gap-fixture-${week}`, publishedAt, now.toISOString()]);
+  }
+  const app = express();
+  app.use((req, _res, next) => { req.user = user; next(); });
+  registerInsightRoutes(app);
+  registerNotifyRoutes(app);
+  const server = app.listen(0, '127.0.0.1');
+  await once(server, 'listening');
+  const base = `http://127.0.0.1:${(server.address() as { port: number }).port}`;
+  const read = async (path: string) => {
+    const response = await originalFetch(`${base}${path}`);
+    assert.equal(response.status, 200);
+    return await response.json() as { items: { key?: string; title: string; link?: string }[] };
+  };
+  try {
+    await sync.syncGoogleSource(s.id, s.client);
+    await keepSourcesCurrent();
+    const before = await getPostingSchedule(now, zone);
+    assert.equal(before.sheetSchedule, 'blocked');
+    assert.equal(before.hasPostingToday, false);
+    const gap = (await runInsights(now)).find(i => i.key === `gap-today:${day}`)!;
+    assert.match(gap.body, /Last Error/);
+    const feed = await read('/api/insights');
+    assert.ok(feed.items.some(i => i.key === gap.key));
+    assert.ok((await read('/api/notifications')).items.some(i => i.title === gap.title));
+
+    s.replace(values(raw(postId, { date: day, time: '15:00' })));
+    await sync.syncGoogleSource(s.id, s.client);
+    await keepSourcesCurrent();
+    const after = await getPostingSchedule(now, zone);
+    assert.equal(after.sheetSchedule, 'clear');
+    assert.equal(after.scheduledLaterToday, 1);
+    assert.equal(after.hasPostingToday, true);
+    assert.equal((await runInsights(now)).some(i => i.key === gap.key), false);
+    assert.ok(!(await read('/api/insights')).items.some(i => i.key === gap.key));
+    assert.ok(!(await read('/api/notifications')).items.some(i => i.title === gap.title));
+  } finally {
+    await db.run('UPDATE google_calendar_sources SET enabled=0,last_sync_at=NULL WHERE id=?', [s.id]);
+    await db.run("DELETE FROM observed_posts WHERE external_id LIKE 'gap-fixture-%'");
+    await new Promise<void>(resolve => server.close(() => resolve()));
+  }
 });
 test('new filled rows get literal stable Post IDs before import; empty template rows remain empty', async () => {
   const s = await setup(values(raw('', { ready: 'NO' }), { ready: 'NO', timezone: 'Africa/Cairo', notes: '' }));

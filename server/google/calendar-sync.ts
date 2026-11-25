@@ -1,5 +1,6 @@
 import { randomUUID } from 'node:crypto';
 import { readFile } from 'node:fs/promises';
+import { DateTime } from 'luxon';
 import { db } from '../db.js';
 import { getUser, userCan, type AuthUser } from '../auth.js';
 import { createContent, getContent, reopenContent, updateContent, type Channel } from '../workspace.js';
@@ -11,7 +12,7 @@ import { contentJobs } from '../social/publishing.js';
 import { schedulePreparedPublications, validatePreparedPublication } from '../social/queue.js';
 import type { PublishInput } from '../social/types.js';
 import { chooseDriveMedia, GoogleClient, googleReference, quotedTab, type GoogleValues } from './client.js';
-import { header, headersOf, parsePublishingRow, rowFingerprint, rowObject, textCell, type PublishingRow } from './format.js';
+import { header, headersOf, parsePublishingRow, publishingDate, rowFingerprint, rowObject, textCell, type PublishingRow } from './format.js';
 import { getSource, sourceRows, type GoogleRow, type GoogleSource } from './store.js';
 
 export interface CalendarGoogleClient {
@@ -233,13 +234,16 @@ export async function syncGoogleSource(id: string, clientOverride?: CalendarGoog
       await cancelQueued(old.content_id, 'Spreadsheet row removed or duplicated.');
       await db.run("UPDATE google_calendar_rows SET fingerprint='',status='blocked',error=? WHERE source_id=? AND post_id=?", ['الصف محذوف أو Post ID مكرر؛ توقفت الجدولة المنتظرة.', id, old.post_id]);
     }
-    const rowErrors: string[] = [], invalid = new Map<string, string>();
+    const rowErrors: string[] = [], invalid = new Map<string, string>(), publishDates = new Map<string, string>();
+    const businessZone = process.env.BUSINESS_TIME_ZONE?.trim() || 'Africa/Cairo';
     for (const [index, raw] of rawRows.entries()) {
       const postId = textCell(raw['post id']);
       if (!postId || duplicates.has(postId)) { rowErrors.push(`صف ${index + 2}: Post ID فارغ أو مكرر.`); continue; }
       let mapping = previous.find(r => r.post_id === postId);
       try {
         const row = parsePublishingRow(raw, meta.properties.timeZone);
+        const publishDate = DateTime.fromISO(row.scheduledAt, { zone: businessZone }).toISODate();
+        if (publishDate) publishDates.set(postId, publishDate);
         if (!mapping) {
           await db.run('INSERT INTO google_calendar_rows(source_id,post_id,content_id,updated_at) VALUES(?,?,?,?)', [id, postId, randomUUID(), new Date().toISOString()]);
           mapping = (await sourceRows(id)).find(r => r.post_id === postId)!;
@@ -282,7 +286,17 @@ export async function syncGoogleSource(id: string, clientOverride?: CalendarGoog
       }
     }
     for (let offset = 0; offset < data.length; offset += 300) await client.writeValues(source.spreadsheet_id, data.slice(offset, offset + 300));
-    const committed = await db.run('UPDATE google_calendar_sources SET last_sync_at=?,error=NULL,validation_errors_json=? WHERE id=? AND lock_token=? AND revision=?', [Date.now(), JSON.stringify(rowErrors), id, token, source.revision]);
+    const statuses = new Map(summary.map(row => [row.postId, row.status]));
+    const blockedDates = new Set<string | null>();
+    for (const raw of rawRows) {
+      if (!['YES', 'TRUE'].includes(textCell(raw.ready).toUpperCase())) continue;
+      const postId = textCell(raw['post id']);
+      const status = statuses.get(postId);
+      if (status ? ['blocked', 'failed'].includes(status) : invalid.has(postId) || duplicates.has(postId) || !postId)
+        blockedDates.add(publishDates.get(postId) ?? publishingDate(raw.date) ?? null);
+    }
+    const committed = await db.run('UPDATE google_calendar_sources SET last_sync_at=?,error=NULL,validation_errors_json=?,blocked_publish_dates_json=? WHERE id=? AND lock_token=? AND revision=?',
+      [Date.now(), JSON.stringify(rowErrors), JSON.stringify([...blockedDates]), id, token, source.revision]);
     if (!committed.changes) throw new Error('تغيرت إعدادات الربط؛ أعد الفحص قبل النشر.');
     return { rows: summary, errors: rowErrors };
   } catch (error) {

@@ -17,6 +17,7 @@ CREATE TABLE IF NOT EXISTS google_calendar_rows (
 defineColumn('google_calendar_sources', 'snapshot_json', 'TEXT');
 defineColumn('google_calendar_sources', 'revision', 'INTEGER NOT NULL DEFAULT 0');
 defineColumn('google_calendar_sources', 'validation_errors_json', "TEXT NOT NULL DEFAULT '[]'");
+defineColumn('google_calendar_sources', 'blocked_publish_dates_json', 'TEXT');
 export interface GoogleSource { id: string; spreadsheet_id: string; tab: string; owner_id: string; targets_json: string; enabled: number; last_sync_at: number | null; error: string | null; lock_token: string | null; lock_until: number; snapshot_json: string | null; revision: number }
 export interface GoogleRow { source_id: string; post_id: string; content_id: string; fingerprint: string; media_fingerprint: string; status: string; error: string; channels_json: string; updated_at: string }
 export const getSource = (id: string) => db.get<GoogleSource>('SELECT * FROM google_calendar_sources WHERE id=?', [id]);

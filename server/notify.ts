@@ -12,6 +12,7 @@ import { getUser, listUsers, requirePermission, requireUser, userCan, type AuthU
 import { getSetting, setSetting } from './settings.js';
 import { db, defineSchema } from './db.js';
 import { pushToUsers } from './push/index.js';
+import { resolvePostingGap } from './insights/posting-gap.js';
 
 defineSchema(`
 CREATE TABLE IF NOT EXISTS notifications (
@@ -97,7 +98,11 @@ export async function notifyContent(actor: AuthUser, item: { id: string; title: 
 
 export function registerNotifyRoutes(app: express.Express) {
   app.get('/api/notifications', requireUser, async (req, res) => {
-    const rows = await db.all('SELECT * FROM notifications WHERE user_id=? ORDER BY created_at DESC LIMIT 60', [req.user!.id]);
+    await resolvePostingGap();
+    const rows = await db.all(`
+      SELECT n.* FROM notifications n WHERE n.user_id=?
+      AND NOT EXISTS (SELECT 1 FROM insights i WHERE i.resolved_at IS NOT NULL AND n.link='/insights?id=' || i.id)
+      ORDER BY n.created_at DESC LIMIT 60`, [req.user!.id]);
     res.setHeader('Cache-Control', 'no-store');
     res.json({
       unread: rows.filter((row) => !row.read_at).length,

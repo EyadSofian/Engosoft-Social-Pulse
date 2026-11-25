@@ -30,16 +30,20 @@ function yesNo(v: unknown, optional = false): boolean | undefined {
   if (!['YES', 'NO', 'TRUE', 'FALSE'].includes(value)) throw new Error('اكتب YES أو NO في خانات Ready / Made For Kids / AI Generated.');
   return value === 'YES' || value === 'TRUE';
 }
+export function publishingDate(value: unknown): string | undefined {
+  let date = textCell(value);
+  if (typeof value === 'number' && Number.isFinite(value) && value >= 1 && value < 100000)
+    date = DateTime.fromISO('1899-12-30', { zone: 'UTC' }).plus({ days: Math.floor(value) }).toISODate()!;
+  else if (value instanceof Date && Number.isFinite(+value)) date = value.toISOString().slice(0, 10);
+  return /^\d{4}-\d{2}-\d{2}$/.test(date) && DateTime.fromISO(date, { zone: 'UTC' }).isValid ? date : undefined;
+}
 export function parsePublishingRow(row: Record<string, unknown>, defaultZone = 'Africa/Cairo'): PublishingRow {
   const postId = textCell(row['post id']);
   if (!/^[\w-]{1,100}$/.test(postId)) throw new Error('Post ID مطلوب بحروف إنجليزية وأرقام وشرطة، ولا يتكرر.');
   const timezone = textCell(row.timezone) || defaultZone;
   if (!DateTime.now().setZone(timezone).isValid) throw new Error('منطقة التوقيت غير صالحة.');
-  let date = textCell(row.date);
-  if (typeof row.date === 'number' && Number.isFinite(row.date) && row.date >= 1 && row.date < 100000)
-    date = DateTime.fromISO('1899-12-30', { zone: 'UTC' }).plus({ days: Math.floor(row.date) }).toISODate()!;
-  else if (row.date instanceof Date) date = row.date.toISOString().slice(0, 10);
-  if (!/^\d{4}-\d{2}-\d{2}$/.test(date)) throw new Error('اكتب التاريخ YYYY-MM-DD، مثل 2026-11-09.');
+  const date = publishingDate(row.date);
+  if (!date) throw new Error('اكتب التاريخ YYYY-MM-DD، مثل 2026-11-09.');
   let time = textCell(row.time);
   if (row.time instanceof Date) time = row.time.toISOString().slice(11, 16);
   else if (typeof row.time === 'number' && row.time >= 0 && row.time < 1) { const minutes = Math.round(row.time * 1440); time = `${String(Math.floor(minutes / 60)).padStart(2, '0')}:${String(minutes % 60).padStart(2, '0')}`; }
