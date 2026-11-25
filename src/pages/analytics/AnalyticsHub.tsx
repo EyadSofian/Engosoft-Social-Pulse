@@ -48,6 +48,7 @@ export function AnalyticsHub() {
 
   const platform = (PLATFORMS as string[]).includes(query.get('platform') ?? '') ? (query.get('platform') as Platform) : 'all';
   const youtube = platform === 'youtube';
+  const youtubeWindow = query.get('youtubeWindow') === 'studio' ? 'studio' : 'complete';
   const periods = youtube ? YOUTUBE_ANALYTICS_PERIODS : PERIODS.map(item => item.value);
   const defaultPeriod = youtube ? 28 : 30;
   const period = (periods.find(value => value === Number(query.get('period'))) ?? defaultPeriod) as Period;
@@ -156,7 +157,10 @@ export function AnalyticsHub() {
         </Button>
       </div>
 
-      {youtube && <YouTubeChannelSection days={YOUTUBE_ANALYTICS_PERIODS.find(days => days === period) ?? 28} account={account} refresh={refresh} />}
+      {youtube && (
+        <YouTubeChannelSection days={YOUTUBE_ANALYTICS_PERIODS.find(days => days === period) ?? 28} account={account} refresh={refresh}
+          window={youtubeWindow} onWindowChange={value => setQuery({ youtubeWindow: value === 'studio' ? value : null })} />
+      )}
 
       <LiveGate needs={store.data.posts.length ? undefined : 'posts'}>
         <Section title={t('Posts published in this period', 'المنشورات اللي نزلت خلال الفترة')}

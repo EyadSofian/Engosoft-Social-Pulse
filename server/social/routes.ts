@@ -133,8 +133,8 @@ export function registerSocialRoutes(app:express.Express) {
   try {
     const posts=(await getObserved()).filter(p=>p.platform==='youtube'&&p.accountId===a.externalId);
     const titles=new Map(posts.map(p=>[p.externalId,{title:p.title,publishedAt:p.publishedAt}]));
-    const report=await youtubeInsights(a,start,end,titles);
-    res.json({...report,publishedVideoTotals:youtubePublishedVideoTotals(posts,start,end)});
+    const report=await youtubeInsights(a,start,end,titles,req.query.window==='complete'?days:undefined);
+    res.json({...report,publishedVideoTotals:youtubePublishedVideoTotals(posts,report.startDate,report.endDate)});
   }
   catch{res.status(502).json({error:'YouTube Analytics did not answer. Check the channel consent and the API quota.',code:'unavailable'});}
  });

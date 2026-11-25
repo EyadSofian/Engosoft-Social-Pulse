@@ -35,7 +35,7 @@ export function YouTubeBreakdownSection({ overview, days, refresh }: { overview:
   const [retry, setRetry] = useState(0);
   const [result, setResult] = useState<{ key: string; data: YouTubeBreakdowns | null } | null>(null);
   const params = new URLSearchParams({ channel: overview.channelId, days: String(days), startDate: overview.startDate, endDate: overview.viewsThrough ?? '' }).toString();
-  const key = `${params}:${refresh}:${retry}`;
+  const key = `${params}:${refresh}:${retry}:${overview.totals.views}:${overview.totals.minutes}`;
   const through = overview.viewsThrough;
   useEffect(() => {
     if (!through) return;

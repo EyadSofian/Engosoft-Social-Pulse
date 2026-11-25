@@ -207,6 +207,32 @@ test('YouTube channel views use their own reporting cutoff and the Studio calend
   { date: '2026-11-22', views: 25, minutes: null },
  ]);
 });
+test('YouTube complete mode shifts the date range and links Studio to those exact Pacific dates', async () => {
+ const response = (columns: string[], rows: (string | number)[][]) =>
+  Response.json({ columnHeaders: columns.map(name => ({ name })), rows });
+ mock(url => {
+  const q = new URL(url).searchParams;
+  if (q.get('maxResults') === '1') {
+   assert.equal(q.get('sort'), '-day');
+   assert.equal(q.get('endDate'), '2026-11-24');
+   return response(['day', 'views'], [['2026-11-22', 23]]);
+  }
+  assert.equal(q.get('startDate'), '2026-10-26');
+  assert.equal(q.get('endDate'), '2026-11-22');
+  if (q.get('metrics') === 'views') return response(['day', 'views'], [['2026-11-22', 23]]);
+  if (q.get('dimensions') === 'day') return response(['day', 'estimatedMinutesWatched'], [['2026-11-22', 14]]);
+  if (q.get('metrics') === 'estimatedMinutesWatched') return response(['estimatedMinutesWatched'], [[15]]);
+  return response(['video'], []);
+ });
+ const result = await youtube.youtubeInsights(account, '2026-10-28', '2026-11-24', new Map(), 28);
+ assert.deepEqual([result.startDate, result.endDate, result.studioEndDate], ['2026-10-26', '2026-11-22', '2026-11-24']);
+ assert.equal(result.totals.views, 23);
+ assert.equal(result.totals.minutes, 15);
+ const link = new URL(result.studioReportUrl!);
+ assert.equal(link.hostname, 'studio.youtube.com');
+ assert.equal(link.searchParams.get('entity_id'), 'channel-1');
+ assert.equal(link.searchParams.get('time_period'), `${Date.parse('2026-10-26T07:00:00Z')},${Date.parse('2026-11-23T08:00:00Z')}`);
+});
 test('YouTube insights add up the period, keep missing numbers missing, and name the top videos',async()=>{
  const seen:string[]=[];
  mock(url=>{

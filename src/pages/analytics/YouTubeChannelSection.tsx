@@ -1,37 +1,70 @@
 import { useEffect, useState } from 'react';
-import { ExternalLink } from 'lucide-react';
+import { ExternalLink, RefreshCw } from 'lucide-react';
 import { SeriesChart } from '../../components/charts/Series';
 import { EmptyState } from '../../components/feedback/States';
 import { Button } from '../../components/ui/Button';
 import { Card, CardBody, CardHeader } from '../../components/ui/Card';
-import type { YouTubeAnalyticsPeriod, YouTubeChannelMetrics } from '../../domain/youtube-analytics';
+import { Segmented } from '../../components/ui/Tabs';
+import type { YouTubeAnalyticsPeriod, YouTubeChannelMetrics, YouTubeWindow } from '../../domain/youtube-analytics';
 import { useI18n } from '../../i18n/I18nProvider';
 import { ApiError, request } from '../../lib/api';
 import { dateFromKey } from '../../lib/format';
 import { YouTubeBreakdownSection } from './YouTubeBreakdownSection';
 
-type ReportState = { key: string; data: YouTubeChannelMetrics } | { key: string; error: 'not_connected' | 'consent' | 'unavailable' };
+type ReportState = { key: string; data?: YouTubeChannelMetrics; error?: 'not_connected' | 'consent' | 'unavailable' };
+const REFRESH_MS = 5 * 60_000;
 
-export function YouTubeChannelSection({ days, account, refresh }: { days: YouTubeAnalyticsPeriod; account: string; refresh: number }) {
+export function YouTubeChannelSection({ days, account, refresh, window: selectedWindow, onWindowChange }: {
+  days: YouTubeAnalyticsPeriod;
+  account: string;
+  refresh: number;
+  window: YouTubeWindow;
+  onWindowChange: (value: YouTubeWindow) => void;
+}) {
   const { t, num, date } = useI18n();
   const [report, setReport] = useState<ReportState | null>(null);
   const [retry, setRetry] = useState(0);
-  const params = new URLSearchParams({ days: String(days), ...(account === 'all' ? {} : { channel: account }) }).toString();
-  const key = `${params}:${refresh}:${retry}`;
+  const [checking, setChecking] = useState(false);
+  const params = new URLSearchParams({ days: String(days), window: selectedWindow, ...(account === 'all' ? {} : { channel: account }) }).toString();
   useEffect(() => {
-    const controller = new AbortController();
-    void request<YouTubeChannelMetrics>(`/social/youtube/insights?${params}`, { signal: controller.signal })
-      .then(data => { if (!controller.signal.aborted) setReport({ key, data }); })
-      .catch((error: unknown) => {
-        if (controller.signal.aborted) return;
-        const code = error instanceof ApiError ? (error.details as { code?: string } | undefined)?.code : undefined;
-        setReport({ key, error: code === 'not_connected' || code === 'consent' ? code : 'unavailable' });
-      });
-    return () => controller.abort();
-  }, [key, params]);
+    let controller: AbortController;
+    let lastStarted = 0;
+    const load = () => {
+      controller?.abort();
+      controller = new AbortController();
+      const { signal } = controller;
+      lastStarted = Date.now();
+      setChecking(true);
+      void request<YouTubeChannelMetrics>(`/social/youtube/insights?${params}`, { signal })
+        .then(data => { if (!signal.aborted) setReport({ key: params, data }); })
+        .catch((error: unknown) => {
+          if (signal.aborted) return;
+          const code = error instanceof ApiError ? (error.details as { code?: string } | undefined)?.code : undefined;
+          setReport(previous => ({
+            key: params,
+            data: code !== 'not_connected' && code !== 'consent' && previous?.key === params ? previous.data : undefined,
+            error: code === 'not_connected' || code === 'consent' ? code : 'unavailable',
+          }));
+        })
+        .finally(() => { if (!signal.aborted) setChecking(false); });
+    };
+    const loadIfDue = () => {
+      if (document.visibilityState === 'visible' && Date.now() - lastStarted >= REFRESH_MS) load();
+    };
+    load();
+    const timer = window.setInterval(loadIfDue, REFRESH_MS);
+    window.addEventListener('focus', loadIfDue);
+    document.addEventListener('visibilitychange', loadIfDue);
+    return () => {
+      controller?.abort();
+      window.clearInterval(timer);
+      window.removeEventListener('focus', loadIfDue);
+      document.removeEventListener('visibilitychange', loadIfDue);
+    };
+  }, [params, refresh, retry]);
 
-  const state = report?.key === key ? report : null;
-  const data = state && 'data' in state ? state.data : null;
+  const state = report?.key === params ? report : null;
+  const data = state?.data;
   const showDay = (day: string) => date(dateFromKey(day).toMillis(), 'dayShort');
   const watchHours = data?.totals.minutes == null ? null : Math.round(data.totals.minutes / 6) / 10;
   const gained = data?.totals.subscribersGained;
@@ -39,18 +72,29 @@ export function YouTubeChannelSection({ days, account, refresh }: { days: YouTub
   const subscribers = gained == null || lost == null ? null : gained - lost;
   const daily = data?.daily.flatMap((row) => row.views == null ? [] : [{ key: row.date, label: showDay(row.date), title: showDay(row.date), value: row.views }]) ?? [];
   const title = t('YouTube channel analytics', 'تحليلات قناة يوتيوب');
+  const studioLabel = data?.studioReportThrough && data.studioReportThrough < data.endDate
+    ? t(`Studio through ${showDay(data.studioReportThrough)}`, `Studio لحد ${showDay(data.studioReportThrough)}`)
+    : t('Same dates in Studio', 'نفس التواريخ في Studio');
 
   return (
     <>
-    <Card aria-busy={!state}>
+    <Card aria-busy={checking}>
       <CardHeader
         title={title}
         description={data ? `${data.channel} · ${showDay(data.startDate)} – ${showDay(data.endDate)} · ${t('Pacific time', 'توقيت المحيط الهادئ')}` : t('Source: YouTube Analytics', 'المصدر الرسمي من YouTube Analytics')}
-        actions={data && <a className="ui-btn ui-btn--secondary ui-btn--sm" href={`https://studio.youtube.com/channel/${encodeURIComponent(data.channelId)}/analytics/hub_overview`} target="_blank" rel="noreferrer">YouTube Studio <ExternalLink size={14} /></a>}
+        actions={(
+          <>
+            {data?.studioReportUrl && <a className="ui-btn ui-btn--secondary ui-btn--sm" href={data.studioReportUrl} target="_blank" rel="noreferrer">{studioLabel} <ExternalLink size={14} /></a>}
+            <Button size="sm" variant="ghost" icon={<RefreshCw size={14} />} busy={checking} onClick={() => setRetry(value => value + 1)}>{t('Check YouTube now', 'تحقق من يوتيوب')}</Button>
+          </>
+        )}
       />
       <CardBody className="u-stack">
+        <Segmented label={t('YouTube reporting window', 'فترة تقرير يوتيوب')} value={selectedWindow}
+          onChange={value => onWindowChange(value === 'studio' ? 'studio' : 'complete')}
+          items={[{ value: 'complete', label: t('Latest complete period', 'آخر فترة مكتملة') }, { value: 'studio', label: t('Studio preset dates', 'تواريخ فترة Studio') }]} />
         {!state && <p role="status">{t('Loading channel analytics…', 'بنحمّل تحليلات القناة…')}</p>}
-        {state && 'error' in state && (
+        {state?.error && !data && (
           <EmptyState compact
             title={state.error === 'consent' ? t('YouTube Analytics access is required', 'القناة محتاجة صلاحية YouTube Analytics')
               : state.error === 'not_connected' ? t('This YouTube channel is not connected', 'قناة يوتيوب دي مش مربوطة')
@@ -60,6 +104,14 @@ export function YouTubeChannelSection({ days, account, refresh }: { days: YouTub
         )}
         {data && (
           <>
+            <p className="an-youtube-note">
+              {t(`Last checked ${date(data.checkedAt, 'dateTime')}.`, `آخر تحقق ${date(data.checkedAt, 'dateTime')}.`)}
+              {state?.error && ` ${t('Refresh failed. Showing the last available figures.', 'التحديث تعذّر. بنعرض آخر أرقام متاحة.')}`}
+              {data.endDate < data.studioEndDate && ` ${t(
+                `Studio’s preset ends on ${showDay(data.studioEndDate)}. The API’s complete period ends on ${showDay(data.endDate)}.`,
+                `فترة Studio الافتراضية بتنتهي ${showDay(data.studioEndDate)}، والفترة المتاحة من الـAPI بتنتهي ${showDay(data.endDate)}.`,
+              )}`}
+            </p>
             <div className="an-youtube-kpis">
               {[
                 [t('Channel views', 'مشاهدات القناة'), num(data.totals.views)],

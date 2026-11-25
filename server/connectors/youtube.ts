@@ -37,6 +37,19 @@ export function youtubeDateRange(days: YouTubeAnalyticsPeriod, now = new Date())
   return { start: end.minus({ days: days - 1 }).toISODate()!, end: end.toISODate()! };
 }
 
+/** Studio's custom range takes an inclusive Pacific start and the following day's exclusive boundary. */
+export function youtubeStudioReportUrl(channelId: string, start: string, end: string) {
+  const from = DateTime.fromISO(start, { zone: reportingZone }).startOf('day');
+  const until = DateTime.fromISO(end, { zone: reportingZone }).plus({ days: 1 }).startOf('day');
+  const query = new URLSearchParams({
+    entity_type: 'CHANNEL', entity_id: channelId, time_period: `${from.toMillis()},${until.toMillis()}`,
+    explore_type: 'TABLE_AND_CHART', metrics_computation_type: 'DELTA', metric: 'EXTERNAL_VIEWS', granularity: 'DAY',
+    dimension: 'DAY', o_column: 'DAY', o_direction: 'ANALYTICS_ORDER_DIRECTION_DESC',
+  });
+  for (const metric of ['EXTERNAL_VIEWS', 'EXTERNAL_WATCH_TIME', 'SUBSCRIBERS_NET_CHANGE']) query.append('t_metrics', metric);
+  return `https://studio.youtube.com/channel/${encodeURIComponent(channelId)}/analytics/hub_overview/explore?${query}`;
+}
+
 /** The post report counts lifetime activity for videos uploaded in the window. */
 export function youtubePublishedVideoTotals(posts: ObservedPost[], startDate: string, endDate: string): NonNullable<YouTubeChannelMetrics['publishedVideoTotals']> {
   const rows = posts.flatMap(post => {
@@ -53,9 +66,19 @@ export function youtubePublishedVideoTotals(posts: ObservedPost[], startDate: st
  * The channel's results for a period, as the Analytics page shows them: totals, views and watch time per day, and the
  * top videos by views. Titles come from the synced videos; a video not synced yet keeps its id as the title.
  */
-export async function youtubeInsights(account: SocialAccount, startDate: string, endDate: string, titles: Map<string, { title: string; publishedAt: string }>): Promise<YouTubeInsights> {
+export async function youtubeInsights(account: SocialAccount, startDate: string, endDate: string, titles: Map<string, { title: string; publishedAt: string }>, completedDays?: YouTubeAnalyticsPeriod): Promise<YouTubeInsights> {
   const token = await accessToken(account), auth = { headers: headers(token) };
+  const studioEndDate = endDate;
   const report = (params: Record<string, string>) => request(`https://youtubeanalytics.googleapis.com/v2/reports?${new URLSearchParams({ ids: `channel==${account.externalId}`, startDate, endDate, ...params })}`, auth, true) as Promise<Report>;
+  if (completedDays) {
+    const recentStart = DateTime.fromISO(endDate, { zone: reportingZone }).minus({ days: 29 }).toISODate()!;
+    const latest = await report({ startDate: recentStart, metrics: `views,${activityMetrics}`, dimensions: 'day', sort: '-day', maxResults: '1' }).catch(() => ({}));
+    const available = rowsOf(latest)[0]?.day;
+    if (typeof available === 'string' && available >= recentStart && available <= endDate) {
+      const first = DateTime.fromISO(available, { zone: reportingZone }).minus({ days: completedDays - 1 }).toISODate();
+      if (first) { startDate = first; endDate = available; }
+    }
+  }
   // The API truncates a multi-metric report to the last day common to every requested metric.
   const [views, activity, top] = await Promise.all([
     report({ metrics: 'views', dimensions: 'day', sort: 'day' }),
@@ -63,7 +86,9 @@ export async function youtubeInsights(account: SocialAccount, startDate: string,
     report({ metrics: 'views,estimatedMinutesWatched,averageViewDuration,likes,shares', dimensions: 'video', sort: '-views', maxResults: '10' }).catch(() => ({})),
   ]);
   const viewRows = rowsOf(views), activityRows = rowsOf(activity);
+  const viewsThrough = viewRows.at(-1)?.day?.toString() ?? null;
   const activityThrough = activityRows.at(-1)?.day?.toString() ?? null;
+  const comparableThrough = viewsThrough && activityThrough && activityThrough < viewsThrough ? activityThrough : viewsThrough;
   const totals = totalsOf(viewRows, activityRows);
   // YouTube rounds each daily watch-time row to minutes. Use Google's period total for the headline.
   if (activityThrough && totals.minutes != null) {
@@ -75,8 +100,10 @@ export async function youtubeInsights(account: SocialAccount, startDate: string,
   const dates = [...new Set([...dailyViews.keys(), ...dailyMinutes.keys()])].sort();
   return {
     channel: account.name, channelId: account.externalId, startDate, endDate,
-    viewsThrough: viewRows.at(-1)?.day?.toString() ?? null,
-    activityThrough,
+    viewsThrough, activityThrough, studioEndDate,
+    studioReportUrl: comparableThrough ? youtubeStudioReportUrl(account.externalId, startDate, comparableThrough) : null,
+    studioReportThrough: comparableThrough,
+    checkedAt: new Date().toISOString(),
     totals,
     daily: dates.map(date => ({ date, views: dailyViews.get(date) ?? null, minutes: dailyMinutes.get(date) ?? null })),
     videos: rowsOf(top).map((r) => {
