@@ -101,8 +101,8 @@ export function registerNotifyRoutes(app: express.Express) {
     await resolvePostingGap();
     const rows = await db.all(`
       SELECT n.* FROM notifications n WHERE n.user_id=?
-      AND NOT EXISTS (SELECT 1 FROM insights i WHERE i.resolved_at IS NOT NULL AND n.link='/insights?id=' || i.id)
-      ORDER BY n.created_at DESC LIMIT 60`, [req.user!.id]);
+      AND NOT EXISTS (SELECT 1 FROM insights i WHERE i.resolved_at IS NOT NULL AND n.link=? || i.id)
+      ORDER BY n.created_at DESC LIMIT 60`, [req.user!.id, '/insights?id=']);
     res.setHeader('Cache-Control', 'no-store');
     res.json({
       unread: rows.filter((row) => !row.read_at).length,
