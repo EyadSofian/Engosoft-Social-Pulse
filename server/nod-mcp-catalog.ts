@@ -41,6 +41,7 @@ export const EXCLUDED_ROUTES: [RegExp, string][] = [
   [/^\/api\/auth(\/|$)/, 'Sign-in.'],
   [/^\/api\/oauth(\/|$)/, 'OAuth handshakes.'],
   [/^\/api\/push(\/|$)/, 'Browser push keys.'],
+  [/^\/api\/webhooks\//, 'Provider webhook handshake.'],
   [/^\/api\/analytics\/thumbnail\//, 'Image.'],
   [/^\/api\/creatives\//, 'Image file.'],
   [/^\/api\/radar\/picture\//, 'Image.'],
