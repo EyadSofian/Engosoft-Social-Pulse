@@ -9,13 +9,14 @@ import { LiveGate } from '../../components/feedback/LiveGate';
 import { FilterSelect } from '../../components/forms/Field';
 import { Dialog } from '../../components/overlay/Overlay';
 import { Button } from '../../components/ui/Button';
-import { Card, CardBody, CardHeader } from '../../components/ui/Card';
+import { Card, CardBody, CardHeader, Section } from '../../components/ui/Card';
 import { Segmented } from '../../components/ui/Tabs';
 import { useI18n } from '../../i18n/I18nProvider';
 import { channelName } from '../../i18n/labels';
 import { PERIODS, type Period } from '../../lib/analytics';
 import { dateFromKey, dayKeyOf } from '../../lib/format';
 import { PLATFORMS } from '../../lib/platforms';
+import { YOUTUBE_ANALYTICS_PERIODS } from '../../domain/youtube-analytics';
 import { PageHeader } from '../../shell/Header';
 import { usePageMeta } from '../../shell/ShellContext';
 import type { Platform } from '../../types';
@@ -28,8 +29,7 @@ import { useAnalytics, type AnalyticsModel } from './model';
 import { PostsSection } from './PostsSection';
 import { KpiTile } from './KpiTile';
 import { AudienceSection } from './AudienceSection';
-
-const PERIOD_VALUES = PERIODS.map((period) => String(period.value));
+import { YouTubeChannelSection } from './YouTubeChannelSection';
 
 type ExportFormat = 'excel' | 'pdf';
 
@@ -44,9 +44,13 @@ export function AnalyticsHub() {
   const [query, setQuery] = useQueryState();
   const { store, runSync } = useLiveData();
   const [syncing, setSyncing] = useState(false);
+  const [refresh, setRefresh] = useState(0);
 
-  const period = (PERIOD_VALUES.includes(query.get('period') ?? '') ? Number(query.get('period')) : 30) as Period;
   const platform = (PLATFORMS as string[]).includes(query.get('platform') ?? '') ? (query.get('platform') as Platform) : 'all';
+  const youtube = platform === 'youtube';
+  const periods = youtube ? YOUTUBE_ANALYTICS_PERIODS : PERIODS.map(item => item.value);
+  const defaultPeriod = youtube ? 28 : 30;
+  const period = (periods.find(value => value === Number(query.get('period'))) ?? defaultPeriod) as Period;
   const account = query.get('account') ?? 'all';
   const type = query.get('type') ?? 'all';
   const rankBy = isRankBy(query.get('rank')) ? (query.get('rank') as Reports['rankBy']) : 'rate';
@@ -92,6 +96,7 @@ export function AnalyticsHub() {
       await runSync();
     } finally {
       setSyncing(false);
+      setRefresh(value => value + 1);
     }
   };
 
@@ -102,7 +107,7 @@ export function AnalyticsHub() {
         description={t('Published post performance, with reports on the best and worst posts, content types and timing.', 'أداء المنشورات على الحسابات المربوطة، مع تقارير لأفضل وأسوأ المنشورات وأنواع المحتوى والمواعيد.')}
         actions={
           <Button variant="primary" icon={<Download size={15} />} onClick={() => setExporting(true)} disabled={!model.posts.length}>
-            {t('Export report', 'تصدير التقرير')}
+            {t('Export post report', 'تصدير تقرير المنشورات')}
           </Button>
         }
       />
@@ -111,8 +116,8 @@ export function AnalyticsHub() {
         <Segmented
           label={t('Period', 'الفترة')}
           value={String(period)}
-          onChange={(value) => setQuery({ period: value === '30' ? null : value })}
-          items={PERIODS.map((item) => ({ value: String(item.value), label: item.value === 365 ? t('1 year', 'سنة') : t(`${item.value} days`, `${item.value} يوم`) }))}
+          onChange={(value) => setQuery({ period: value === String(defaultPeriod) ? null : value })}
+          items={periods.map((value) => ({ value: String(value), label: value === 365 ? t('1 year', 'سنة') : t(`${value} days`, `${value} يوم`) }))}
         />
         <FilterSelect
           label={t('Platform', 'المنصة')}
@@ -151,12 +156,17 @@ export function AnalyticsHub() {
         </Button>
       </div>
 
+      {youtube && <YouTubeChannelSection days={YOUTUBE_ANALYTICS_PERIODS.find(days => days === period) ?? 28} account={account} refresh={refresh} />}
+
       <LiveGate needs={store.data.posts.length ? undefined : 'posts'}>
-        <div className="an-kpis">
-          {model.kpis.map((kpi) => (
-            <KpiTile key={kpi.key} kpi={kpi} labels={trendLabels} />
-          ))}
-        </div>
+        <Section title={t('Posts published in this period', 'المنشورات اللي نزلت خلال الفترة')}
+          description={t('Views and interactions are the totals to date for those posts.', 'المشاهدات والتفاعلات هنا هي إجمالي الأرقام حتى الآن للمنشورات دي.')}>
+          <div className="an-kpis">
+            {model.kpis.map((kpi) => (
+              <KpiTile key={kpi.key} kpi={kpi} labels={trendLabels} />
+            ))}
+          </div>
+        </Section>
 
         {model.posts.length ? (
           <>

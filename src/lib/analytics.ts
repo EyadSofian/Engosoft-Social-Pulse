@@ -13,7 +13,7 @@ import type {
 import { dayKeyOf, dayNumber, inZone, parseTimestamp, setBusinessZone, zoneNow } from './format';
 import { PLATFORMS } from './platforms';
 
-export type Period = 7 | 30 | 90 | 365;
+export type Period = 7 | 28 | 30 | 90 | 365;
 export const PERIODS: { value: Period; label: string; long: string; previous: string }[] = [
   { value: 7, label: '7 أيام', long: 'آخر 7 أيام', previous: 'عن الـ7 أيام السابقة' },
   { value: 30, label: '30 يوم', long: 'آخر 30 يومًا', previous: 'عن الـ30 يومًا السابقة' },

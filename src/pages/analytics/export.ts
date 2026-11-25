@@ -41,6 +41,7 @@ export function reportNotes(model: AnalyticsModel, reports: Reports, i18n: I18n)
   const { t, tx, num, pct } = i18n;
   const by = tx(RANK_LABEL[reports.rankBy]);
   return [
+    t('Views are the totals to date for posts published in the selected window.', 'المشاهدات هي الإجمالي حتى الآن للمنشورات اللي نزلت خلال الفترة المختارة.'),
     t(`Interaction metrics are available for ${num(model.summary.measured)} of ${num(model.summary.count)} posts (${pct(model.summary.coverage)}).`, `بيانات التفاعل متاحة لـ ${num(model.summary.measured)} من ${num(model.summary.count)} منشور (${pct(model.summary.coverage)}).`),
     t(
       `Best and worst posts are ranked by ${by.toLowerCase()} within each platform. Posts from the last 2 days are left out while their numbers settle${reports.rankBy === 'rate' ? ', and so are posts seen by fewer than a quarter of the platform’s typical post' : ''}.`,

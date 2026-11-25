@@ -4,16 +4,14 @@ import { accessToken } from '../social/credentials.js';
 import { checkpoint } from '../social/store.js';
 import { headers, request } from '../social/http.js';
 import type { SocialAccount } from '../social/types.js';
+import { DateTime } from 'luxon';
+import type { YouTubeAnalyticsPeriod, YouTubeChannelMetrics } from '../../src/domain/youtube-analytics.js';
 const base='https://www.googleapis.com/youtube/v3/';
 export async function youtubeAnalytics(account:SocialAccount,startDate:string,endDate:string) {
  const token=await accessToken(account);
  return request(`https://youtubeanalytics.googleapis.com/v2/reports?${new URLSearchParams({ids:`channel==${account.externalId}`,startDate,endDate,metrics:'views,estimatedMinutesWatched,likes,comments,shares',dimensions:'day',sort:'day'})}`,{headers:headers(token)},true);
 }
-export interface YouTubeInsights {
-  channel: string; startDate: string; endDate: string;
-  /** Null when YouTube did not report the metric, never zero. */
-  totals: { views: number | null; minutes: number | null; likes: number | null; comments: number | null; shares: number | null; subscribersGained: number | null; subscribersLost: number | null };
-  daily: { date: string; views: number | null; minutes: number | null }[];
+export interface YouTubeInsights extends YouTubeChannelMetrics {
   videos: { id: string; title: string; url: string; publishedAt: string | null; views: number | null; minutes: number | null; averageViewSeconds: number | null; likes: number | null; shares: number | null }[];
 }
 
@@ -23,6 +21,11 @@ const rowsOf = (report: Report) => (report.rows ?? []).map((row) => Object.fromE
 const metric = (value: unknown) => (typeof value === 'number' && Number.isFinite(value) ? value : typeof value === 'string' && value.trim() !== '' && Number.isFinite(Number(value)) ? Number(value) : null);
 const sum = (rows: Record<string, unknown>[], key: string) => (rows.some((r) => metric(r[key]) !== null) ? rows.reduce((total, r) => total + (metric(r[key]) ?? 0), 0) : null);
 
+export function youtubeDateRange(days: YouTubeAnalyticsPeriod, now = new Date()) {
+  const end = DateTime.fromJSDate(now, { zone: 'America/Los_Angeles' }).minus({ days: 1 });
+  return { start: end.minus({ days: days - 1 }).toISODate()!, end: end.toISODate()! };
+}
+
 /**
  * The channel's results for a period, as the Analytics page shows them: totals, views and watch time per day, and the
  * top videos by views. Titles come from the synced videos; a video not synced yet keeps its id as the title.
@@ -30,15 +33,22 @@ const sum = (rows: Record<string, unknown>[], key: string) => (rows.some((r) => 
 export async function youtubeInsights(account: SocialAccount, startDate: string, endDate: string, titles: Map<string, { title: string; publishedAt: string }>): Promise<YouTubeInsights> {
   const token = await accessToken(account), auth = { headers: headers(token) };
   const report = (params: Record<string, string>) => request(`https://youtubeanalytics.googleapis.com/v2/reports?${new URLSearchParams({ ids: `channel==${account.externalId}`, startDate, endDate, ...params })}`, auth, true) as Promise<Report>;
-  const [days, top] = await Promise.all([
-    report({ metrics: 'views,estimatedMinutesWatched,likes,comments,shares,subscribersGained,subscribersLost', dimensions: 'day', sort: 'day' }),
-    report({ metrics: 'views,estimatedMinutesWatched,averageViewDuration,likes,shares', dimensions: 'video', sort: '-views', maxResults: '10' }),
+  // The API truncates a multi-metric report to the last day common to every requested metric.
+  const [views, activity, top] = await Promise.all([
+    report({ metrics: 'views', dimensions: 'day', sort: 'day' }),
+    report({ metrics: 'estimatedMinutesWatched,likes,comments,shares,subscribersGained,subscribersLost', dimensions: 'day', sort: 'day' }).catch(() => ({})),
+    report({ metrics: 'views,estimatedMinutesWatched,averageViewDuration,likes,shares', dimensions: 'video', sort: '-views', maxResults: '10' }).catch(() => ({})),
   ]);
-  const daily = rowsOf(days);
+  const viewRows = rowsOf(views), activityRows = rowsOf(activity);
+  const dailyViews = new Map(viewRows.map((r) => [String(r.day), metric(r.views)]));
+  const dailyMinutes = new Map(activityRows.map((r) => [String(r.day), metric(r.estimatedMinutesWatched)]));
+  const dates = [...new Set([...dailyViews.keys(), ...dailyMinutes.keys()])].sort();
   return {
-    channel: account.name, startDate, endDate,
-    totals: { views: sum(daily, 'views'), minutes: sum(daily, 'estimatedMinutesWatched'), likes: sum(daily, 'likes'), comments: sum(daily, 'comments'), shares: sum(daily, 'shares'), subscribersGained: sum(daily, 'subscribersGained'), subscribersLost: sum(daily, 'subscribersLost') },
-    daily: daily.map((r) => ({ date: String(r.day), views: metric(r.views), minutes: metric(r.estimatedMinutesWatched) })),
+    channel: account.name, channelId: account.externalId, startDate, endDate,
+    viewsThrough: viewRows.at(-1)?.day?.toString() ?? null,
+    activityThrough: activityRows.at(-1)?.day?.toString() ?? null,
+    totals: { views: sum(viewRows, 'views'), minutes: sum(activityRows, 'estimatedMinutesWatched'), likes: sum(activityRows, 'likes'), comments: sum(activityRows, 'comments'), shares: sum(activityRows, 'shares'), subscribersGained: sum(activityRows, 'subscribersGained'), subscribersLost: sum(activityRows, 'subscribersLost') },
+    daily: dates.map(date => ({ date, views: dailyViews.get(date) ?? null, minutes: dailyMinutes.get(date) ?? null })),
     videos: rowsOf(top).map((r) => {
       const id = String(r.video);
       const known = titles.get(id);
