@@ -6,6 +6,8 @@
  * /api/plans do. The only write is adding a post to the calendar as a DRAFT:
  * nothing is scheduled, approved or published by an outside agent.
  *
+ * pulse_list_endpoints / pulse_get read every tab in full the same way.
+ *
  * Off until both NOD_MCP_TOKEN and NOD_MCP_USER_EMAIL are set.
  */
 import type express from 'express';
@@ -16,8 +18,11 @@ import { McpToolError, mcpHandler, optInt, optString, type McpServerSpec, type M
 import { getAlerts, getConnectorStatuses, getObserved, getPlans, getWebsiteDaily, getWebsitePages, savePlan } from './store.js';
 import type { AuthUser } from './auth.js';
 import type { ObservedPost, PlanPlatform } from './types.js';
+import { EXCLUDED_ROUTES, matchReadable, readableRoutes } from './nod-mcp-catalog.js';
+import { SLICE_INPUT_PROPERTIES, sliceJson } from './mcp-json-slice.js';
+import { internalHeaders, selfOrigin } from './internal-caller.js';
 
-type Ctx = { user: AuthUser };
+type Ctx = { user: AuthUser; app: express.Express };
 type Tool = McpTool<Ctx>;
 
 const PLATFORMS = ['facebook', 'instagram', 'tiktok', 'snapchat', 'youtube', 'linkedin', 'website'];
@@ -275,21 +280,105 @@ const createDraft: Tool = {
   },
 };
 
+const READ_ONLY = { readOnlyHint: true, idempotentHint: true, openWorldHint: false };
+
+/**
+ * Every tab, read in full. Each call is an ordinary GET to this server as the
+ * MCP account, so the route's own permission checks decide what comes back.
+ */
+const listEndpoints: Tool = {
+  name: 'pulse_list_endpoints',
+  title: 'List every Mobde3 data endpoint',
+  description:
+    'Lists every data endpoint behind every Mobde3 tab: analytics for every post on every platform, YouTube channel analytics (audience, devices, traffic, watch time), per-account analytics, insights, publishing queue, content calendar, content board, campaigns, competitor radar, courses from Odoo, studio, usage and team. Read any of them in full with pulse_get.',
+  inputSchema: {
+    type: 'object',
+    properties: { tab: { type: 'string', description: 'Optional tab to narrow the list, e.g. Analytics or YouTube.' } },
+    additionalProperties: false,
+  },
+  annotations: READ_ONLY,
+  run: async (args, ctx) => {
+    const tab = optString(args, 'tab').toLowerCase();
+    const routes = readableRoutes(ctx.app).filter((route) => !tab || route.tab.toLowerCase().includes(tab));
+    const tabs: Record<string, { about: string; endpoints: string[] }> = {};
+    for (const route of routes) {
+      tabs[route.tab] ??= { about: route.about, endpoints: [] };
+      tabs[route.tab].endpoints.push(route.path);
+    }
+    return {
+      count: routes.length,
+      tabs,
+      leftOut: EXCLUDED_ROUTES.map(([pattern, reason]) => ({ pattern: String(pattern), reason })),
+      paging: 'pulse_get returns small answers whole. A large one comes back as an outline; then pass path and page lists with offset/limit until nextOffset is gone.',
+    };
+  },
+};
+
+const getEndpoint: Tool = {
+  name: 'pulse_get',
+  title: 'Read any Mobde3 endpoint in full',
+  description:
+    'Reads one endpoint from pulse_list_endpoints and returns everything that tab shows, e.g. /api/dashboard (every post and metric), /api/social/youtube/insights, /api/social/youtube/breakdowns, /api/insights, /api/publishing. Replace :name segments with real ids. Large answers come back as an outline first; then read parts with path and page lists with offset and limit.',
+  inputSchema: {
+    type: 'object',
+    properties: {
+      endpoint: { type: 'string', description: 'Concrete path, e.g. /api/dashboard or /api/social/accounts/<id>/analytics.' },
+      params: {
+        type: 'object',
+        description: 'Query parameters the tab uses, e.g. {"from":"2026-11-01","to":"2026-11-25"}.',
+        additionalProperties: { type: ['string', 'number', 'boolean'] },
+      },
+      ...SLICE_INPUT_PROPERTIES,
+    },
+    required: ['endpoint'],
+    additionalProperties: false,
+  },
+  annotations: READ_ONLY,
+  run: async (args, ctx) => {
+    const match = matchReadable(ctx.app, args.endpoint);
+    if (!match) throw new McpToolError('Unknown or excluded endpoint. Call pulse_list_endpoints for the readable paths.');
+    const raw = args.params;
+    if (raw !== undefined && (typeof raw !== 'object' || raw === null || Array.isArray(raw))) {
+      throw new McpToolError('"params" must be an object.');
+    }
+    const url = new URL(match.concrete, selfOrigin());
+    for (const [key, value] of Object.entries((raw ?? {}) as Record<string, unknown>)) {
+      if (value !== undefined && value !== null && value !== '') url.searchParams.set(key, String(value));
+    }
+    const response = await fetch(url, {
+      headers: { accept: 'application/json', ...internalHeaders(ctx.user.id) },
+      redirect: 'manual',
+      signal: AbortSignal.timeout(120_000),
+    });
+    const type = response.headers.get('content-type') ?? '';
+    if (!type.includes('json')) {
+      throw new McpToolError(`${match.concrete} answered HTTP ${response.status} with ${type || 'no content type'}, not JSON.`);
+    }
+    const body = (await response.json()) as unknown;
+    const slice = sliceJson(body, {
+      path: typeof args.path === 'string' ? args.path : '',
+      offset: typeof args.offset === 'number' ? args.offset : undefined,
+      limit: typeof args.limit === 'number' ? args.limit : undefined,
+    });
+    return { endpoint: match.concrete, route: match.path, tab: match.tab, httpStatus: response.status, ...slice };
+  },
+};
+
 export const SOCIAL_PULSE_MCP: McpServerSpec<Ctx> = {
   name: 'engosoft-social-pulse',
   version: '1.0.0',
   instructions:
-    "Engosoft Social Pulse: organic social media (Facebook, Instagram, TikTok, Snapchat, YouTube, LinkedIn), the content calendar and website traffic from GA4. Start with pulse_overview. Null metrics mean the platform did not report them, never zero. Times are in the business time zone (Africa/Cairo by default). pulse_create_draft only adds a draft; approving, scheduling and publishing stay with the team in the app.",
-  tools: [overview, listPosts, calendar, alertsTool, websiteTool, createDraft],
+    "Engosoft Social Pulse: organic social media (Facebook, Instagram, TikTok, Snapchat, YouTube, LinkedIn), the content calendar and website traffic from GA4. Start with pulse_overview. For everything a tab shows (every post, YouTube channel analytics, insights, publishing, campaigns, radar) use pulse_list_endpoints then pulse_get. Null metrics mean the platform did not report them, never zero. Times are in the business time zone (Africa/Cairo by default). pulse_create_draft only adds a draft; approving, scheduling and publishing stay with the team in the app.",
+  tools: [overview, listPosts, calendar, alertsTool, websiteTool, listEndpoints, getEndpoint, createDraft],
 };
 
-async function resolveContext(): Promise<Ctx | { error: string; status: number }> {
+async function resolveContext(req: express.Request): Promise<Ctx | { error: string; status: number }> {
   const raw = String(process.env.NOD_MCP_USER_EMAIL || '').trim();
   if (!raw) return { status: 503, error: 'Set NOD_MCP_USER_EMAIL to the Social Pulse account Nod acts as.' };
   const email = normalizeEmail(raw);
   const user = (await listUsers()).find((candidate) => candidate.email === email);
   if (!user || user.status !== 'active') return { status: 403, error: 'The MCP account is missing or suspended.' };
-  return { user };
+  return { user, app: req.app as express.Express };
 }
 
 export function registerNodMcpRoute(app: express.Express) {

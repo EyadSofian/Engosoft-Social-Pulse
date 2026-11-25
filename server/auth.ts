@@ -1,5 +1,6 @@
 /** Email + password sign-in. Admins create users; passwords are scrypt-hashed; sessions are HTTP-only cookies. */
 import { createHash, randomBytes, randomUUID, scryptSync, timingSafeEqual } from 'node:crypto';
+import { internalUserId } from './internal-caller.js';
 import type express from 'express';
 import { can, DEPARTMENTS, ROLES } from '../src/domain/catalog.js';
 import { ALL_PERMISSIONS, type DepartmentId, type Permission, type RoleId } from '../src/domain/users.js';
@@ -192,7 +193,10 @@ declare module 'express-serve-static-core' { interface Request { user?: AuthUser
 /** Attach the signed-in user; reject when there is none. */
 export const requireUser: express.RequestHandler = async (req, res, next) => {
   // Routes that already passed the /api gate reuse the user it found.
-  const user = req.user ?? await sessionUser(req);
+  // This server reading itself for the MCP endpoint (see internal-caller.ts).
+  const internalId = req.user ? null : internalUserId(req);
+  const internal = internalId ? await getUser(internalId) : undefined;
+  const user = req.user ?? (internal?.status === 'active' ? internal : internalId ? undefined : await sessionUser(req));
   if (!user) { res.status(401).json({ error: 'سجّل الدخول أولًا.', code: 'unauthenticated' }); return; }
   req.user = user;
   next();
