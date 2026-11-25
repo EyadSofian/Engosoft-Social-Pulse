@@ -188,6 +188,10 @@ test('YouTube channel views use their own reporting cutoff and the Studio calend
   const query = new URL(url).searchParams;
   assert.equal(query.get('ids'), 'channel==channel-1');
   assert.equal(query.get('startDate'), range.start);
+  if (query.get('metrics') === 'estimatedMinutesWatched') {
+   assert.equal(query.get('endDate'), '2026-11-21');
+   return report(['estimatedMinutesWatched'], [[21]]);
+  }
   assert.equal(query.get('endDate'), range.end);
   if (query.get('dimensions') === 'video') return report(['video', 'views'], []);
   if (query.get('metrics') === 'views') return report(['day', 'views'], [['2026-11-21', 0], ['2026-11-22', 25]]);
@@ -195,6 +199,7 @@ test('YouTube channel views use their own reporting cutoff and the Studio calend
  });
  const result = await youtube.youtubeInsights(account, range.start, range.end, new Map());
  assert.equal(result.totals.views, 25);
+ assert.equal(result.totals.minutes, 21);
  assert.equal(result.viewsThrough, '2026-11-22');
  assert.equal(result.activityThrough, '2026-11-21');
  assert.deepEqual(result.daily, [
@@ -207,12 +212,13 @@ test('YouTube insights add up the period, keep missing numbers missing, and name
  mock(url=>{
   const q=new URL(url).searchParams;seen.push(`${q.get('dimensions')}:${q.get('metrics')}`);assert.equal(q.get('ids'),'channel==channel-1');
   if(q.get('metrics')==='views')return Response.json({columnHeaders:['day','views'].map(name=>({name})),rows:[['2026-10-01',100],['2026-10-02',50]]});
+  if(q.get('metrics')==='estimatedMinutesWatched')return Response.json({columnHeaders:[{name:'estimatedMinutesWatched'}],rows:[[301]]});
   if(q.get('dimensions')==='day')return Response.json({columnHeaders:['day','estimatedMinutesWatched','likes','comments','shares','subscribersGained','subscribersLost'].map(name=>({name})),rows:[['2026-10-01',240,5,1,2,3,1],['2026-10-02',60,2,0,1,1,0]]});
   return Response.json({columnHeaders:['video','views','estimatedMinutesWatched','averageViewDuration','likes','shares'].map(name=>({name})),rows:[['v1',120,250,95,6,3],['v9',30,50,40,1,0]]});
  });
  const r=await youtube.youtubeInsights(account,'2026-10-01','2026-10-02',new Map([['v1',{title:'PMP tips',publishedAt:'2026-09-30T10:00:00Z'}]]));
- assert.deepEqual(seen.map(x=>x.split(':')[0]).sort(),['day','day','video']);
- assert.deepEqual(r.totals,{views:150,minutes:300,likes:7,comments:1,shares:3,subscribersGained:4,subscribersLost:1});
+ assert.deepEqual(seen.map(x=>x.split(':')[0]).sort(),['day','day','null','video']);
+ assert.deepEqual(r.totals,{views:150,minutes:301,likes:7,comments:1,shares:3,subscribersGained:4,subscribersLost:1});
  assert.deepEqual(r.daily[1],{date:'2026-10-02',views:50,minutes:60});
  assert.equal(r.videos[0].title,'PMP tips');assert.equal(r.videos[0].averageViewSeconds,95);
  assert.equal(r.videos[1].title,'v9','a video not synced yet keeps its id');
@@ -227,6 +233,11 @@ test('YouTube breakdowns keep the available window, use watch time for devices, 
   const q = new URL(url).searchParams;
   const dimension = q.get('dimensions');
   assert.equal(q.get('ids'), 'channel==channel-1');
+  if (q.get('metrics') === 'estimatedMinutesWatched') {
+   assert.equal(q.get('startDate'), '2026-09-30');
+   assert.equal(q.get('endDate'), '2026-10-25');
+   return response(['estimatedMinutesWatched'], [[153]]);
+  }
   if (dimension === 'day') {
    assert.equal(q.get('startDate'), '2026-09-30');
    assert.equal(q.get('endDate'), '2026-10-25');
@@ -254,6 +265,7 @@ test('YouTube breakdowns keep the available window, use watch time for devices, 
  assert.deepEqual(result.traffic, []);
  assert.equal(result.previous?.availableThrough, '2026-10-25');
  assert.equal(result.previous?.totals.views, 54);
+ assert.equal(result.previous?.totals.minutes, 153);
 });
 test('the published-video comparison uses Pacific upload dates and lifetime counts', () => {
  const video = (externalId: string, publishedAt: string, views: number | null, likes: number | null): ObservedPost => ({

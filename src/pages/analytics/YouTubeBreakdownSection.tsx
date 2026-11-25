@@ -48,6 +48,8 @@ export function YouTubeBreakdownSection({ overview, days, refresh }: { overview:
   if (!through) return null;
   const active = result?.key === key ? result : null;
   const data = active?.data;
+  const channelTotals = { views: overview.totals.views, minutes: overview.activityThrough === through ? overview.totals.minutes : null };
+  const mobileTotals = data?.devices?.find(row => row.key === 'MOBILE');
   const day = (value: string) => date(dateFromKey(value).toMillis(), 'dayShort');
   const tabs: Record<Tab, string> = {
     audience: t('Audience', 'الجمهور'), devices: t('Devices', 'الأجهزة'),
@@ -75,7 +77,7 @@ export function YouTubeBreakdownSection({ overview, days, refresh }: { overview:
                   <PercentGroup title={t('Viewer age', 'أعمار الجمهور')} rows={data.age} dimension="age" />
                   <PercentGroup title={t('Viewer gender', 'النوع')} rows={data.gender} dimension="gender" />
                   <ActivityGroup title={t('Top countries', 'أهم الدول')} rows={data.countries} country />
-                  <ActivityGroup title={t('Subscription status', 'حالة الاشتراك')} rows={data.subscribed} share />
+                  <ActivityGroup title={t('Subscription status', 'حالة الاشتراك')} rows={data.subscribed} share base={channelTotals} />
                 </div>
                 <p className="an-youtube-note">{t('Age and gender are percentages reported by YouTube. The monthly audience, unique viewers, impressions and click-through rate are available in YouTube Studio.', 'نسب الأعمار والنوع جاية من يوتيوب. الجمهور الشهري والمشاهدون الفريدون ومرات الظهور ونسبة النقر متاحين في YouTube Studio.')}</p>
               </>
@@ -83,13 +85,13 @@ export function YouTubeBreakdownSection({ overview, days, refresh }: { overview:
             {tab === 'devices' && (
               <>
                 <div className="an-youtube-detail-grid">
-                  <ActivityGroup title={t('By device', 'حسب الجهاز')} rows={data.devices} share />
-                  <ActivityGroup title={t('Mobile operating systems', 'أنظمة تشغيل الموبايل')} rows={data.mobileSystems} share />
+                  <ActivityGroup title={t('By device', 'حسب الجهاز')} rows={data.devices} share base={channelTotals} />
+                  <ActivityGroup title={t('Mobile operating systems', 'أنظمة تشغيل الموبايل')} rows={data.mobileSystems} share base={mobileTotals} />
                 </div>
-                <p className="an-youtube-note">{t('YouTube Studio’s device card uses watch time share. Percentages here use just the watch time or views classified in each table.', 'بطاقة الأجهزة في Studio بتعرض نسبة وقت المشاهدة. النسب هنا محسوبة من وقت المشاهدة أو المشاهدات المصنّفة داخل كل جدول.')}</p>
+                <p className="an-youtube-note">{t('Device shares use channel totals. Mobile OS shares use mobile totals. When a total is unavailable, the share uses the rows YouTube returned.', 'نسب الأجهزة من إجمالي القناة، ونسب أنظمة الموبايل من إجمالي الموبايل. لو الإجمالي مش متاح، النسبة بتتحسب من الصفوف اللي رجعها يوتيوب.')}</p>
               </>
             )}
-            {tab === 'traffic' && <ActivityGroup title={t('How viewers found the channel', 'المشاهدات جت منين')} rows={data.traffic} share />}
+            {tab === 'traffic' && <ActivityGroup title={t('How viewers found the channel', 'المشاهدات جت منين')} rows={data.traffic} share base={channelTotals} />}
             {tab === 'compare' && <PeriodComparison overview={overview} data={data} />}
           </>
         )}
@@ -116,10 +118,10 @@ function PercentGroup({ title, rows, dimension }: { title: string; rows: YouTube
   );
 }
 
-function ActivityGroup({ title, rows, country, share }: { title: string; rows: YouTubeBreakdownRow[] | null; country?: boolean; share?: boolean }) {
+function ActivityGroup({ title, rows, country, share, base }: { title: string; rows: YouTubeBreakdownRow[] | null; country?: boolean; share?: boolean; base?: Pick<YouTubeBreakdownRow, 'views' | 'minutes'> }) {
   const { t, num, pct, lang } = useI18n();
-  const totalViews = rows?.reduce((total, row) => total + (row.views ?? 0), 0) ?? 0;
-  const totalMinutes = rows?.reduce((total, row) => total + (row.minutes ?? 0), 0) ?? 0;
+  const totalViews = base?.views ?? rows?.reduce((total, row) => total + (row.views ?? 0), 0) ?? 0;
+  const totalMinutes = base?.minutes ?? rows?.reduce((total, row) => total + (row.minutes ?? 0), 0) ?? 0;
   const cell = (value: number | null, total: number, display: number | null = value) =>
     <><bdi>{num(display)}</bdi>{share && value != null && total > 0 && <small><bdi>{pct(100 * value / total, 1)}</bdi></small>}</>;
   const labelOf = (id: string) => country ? sliceLabel('country', id, lang) : dimensions[id] ? t(...dimensions[id]) : id;

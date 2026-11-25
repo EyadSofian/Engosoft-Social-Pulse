@@ -63,14 +63,21 @@ export async function youtubeInsights(account: SocialAccount, startDate: string,
     report({ metrics: 'views,estimatedMinutesWatched,averageViewDuration,likes,shares', dimensions: 'video', sort: '-views', maxResults: '10' }).catch(() => ({})),
   ]);
   const viewRows = rowsOf(views), activityRows = rowsOf(activity);
+  const activityThrough = activityRows.at(-1)?.day?.toString() ?? null;
+  const totals = totalsOf(viewRows, activityRows);
+  // YouTube rounds each daily watch-time row to minutes. Use Google's period total for the headline.
+  if (activityThrough && totals.minutes != null) {
+    const period = await report({ metrics: 'estimatedMinutesWatched', endDate: activityThrough }).catch(() => ({}));
+    totals.minutes = metric(rowsOf(period)[0]?.estimatedMinutesWatched) ?? totals.minutes;
+  }
   const dailyViews = new Map(viewRows.map((r) => [String(r.day), metric(r.views)]));
   const dailyMinutes = new Map(activityRows.map((r) => [String(r.day), metric(r.estimatedMinutesWatched)]));
   const dates = [...new Set([...dailyViews.keys(), ...dailyMinutes.keys()])].sort();
   return {
     channel: account.name, channelId: account.externalId, startDate, endDate,
     viewsThrough: viewRows.at(-1)?.day?.toString() ?? null,
-    activityThrough: activityRows.at(-1)?.day?.toString() ?? null,
-    totals: totalsOf(viewRows, activityRows),
+    activityThrough,
+    totals,
     daily: dates.map(date => ({ date, views: dailyViews.get(date) ?? null, minutes: dailyMinutes.get(date) ?? null })),
     videos: rowsOf(top).map((r) => {
       const id = String(r.video);
@@ -102,7 +109,7 @@ export async function youtubeBreakdowns(account: SocialAccount, startDate: strin
     }) ?? null;
   const previousStart = DateTime.fromISO(startDate, { zone: 'UTC' }).minus({ days: period }).toISODate()!;
   const previousEnd = DateTime.fromISO(endDate, { zone: 'UTC' }).minus({ days: period }).toISODate()!;
-  const [devices, mobileSystems, traffic, countries, subscribed, age, gender, watch, previous] = await Promise.all([
+  const [devices, mobileSystems, traffic, countries, subscribed, age, gender, watch, previous, previousWatch] = await Promise.all([
     activity('deviceType'),
     activity('operatingSystem', { filters: 'deviceType==MOBILE' }),
     activity('insightTrafficSourceType', { sort: '-views' }),
@@ -112,14 +119,19 @@ export async function youtubeBreakdowns(account: SocialAccount, startDate: strin
     demographics('gender'),
     report({ metrics: 'averageViewDuration,averageViewPercentage' }),
     report({ startDate: previousStart, endDate: previousEnd, metrics: `views,${activityMetrics}`, dimensions: 'day', sort: 'day' }),
+    report({ startDate: previousStart, endDate: previousEnd, metrics: 'estimatedMinutesWatched' }),
   ]);
   if ([devices, mobileSystems, traffic, countries, subscribed, age, gender, watch, previous].every(rows => rows === null))
     throw new Error('No YouTube Analytics breakdown succeeded.');
+  const previousThrough = previous?.at(-1)?.day?.toString() ?? null;
+  const previousTotals = previous && totalsOf(previous, previous);
+  if (previousTotals && previousThrough === previousEnd)
+    previousTotals.minutes = metric(previousWatch?.[0]?.estimatedMinutesWatched) ?? previousTotals.minutes;
   return {
     startDate, endDate, devices, mobileSystems, traffic, countries, subscribed, age, gender,
     averageViewSeconds: metric(watch?.[0]?.averageViewDuration),
     averageViewPercentage: metric(watch?.[0]?.averageViewPercentage),
-    previous: previous && { startDate: previousStart, endDate: previousEnd, availableThrough: previous.at(-1)?.day?.toString() ?? null, totals: totalsOf(previous, previous) },
+    previous: previousTotals && { startDate: previousStart, endDate: previousEnd, availableThrough: previousThrough, totals: previousTotals },
   };
 }
 /**
