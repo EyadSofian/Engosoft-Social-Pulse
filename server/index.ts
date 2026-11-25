@@ -52,12 +52,15 @@ import { registerCalendarPostRoutes } from './calendar-posts.js';
 import { syncGoogleCalendars } from './google/calendar-sync.js';
 import { registerRadarRoutes } from './competitor-radar/routes.js';
 import { radarTick } from './competitor-radar/run.js';
+import { registerNodMcpRoute } from './nod-mcp.js';
 
 const app=express();const port=Number(process.env.PORT)||4100;const host=process.env.HOST||'127.0.0.1';
 app.disable('x-powered-by');app.set('trust proxy',1);
 registerMetaCommentWebhook(app);
 app.use('/api/ai',express.json({limit:'18mb'}));app.use('/api/studio',express.json({limit:'18mb'}));app.use('/api/svg-templates',express.json({limit:'16mb'}));app.use('/api/uploads',express.json({limit:'16mb'}));app.use('/api/brand-templates/render',express.json({limit:'24mb'}));app.use(express.json({limit:'1mb'}));
 app.get('/api/health',(_req,res)=>res.json({ok:true}));
+// Outside agents (Nod) use a bearer token, not a session cookie, so this sits before the sign-in guard.
+registerNodMcpRoute(app);
 registerAuthRoutes(app);
 // Provider callbacks validate state and the initiating user; signed media is narrowly scoped to one expiring asset.
 const PUBLIC_API=new Set(['/api/health','/api/auth/login','/api/auth/logout',...['facebook','instagram','tiktok','snapchat','youtube','drive'].map(p=>`/api/oauth/${p}/callback`)]);
